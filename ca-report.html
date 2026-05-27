@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CA Report | Nexflow P2</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%231A1F2E'/><text y='.9em' font-size='80' x='10' fill='%2300BCD4'>N</text></svg>">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="js/utils.js"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        'nexflow-dark-bg': '#1A1F2E',
+                        'nexflow-text': '#E0E0E0',
+                        'nexflow-teal': '#00BCD4',
+                        'nexflow-green': '#00E676',
+                        'nexflow-muted': '#94A3B8'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @media print {
+            /* Hide buttons and navbar */
+            nav, button, .no-print {
+                display: none !important;
+            }
+
+            /* Page break before each section heading except first */
+            main h2:not(:first-of-type) {
+                page-break-before: always;
+            }
+
+            /* Prevent table row breaks */
+            tr {
+                page-break-inside: avoid;
+            }
+
+            /* Set font size for print */
+            body {
+                font-size: 9pt;
+            }
+
+            /* Set page margins */
+            @page {
+                margin: 10mm;
+            }
+
+            /* Force black text on white background */
+            body, main {
+                background: white !important;
+                color: black !important;
+            }
+        }
+    </style>
+</head>
+<body class="bg-nexflow-dark-bg text-nexflow-text">
+    <nav class="bg-nexflow-teal p-4 text-white text-center text-xl font-bold">
+        Nexflow Automations
+    </nav>
+    <main class="container mx-auto px-4 py-6">
+        <!-- CA Audit Report Content -->
+    </main>
+</body>
+</html>

@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard | Nexflow P2</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%231A1F2E'/><text y='.9em' font-size='80' x='10' fill='%2300BCD4'>N</text></svg>">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/supabase-client.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/navbar.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        'nexflow-dark-bg': '#1A1F2E',
+                        'nexflow-text': '#E0E0E0',
+                        'nexflow-teal': '#00BCD4',
+                        'nexflow-green': '#00E676',
+                        'nexflow-muted': '#94A3B8',
+                        'low-stock-red': '#EF4444'
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-nexflow-dark-bg text-nexflow-text min-h-screen flex flex-col">
+    <!-- Navbar -->
+    <nav class="bg-nexflow-teal p-4 flex justify-between items-center">
+        <div class="text-xl font-bold text-white" data-en="Nexflow Automations" data-mr="नेक्सफ्लो ऑटोमेशन्स">Nexflow Automations</div>
+        <div class="flex items-center space-x-4">
+            <a href="grn.html" class="text-white hover:text-gray-200" data-en="GRN" data-mr="GRN">GRN</a>
+            <a href="dispatch.html" class="text-white hover:text-gray-200" data-en="Dispatch" data-mr="डिस्पॅच">Dispatch</a>
+            <a href="products.html" class="text-white hover:text-gray-200" data-en="Products" data-mr="उत्पादने">Products</a>
+            <a href="ca-report.html" class="text-white hover:text-gray-200" data-en="Reports" data-mr="अहवाल">Reports</a>
+            <a href="settings.html" class="text-white hover:text-gray-200" data-en="Settings" data-mr="सेटिंग्ज">Settings</a>
+            <div id="navbar-user-info"></div>
+        </div>
+    </nav>
+
+    <!-- Dashboard Content -->
+    <main class="container mx-auto px-4 py-6 flex-grow">
+        <!-- GUARD 6: First login welcome banner -->
+        <div id="welcomeBanner" class="hidden bg-nexflow-teal border-2 border-nexflow-green rounded-lg p-6 mb-6">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h2 class="text-xl font-bold text-white mb-2" data-en="Welcome to Nexflow!" data-mr="नेक्सफ्लोमध्ये आपले स्वागत आहे!">Welcome to Nexflow!</h2>
+                    <p class="text-white" data-en="Complete your setup to get started" data-mr="सुरू करण्यासाठी तुमचे सेटअप पूर्ण करा">Complete your setup to get started</p>
+                </div>
+                <a href="settings.html" class="bg-white text-nexflow-teal px-6 py-3 rounded-lg font-bold hover:bg-gray-100 transition" data-en="Go to Settings →" data-mr="सेटिंग्जवर जा →">
+                    Go to Settings →
+                </a>
+            </div>
+        </div>
+
+        <h1 class="text-2xl font-bold mb-4" data-en="Stock Levels" data-mr="साठा पातळी">Stock Levels</h1>
+
+        <!-- GUARD 5: Loading Spinner -->
+        <div id="loadingSpinner" class="flex justify-center items-center py-12">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-nexflow-teal"></div>
+        </div>
+
+        <!-- GUARD 5: Error State -->
+        <div id="errorState" class="hidden bg-red-900 border border-red-700 rounded p-4 mb-6">
+            <p class="font-bold" data-en="Could not load data" data-mr="डेटा लोड करू शकला नाही">Could not load data</p>
+            <p class="text-sm" data-en="Check your connection and refresh the page." data-mr="तुमचे कनेक्शन तपासा आणि पृष्ठ रीफ्रेश करा.">Check your connection and refresh the page.</p>
+        </div>
+
+        <!-- Search Input -->
+        <div class="mb-4 relative max-w-md hidden" id="searchContainer">
+            <input type="text" id="materialSearch"
+                   class="w-full p-3 pr-10 rounded bg-gray-800 text-white border border-gray-600 focus:border-nexflow-teal outline-none"
+                   placeholder="Search materials... / साहित्य शोधा..."
+                   data-en="Search materials..."
+                   data-mr="साहित्य शोधा...">
+            <button id="clearSearch" class="hidden absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white text-xl">
+                ×
+            </button>
+        </div>
+
+        <!-- Stock Levels Grid -->
+        <div id="stockLevelsGrid" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <!-- Stock level cards will be dynamically inserted here -->
+        </div>
+
+        <!-- No Match State -->
+        <div id="noMatchState" class="hidden text-center mt-8">
+            <p class="text-nexflow-muted" data-en="No materials match your search." data-mr="तुमच्या शोधाशी कोणतेही साहित्य जुळत नाही.">No materials match your search.</p>
+        </div>
+
+        <!-- Empty State -->
+        <div id="emptyState" class="hidden text-center mt-8">
+            <p class="text-nexflow-muted">No materials added yet. Go to Settings to add materials.</p>
+        </div>
+
+        <!-- Last Updated Timestamp -->
+        <div id="lastUpdated" class="text-center text-sm text-nexflow-muted mt-4">
+            Last Updated: <span id="timestampText">-</span>
+        </div>
+    </main>
+
+    <script>
+        // Supabase configuration
+        const supabaseUrl = 'https://nexflow-p2.supabase.co';
+        const supabaseKey = 'YOUR_SUPABASE_ANON_KEY_HERE';
+        const supabase = supabase.createClient(supabaseUrl, supabaseKey);
+
+        // Function to create Supabase RPC for stock levels
+        async function setupStockLevelsRPC() {
+            try {
+                // Create a stored procedure in Supabase
+                const { data, error } = await supabase.rpc('create_get_current_stock_levels', {
+                    sql: `
+                    CREATE OR REPLACE FUNCTION get_current_stock_levels()
+                    RETURNS TABLE (
+                        material_name TEXT,
+                        current_stock NUMERIC,
+                        min_stock_level NUMERIC,
+                        unit TEXT
+                    ) AS $$
+                    BEGIN
+                        RETURN QUERY
+                        SELECT
+                            r.name AS material_name,
+                            COALESCE(SUM(t.quantity), 0) AS current_stock,
+                            r.min_stock_level,
+                            r.unit
+                        FROM
+                            p2_raw_materials r
+                        LEFT JOIN
+                            p2_stock_transactions t ON r.id = t.raw_material_id
+                        WHERE
+                            r.tenant_id = auth.uid()
+                        GROUP BY
+                            r.id, r.name, r.min_stock_level, r.unit;
+                    END;
+                    $$ LANGUAGE plpgsql SECURITY DEFINER;
+                    `
+                });
+
+                if (error) throw error;
+                console.log('Stock levels RPC created successfully');
+            } catch (error) {
+                console.error('Error creating stock levels RPC:', error);
+            }
+        }
+
+        let allStockLevels = [];
+
+        // Function to render stock level cards
+        function renderStockLevels(stockLevels, isFiltered = false) {
+            const gridContainer = document.getElementById('stockLevelsGrid');
+            const emptyState = document.getElementById('emptyState');
+            const noMatchState = document.getElementById('noMatchState');
+            const timestampText = document.getElementById('timestampText');
+
+            // Clear previous cards
+            gridContainer.innerHTML = '';
+
+            // Hide both states initially
+            emptyState.classList.add('hidden');
+            noMatchState.classList.add('hidden');
+
+            if (stockLevels.length === 0) {
+                if (isFiltered) {
+                    noMatchState.classList.remove('hidden');
+                } else {
+                    emptyState.classList.remove('hidden');
+                }
+                return;
+            }
+
+            stockLevels.forEach(item => {
+                const isLowStock = item.current_stock < item.min_stock_level;
+                const borderClass = isLowStock
+                    ? 'border-low-stock-red'
+                    : 'border-nexflow-teal';
+
+                const card = document.createElement('div');
+                card.className = `border-4 ${borderClass} p-4 rounded-lg shadow-md`;
+                card.dataset.materialName = item.material_name.toLowerCase();
+                card.innerHTML = `
+                    <div class="flex justify-between items-center mb-2">
+                        <h2 class="text-lg font-semibold">${item.material_name}</h2>
+                        ${isLowStock ? '<i class="fas fa-exclamation-triangle text-low-stock-red"></i>' : ''}
+                    </div>
+                    <div class="text-sm">
+                        <p data-en="Current Stock: ${formatNumber(item.current_stock)} ${item.unit}" data-mr="सध्याचा साठा: ${formatNumber(item.current_stock)} ${item.unit}">Current Stock: ${formatNumber(item.current_stock)} ${item.unit}</p>
+                        <p data-en="Minimum Stock Level: ${formatNumber(item.min_stock_level)} ${item.unit}" data-mr="किमान साठा पातळी: ${formatNumber(item.min_stock_level)} ${item.unit}">Minimum Stock Level: ${formatNumber(item.min_stock_level)} ${item.unit}</p>
+                    </div>
+                `;
+                gridContainer.appendChild(card);
+            });
+
+            // Update timestamp
+            timestampText.textContent = formatDate(new Date().toISOString()) + ' ' + new Date().toLocaleTimeString('en-IN');
+        }
+
+        // Function to filter materials
+        function filterMaterials(searchTerm) {
+            const filtered = allStockLevels.filter(item =>
+                item.material_name.toLowerCase().includes(searchTerm.toLowerCase())
+            );
+            renderStockLevels(filtered, searchTerm.length > 0);
+        }
+
+        // GUARD 6: Check for first login and show welcome banner
+        async function checkFirstLogin() {
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!user) return;
+
+                const tenantId = user.user_metadata.tenant_id || localStorage.getItem('nexflow_tenant_id');
+                if (!tenantId) return;
+
+                const { data: settings, error } = await supabase
+                    .from('p2_tenant_settings')
+                    .select('company_name')
+                    .eq('tenant_id', tenantId)
+                    .single();
+
+                // GUARD 6: If settings exist but company_name is empty, show welcome banner
+                if (settings && (!settings.company_name || settings.company_name.trim() === '')) {
+                    document.getElementById('welcomeBanner').classList.remove('hidden');
+                }
+            } catch (error) {
+                console.error('Error checking first login:', error);
+            }
+        }
+
+        // GUARD 5: Function to fetch stock levels with timeout
+        async function fetchStockLevels() {
+            const loadingSpinner = document.getElementById('loadingSpinner');
+            const errorState = document.getElementById('errorState');
+            const searchContainer = document.getElementById('searchContainer');
+
+            // Show loading
+            loadingSpinner.classList.remove('hidden');
+            errorState.classList.add('hidden');
+
+            try {
+                // GUARD 5: Add 10-second timeout
+                const fetchPromise = supabase.rpc('get_current_stock_levels');
+                const timeoutPromise = new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error('Request timeout')), 10000)
+                );
+
+                const { data, error } = await Promise.race([fetchPromise, timeoutPromise]);
+
+                if (error) throw error;
+
+                allStockLevels = data || [];
+                renderStockLevels(allStockLevels);
+
+                // Hide loading, show search
+                loadingSpinner.classList.add('hidden');
+                searchContainer.classList.remove('hidden');
+            } catch (error) {
+                console.error('Error fetching stock levels:', error);
+                // GUARD 5: Show error state
+                loadingSpinner.classList.add('hidden');
+                errorState.classList.remove('hidden');
+
+                const lang = localStorage.getItem('nexflow_lang') || 'en';
+                applyLang(lang);
+            }
+        }
+
+        // Search and clear functionality
+        document.addEventListener('DOMContentLoaded', () => {
+            const searchInput = document.getElementById('materialSearch');
+            const clearBtn = document.getElementById('clearSearch');
+
+            searchInput.addEventListener('input', (e) => {
+                const searchTerm = e.target.value;
+                if (searchTerm.length > 0) {
+                    clearBtn.classList.remove('hidden');
+                } else {
+                    clearBtn.classList.add('hidden');
+                }
+                filterMaterials(searchTerm);
+            });
+
+            clearBtn.addEventListener('click', () => {
+                searchInput.value = '';
+                clearBtn.classList.add('hidden');
+                filterMaterials('');
+            });
+        });
+
+        // Initialize page
+        async function initPage() {
+            // GUARD 6: Check for first login
+            await checkFirstLogin();
+
+            // First, ensure the RPC is set up
+            await setupStockLevelsRPC();
+
+            // Then fetch stock levels
+            await fetchStockLevels();
+        }
+
+        // Run initialization when page loads
+        window.onload = initPage;
+
+        // Optional: Refresh stock levels every 5 minutes
+        setInterval(fetchStockLevels, 5 * 60 * 1000);
+
+        // Language toggle
+        function applyLang(lang) {
+            document.querySelectorAll('[data-en]').forEach(el => {
+                if (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA') {
+                    el.placeholder = lang === 'mr' ? el.dataset.mr : el.dataset.en;
+                } else {
+                    el.textContent = lang === 'mr' ? el.dataset.mr : el.dataset.en;
+                }
+            });
+            localStorage.setItem('nexflow_lang', lang);
+        }
+
+        window.applyLang = applyLang;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const saved = localStorage.getItem('nexflow_lang') || 'en';
+            applyLang(saved);
+        });
+    </script>
+</body>
+</html>

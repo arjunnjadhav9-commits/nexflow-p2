@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd \"/c/Users/acer/OneDrive/Documents/nexflow-p2\" && grep -n \"const.*supabaseClient.*createClient\" settings.html)",
+      "Read(//c/c/Users/acer/OneDrive/Documents/nexflow-p2/**)"
+    ]
+  }
+}

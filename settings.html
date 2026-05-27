@@ -1,0 +1,1266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings | Nexflow P2</title>
+    <link rel="icon" href="/public/assets/favicon.ico" type="image/x-icon">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/supabase-client.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/navbar.js"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        'nexflow-dark-bg': '#1A1F2E',
+                        'nexflow-text': '#E0E0E0',
+                        'nexflow-teal': '#00BCD4',
+                        'nexflow-green': '#00E676',
+                        'nexflow-muted': '#94A3B8'
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-nexflow-dark-bg text-nexflow-text">
+    <!-- Navbar -->
+    <nav class="bg-nexflow-teal p-4 flex justify-between items-center">
+        <div class="flex items-center">
+            <img src="/public/assets/nexflow_logo_transparent.png" alt="Nexflow Logo" style="height: 36px;" class="mr-2">
+            <div class="text-xl font-bold text-white" data-en="Nexflow Automations" data-mr="नेक्सफ्लो ऑटोमेशन्स">Nexflow Automations</div>
+        </div>
+        <div class="flex items-center space-x-4">
+            <a href="index.html" class="text-white hover:text-gray-200" data-en="Dashboard" data-mr="डॅशबोर्ड">Dashboard</a>
+            <a href="grn.html" class="text-white hover:text-gray-200" data-en="GRN" data-mr="GRN">GRN</a>
+            <a href="dispatch.html" class="text-white hover:text-gray-200" data-en="Dispatch" data-mr="डिस्पॅच">Dispatch</a>
+            <a href="products.html" class="text-white hover:text-gray-200" data-en="Products" data-mr="उत्पादने">Products</a>
+            <a href="ca-report.html" class="text-white hover:text-gray-200" data-en="Reports" data-mr="अहवाल">Reports</a>
+            <a href="settings.html" class="text-white hover:text-gray-200 font-bold" data-en="Settings" data-mr="सेटिंग्ज">Settings</a>
+            <div id="navbar-user-info"></div>
+        </div>
+    </nav>
+
+    <!-- Language Toggle Button -->
+    <div class="text-right p-2">
+        <button id="lang-toggle" class="bg-nexflow-teal text-white px-4 py-2 rounded" data-en="मराठी" data-mr="English">मराठी</button>
+    </div>
+
+    <main class="container mx-auto px-4 py-6">
+        <div class="bg-gray-800 rounded-lg p-6">
+            <!-- Tabs -->
+            <div class="flex mb-4 flex-wrap">
+                <button id="tab-company" class="px-4 py-2 bg-nexflow-teal text-white mr-2 mb-2 rounded" data-en="Company Details" data-mr="कंपनी तपशील">Company Details</button>
+                <button id="tab-logo" class="px-4 py-2 bg-gray-700 text-white mr-2 mb-2 rounded" data-en="Logo Upload" data-mr="लोगो अपलोड">Logo Upload</button>
+                <button id="tab-challan" class="px-4 py-2 bg-gray-700 text-white mr-2 mb-2 rounded" data-en="Challan Settings" data-mr="चलान सेटिंग्ज">Challan Settings</button>
+                <button id="tab-telegram" class="px-4 py-2 bg-gray-700 text-white mr-2 mb-2 rounded" data-en="Telegram Alerts" data-mr="टेलीग्राम अलर्ट">Telegram Alerts</button>
+                <button id="tab-staff" class="px-4 py-2 bg-gray-700 text-white mr-2 mb-2 rounded owner-only" data-en="Staff" data-mr="कर्मचारी">Staff</button>
+                <button id="tab-materials" class="px-4 py-2 bg-gray-700 text-white mr-2 mb-2 rounded" data-en="Raw Materials" data-mr="कच्चा माल">Raw Materials</button>
+                <button id="tab-suppliers" class="px-4 py-2 bg-gray-700 text-white mr-2 mb-2 rounded" data-en="Suppliers" data-mr="पुरवठादार">Suppliers</button>
+                <button id="tab-adjustment" class="px-4 py-2 bg-gray-700 text-white mb-2 rounded owner-only" data-en="Stock Adjustment" data-mr="साठा दुरुस्ती">Stock Adjustment</button>
+            </div>
+
+            <!-- Company Details Tab -->
+            <div id="content-company" class="tab-panel">
+                <div class="max-w-2xl mx-auto">
+                    <div class="bg-gray-700 p-6 rounded">
+                        <h2 class="text-2xl mb-4" data-en="Company Details" data-mr="कंपनी तपशील">Company Details</h2>
+                        <form id="company-form" class="space-y-4">
+                            <div>
+                                <label class="block mb-2 text-sm font-medium" data-en="Company Name" data-mr="कंपनी नाव">Company Name</label>
+                                <input type="text" id="company-name" name="company_name" class="w-full p-3 bg-gray-600 rounded text-white" placeholder="Enter company name" data-en="Enter company name" data-mr="कंपनी नाव प्रविष्ट करा">
+                            </div>
+
+                            <div>
+                                <label class="block mb-2 text-sm font-medium" data-en="Address Line 1" data-mr="पत्ता ओळ १">Address Line 1</label>
+                                <input type="text" id="address-line1" name="address_line1" class="w-full p-3 bg-gray-600 rounded text-white" placeholder="Enter address line 1" data-en="Enter address line 1" data-mr="पत्ता ओळ १ प्रविष्ट करा">
+                            </div>
+
+                            <div>
+                                <label class="block mb-2 text-sm font-medium" data-en="Address Line 2" data-mr="पत्ता ओळ २">Address Line 2</label>
+                                <input type="text" id="address-line2" name="address_line2" class="w-full p-3 bg-gray-600 rounded text-white" placeholder="Enter address line 2" data-en="Enter address line 2" data-mr="पत्ता ओळ २ प्रविष्ट करा">
+                            </div>
+
+                            <div>
+                                <label class="block mb-2 text-sm font-medium" data-en="Mobile" data-mr="मोबाईल">Mobile</label>
+                                <input type="tel" id="mobile" name="mobile" class="w-full p-3 bg-gray-600 rounded text-white" placeholder="Enter mobile number" data-en="Enter mobile number" data-mr="मोबाईल नंबर प्रविष्ट करा">
+                            </div>
+
+                            <div>
+                                <label class="block mb-2 text-sm font-medium" data-en="GSTIN" data-mr="जीएसटी नंबर">GSTIN</label>
+                                <input type="text" id="gstin" name="gstin" class="w-full p-3 bg-gray-600 rounded text-white" placeholder="Enter GSTIN" data-en="Enter GSTIN" data-mr="जीएसटी नंबर प्रविष्ट करा">
+                            </div>
+
+                            <button type="submit" id="saveCompanyBtn" class="w-full bg-nexflow-green text-white p-3 rounded hover:bg-green-600 transition font-medium relative" data-en="Save Company Details" data-mr="कंपनी तपशील साठवा">
+                                Save Company Details
+                                <span id="unsavedCompany" class="hidden absolute -top-1 -right-1 w-3 h-3 bg-yellow-400 rounded-full"></span>
+                            </button>
+                        </form>
+
+                        <div id="company-status" class="mt-4 hidden"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Logo Upload Tab -->
+            <div id="content-logo" class="tab-panel hidden">
+                <div class="max-w-2xl mx-auto">
+                    <div class="bg-gray-700 p-6 rounded">
+                        <h2 class="text-2xl mb-4" data-en="Company Logo" data-mr="कंपनी लोगो">Company Logo</h2>
+
+                        <!-- Current Logo Preview -->
+                        <div id="logo-preview-container" class="mb-6 hidden">
+                            <label class="block mb-2 text-sm font-medium" data-en="Current Logo" data-mr="सध्याचा लोगो">Current Logo</label>
+                            <div class="bg-gray-600 p-4 rounded text-center">
+                                <img id="logo-preview" src="" alt="Company Logo" class="max-h-32 mx-auto">
+                            </div>
+                        </div>
+
+                        <!-- Logo Upload Form -->
+                        <form id="logo-upload-form" class="space-y-4">
+                            <div>
+                                <label class="block mb-2 text-sm font-medium" data-en="Upload New Logo" data-mr="नवीन लोगो अपलोड करा">Upload New Logo</label>
+                                <input type="file" id="logo-file" accept="image/*" class="w-full p-3 bg-gray-600 rounded text-white file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-nexflow-teal file:text-white hover:file:bg-cyan-600">
+                                <p class="text-xs text-gray-400 mt-2" data-en="Recommended: PNG with transparent background, 200x50px" data-mr="शिफारस केलेले: पारदर्शक पार्श्वभूमी असलेले PNG, 200x50px">Recommended: PNG with transparent background, 200x50px</p>
+                            </div>
+
+                            <button type="submit" class="w-full bg-nexflow-green text-white p-3 rounded hover:bg-green-600 transition font-medium" data-en="Upload Logo" data-mr="लोगो अपलोड करा">Upload Logo</button>
+                        </form>
+
+                        <div id="logo-status" class="mt-4 hidden"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Challan Settings Tab -->
+            <div id="content-challan" class="tab-panel hidden">
+                <div class="max-w-2xl mx-auto">
+                    <div class="bg-gray-700 p-6 rounded">
+                        <h2 class="text-2xl mb-4" data-en="Challan Settings" data-mr="चलान सेटिंग्ज">Challan Settings</h2>
+                        <form id="challan-form" class="space-y-4">
+                            <div>
+                                <label class="block mb-2 text-sm font-medium" data-en="Challan Starting Number" data-mr="चलान सुरुवातीचा क्रमांक">Challan Starting Number</label>
+                                <input type="number" id="challan-sequence" name="challan_sequence" class="w-full p-3 bg-gray-600 rounded text-white" placeholder="Enter starting number (e.g., 1001)" data-en="Enter starting number (e.g., 1001)" data-mr="सुरुवातीचा क्रमांक प्रविष्ट करा (उदा., १००१)">
+                                <p class="text-xs text-gray-400 mt-2" data-en="Next challan will be generated with this number" data-mr="पुढील चलान या क्रमांकासह तयार होईल">Next challan will be generated with this number</p>
+                            </div>
+
+                            <button type="submit" id="saveChallanBtn" class="w-full bg-nexflow-green text-white p-3 rounded hover:bg-green-600 transition font-medium relative" data-en="Save Challan Settings" data-mr="चलान सेटिंग्ज साठवा">
+                                Save Challan Settings
+                                <span id="unsavedChallan" class="hidden absolute -top-1 -right-1 w-3 h-3 bg-yellow-400 rounded-full"></span>
+                            </button>
+                        </form>
+
+                        <div id="challan-status" class="mt-4 hidden"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Telegram Alerts Tab -->
+            <div id="content-telegram" class="tab-panel hidden">
+                <div class="max-w-2xl mx-auto">
+                    <div class="bg-gray-700 p-6 rounded">
+                        <h2 class="text-2xl mb-4" data-en="Telegram Low Stock Alerts" data-mr="टेलीग्राम कमी साठा अलर्ट">Telegram Low Stock Alerts</h2>
+
+                        <div class="bg-blue-900 border border-blue-700 rounded p-4 mb-6">
+                            <h3 class="font-bold mb-2" data-en="📱 Setup Instructions" data-mr="📱 सेटअप सूचना">📱 Setup Instructions</h3>
+                            <ol class="list-decimal list-inside space-y-2 text-sm">
+                                <li data-en="Search for @BotFather on Telegram" data-mr="टेलीग्रामवर @BotFather शोधा">Search for @BotFather on Telegram</li>
+                                <li data-en="Send /newbot and follow instructions" data-mr="/newbot पाठवा आणि सूचनांचे पालन करा">Send /newbot and follow instructions</li>
+                                <li data-en="Save your bot token (keep it secret!)" data-mr="तुमचे बॉट टोकन सेव्ह करा (गुप्त ठेवा!)">Save your bot token (keep it secret!)</li>
+                                <li data-en="Search for @userinfobot on Telegram" data-mr="टेलीग्रामवर @userinfobot शोधा">Search for @userinfobot on Telegram</li>
+                                <li data-en="Send any message to get your Chat ID" data-mr="तुमची चॅट आयडी मिळवण्यासाठी कोणताही संदेश पाठवा">Send any message to get your Chat ID</li>
+                                <li data-en="Enter your Chat ID below and save" data-mr="खाली तुमची चॅट आयडी प्रविष्ट करा आणि सेव्ह करा">Enter your Chat ID below and save</li>
+                            </ol>
+                        </div>
+
+                        <form id="telegram-form" class="space-y-4">
+                            <div>
+                                <label class="block mb-2 text-sm font-medium" data-en="Telegram Chat ID" data-mr="टेलीग्राम चॅट आयडी">Telegram Chat ID</label>
+                                <input type="text" id="telegram-chat-id" name="telegram_chat_id" class="w-full p-3 bg-gray-600 rounded text-white" placeholder="Enter your Telegram Chat ID" data-en="Enter your Telegram Chat ID" data-mr="तुमची टेलीग्राम चॅट आयडी प्रविष्ट करा">
+                                <p class="text-xs text-gray-400 mt-1" data-en="Example: 123456789 or -1001234567890" data-mr="उदाहरण: 123456789 किंवा -1001234567890">Example: 123456789 or -1001234567890</p>
+                            </div>
+
+                            <div class="bg-yellow-900 border border-yellow-700 rounded p-4">
+                                <p class="text-sm" data-en="⚠️ You will receive alerts when any raw material stock falls below the minimum level." data-mr="⚠️ जेव्हा कोणत्याही कच्च्या मालाचा साठा किमान पातळीपेक्षा कमी होईल तेव्हा तुम्हाला अलर्ट मिळतील.">⚠️ You will receive alerts when any raw material stock falls below the minimum level.</p>
+                            </div>
+
+                            <button type="submit" id="saveTelegramBtn" class="w-full bg-nexflow-green text-white p-3 rounded hover:bg-green-600 transition font-medium relative" data-en="Save Telegram Settings" data-mr="टेलीग्राम सेटिंग्ज साठवा">
+                                Save Telegram Settings
+                                <span id="unsavedTelegram" class="hidden absolute -top-1 -right-1 w-3 h-3 bg-yellow-400 rounded-full"></span>
+                            </button>
+                        </form>
+
+                        <div id="telegram-status" class="mt-4 hidden"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Staff Management Tab -->
+            <div id="content-staff" class="tab-panel hidden">
+                <div class="grid md:grid-cols-2 gap-6">
+                    <!-- Invite Staff Form -->
+                    <div class="bg-gray-700 p-6 rounded">
+                        <h2 class="text-xl mb-4" data-en="Invite Staff Member" data-mr="कर्मचारी आमंत्रित करा">Invite Staff Member</h2>
+                        <form id="invite-staff-form" class="space-y-4">
+                            <div>
+                                <label class="block mb-2 text-sm font-medium" data-en="Email" data-mr="ईमेल">Email</label>
+                                <input type="email" name="email" class="w-full p-2 bg-gray-600 rounded" placeholder="staff@example.com" data-en="staff@example.com" data-mr="कर्मचारी@example.com" required>
+                            </div>
+
+                            <div>
+                                <label class="block mb-2 text-sm font-medium" data-en="Role" data-mr="भूमिका">Role</label>
+                                <select name="role" class="w-full p-2 bg-gray-600 rounded" required>
+                                    <option value="staff" data-en="Staff (Can do GRN, view dashboard)" data-mr="कर्मचारी (GRN करू शकतो, डॅशबोर्ड पाहू शकतो)">Staff (Can do GRN, view dashboard)</option>
+                                    <option value="owner" data-en="Owner (Full access)" data-mr="मालक (पूर्ण प्रवेश)">Owner (Full access)</option>
+                                </select>
+                            </div>
+
+                            <button type="submit" class="w-full bg-nexflow-green text-white p-2 rounded hover:bg-green-600" data-en="Send Invite" data-mr="आमंत्रण पाठवा">Send Invite</button>
+                        </form>
+                        <div id="invite-status" class="mt-4 hidden"></div>
+                    </div>
+
+                    <!-- Staff List -->
+                    <div class="bg-gray-700 p-6 rounded">
+                        <h2 class="text-xl mb-4" data-en="Staff Members" data-mr="कर्मचारी सदस्य">Staff Members</h2>
+                        <div class="overflow-x-auto">
+                            <table class="w-full">
+                                <thead>
+                                    <tr class="bg-gray-600">
+                                        <th class="p-2" data-en="Email" data-mr="ईमेल">Email</th>
+                                        <th class="p-2" data-en="Role" data-mr="भूमिका">Role</th>
+                                        <th class="p-2 owner-only" data-en="Actions" data-mr="क्रिया">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="staff-list"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Raw Materials Tab -->
+            <div id="content-materials" class="tab-panel hidden">
+                <div class="grid md:grid-cols-2 gap-6">
+                    <!-- Add Raw Material Form -->
+                    <div class="bg-gray-700 p-6 rounded">
+                        <h2 class="text-xl mb-4" data-en="Add Raw Material" data-mr="कच्चा माल जोडा">Add Raw Material</h2>
+                        <form id="add-material-form" class="space-y-4">
+                            <input type="text" name="name" class="w-full p-2 bg-gray-600 rounded" placeholder="Name" data-en="Name" data-mr="नाव">
+
+                            <select name="unit" class="w-full p-2 bg-gray-600 rounded">
+                                <option value="" data-en="Select Unit" data-mr="एकक निवडा">Select Unit</option>
+                                <option value="KG" data-en="KG" data-mr="किलोग्राम">KG</option>
+                                <option value="NOS" data-en="NOS" data-mr="नग">NOS</option>
+                                <option value="L" data-en="L" data-mr="लिटर">L</option>
+                                <option value="MTR" data-en="MTR" data-mr="मीटर">MTR</option>
+                                <option value="PCS" data-en="PCS" data-mr="तुकडे">PCS</option>
+                            </select>
+
+                            <input type="number" name="min_stock_level" class="w-full p-2 bg-gray-600 rounded" placeholder="Min Stock Level" data-en="Min Stock Level" data-mr="किमान साठा पातळी">
+
+                            <button type="submit" class="w-full bg-nexflow-green text-white p-2 rounded" data-en="Add Material" data-mr="सामग्री जोडा">Add Material</button>
+                        </form>
+                    </div>
+
+                    <!-- Raw Materials Table -->
+                    <div class="bg-gray-700 p-6 rounded">
+                        <h2 class="text-xl mb-4" data-en="Raw Materials List" data-mr="कच्च्या मालाची यादी">Raw Materials List</h2>
+                        <div class="overflow-x-auto">
+                            <table class="w-full">
+                                <thead>
+                                    <tr class="bg-gray-600">
+                                        <th class="p-2" data-en="Name" data-mr="नाव">Name</th>
+                                        <th class="p-2" data-en="Unit" data-mr="एकक">Unit</th>
+                                        <th class="p-2" data-en="Min Stock" data-mr="किमान साठा">Min Stock</th>
+                                        <th class="p-2" data-en="Actions" data-mr="क्रिया">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="materials-list"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Suppliers Tab -->
+            <div id="content-suppliers" class="tab-panel hidden">
+                <div class="grid md:grid-cols-2 gap-6">
+                    <!-- Add Supplier Form -->
+                    <div class="bg-gray-700 p-6 rounded">
+                        <h2 class="text-xl mb-4" data-en="Add Supplier" data-mr="पुरवठादार जोडा">Add Supplier</h2>
+                        <form id="add-supplier-form" class="space-y-4">
+                            <input type="text" name="name" class="w-full p-2 bg-gray-600 rounded" placeholder="Name" data-en="Name" data-mr="नाव">
+                            <input type="tel" name="mobile" class="w-full p-2 bg-gray-600 rounded" placeholder="Mobile" data-en="Mobile" data-mr="मोबाईल">
+                            <textarea name="address" class="w-full p-2 bg-gray-600 rounded" placeholder="Address" data-en="Address" data-mr="पत्ता"></textarea>
+                            <button type="submit" class="w-full bg-nexflow-green text-white p-2 rounded" data-en="Add Supplier" data-mr="पुरवठादार जोडा">Add Supplier</button>
+                        </form>
+                    </div>
+
+                    <!-- Suppliers Table -->
+                    <div class="bg-gray-700 p-6 rounded">
+                        <h2 class="text-xl mb-4" data-en="Suppliers List" data-mr="पुरवठादारांची यादी">Suppliers List</h2>
+                        <div class="overflow-x-auto">
+                            <table class="w-full">
+                                <thead>
+                                    <tr class="bg-gray-600">
+                                        <th class="p-2" data-en="Name" data-mr="नाव">Name</th>
+                                        <th class="p-2" data-en="Mobile" data-mr="मोबाईल">Mobile</th>
+                                        <th class="p-2" data-en="Address" data-mr="पत्ता">Address</th>
+                                        <th class="p-2" data-en="Actions" data-mr="क्रिया">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="suppliers-list"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stock Adjustment Tab (Owner Only) -->
+            <div id="content-adjustment" class="tab-panel hidden owner-only">
+                <div class="grid md:grid-cols-2 gap-6">
+                    <!-- Adjustment Form -->
+                    <div class="bg-gray-700 p-6 rounded">
+                        <h2 class="text-xl mb-4" data-en="Manual Stock Adjustment" data-mr="साठा दुरुस्ती">Manual Stock Adjustment</h2>
+                        <form id="stock-adjustment-form" class="space-y-4">
+                            <div>
+                                <label class="block mb-2 text-sm font-medium" data-en="Select Material" data-mr="सामग्री निवडा">Select Material</label>
+                                <select id="adjustment-material" class="w-full p-2 bg-gray-600 rounded" required>
+                                    <option value="" data-en="Select Material" data-mr="सामग्री निवडा">Select Material</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label class="block mb-2 text-sm font-medium" data-en="Adjustment Quantity" data-mr="समायोजन प्रमाण">Adjustment Quantity</label>
+                                <input type="number" id="adjustment-quantity" step="0.01" class="w-full p-2 bg-gray-600 rounded" placeholder="Enter positive or negative value" data-en="Enter positive or negative value" data-mr="धनात्मक किंवा ऋणात्मक मूल्य प्रविष्ट करा" required>
+                                <p class="text-xs text-gray-400 mt-1" data-en="Positive to add, negative to deduct" data-mr="जोडण्यासाठी धनात्मक, वजा करण्यासाठी ऋणात्मक">Positive to add, negative to deduct</p>
+                            </div>
+
+                            <div>
+                                <label class="block mb-2 text-sm font-medium" data-en="Reason" data-mr="कारण">Reason</label>
+                                <textarea id="adjustment-reason" rows="3" class="w-full p-2 bg-gray-600 rounded" placeholder="Reason for adjustment" data-en="Reason for adjustment" data-mr="समायोजनाचे कारण" required></textarea>
+                            </div>
+
+                            <button type="submit" class="w-full bg-nexflow-green text-white p-2 rounded hover:bg-green-600" data-en="Submit Adjustment" data-mr="समायोजन सबमिट करा">Submit Adjustment</button>
+                        </form>
+                        <div id="adjustment-status" class="mt-4 hidden"></div>
+                    </div>
+
+                    <!-- Recent Adjustments -->
+                    <div class="bg-gray-700 p-6 rounded">
+                        <h2 class="text-xl mb-4" data-en="Recent Adjustments" data-mr="अलीकडील समायोजने">Recent Adjustments</h2>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm">
+                                <thead>
+                                    <tr class="bg-gray-600">
+                                        <th class="p-2 text-left" data-en="Date" data-mr="तारीख">Date</th>
+                                        <th class="p-2 text-left" data-en="Material" data-mr="सामग्री">Material</th>
+                                        <th class="p-2 text-right" data-en="Qty" data-mr="प्रमाण">Qty</th>
+                                        <th class="p-2 text-left" data-en="Reason" data-mr="कारण">Reason</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="adjustments-list"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // Tab switching logic
+        const tabs = ['company', 'logo', 'challan', 'telegram', 'staff', 'materials', 'suppliers', 'adjustment'];
+
+        function switchToTab(activeTab) {
+            tabs.forEach(tab => {
+                const contentEl = document.getElementById(`content-${tab}`);
+                const tabEl = document.getElementById(`tab-${tab}`);
+
+                if (tab === activeTab) {
+                    contentEl.classList.remove('hidden');
+                    tabEl.classList.remove('bg-gray-700');
+                    tabEl.classList.add('bg-nexflow-teal');
+                } else {
+                    contentEl.classList.add('hidden');
+                    tabEl.classList.remove('bg-nexflow-teal');
+                    tabEl.classList.add('bg-gray-700');
+                }
+            });
+        }
+
+        // Load company details
+        async function loadCompanyDetails() {
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!user) return;
+
+                const tenantId = user.user_metadata.tenant_id;
+
+                const { data, error } = await supabase
+                    .from('p2_tenant_settings')
+                    .select('*')
+                    .eq('tenant_id', tenantId)
+                    .single();
+
+                if (error && error.code !== 'PGRST116') throw error;
+
+                if (data) {
+                    document.getElementById('company-name').value = data.company_name || '';
+                    document.getElementById('address-line1').value = data.address_line1 || '';
+                    document.getElementById('address-line2').value = data.address_line2 || '';
+                    document.getElementById('mobile').value = data.mobile || '';
+                    document.getElementById('gstin').value = data.gstin || '';
+
+                    // Logo preview
+                    if (data.logo_url) {
+                        document.getElementById('logo-preview').src = data.logo_url;
+                        document.getElementById('logo-preview-container').classList.remove('hidden');
+                    }
+
+                    // Challan sequence
+                    document.getElementById('challan-sequence').value = data.challan_sequence || 1001;
+
+                    // Telegram chat ID
+                    document.getElementById('telegram-chat-id').value = data.telegram_chat_id || '';
+                }
+            } catch (error) {
+                console.error('Error loading company details:', error);
+            }
+        }
+
+        // Save company details
+        document.getElementById('company-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const companyName = document.getElementById('company-name').value.trim();
+            const addressLine1 = document.getElementById('address-line1').value.trim();
+            const addressLine2 = document.getElementById('address-line2').value.trim();
+            const mobile = document.getElementById('mobile').value.trim();
+            const gstin = document.getElementById('gstin').value.trim();
+
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!user) {
+                    showStatus('company-status', 'error', 'Not authenticated', 'प्रमाणित नाही');
+                    return;
+                }
+
+                const tenantId = user.user_metadata.tenant_id;
+
+                const { error } = await supabase
+                    .from('p2_tenant_settings')
+                    .upsert({
+                        tenant_id: tenantId,
+                        company_name: companyName,
+                        address_line1: addressLine1,
+                        address_line2: addressLine2,
+                        mobile: mobile,
+                        gstin: gstin
+                    }, {
+                        onConflict: 'tenant_id'
+                    });
+
+                if (error) throw error;
+
+                showStatus('company-status', 'success', 'Company details saved successfully!', 'कंपनी तपशील यशस्वीरित्या साठवले!');
+            } catch (error) {
+                console.error('Error saving company details:', error);
+                showStatus('company-status', 'error', 'Failed to save company details', 'कंपनी तपशील साठवण्यात अयशस्वी');
+            }
+        });
+
+        // Upload logo
+        document.getElementById('logo-upload-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const fileInput = document.getElementById('logo-file');
+            const file = fileInput.files[0];
+
+            if (!file) {
+                showStatus('logo-status', 'error', 'Please select a file', 'कृपया फाइल निवडा');
+                return;
+            }
+
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!user) {
+                    showStatus('logo-status', 'error', 'Not authenticated', 'प्रमाणित नाही');
+                    return;
+                }
+
+                const tenantId = user.user_metadata.tenant_id;
+
+                // Upload to Supabase Storage
+                const fileExt = file.name.split('.').pop();
+                const fileName = `${tenantId}/logo.${fileExt}`;
+
+                showStatus('logo-status', 'info', 'Uploading...', 'अपलोड करत आहे...');
+
+                const { data: uploadData, error: uploadError } = await supabase.storage
+                    .from('tenant-logos')
+                    .upload(fileName, file, { upsert: true });
+
+                if (uploadError) throw uploadError;
+
+                // Get public URL
+                const { data: urlData } = supabase.storage
+                    .from('tenant-logos')
+                    .getPublicUrl(fileName);
+
+                const logoUrl = urlData.publicUrl;
+
+                // Save URL to tenant settings
+                const { error: updateError } = await supabase
+                    .from('p2_tenant_settings')
+                    .update({ logo_url: logoUrl })
+                    .eq('tenant_id', tenantId);
+
+                if (updateError) throw updateError;
+
+                // Update preview
+                document.getElementById('logo-preview').src = logoUrl;
+                document.getElementById('logo-preview-container').classList.remove('hidden');
+
+                showStatus('logo-status', 'success', 'Logo uploaded successfully!', 'लोगो यशस्वीरित्या अपलोड केला!');
+                fileInput.value = '';
+            } catch (error) {
+                console.error('Error uploading logo:', error);
+                showStatus('logo-status', 'error', 'Failed to upload logo', 'लोगो अपलोड करण्यात अयशस्वी');
+            }
+        });
+
+        // Save challan settings
+        document.getElementById('challan-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const challanSequence = parseInt(document.getElementById('challan-sequence').value);
+
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!user) {
+                    showStatus('challan-status', 'error', 'Not authenticated', 'प्रमाणित नाही');
+                    return;
+                }
+
+                const tenantId = user.user_metadata.tenant_id;
+
+                const { error } = await supabase
+                    .from('p2_tenant_settings')
+                    .update({ challan_sequence: challanSequence })
+                    .eq('tenant_id', tenantId);
+
+                if (error) throw error;
+
+                showStatus('challan-status', 'success', 'Challan settings saved successfully!', 'चलान सेटिंग्ज यशस्वीरित्या साठवल्या!');
+            } catch (error) {
+                console.error('Error saving challan settings:', error);
+                showStatus('challan-status', 'error', 'Failed to save challan settings', 'चलान सेटिंग्ज साठवण्यात अयशस्वी');
+            }
+        });
+
+        // Save telegram settings
+        document.getElementById('telegram-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const chatId = document.getElementById('telegram-chat-id').value.trim();
+
+            if (!chatId) {
+                showStatus('telegram-status', 'error', 'Please enter a Telegram Chat ID', 'कृपया टेलीग्राम चॅट आयडी प्रविष्ट करा');
+                return;
+            }
+
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!user) {
+                    showStatus('telegram-status', 'error', 'Not authenticated', 'प्रमाणित नाही');
+                    return;
+                }
+
+                const tenantId = user.user_metadata.tenant_id;
+
+                const { error } = await supabase
+                    .from('p2_tenant_settings')
+                    .update({ telegram_chat_id: chatId })
+                    .eq('tenant_id', tenantId);
+
+                if (error) throw error;
+
+                showStatus('telegram-status', 'success', 'Telegram settings saved successfully!', 'टेलीग्राम सेटिंग्ज यशस्वीरित्या साठवल्या!');
+            } catch (error) {
+                console.error('Error saving Telegram settings:', error);
+                showStatus('telegram-status', 'error', 'Failed to save settings', 'सेटिंग्ज साठवण्यात अयशस्वी');
+            }
+        });
+
+        // Load materials list
+        async function loadMaterials() {
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!user) return;
+
+                const tenantId = user.user_metadata.tenant_id;
+
+                const { data, error } = await supabase
+                    .from('p2_raw_materials')
+                    .select('*')
+                    .eq('tenant_id', tenantId)
+                    .eq('is_active', true)
+                    .order('name');
+
+                if (error) throw error;
+
+                const tbody = document.getElementById('materials-list');
+                tbody.innerHTML = '';
+
+                data.forEach(material => {
+                    const row = document.createElement('tr');
+                    row.className = 'border-b border-gray-600';
+                    row.innerHTML = `
+                        <td class="p-2">${material.name}</td>
+                        <td class="p-2">${material.unit}</td>
+                        <td class="p-2">${material.min_stock_level}</td>
+                        <td class="p-2">
+                            <button onclick="deactivateMaterial('${material.id}')"
+                                class="bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700" data-en="Deactivate" data-mr="निष्क्रिय करा">
+                                Deactivate
+                            </button>
+                        </td>
+                    `;
+                    tbody.appendChild(row);
+                });
+
+                // Re-apply language
+                const lang = localStorage.getItem('nexflow_lang') || 'en';
+                applyLang(lang);
+            } catch (error) {
+                console.error('Error loading materials:', error);
+            }
+        }
+
+        // Add material
+        document.getElementById('add-material-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const formData = new FormData(e.target);
+            const name = formData.get('name')?.trim();
+            const unit = formData.get('unit');
+            const minStockLevel = formData.get('min_stock_level');
+
+            const lang = localStorage.getItem('nexflow_lang') || 'en';
+
+            // Validation: Check all required fields
+            if (!name || name === '') {
+                alert(lang === 'mr' ? 'कृपया सामग्रीचे नाव प्रविष्ट करा' : 'Please enter material name');
+                return;
+            }
+
+            if (!unit || unit === '') {
+                alert(lang === 'mr' ? 'कृपया एकक निवडा' : 'Please select unit');
+                return;
+            }
+
+            if (!minStockLevel || minStockLevel === '') {
+                alert(lang === 'mr' ? 'कृपया किमान साठा पातळी प्रविष्ट करा' : 'Please enter minimum stock level');
+                return;
+            }
+
+            const minStock = parseFloat(minStockLevel);
+            if (isNaN(minStock) || minStock < 0) {
+                alert(lang === 'mr' ? 'किमान साठा पातळी ० किंवा त्यापेक्षा जास्त असणे आवश्यक आहे' : 'Minimum stock level must be 0 or greater');
+                return;
+            }
+
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!user) {
+                    alert('Not authenticated');
+                    return;
+                }
+
+                const tenantId = user.user_metadata.tenant_id;
+
+                // GUARD 2: Check for duplicate material name (case-insensitive)
+                const { data: existingMaterials, error: checkError } = await supabase
+                    .from('p2_raw_materials')
+                    .select('id, name')
+                    .eq('tenant_id', tenantId)
+                    .eq('is_active', true);
+
+                if (checkError) throw checkError;
+
+                const duplicateFound = existingMaterials?.some(m => m.name.toLowerCase() === name.toLowerCase());
+
+                if (duplicateFound) {
+                    alert(lang === 'mr'
+                        ? `सामग्री '${name}' आधीच अस्तित्वात आहे. भिन्न नाव वापरा किंवा विद्यमान संपादित करा.`
+                        : `Material '${name}' already exists. Use a different name or edit the existing one.`);
+                    return;
+                }
+
+                const { error } = await supabase
+                    .from('p2_raw_materials')
+                    .insert({
+                        name,
+                        unit,
+                        min_stock_level: minStock,
+                        tenant_id: tenantId,
+                        is_active: true
+                    });
+
+                if (error) throw error;
+
+                alert(lang === 'mr' ? 'साहित्य यशस्वीरित्या जोडले' : 'Material added successfully');
+                e.target.reset();
+                loadMaterials();
+            } catch (error) {
+                console.error('Error adding material:', error);
+                alert(lang === 'mr' ? 'साहित्य जोडण्यात अयशस्वी' : 'Failed to add material');
+            }
+        });
+
+        // Deactivate material
+        async function deactivateMaterial(materialId) {
+            const lang = localStorage.getItem('nexflow_lang') || 'en';
+            const confirmMsg = lang === 'mr' ? 'या साहित्याला निष्क्रिय करायचे आहे का?' : 'Are you sure you want to deactivate this material?';
+
+            if (!confirm(confirmMsg)) return;
+
+            try {
+                const { error } = await supabase
+                    .from('p2_raw_materials')
+                    .update({ is_active: false })
+                    .eq('id', materialId);
+
+                if (error) throw error;
+
+                loadMaterials();
+            } catch (error) {
+                console.error('Error deactivating material:', error);
+                const lang = localStorage.getItem('nexflow_lang') || 'en';
+                alert(lang === 'mr' ? 'साहित्य निष्क्रिय करण्यात अयशस्वी' : 'Failed to deactivate material');
+            }
+        }
+
+        // Load suppliers list
+        async function loadSuppliers() {
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!user) return;
+
+                const tenantId = user.user_metadata.tenant_id;
+
+                const { data, error } = await supabase
+                    .from('p2_suppliers')
+                    .select('*')
+                    .eq('tenant_id', tenantId)
+                    .eq('is_active', true)
+                    .order('name');
+
+                if (error) throw error;
+
+                const tbody = document.getElementById('suppliers-list');
+                tbody.innerHTML = '';
+
+                data.forEach(supplier => {
+                    const row = document.createElement('tr');
+                    row.className = 'border-b border-gray-600';
+                    row.innerHTML = `
+                        <td class="p-2">${supplier.name}</td>
+                        <td class="p-2">${supplier.mobile || ''}</td>
+                        <td class="p-2">${supplier.address || ''}</td>
+                        <td class="p-2">
+                            <button onclick="deactivateSupplier('${supplier.id}')"
+                                class="bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700" data-en="Deactivate" data-mr="निष्क्रिय करा">
+                                Deactivate
+                            </button>
+                        </td>
+                    `;
+                    tbody.appendChild(row);
+                });
+
+                // Re-apply language
+                const lang = localStorage.getItem('nexflow_lang') || 'en';
+                applyLang(lang);
+            } catch (error) {
+                console.error('Error loading suppliers:', error);
+            }
+        }
+
+        // Add supplier
+        document.getElementById('add-supplier-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const formData = new FormData(e.target);
+            const name = formData.get('name')?.trim();
+            const mobile = formData.get('mobile')?.trim();
+            const address = formData.get('address')?.trim();
+
+            const lang = localStorage.getItem('nexflow_lang') || 'en';
+
+            // Validation: Check required fields
+            if (!name || name === '') {
+                alert(lang === 'mr' ? 'कृपया पुरवठादाराचे नाव प्रविष्ट करा' : 'Please enter supplier name');
+                return;
+            }
+
+            if (!mobile || mobile === '') {
+                alert(lang === 'mr' ? 'कृपया मोबाईल नंबर प्रविष्ट करा' : 'Please enter mobile number');
+                return;
+            }
+
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!user) {
+                    alert('Not authenticated');
+                    return;
+                }
+
+                const tenantId = user.user_metadata.tenant_id;
+
+                const { error } = await supabase
+                    .from('p2_suppliers')
+                    .insert({
+                        name,
+                        mobile,
+                        address,
+                        tenant_id: tenantId,
+                        is_active: true
+                    });
+
+                if (error) throw error;
+
+                alert(lang === 'mr' ? 'पुरवठादार यशस्वीरित्या जोडला' : 'Supplier added successfully');
+                e.target.reset();
+                loadSuppliers();
+            } catch (error) {
+                console.error('Error adding supplier:', error);
+                alert(lang === 'mr' ? 'पुरवठादार जोडण्यात अयशस्वी' : 'Failed to add supplier');
+            }
+        });
+
+        // Deactivate supplier
+        async function deactivateSupplier(supplierId) {
+            const lang = localStorage.getItem('nexflow_lang') || 'en';
+            const confirmMsg = lang === 'mr' ? 'या पुरवठादाराला निष्क्रिय करायचे आहे का?' : 'Are you sure you want to deactivate this supplier?';
+
+            if (!confirm(confirmMsg)) return;
+
+            try {
+                const { error } = await supabase
+                    .from('p2_suppliers')
+                    .update({ is_active: false })
+                    .eq('id', supplierId);
+
+                if (error) throw error;
+
+                loadSuppliers();
+            } catch (error) {
+                console.error('Error deactivating supplier:', error);
+                const lang = localStorage.getItem('nexflow_lang') || 'en';
+                alert(lang === 'mr' ? 'पुरवठादार निष्क्रिय करण्यात अयशस्वी' : 'Failed to deactivate supplier');
+            }
+        }
+
+        // Load staff list (from existing settings.html)
+        async function loadStaffList() {
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!user) return;
+
+                const tenantId = user.user_metadata.tenant_id;
+
+                const { data: roles, error: rolesError } = await supabase
+                    .from('p2_user_roles')
+                    .select('id, user_id, role, created_at')
+                    .eq('tenant_id', tenantId)
+                    .order('created_at', { ascending: false });
+
+                if (rolesError) throw rolesError;
+
+                const tbody = document.getElementById('staff-list');
+                tbody.innerHTML = '';
+
+                for (const role of roles) {
+                    const row = document.createElement('tr');
+                    row.className = 'border-b border-gray-600';
+
+                    const userEmail = await getUserEmail(role.user_id);
+
+                    row.innerHTML = `
+                        <td class="p-2">${userEmail}</td>
+                        <td class="p-2"><span class="px-2 py-1 rounded text-xs ${role.role === 'owner' ? 'bg-nexflow-teal' : 'bg-gray-600'}">${role.role}</span></td>
+                        <td class="p-2 owner-only">
+                            ${role.user_id !== user.id ? `
+                                <button onclick="removeStaff('${role.id}')"
+                                    class="bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700" data-en="Remove" data-mr="काढा">
+                                    Remove
+                                </button>
+                            ` : '<span class="text-gray-500 text-sm" data-en="(You)" data-mr="(तुम्ही)">(You)</span>'}
+                        </td>
+                    `;
+                    tbody.appendChild(row);
+                }
+
+                const lang = localStorage.getItem('nexflow_lang') || 'en';
+                applyLang(lang);
+            } catch (error) {
+                console.error('Error loading staff list:', error);
+            }
+        }
+
+        async function getUserEmail(userId) {
+            try {
+                const { data, error } = await supabase.functions.invoke('get-user-email', {
+                    body: { user_id: userId }
+                });
+
+                if (error) throw error;
+                return data.email || userId;
+            } catch (error) {
+                console.error('Error fetching user email:', error);
+                return userId;
+            }
+        }
+
+        // Invite staff member
+        document.getElementById('invite-staff-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const formData = new FormData(e.target);
+            const email = formData.get('email').trim();
+            const role = formData.get('role');
+
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!user) {
+                    showStatus('invite-status', 'error', 'Not authenticated', 'प्रमाणित नाही');
+                    return;
+                }
+
+                const tenantId = user.user_metadata.tenant_id;
+
+                const { data, error } = await supabase.functions.invoke('invite-staff', {
+                    body: {
+                        email: email,
+                        tenant_id: tenantId,
+                        role: role,
+                        inviter_id: user.id
+                    }
+                });
+
+                if (error) throw error;
+
+                showStatus('invite-status', 'success', 'Invite sent successfully!', 'आमंत्रण यशस्वीरित्या पाठवले!');
+                e.target.reset();
+                loadStaffList();
+            } catch (error) {
+                console.error('Error inviting staff:', error);
+                showStatus('invite-status', 'error', 'Failed to send invite', 'आमंत्रण पाठवण्यात अयशस्वी');
+            }
+        });
+
+        // Remove staff member
+        async function removeStaff(roleId) {
+            const lang = localStorage.getItem('nexflow_lang') || 'en';
+            const confirmMsg = lang === 'mr' ? 'या कर्मचार्याला काढायचे आहे का?' : 'Are you sure you want to remove this staff member?';
+
+            if (!confirm(confirmMsg)) return;
+
+            try {
+                const { error } = await supabase
+                    .from('p2_user_roles')
+                    .delete()
+                    .eq('id', roleId);
+
+                if (error) throw error;
+
+                loadStaffList();
+            } catch (error) {
+                console.error('Error removing staff:', error);
+                const lang = localStorage.getItem('nexflow_lang') || 'en';
+                alert(lang === 'mr' ? 'कर्मचारी काढण्यात अयशस्वी' : 'Failed to remove staff');
+            }
+        }
+
+        // Status message helper
+        function showStatus(divId, type, messageEn, messageMr) {
+            const statusDiv = document.getElementById(divId);
+            const lang = localStorage.getItem('nexflow_lang') || 'en';
+            const message = lang === 'mr' ? messageMr : messageEn;
+
+            let bgColor = 'bg-gray-700 border-gray-500';
+            if (type === 'success') bgColor = 'bg-green-900 border-green-700';
+            if (type === 'error') bgColor = 'bg-red-900 border-red-700';
+            if (type === 'info') bgColor = 'bg-blue-900 border-blue-700';
+
+            statusDiv.className = `p-4 rounded border ${bgColor}`;
+            statusDiv.textContent = message;
+            statusDiv.classList.remove('hidden');
+
+            setTimeout(() => {
+                statusDiv.classList.add('hidden');
+            }, 5000);
+        }
+
+        // Apply role-based visibility
+        function applyRoleVisibility() {
+            const role = getUserRole();
+            const ownerOnlyElements = document.querySelectorAll('.owner-only');
+
+            ownerOnlyElements.forEach(el => {
+                if (role !== 'owner') {
+                    el.style.display = 'none';
+                } else {
+                    el.style.display = '';
+                }
+            });
+        }
+
+        // Load materials for adjustment dropdown
+        async function loadAdjustmentMaterials() {
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!user) return;
+
+                const tenantId = user.user_metadata.tenant_id;
+
+                const { data, error } = await supabase
+                    .from('p2_raw_materials')
+                    .select('id, name, unit')
+                    .eq('tenant_id', tenantId)
+                    .eq('is_active', true)
+                    .order('name');
+
+                if (error) throw error;
+
+                const select = document.getElementById('adjustment-material');
+                select.innerHTML = '<option value="" data-en="Select Material" data-mr="सामग्री निवडा">Select Material</option>';
+
+                data.forEach(material => {
+                    const option = document.createElement('option');
+                    option.value = material.id;
+                    option.textContent = `${material.name} (${material.unit})`;
+                    select.appendChild(option);
+                });
+
+                const lang = localStorage.getItem('nexflow_lang') || 'en';
+                applyLang(lang);
+            } catch (error) {
+                console.error('Error loading materials:', error);
+            }
+        }
+
+        // Submit stock adjustment
+        document.getElementById('stock-adjustment-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const materialId = document.getElementById('adjustment-material').value;
+            const quantity = parseFloat(document.getElementById('adjustment-quantity').value);
+            const reason = document.getElementById('adjustment-reason').value.trim();
+
+            if (!materialId || !quantity || !reason) {
+                showStatus('adjustment-status', 'error', 'Please fill all fields', 'सर्व फील्ड भरा');
+                return;
+            }
+
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!user) {
+                    showStatus('adjustment-status', 'error', 'Not authenticated', 'प्रमाणित नाही');
+                    return;
+                }
+
+                const tenantId = user.user_metadata.tenant_id;
+
+                const { error } = await supabase
+                    .from('p2_stock_transactions')
+                    .insert({
+                        tenant_id: tenantId,
+                        material_id: materialId,
+                        transaction_type: 'adjustment',
+                        quantity: quantity,
+                        transaction_date: new Date().toISOString().split('T')[0],
+                        notes: reason
+                    });
+
+                if (error) throw error;
+
+                showStatus('adjustment-status', 'success', 'Adjustment recorded successfully!', 'समायोजन यशस्वीरित्या नोंदवले!');
+                e.target.reset();
+                loadRecentAdjustments();
+            } catch (error) {
+                console.error('Error recording adjustment:', error);
+                showStatus('adjustment-status', 'error', 'Failed to record adjustment', 'समायोजन नोंदण्यात अयशस्वी');
+            }
+        });
+
+        // Load recent adjustments
+        async function loadRecentAdjustments() {
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!user) return;
+
+                const tenantId = user.user_metadata.tenant_id;
+
+                const { data, error } = await supabase
+                    .from('p2_stock_transactions')
+                    .select(`
+                        transaction_date,
+                        quantity,
+                        notes,
+                        p2_raw_materials (name, unit)
+                    `)
+                    .eq('tenant_id', tenantId)
+                    .eq('transaction_type', 'adjustment')
+                    .order('transaction_date', { ascending: false })
+                    .order('created_at', { ascending: false })
+                    .limit(10);
+
+                if (error) throw error;
+
+                const tbody = document.getElementById('adjustments-list');
+                tbody.innerHTML = '';
+
+                data.forEach(adj => {
+                    const row = document.createElement('tr');
+                    row.className = 'border-b border-gray-600';
+                    const qtyClass = adj.quantity >= 0 ? 'text-green-400' : 'text-red-400';
+                    row.innerHTML = `
+                        <td class="p-2">${new Date(adj.transaction_date).toLocaleDateString('en-IN')}</td>
+                        <td class="p-2">${adj.p2_raw_materials?.name || 'N/A'}</td>
+                        <td class="p-2 text-right ${qtyClass}">${adj.quantity > 0 ? '+' : ''}${adj.quantity} ${adj.p2_raw_materials?.unit || ''}</td>
+                        <td class="p-2">${adj.notes || '-'}</td>
+                    `;
+                    tbody.appendChild(row);
+                });
+            } catch (error) {
+                console.error('Error loading adjustments:', error);
+            }
+        }
+
+        // POLISH 4: Track unsaved changes in forms
+        function trackFormChanges() {
+            const forms = [
+                { form: document.getElementById('company-form'), indicator: 'unsavedCompany' },
+                { form: document.getElementById('challan-form'), indicator: 'unsavedChallan' },
+                { form: document.getElementById('telegram-form'), indicator: 'unsavedTelegram' }
+            ];
+
+            forms.forEach(({ form, indicator }) => {
+                if (!form) return;
+
+                const indicatorEl = document.getElementById(indicator);
+                if (!indicatorEl) return;
+
+                // Track changes on all inputs
+                const inputs = form.querySelectorAll('input, textarea, select');
+                inputs.forEach(input => {
+                    input.addEventListener('input', () => {
+                        indicatorEl.classList.remove('hidden');
+                    });
+
+                    input.addEventListener('change', () => {
+                        indicatorEl.classList.remove('hidden');
+                    });
+                });
+
+                // Hide indicator on successful form submission
+                form.addEventListener('submit', () => {
+                    setTimeout(() => {
+                        indicatorEl.classList.add('hidden');
+                    }, 1000);
+                });
+            });
+        }
+
+        // Initialize tabs
+        document.addEventListener('DOMContentLoaded', async () => {
+            // POLISH 4: Initialize unsaved changes tracking
+            trackFormChanges();
+            // Tab click handlers
+            document.getElementById('tab-company').addEventListener('click', () => {
+                switchToTab('company');
+                loadCompanyDetails();
+            });
+
+            document.getElementById('tab-logo').addEventListener('click', () => {
+                switchToTab('logo');
+                loadCompanyDetails();
+            });
+
+            document.getElementById('tab-challan').addEventListener('click', () => {
+                switchToTab('challan');
+                loadCompanyDetails();
+            });
+
+            document.getElementById('tab-telegram').addEventListener('click', () => {
+                switchToTab('telegram');
+                loadCompanyDetails();
+            });
+
+            document.getElementById('tab-staff').addEventListener('click', () => {
+                switchToTab('staff');
+                loadStaffList();
+            });
+
+            document.getElementById('tab-materials').addEventListener('click', () => {
+                switchToTab('materials');
+                loadMaterials();
+            });
+
+            document.getElementById('tab-suppliers').addEventListener('click', () => {
+                switchToTab('suppliers');
+                loadSuppliers();
+            });
+
+            document.getElementById('tab-adjustment').addEventListener('click', () => {
+                switchToTab('adjustment');
+                loadAdjustmentMaterials();
+                loadRecentAdjustments();
+            });
+
+            // Show company tab by default
+            switchToTab('company');
+
+            // Check authentication and load role
+            await checkAuth();
+            applyRoleVisibility();
+
+            // Load initial data
+            loadCompanyDetails();
+        });
+    </script>
+
+    <!-- Language Toggle Script -->
+    <script>
+        function applyLang(lang) {
+            document.querySelectorAll('[data-en]').forEach(el => {
+                if (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA') {
+                    el.placeholder = lang === 'mr' ? el.dataset.mr : el.dataset.en;
+                } else {
+                    el.textContent = lang === 'mr' ? el.dataset.mr : el.dataset.en;
+                }
+            });
+            const btn = document.getElementById('lang-toggle');
+            if (btn) btn.textContent = lang === 'mr' ? 'English' : 'मराठी';
+            localStorage.setItem('nexflow_lang', lang);
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const saved = localStorage.getItem('nexflow_lang') || 'en';
+            applyLang(saved);
+            const btn = document.getElementById('lang-toggle');
+            if (btn) btn.addEventListener('click', () => {
+                applyLang(localStorage.getItem('nexflow_lang') === 'mr' ? 'en' : 'mr');
+            });
+        });
+    </script>
+</body>
+</html>

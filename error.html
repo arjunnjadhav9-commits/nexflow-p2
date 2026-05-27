@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Error | Nexflow P2</title>
+    <link rel="icon" href="/public/assets/favicon.ico" type="image/x-icon">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        'nexflow-dark-bg': '#1A1F2E',
+                        'nexflow-text': '#E0E0E0',
+                        'nexflow-teal': '#00BCD4',
+                        'nexflow-green': '#00E676',
+                        'nexflow-muted': '#94A3B8'
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-nexflow-dark-bg text-nexflow-text min-h-screen flex flex-col">
+    <!-- Navbar -->
+    <nav class="bg-nexflow-teal p-4 flex justify-between items-center">
+        <div class="flex items-center">
+            <img src="/public/assets/nexflow_logo_transparent.png" alt="Nexflow Logo" style="height: 36px;" class="mr-2">
+            <div class="text-xl font-bold text-white" data-en="Nexflow Automations" data-mr="नेक्सफ्लो ऑटोमेशन्स">Nexflow Automations</div>
+        </div>
+        <div class="flex items-center space-x-4">
+            <button id="lang-toggle" class="bg-white text-nexflow-teal px-4 py-2 rounded text-sm" data-en="मराठी" data-mr="English">मराठी</button>
+        </div>
+    </nav>
+
+    <!-- Error Content -->
+    <main class="container mx-auto px-4 py-12 flex-grow flex items-center justify-center">
+        <div class="bg-gray-800 rounded-lg p-8 max-w-md w-full text-center">
+            <!-- Red Warning Icon -->
+            <div class="mb-6">
+                <svg class="w-20 h-20 mx-auto text-red-500" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                </svg>
+            </div>
+
+            <!-- Heading -->
+            <h1 class="text-2xl font-bold mb-4 text-red-500" data-en="Something went wrong" data-mr="काहीतरी चूक झाली">
+                Something went wrong
+            </h1>
+
+            <!-- Error Message -->
+            <p id="error-message" class="text-nexflow-text mb-6">
+                <!-- Error message will be set by JavaScript -->
+            </p>
+
+            <!-- Action Buttons -->
+            <div class="space-y-3">
+                <a href="index.html" class="block w-full bg-nexflow-teal text-white px-6 py-3 rounded-lg font-bold hover:bg-cyan-600 transition" data-en="Go to Dashboard" data-mr="डॅशबोर्डवर जा">
+                    Go to Dashboard
+                </a>
+
+                <div class="text-sm text-nexflow-muted">
+                    <span data-en="Need help?" data-mr="मदत हवी आहे?">Need help?</span>
+                    <a href="https://wa.me/919876543210" target="_blank" class="text-nexflow-green hover:underline ml-2" data-en="Contact Support via WhatsApp" data-mr="व्हाट्सअॅपद्वारे समर्थनाशी संपर्क साधा">
+                        Contact Support via WhatsApp
+                    </a>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // Read error message from URL parameter
+        document.addEventListener('DOMContentLoaded', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const errorMsg = urlParams.get('msg');
+
+            const errorMessageEl = document.getElementById('error-message');
+            if (errorMsg) {
+                errorMessageEl.textContent = decodeURIComponent(errorMsg);
+            } else {
+                // Default error message
+                const lang = localStorage.getItem('nexflow_lang') || 'en';
+                errorMessageEl.textContent = lang === 'mr'
+                    ? 'एक अनपेक्षित त्रुटी आली. कृपया पुन्हा प्रयत्न करा.'
+                    : 'An unexpected error occurred. Please try again.';
+            }
+
+            // Apply language
+            const lang = localStorage.getItem('nexflow_lang') || 'en';
+            applyLang(lang);
+        });
+
+        // Language toggle
+        function applyLang(lang) {
+            document.querySelectorAll('[data-en]').forEach(el => {
+                if (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA') {
+                    el.placeholder = lang === 'mr' ? el.dataset.mr : el.dataset.en;
+                } else {
+                    el.textContent = lang === 'mr' ? el.dataset.mr : el.dataset.en;
+                }
+            });
+            const btn = document.getElementById('lang-toggle');
+            if (btn) btn.textContent = lang === 'mr' ? 'English' : 'मराठी';
+            localStorage.setItem('nexflow_lang', lang);
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const saved = localStorage.getItem('nexflow_lang') || 'en';
+            applyLang(saved);
+            const btn = document.getElementById('lang-toggle');
+            if (btn) btn.addEventListener('click', () => {
+                applyLang(localStorage.getItem('nexflow_lang') === 'mr' ? 'en' : 'mr');
+            });
+        });
+    </script>
+</body>
+</html>

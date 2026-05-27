@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dispatch | Nexflow P2</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%231A1F2E'/><text y='.9em' font-size='80' x='10' fill='%2300BCD4'>N</text></svg>">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/navbar.js"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        'nexflow-dark-bg': '#1A1F2E',
+                        'nexflow-text': '#E0E0E0',
+                        'nexflow-teal': '#00BCD4',
+                        'nexflow-green': '#00E676',
+                        'nexflow-muted': '#94A3B8'
+                    }
+                }
+            }
+        }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-nexflow-dark-bg text-nexflow-text min-h-screen">
+    <nav class="bg-nexflow-teal p-4 flex justify-between items-center">
+        <span id="navTitle" data-en="Nexflow Automations" data-mr="नेक्सफ्लो ऑटोमेशन्स" class="text-xl font-bold text-white">Nexflow Automations</span>
+        <div class="flex items-center space-x-4">
+            <button id="lang-toggle" class="bg-[#00BCD4] text-white p-2 rounded text-sm">
+                मराठी
+            </button>
+            <div id="navbar-user-info"></div>
+        </div>
+    </nav>
+
+    <main class="container mx-auto px-4 py-6 max-w-4xl">
+        <h1 id="pageTitle" data-en="Dispatch Products" data-mr="माल पाठवा" class="text-2xl font-bold mb-6 text-center">
+            Dispatch Products
+        </h1>
+
+        <!-- GUARD 5: Loading Spinner -->
+        <div id="loadingSpinner" class="flex justify-center items-center py-12">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-nexflow-teal"></div>
+        </div>
+
+        <!-- GUARD 5: Error State -->
+        <div id="errorState" class="hidden bg-red-900 border border-red-700 rounded p-4 mb-6">
+            <p class="font-bold" data-en="Could not load data" data-mr="डेटा लोड करू शकला नाही">Could not load data</p>
+            <p class="text-sm" data-en="Check your connection and refresh the page." data-mr="तुमचे कनेक्शन तपासा आणि पृष्ठ रीफ्रेश करा.">Check your connection and refresh the page.</p>
+        </div>
+
+        <!-- Success Message -->
+        <div id="successMessage" class="hidden bg-nexflow-green text-white p-4 rounded mb-6">
+            <p id="successText" class="font-bold"></p>
+            <button id="printChallanBtn" class="mt-2 bg-white text-nexflow-green px-4 py-2 rounded hover:bg-gray-100">
+                <span data-en="Print Challan" data-mr="चलान प्रिंट करा">Print Challan</span>
+            </button>
+        </div>
+
+        <!-- Error Message -->
+        <div id="errorMessage" class="hidden bg-red-600 text-white p-4 rounded mb-6">
+            <p id="errorText"></p>
+        </div>
+
+        <!-- POLISH 5: Draft Orders Banner -->
+        <div id="draftOrdersBanner" class="hidden bg-yellow-900 border border-yellow-600 rounded-lg p-4 mb-6">
+            <p class="text-white font-bold" data-en="You have unsaved draft order(s). Scroll down to view." data-mr="तुमच्याकडे न जतन केलेले मसुदा ऑर्डर आहेत. पाहण्यासाठी खाली स्क्रोल करा.">
+                <span id="draftOrdersCount"></span> You have unsaved draft order(s). Scroll down to view.
+            </p>
+        </div>
+
+        <form id="dispatchForm" class="space-y-6 hidden">
+            <!-- Client Information -->
+            <div class="bg-[#2C3440] p-4 rounded">
+                <h2 id="clientInfoTitle" data-en="Client Information" data-mr="ग्राहक माहिती" class="text-lg font-bold mb-4">
+                    Client Information
+                </h2>
+
+                <div class="space-y-4">
+                    <div>
+                        <label id="clientNameLabel" data-en="Client Name" data-mr="ग्राहक नाव" class="block mb-2 text-sm font-medium">
+                            Client Name
+                        </label>
+                        <input type="text" id="clientName" data-en="Enter client name" data-mr="ग्राहक नाव प्रविष्ट करा"
+                               placeholder="Enter client name" class="w-full p-2 rounded bg-[#3A4553] text-white" required>
+                    </div>
+
+                    <div>
+                        <label id="clientAddressLabel" data-en="Client Address" data-mr="ग्राहक पत्ता" class="block mb-2 text-sm font-medium">
+                            Client Address
+                        </label>
+                        <textarea id="clientAddress" rows="3" data-en="Enter client address" data-mr="ग्राहक पत्ता प्रविष्ट करा"
+                                  placeholder="Enter client address" class="w-full p-2 rounded bg-[#3A4553] text-white" required></textarea>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label id="poNumberLabel" data-en="PO Number" data-mr="PO क्रमांक" class="block mb-2 text-sm font-medium">
+                                PO Number
+                            </label>
+                            <input type="text" id="poNumber" data-en="Enter PO number" data-mr="PO क्रमांक प्रविष्ट करा"
+                                   placeholder="Enter PO number" class="w-full p-2 rounded bg-[#3A4553] text-white">
+                        </div>
+
+                        <div>
+                            <label id="challanRefLabel" data-en="Your Challan Ref" data-mr="तुमचा चलान संदर्भ" class="block mb-2 text-sm font-medium">
+                                Your Challan Ref
+                            </label>
+                            <input type="text" id="challanRef" data-en="Optional reference" data-mr="वैकल्पिक संदर्भ"
+                                   placeholder="Optional reference" class="w-full p-2 rounded bg-[#3A4553] text-white">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label id="vehicleNumberLabel" data-en="Vehicle Number" data-mr="वाहन क्रमांक" class="block mb-2 text-sm font-medium">
+                            Vehicle Number
+                        </label>
+                        <input type="text" id="vehicleNumber" data-en="Enter vehicle number" data-mr="वाहन क्रमांक प्रविष्ट करा"
+                               placeholder="Enter vehicle number" class="w-full p-2 rounded bg-[#3A4553] text-white">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Product Selection -->
+            <div class="bg-[#2C3440] p-4 rounded">
+                <h2 id="productsTitle" data-en="Products to Dispatch" data-mr="पाठवायची उत्पादने" class="text-lg font-bold mb-4">
+                    Products to Dispatch
+                </h2>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    <div class="md:col-span-2">
+                        <label id="productLabel" data-en="Select Product" data-mr="उत्पादन निवडा" class="block mb-2 text-sm font-medium">
+                            Select Product
+                        </label>
+                        <select id="productSelect" class="w-full p-2 rounded bg-[#3A4553] text-white">
+                            <option id="productDefaultOption" data-en="Choose a product" data-mr="उत्पादन निवडा" value="">
+                                Choose a product
+                            </option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label id="qtyLabel" data-en="Quantity" data-mr="परिमाण" class="block mb-2 text-sm font-medium">
+                            Quantity
+                        </label>
+                        <input type="number" id="productQty" min="1" step="1" data-en="Qty" data-mr="परिमाण"
+                               placeholder="Qty" class="w-full p-2 rounded bg-[#3A4553] text-white">
+                    </div>
+                </div>
+
+                <button type="button" id="addProductBtn" data-en="Add Product" data-mr="उत्पादन जोडा"
+                        class="w-full bg-nexflow-teal text-white p-2 rounded hover:bg-blue-600 transition">
+                    Add Product
+                </button>
+
+                <!-- Products Table -->
+                <div id="productsTableContainer" class="hidden mt-6">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="bg-[#3A4553]">
+                                <th id="productNameHeader" data-en="Product" data-mr="उत्पादन" class="p-2 text-left">Product</th>
+                                <th id="qtyHeader" data-en="Quantity" data-mr="परिमाण" class="p-2 text-right">Quantity</th>
+                                <th id="actionHeader" data-en="Action" data-mr="कृती" class="p-2 text-center">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="productsTableBody">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="flex flex-col md:flex-row gap-4">
+                <button type="button" id="saveDraftBtn" data-en="Save Draft" data-mr="मसुदा साठवा"
+                        class="flex-1 bg-gray-600 text-white p-3 rounded hover:bg-gray-700 transition">
+                    Save Draft
+                </button>
+                <button type="button" id="confirmDispatchBtn" data-en="Confirm Dispatch" data-mr="डिस्पॅच निश्चित करा"
+                        class="flex-1 bg-nexflow-green text-white p-3 rounded hover:bg-green-600 transition">
+                    Confirm Dispatch
+                </button>
+            </div>
+        </form>
+
+        <!-- Confirmation Modal -->
+        <div id="confirmModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center">
+            <div class="bg-[#2C3440] p-6 rounded-lg max-w-md w-full mx-4">
+                <h2 class="text-xl font-bold mb-4" data-en="Confirm Dispatch?" data-mr="डिस्पॅच निश्चित करायचं?">
+                    Confirm Dispatch?
+                </h2>
+                <div class="space-y-3 mb-6 text-sm">
+                    <div>
+                        <span class="font-bold" data-en="Client:" data-mr="ग्राहक:">Client:</span>
+                        <span id="confirmClientName"></span>
+                    </div>
+                    <div>
+                        <span class="font-bold" data-en="Items:" data-mr="वस्तू:">Items:</span>
+                        <ul id="confirmItemsList" class="list-disc list-inside ml-4 mt-1"></ul>
+                    </div>
+                    <div class="bg-yellow-900 border border-yellow-700 rounded p-3 mt-4">
+                        <p data-en="This will deduct raw materials from stock. This cannot be undone."
+                           data-mr="हे कच्च्या मालाचा साठा कमी करेल. हे पूर्ववत केले जाऊ शकत नाही.">
+                            This will deduct raw materials from stock. This cannot be undone.
+                        </p>
+                    </div>
+                </div>
+                <div class="flex space-x-3">
+                    <button id="confirmModalConfirm"
+                            data-en="Confirm"
+                            data-mr="निश्चित करा"
+                            class="flex-1 bg-nexflow-green text-white p-3 rounded hover:bg-green-600 transition">
+                        Confirm
+                    </button>
+                    <button id="confirmModalCancel"
+                            data-en="Cancel"
+                            data-mr="रद्द करा"
+                            class="flex-1 bg-gray-600 text-white p-3 rounded hover:bg-gray-700 transition">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Past Dispatches -->
+        <div class="mt-8">
+            <h2 id="pastDispatchesTitle" data-en="Past Dispatches" data-mr="मागील डिस्पॅच" class="text-xl font-bold mb-4">
+                Past Dispatches
+            </h2>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="bg-[#2C3440]">
+                            <th id="challanHeader" data-en="Challan No" data-mr="चलान क्रं" class="p-2 text-left">Challan No</th>
+                            <th id="dateHeader" data-en="Date" data-mr="तारीख" class="p-2 text-left">Date</th>
+                            <th id="clientHeader" data-en="Client Name" data-mr="ग्राहक नाव" class="p-2 text-left">Client Name</th>
+                            <th id="statusHeader" data-en="Status" data-mr="स्थिती" class="p-2 text-left">Status</th>
+                            <th id="actionsHeader" data-en="Actions" data-mr="कृती" class="p-2 text-center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="pastDispatchesBody">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const { createClient } = supabase;
+        const SUPABASE_URL = 'https://qymojfnyoklcqecwotfu.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF5bW9qZm55b2tsY3FlY3dvdGZ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgzNTczNjIsImV4cCI6MjA2MzkzMzM2Mn0.nMqXSlAYLFcpkFNnHSv71eMxKBqNhsX1xGf0rnS6Ewc';
+        const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        let products = [];
+        let dispatchItems = [];
+        let currentDispatchId = null;
+        let tenantId = null;
+
+        async function init() {
+            const loadingSpinner = document.getElementById('loadingSpinner');
+            const errorState = document.getElementById('errorState');
+            const dispatchForm = document.getElementById('dispatchForm');
+
+            try {
+                // Get current user and tenant
+                const { data: { user } } = await sb.auth.getUser();
+                if (!user) {
+                    window.location.href = '/login.html';
+                    return;
+                }
+
+                tenantId = user.user_metadata.tenant_id;
+
+                // GUARD 5: Add timeout to data loading
+                const loadPromise = Promise.all([
+                    loadProducts(),
+                    loadRecentDispatches()
+                ]);
+
+                const timeoutPromise = new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error('Request timeout')), 10000)
+                );
+
+                await Promise.race([loadPromise, timeoutPromise]);
+
+                // POLISH 5: Check for draft orders
+                await checkDraftOrders();
+
+                // Hide loading, show form
+                loadingSpinner.classList.add('hidden');
+                dispatchForm.classList.remove('hidden');
+                document.querySelector('.mt-8').classList.remove('hidden');
+            } catch (error) {
+                console.error('Error initializing dispatch:', error);
+                // GUARD 5: Show error state
+                loadingSpinner.classList.add('hidden');
+                errorState.classList.remove('hidden');
+            }
+        }
+
+        async function loadProducts() {
+            const { data, error } = await sb
+                .from('p2_products')
+                .select('id, name, unit')
+                .eq('tenant_id', tenantId)
+                .order('name');
+
+            if (error) {
+                console.error('Error loading products:', error);
+                return;
+            }
+
+            products = data || [];
+            const select = document.getElementById('productSelect');
+
+            products.forEach(product => {
+                const option = document.createElement('option');
+                option.value = product.id;
+                option.textContent = `${product.name} (${product.unit})`;
+                select.appendChild(option);
+            });
+        }
+
+        // POLISH 5: Check for draft orders and show banner
+        async function checkDraftOrders() {
+            try {
+                const { data, error } = await sb
+                    .from('p2_dispatch_orders')
+                    .select('id')
+                    .eq('tenant_id', tenantId)
+                    .eq('status', 'draft');
+
+                if (error) throw error;
+
+                const draftCount = data ? data.length : 0;
+                const banner = document.getElementById('draftOrdersBanner');
+                const countSpan = document.getElementById('draftOrdersCount');
+
+                if (draftCount > 0) {
+                    const lang = localStorage.getItem('nexflow_lang') || 'en';
+                    const prefix = lang === 'mr'
+                        ? `तुमच्याकडे ${draftCount} न जतन केलेले मसुदा ऑर्डर आहेत.`
+                        : `You have ${draftCount} unsaved draft order(s).`;
+
+                    countSpan.textContent = prefix;
+                    banner.classList.remove('hidden');
+                } else {
+                    banner.classList.add('hidden');
+                }
+            } catch (error) {
+                console.error('Error checking draft orders:', error);
+            }
+        }
+
+        async function loadRecentDispatches() {
+            const { data, error } = await sb
+                .from('p2_dispatch_orders')
+                .select('id, client_name, status, challan_number, dispatch_date, created_at')
+                .eq('tenant_id', tenantId)
+                .eq('status', 'confirmed')
+                .order('dispatch_date', { ascending: false })
+                .order('created_at', { ascending: false })
+                .limit(20);
+
+            if (error) {
+                console.error('Error loading dispatches:', error);
+                return;
+            }
+
+            const tbody = document.getElementById('pastDispatchesBody');
+            tbody.innerHTML = '';
+
+            if (data.length === 0) {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td colspan="5" class="p-4 text-center text-gray-400" data-en="No past dispatches" data-mr="कोणतेही मागील डिस्पॅच नाहीत">
+                        No past dispatches
+                    </td>
+                `;
+                tbody.appendChild(row);
+                applyLang(localStorage.getItem('nexflow_lang') || 'en');
+                return;
+            }
+
+            data.forEach(dispatch => {
+                const row = document.createElement('tr');
+                row.className = 'border-b border-gray-700';
+                const displayDate = dispatch.dispatch_date
+                    ? formatDate(dispatch.dispatch_date)
+                    : formatDate(dispatch.created_at);
+
+                row.innerHTML = `
+                    <td class="p-2">${dispatch.challan_number || '-'}</td>
+                    <td class="p-2">${displayDate}</td>
+                    <td class="p-2">${dispatch.client_name}</td>
+                    <td class="p-2">
+                        <span class="px-2 py-1 rounded text-xs bg-nexflow-green" data-en="Confirmed" data-mr="निश्चित">
+                            Confirmed
+                        </span>
+                    </td>
+                    <td class="p-2 text-center">
+                        <button onclick="viewChallan('${dispatch.id}')" class="bg-nexflow-teal text-white px-3 py-1 rounded text-sm hover:bg-cyan-600" data-en="View Challan" data-mr="चलान पहा">
+                            View Challan
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+
+            applyLang(localStorage.getItem('nexflow_lang') || 'en');
+        }
+
+        window.viewChallan = (orderId) => {
+            window.open(`/challan.html?id=${orderId}`, '_blank');
+        };
+
+        document.getElementById('addProductBtn').addEventListener('click', () => {
+            const productId = document.getElementById('productSelect').value;
+            const qty = parseFloat(document.getElementById('productQty').value);
+
+            if (!productId || !qty || qty <= 0) {
+                showError('Please select a product and enter a valid quantity');
+                return;
+            }
+
+            const product = products.find(p => p.id === productId);
+            if (!product) return;
+
+            // Check if already added
+            const existing = dispatchItems.find(item => item.product_id === productId);
+            if (existing) {
+                existing.quantity += qty;
+            } else {
+                dispatchItems.push({
+                    product_id: productId,
+                    product_name: product.name,
+                    quantity: qty,
+                    unit: product.unit
+                });
+            }
+
+            updateProductsTable();
+            document.getElementById('productSelect').value = '';
+            document.getElementById('productQty').value = '';
+        });
+
+        function updateProductsTable() {
+            const container = document.getElementById('productsTableContainer');
+            const tbody = document.getElementById('productsTableBody');
+
+            if (dispatchItems.length === 0) {
+                container.classList.add('hidden');
+                return;
+            }
+
+            container.classList.remove('hidden');
+            tbody.innerHTML = '';
+
+            dispatchItems.forEach((item, index) => {
+                const row = document.createElement('tr');
+                row.className = 'border-b border-gray-700';
+                row.innerHTML = `
+                    <td class="p-2">${item.product_name}</td>
+                    <td class="p-2 text-right">${formatNumber(item.quantity)} ${item.unit}</td>
+                    <td class="p-2 text-center">
+                        <button onclick="removeProduct(${index})" class="text-red-500 hover:text-red-400 text-sm" data-en="Remove" data-mr="काढा">Remove</button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+
+            applyLang(localStorage.getItem('nexflow_lang') || 'en');
+        }
+
+        window.removeProduct = (index) => {
+            dispatchItems.splice(index, 1);
+            updateProductsTable();
+        };
+
+        document.getElementById('saveDraftBtn').addEventListener('click', async () => {
+            if (!validateForm()) return;
+
+            const orderData = {
+                tenant_id: tenantId,
+                client_name: document.getElementById('clientName').value,
+                client_address: document.getElementById('clientAddress').value,
+                po_number: document.getElementById('poNumber').value || null,
+                your_challan_ref: document.getElementById('challanRef').value || null,
+                vehicle_number: document.getElementById('vehicleNumber').value || null,
+                status: 'draft'
+            };
+
+            try {
+                let orderId = currentDispatchId;
+
+                if (!orderId) {
+                    // Create new dispatch order
+                    const { data, error } = await sb
+                        .from('p2_dispatch_orders')
+                        .insert([orderData])
+                        .select()
+                        .single();
+
+                    if (error) throw error;
+                    orderId = data.id;
+                    currentDispatchId = orderId;
+
+                    // Insert dispatch items
+                    const items = dispatchItems.map(item => ({
+                        dispatch_order_id: orderId,
+                        tenant_id: tenantId,
+                        product_id: item.product_id,
+                        quantity: item.quantity
+                    }));
+
+                    const { error: itemsError } = await sb
+                        .from('p2_dispatch_items')
+                        .insert(items);
+
+                    if (itemsError) throw itemsError;
+                } else {
+                    // Update existing draft
+                    const { error: updateError } = await sb
+                        .from('p2_dispatch_orders')
+                        .update(orderData)
+                        .eq('id', orderId);
+
+                    if (updateError) throw updateError;
+
+                    // Delete old items and insert new ones
+                    await sb.from('p2_dispatch_items').delete().eq('dispatch_order_id', orderId);
+
+                    const items = dispatchItems.map(item => ({
+                        dispatch_order_id: orderId,
+                        tenant_id: tenantId,
+                        product_id: item.product_id,
+                        quantity: item.quantity
+                    }));
+
+                    const { error: itemsError } = await sb
+                        .from('p2_dispatch_items')
+                        .insert(items);
+
+                    if (itemsError) throw itemsError;
+                }
+
+                showSuccess('Draft saved successfully');
+                await loadRecentDispatches();
+            } catch (error) {
+                console.error('Error saving draft:', error);
+                showError('Failed to save draft: ' + error.message);
+            }
+        });
+
+        document.getElementById('confirmDispatchBtn').addEventListener('click', async () => {
+            // Enhanced validation before showing modal
+            const lang = localStorage.getItem('nexflow_lang') || 'en';
+
+            // Check client name
+            const clientName = document.getElementById('clientName').value.trim();
+            if (!clientName) {
+                showError(lang === 'mr' ? 'कृपया ग्राहक नाव प्रविष्ट करा' : 'Please enter client name');
+                document.getElementById('clientName').focus();
+                return;
+            }
+
+            // Check at least one product row
+            if (dispatchItems.length === 0) {
+                showError(lang === 'mr' ? 'कृपया किमान एक उत्पादन जोडा' : 'Please add at least one product');
+                return;
+            }
+
+            // Check all product rows have quantity > 0
+            for (const item of dispatchItems) {
+                if (!item.quantity || item.quantity <= 0) {
+                    showError(lang === 'mr' ? `${item.product_name}: परिमाण ० पेक्षा जास्त असणे आवश्यक आहे` : `${item.product_name}: Quantity must be greater than 0`);
+                    return;
+                }
+            }
+
+            // Check every product has at least one BOM ingredient
+            for (const item of dispatchItems) {
+                const { data: bomData, error: bomError } = await sb
+                    .from('p2_product_bom')
+                    .select('id')
+                    .eq('product_id', item.product_id)
+                    .eq('tenant_id', tenantId);
+
+                if (bomError) {
+                    showError(lang === 'mr' ? 'BOM तपासताना त्रुटी' : 'Error checking BOM');
+                    console.error('BOM check error:', bomError);
+                    return;
+                }
+
+                if (!bomData || bomData.length === 0) {
+                    showError(lang === 'mr'
+                        ? `उत्पादन "${item.product_name}" साठी BOM परिभाषित केलेले नाही. Products पृष्ठावर जाऊन घटक जोडा.`
+                        : `Product "${item.product_name}" has no BOM defined. Go to Products page and add ingredients before dispatching.`);
+                    return;
+                }
+            }
+
+            if (!validateForm()) return;
+
+            // First save as draft if not already saved
+            if (!currentDispatchId) {
+                await document.getElementById('saveDraftBtn').click();
+                // Wait a moment for the save to complete
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+
+            if (!currentDispatchId) {
+                showError('Please save draft first');
+                return;
+            }
+
+            // Show confirmation modal
+            document.getElementById('confirmClientName').textContent = clientName;
+
+            const itemsList = document.getElementById('confirmItemsList');
+            itemsList.innerHTML = '';
+            dispatchItems.forEach(item => {
+                const li = document.createElement('li');
+                li.textContent = `${item.product_name}: ${formatNumber(item.quantity)} ${item.unit}`;
+                itemsList.appendChild(li);
+            });
+
+            document.getElementById('confirmModal').classList.remove('hidden');
+            applyLang(localStorage.getItem('nexflow_lang') || 'en');
+        });
+
+        document.getElementById('confirmModalCancel').addEventListener('click', () => {
+            document.getElementById('confirmModal').classList.add('hidden');
+        });
+
+        document.getElementById('confirmModalConfirm').addEventListener('click', async () => {
+            const confirmBtn = document.getElementById('confirmModalConfirm');
+            const originalBtnText = confirmBtn.textContent;
+            const lang = localStorage.getItem('nexflow_lang') || 'en';
+
+            // Disable button and show processing text
+            confirmBtn.disabled = true;
+            confirmBtn.textContent = lang === 'mr' ? 'प्रक्रिया करत आहे...' : 'Processing...';
+            confirmBtn.classList.add('opacity-50', 'cursor-not-allowed');
+
+            document.getElementById('confirmModal').classList.add('hidden');
+
+            try {
+                // Call Edge Function to confirm dispatch
+                const { data, error } = await sb.functions.invoke('confirm-dispatch', {
+                    body: { dispatch_order_id: currentDispatchId }
+                });
+
+                if (error) throw error;
+
+                if (!data.success) {
+                    if (data.error === 'Insufficient stock') {
+                        showError(`Insufficient stock for ${data.material}. Shortfall: ${data.shortfall} ${data.unit}`);
+                    } else {
+                        showError(data.error);
+                    }
+                    return;
+                }
+
+                // Success!
+                const challanNumber = data.challan_number;
+                showSuccess(`Dispatch confirmed! Challan No: ${challanNumber}`);
+
+                // Show print button
+                const printBtn = document.getElementById('printChallanBtn');
+                printBtn.onclick = () => printChallan(currentDispatchId);
+
+                // Reset form
+                resetForm();
+                await loadRecentDispatches();
+
+            } catch (error) {
+                console.error('Error confirming dispatch:', error);
+                showError('Failed to confirm dispatch: ' + error.message);
+            } finally {
+                // Re-enable button
+                confirmBtn.disabled = false;
+                confirmBtn.textContent = originalBtnText;
+                confirmBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
+        });
+
+        function validateForm() {
+            const clientName = document.getElementById('clientName').value.trim();
+            const clientAddress = document.getElementById('clientAddress').value.trim();
+
+            if (!clientName || !clientAddress) {
+                showError('Please fill in client name and address');
+                return false;
+            }
+
+            if (dispatchItems.length === 0) {
+                showError('Please add at least one product');
+                return false;
+            }
+
+            return true;
+        }
+
+        function resetForm() {
+            document.getElementById('dispatchForm').reset();
+            dispatchItems = [];
+            currentDispatchId = null;
+            updateProductsTable();
+        }
+
+        function showSuccess(message) {
+            const el = document.getElementById('successMessage');
+            const text = document.getElementById('successText');
+            text.textContent = message;
+            el.classList.remove('hidden');
+
+            document.getElementById('errorMessage').classList.add('hidden');
+
+            setTimeout(() => el.classList.add('hidden'), 10000);
+        }
+
+        function showError(message) {
+            const el = document.getElementById('errorMessage');
+            const text = document.getElementById('errorText');
+            text.textContent = message;
+            el.classList.remove('hidden');
+
+            document.getElementById('successMessage').classList.add('hidden');
+
+            setTimeout(() => el.classList.add('hidden'), 8000);
+        }
+
+        window.printChallan = (orderId) => {
+            window.open(`/challan.html?id=${orderId}`, '_blank');
+        };
+
+        window.editDraft = async (orderId) => {
+            // Load draft into form
+            const { data: order, error: orderError } = await sb
+                .from('p2_dispatch_orders')
+                .select('*')
+                .eq('id', orderId)
+                .single();
+
+            if (orderError) {
+                showError('Failed to load draft');
+                return;
+            }
+
+            const { data: items, error: itemsError } = await sb
+                .from('p2_dispatch_items')
+                .select('product_id, quantity, p2_products(name, unit)')
+                .eq('dispatch_order_id', orderId);
+
+            if (itemsError) {
+                showError('Failed to load draft items');
+                return;
+            }
+
+            // Populate form
+            document.getElementById('clientName').value = order.client_name;
+            document.getElementById('clientAddress').value = order.client_address;
+            document.getElementById('poNumber').value = order.po_number || '';
+            document.getElementById('challanRef').value = order.your_challan_ref || '';
+            document.getElementById('vehicleNumber').value = order.vehicle_number || '';
+
+            dispatchItems = items.map(item => ({
+                product_id: item.product_id,
+                product_name: item.p2_products.name,
+                quantity: item.quantity,
+                unit: item.p2_products.unit
+            }));
+
+            currentDispatchId = orderId;
+            updateProductsTable();
+
+            // Scroll to top
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        };
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+
+    <script>
+        function applyLang(lang) {
+            document.querySelectorAll('[data-en]').forEach(el => {
+                if (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA') {
+                    el.placeholder = lang === 'mr' ? el.dataset.mr : el.dataset.en;
+                } else {
+                    el.textContent = lang === 'mr' ? el.dataset.mr : el.dataset.en;
+                }
+            });
+            const btn = document.getElementById('lang-toggle');
+            if (btn) btn.textContent = lang === 'mr' ? 'English' : 'मराठी';
+            localStorage.setItem('nexflow_lang', lang);
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const saved = localStorage.getItem('nexflow_lang') || 'en';
+            applyLang(saved);
+            const btn = document.getElementById('lang-toggle');
+            if (btn) btn.addEventListener('click', () => {
+                applyLang(localStorage.getItem('nexflow_lang') === 'mr' ? 'en' : 'mr');
+            });
+        });
+    </script>
+</body>
+</html>
