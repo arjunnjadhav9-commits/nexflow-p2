@@ -315,8 +315,12 @@
 
                             <div>
                                 <label class="block mb-2 text-sm font-medium" data-en="Adjustment Quantity" data-mr="समायोजन प्रमाण">Adjustment Quantity</label>
-                                <input type="text" inputmode="decimal" id="adjustment-quantity" class="w-full p-2 bg-gray-600 rounded" placeholder="Enter positive or negative value" data-en="Enter positive or negative value" data-mr="धनात्मक किंवा ऋणात्मक मूल्य प्रविष्ट करा" required>
-                                <p class="text-xs text-gray-400 mt-1" data-en="Positive to add, negative to deduct" data-mr="जोडण्यासाठी धनात्मक, वजा करण्यासाठी ऋणात्मक">Positive to add, negative to deduct</p>
+                                <div class="flex gap-2 items-center">
+                                    <button type="button" id="btn-minus" class="w-12 h-12 bg-red-600 text-white text-2xl font-bold rounded hover:bg-red-700 flex-shrink-0">−</button>
+                                    <input type="number" inputmode="numeric" min="0" id="adjustment-quantity" class="flex-1 p-2 bg-gray-600 rounded text-center" placeholder="0" required>
+                                    <button type="button" id="btn-plus" class="w-12 h-12 bg-green-600 text-white text-2xl font-bold rounded hover:bg-green-700 flex-shrink-0 ring-2 ring-white">+</button>
+                                </div>
+                                <p id="adj-sign-label" class="text-xs text-gray-400 mt-1" data-en="Tap − to deduct, + to add" data-mr="वजा करण्यासाठी − दाबा, जोडण्यासाठी + दाबा">Tap − to deduct, + to add</p>
                             </div>
 
                             <div>
@@ -362,6 +366,33 @@
                 }
             });
             localStorage.setItem('nexflow_lang', lang);
+        }
+
+        // Stock adjustment sign control
+        let adjSign = 1;
+
+        function setAdjSign(sign) {
+            adjSign = sign;
+            const btnMinus = document.getElementById('btn-minus');
+            const btnPlus = document.getElementById('btn-plus');
+            const label = document.getElementById('adj-sign-label');
+
+            // Highlight active button
+            if (sign === -1) {
+                btnMinus.classList.add('ring-2', 'ring-white');
+                btnPlus.classList.remove('ring-2', 'ring-white');
+            } else {
+                btnPlus.classList.add('ring-2', 'ring-white');
+                btnMinus.classList.remove('ring-2', 'ring-white');
+            }
+
+            // Update label text
+            const lang = localStorage.getItem('nexflow_lang') || 'en';
+            if (sign === -1) {
+                label.textContent = lang === 'mr' ? 'स्टॉकमधून वजा करेल' : 'Will DEDUCT from stock';
+            } else {
+                label.textContent = lang === 'mr' ? 'स्टॉकमध्ये जोडेल' : 'Will ADD to stock';
+            }
         }
 
         // Tab switching logic
@@ -1057,7 +1088,7 @@ const { data, error } = await window.supabase
             e.preventDefault();
 
             const materialId = document.getElementById('adjustment-material').value;
-            const quantity = parseFloat(document.getElementById('adjustment-quantity').value);
+            const quantity = parseFloat(document.getElementById('adjustment-quantity').value) * adjSign;
             const reason = document.getElementById('adjustment-reason').value.trim();
 
             if (!materialId || quantity === null || isNaN(quantity) || !reason) {
@@ -1224,6 +1255,13 @@ const { data, error } = await window.supabase
                 loadAdjustmentMaterials();
                 loadRecentAdjustments();
             });
+
+            // Stock adjustment +/- button handlers
+            document.getElementById('btn-minus').addEventListener('click', () => setAdjSign(-1));
+            document.getElementById('btn-plus').addEventListener('click', () => setAdjSign(1));
+
+            // Set default adjSign to + (add to stock)
+            setAdjSign(1);
 
             // Show company tab by default
             switchToTab('company');
