@@ -1,4 +1,3 @@
-<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -10,7 +9,6 @@
     <script src="js/supabase-client.js"></script>
     <script src="js/utils.js"></script>
     <script src="js/auth.js"></script>
-    <script src="js/navbar.js"></script>
     <script>
         tailwind.config = {
             darkMode: 'class',
@@ -29,28 +27,7 @@
     </script>
 </head>
 <body class="bg-nexflow-dark-bg text-nexflow-text">
-    <!-- Navbar -->
-    <nav class="bg-nexflow-teal p-4 flex justify-between items-center">
-        <div class="flex items-center">
-            <img src="/public/assets/nexflow_logo_transparent.png" alt="Nexflow Logo" style="height: 36px;" class="mr-2">
-            <div class="text-xl font-bold text-white" data-en="Nexflow Automations" data-mr="नेक्सफ्लो ऑटोमेशन्स">Nexflow Automations</div>
-        </div>
-        <div class="flex items-center space-x-4">
-            <a href="index.html" class="text-white hover:text-gray-200" data-en="Dashboard" data-mr="डॅशबोर्ड">Dashboard</a>
-            <a href="grn.html" class="text-white hover:text-gray-200" data-en="GRN" data-mr="GRN">GRN</a>
-            <a href="dispatch.html" class="text-white hover:text-gray-200" data-en="Dispatch" data-mr="डिस्पॅच">Dispatch</a>
-            <a href="products.html" class="text-white hover:text-gray-200" data-en="Products" data-mr="उत्पादने">Products</a>
-            <a href="ca-report.html" class="text-white hover:text-gray-200" data-en="Reports" data-mr="अहवाल">Reports</a>
-            <a href="settings.html" class="text-white hover:text-gray-200 font-bold" data-en="Settings" data-mr="सेटिंग्ज">Settings</a>
-            <div id="navbar-user-info"></div>
-        </div>
-    </nav>
-
-    <!-- Language Toggle Button -->
-    <div class="text-right p-2">
-        <button id="lang-toggle" class="bg-nexflow-teal text-white px-4 py-2 rounded" data-en="मराठी" data-mr="English">मराठी</button>
-    </div>
-
+    <div id="navbar-container"></div>
     <main class="container mx-auto px-4 py-6">
         <div class="bg-gray-800 rounded-lg p-6">
             <!-- Tabs -->
@@ -328,7 +305,7 @@
                     <!-- Adjustment Form -->
                     <div class="bg-gray-700 p-6 rounded">
                         <h2 class="text-xl mb-4" data-en="Manual Stock Adjustment" data-mr="साठा दुरुस्ती">Manual Stock Adjustment</h2>
-                        <form id="stock-adjustment-form" class="space-y-4">
+                        <form id="stock-adjustment-form" novalidate class="space-y-4">
                             <div>
                                 <label class="block mb-2 text-sm font-medium" data-en="Select Material" data-mr="सामग्री निवडा">Select Material</label>
                                 <select id="adjustment-material" class="w-full p-2 bg-gray-600 rounded" required>
@@ -338,7 +315,7 @@
 
                             <div>
                                 <label class="block mb-2 text-sm font-medium" data-en="Adjustment Quantity" data-mr="समायोजन प्रमाण">Adjustment Quantity</label>
-                                <input type="number" id="adjustment-quantity" step="0.01" class="w-full p-2 bg-gray-600 rounded" placeholder="Enter positive or negative value" data-en="Enter positive or negative value" data-mr="धनात्मक किंवा ऋणात्मक मूल्य प्रविष्ट करा" required>
+                                <input type="text" inputmode="decimal" id="adjustment-quantity" class="w-full p-2 bg-gray-600 rounded" placeholder="Enter positive or negative value" data-en="Enter positive or negative value" data-mr="धनात्मक किंवा ऋणात्मक मूल्य प्रविष्ट करा" required>
                                 <p class="text-xs text-gray-400 mt-1" data-en="Positive to add, negative to deduct" data-mr="जोडण्यासाठी धनात्मक, वजा करण्यासाठी ऋणात्मक">Positive to add, negative to deduct</p>
                             </div>
 
@@ -375,6 +352,18 @@
     </main>
 
     <script>
+        // Language toggle function
+        function applyLang(lang) {
+            document.querySelectorAll('[data-en]').forEach(el => {
+                if (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA') {
+                    el.placeholder = lang === 'mr' ? el.dataset.mr : el.dataset.en;
+                } else {
+                    el.textContent = lang === 'mr' ? el.dataset.mr : el.dataset.en;
+                }
+            });
+            localStorage.setItem('nexflow_lang', lang);
+        }
+
         // Tab switching logic
         const tabs = ['company', 'logo', 'challan', 'telegram', 'staff', 'materials', 'suppliers', 'adjustment'];
 
@@ -398,16 +387,16 @@
         // Load company details
         async function loadCompanyDetails() {
             try {
-                const { data: { user } } = await supabase.auth.getUser();
+                const { data: { user } } = await window.supabase.auth.getUser();
                 if (!user) return;
 
-                const tenantId = user.user_metadata.tenant_id;
+                const tenantId = user.id;
 
-                const { data, error } = await supabase
-                    .from('p2_tenant_settings')
-                    .select('*')
-                    .eq('tenant_id', tenantId)
-                    .single();
+const { data, error } = await window.supabase
+    .from('p2_tenant_settings')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .single();
 
                 if (error && error.code !== 'PGRST116') throw error;
 
@@ -446,15 +435,15 @@
             const gstin = document.getElementById('gstin').value.trim();
 
             try {
-                const { data: { user } } = await supabase.auth.getUser();
+                const { data: { user } } = await window.supabase.auth.getUser();
                 if (!user) {
                     showStatus('company-status', 'error', 'Not authenticated', 'प्रमाणित नाही');
                     return;
                 }
 
-                const tenantId = user.user_metadata.tenant_id;
+                const tenantId = user.id;
 
-                const { error } = await supabase
+                const { error } = await window.supabase
                     .from('p2_tenant_settings')
                     .upsert({
                         tenant_id: tenantId,
@@ -489,13 +478,13 @@
             }
 
             try {
-                const { data: { user } } = await supabase.auth.getUser();
+                const { data: { user } } = await window.supabase.auth.getUser();
                 if (!user) {
                     showStatus('logo-status', 'error', 'Not authenticated', 'प्रमाणित नाही');
                     return;
                 }
 
-                const tenantId = user.user_metadata.tenant_id;
+                const tenantId = user.id;
 
                 // Upload to Supabase Storage
                 const fileExt = file.name.split('.').pop();
@@ -503,24 +492,23 @@
 
                 showStatus('logo-status', 'info', 'Uploading...', 'अपलोड करत आहे...');
 
-                const { data: uploadData, error: uploadError } = await supabase.storage
+                const { data: uploadData, error: uploadError } = await window.supabase.storage
                     .from('tenant-logos')
                     .upload(fileName, file, { upsert: true });
 
                 if (uploadError) throw uploadError;
 
                 // Get public URL
-                const { data: urlData } = supabase.storage
+                const { data: urlData } = window.supabase.storage
                     .from('tenant-logos')
                     .getPublicUrl(fileName);
 
                 const logoUrl = urlData.publicUrl;
 
                 // Save URL to tenant settings
-                const { error: updateError } = await supabase
+                const { error: updateError } = await window.supabase
                     .from('p2_tenant_settings')
-                    .update({ logo_url: logoUrl })
-                    .eq('tenant_id', tenantId);
+                    .upsert({ tenant_id: tenantId, logo_url: logoUrl }, { onConflict: 'tenant_id' });
 
                 if (updateError) throw updateError;
 
@@ -543,15 +531,15 @@
             const challanSequence = parseInt(document.getElementById('challan-sequence').value);
 
             try {
-                const { data: { user } } = await supabase.auth.getUser();
+                const { data: { user } } = await window.supabase.auth.getUser();
                 if (!user) {
                     showStatus('challan-status', 'error', 'Not authenticated', 'प्रमाणित नाही');
                     return;
                 }
 
-                const tenantId = user.user_metadata.tenant_id;
+                const tenantId = user.id;
 
-                const { error } = await supabase
+                const { error } = await window.supabase
                     .from('p2_tenant_settings')
                     .update({ challan_sequence: challanSequence })
                     .eq('tenant_id', tenantId);
@@ -577,18 +565,17 @@
             }
 
             try {
-                const { data: { user } } = await supabase.auth.getUser();
+                const { data: { user } } = await window.supabase.auth.getUser();
                 if (!user) {
                     showStatus('telegram-status', 'error', 'Not authenticated', 'प्रमाणित नाही');
                     return;
                 }
 
-                const tenantId = user.user_metadata.tenant_id;
+                const tenantId = user.id;
 
-                const { error } = await supabase
+                const { error } = await window.supabase
                     .from('p2_tenant_settings')
-                    .update({ telegram_chat_id: chatId })
-                    .eq('tenant_id', tenantId);
+                    .upsert({ tenant_id: tenantId, telegram_chat_id: chatId }, { onConflict: 'tenant_id' });
 
                 if (error) throw error;
 
@@ -602,12 +589,16 @@
         // Load materials list
         async function loadMaterials() {
             try {
-                const { data: { user } } = await supabase.auth.getUser();
+                const { data: { user } } = await window.supabase.auth.getUser();
                 if (!user) return;
 
-                const tenantId = user.user_metadata.tenant_id;
+                const tenantId = user.id;
+                if (!tenantId) {
+                    console.error('Tenant ID not found');
+                    return;
+                }
 
-                const { data, error } = await supabase
+                const { data, error } = await window.supabase
                     .from('p2_raw_materials')
                     .select('*')
                     .eq('tenant_id', tenantId)
@@ -678,16 +669,16 @@
             }
 
             try {
-                const { data: { user } } = await supabase.auth.getUser();
+                const { data: { user } } = await window.supabase.auth.getUser();
                 if (!user) {
                     alert('Not authenticated');
                     return;
                 }
 
-                const tenantId = user.user_metadata.tenant_id;
+                const tenantId = user.id;
 
                 // GUARD 2: Check for duplicate material name (case-insensitive)
-                const { data: existingMaterials, error: checkError } = await supabase
+                const { data: existingMaterials, error: checkError } = await window.supabase
                     .from('p2_raw_materials')
                     .select('id, name')
                     .eq('tenant_id', tenantId)
@@ -704,7 +695,7 @@
                     return;
                 }
 
-                const { error } = await supabase
+                const { error } = await window.supabase
                     .from('p2_raw_materials')
                     .insert({
                         name,
@@ -733,7 +724,7 @@
             if (!confirm(confirmMsg)) return;
 
             try {
-                const { error } = await supabase
+                const { error } = await window.supabase
                     .from('p2_raw_materials')
                     .update({ is_active: false })
                     .eq('id', materialId);
@@ -751,12 +742,16 @@
         // Load suppliers list
         async function loadSuppliers() {
             try {
-                const { data: { user } } = await supabase.auth.getUser();
+                const { data: { user } } = await window.supabase.auth.getUser();
                 if (!user) return;
 
-                const tenantId = user.user_metadata.tenant_id;
+                const tenantId = user.id;
+                if (!tenantId) {
+                    console.error('Tenant ID not found');
+                    return;
+                }
 
-                const { data, error } = await supabase
+                const { data, error } = await window.supabase
                     .from('p2_suppliers')
                     .select('*')
                     .eq('tenant_id', tenantId)
@@ -816,15 +811,15 @@
             }
 
             try {
-                const { data: { user } } = await supabase.auth.getUser();
+                const { data: { user } } = await window.supabase.auth.getUser();
                 if (!user) {
                     alert('Not authenticated');
                     return;
                 }
 
-                const tenantId = user.user_metadata.tenant_id;
+                const tenantId = user.id;
 
-                const { error } = await supabase
+                const { error } = await window.supabase
                     .from('p2_suppliers')
                     .insert({
                         name,
@@ -853,7 +848,7 @@
             if (!confirm(confirmMsg)) return;
 
             try {
-                const { error } = await supabase
+                const { error } = await window.supabase
                     .from('p2_suppliers')
                     .update({ is_active: false })
                     .eq('id', supplierId);
@@ -871,12 +866,12 @@
         // Load staff list (from existing settings.html)
         async function loadStaffList() {
             try {
-                const { data: { user } } = await supabase.auth.getUser();
+                const { data: { user } } = await window.supabase.auth.getUser();
                 if (!user) return;
 
-                const tenantId = user.user_metadata.tenant_id;
+                const tenantId = user.id;
 
-                const { data: roles, error: rolesError } = await supabase
+                const { data: roles, error: rolesError } = await window.supabase
                     .from('p2_user_roles')
                     .select('id, user_id, role, created_at')
                     .eq('tenant_id', tenantId)
@@ -917,7 +912,7 @@
 
         async function getUserEmail(userId) {
             try {
-                const { data, error } = await supabase.functions.invoke('get-user-email', {
+                const { data, error } = await window.supabase.functions.invoke('get-user-email', {
                     body: { user_id: userId }
                 });
 
@@ -938,15 +933,15 @@
             const role = formData.get('role');
 
             try {
-                const { data: { user } } = await supabase.auth.getUser();
+                const { data: { user } } = await window.supabase.auth.getUser();
                 if (!user) {
                     showStatus('invite-status', 'error', 'Not authenticated', 'प्रमाणित नाही');
                     return;
                 }
 
-                const tenantId = user.user_metadata.tenant_id;
+                const tenantId = user.id;
 
-                const { data, error } = await supabase.functions.invoke('invite-staff', {
+                const { data, error } = await window.supabase.functions.invoke('invite-staff', {
                     body: {
                         email: email,
                         tenant_id: tenantId,
@@ -974,7 +969,7 @@
             if (!confirm(confirmMsg)) return;
 
             try {
-                const { error } = await supabase
+                const { error } = await window.supabase
                     .from('p2_user_roles')
                     .delete()
                     .eq('id', roleId);
@@ -1026,12 +1021,12 @@
         // Load materials for adjustment dropdown
         async function loadAdjustmentMaterials() {
             try {
-                const { data: { user } } = await supabase.auth.getUser();
+                const { data: { user } } = await window.supabase.auth.getUser();
                 if (!user) return;
 
-                const tenantId = user.user_metadata.tenant_id;
+                const tenantId = user.id;
 
-                const { data, error } = await supabase
+                const { data, error } = await window.supabase
                     .from('p2_raw_materials')
                     .select('id, name, unit')
                     .eq('tenant_id', tenantId)
@@ -1065,25 +1060,25 @@
             const quantity = parseFloat(document.getElementById('adjustment-quantity').value);
             const reason = document.getElementById('adjustment-reason').value.trim();
 
-            if (!materialId || !quantity || !reason) {
+            if (!materialId || quantity === null || isNaN(quantity) || !reason) {
                 showStatus('adjustment-status', 'error', 'Please fill all fields', 'सर्व फील्ड भरा');
                 return;
             }
 
             try {
-                const { data: { user } } = await supabase.auth.getUser();
+                const { data: { user } } = await window.supabase.auth.getUser();
                 if (!user) {
                     showStatus('adjustment-status', 'error', 'Not authenticated', 'प्रमाणित नाही');
                     return;
                 }
 
-                const tenantId = user.user_metadata.tenant_id;
+                const tenantId = user.id;
 
-                const { error } = await supabase
+                const { error } = await window.supabase
                     .from('p2_stock_transactions')
                     .insert({
                         tenant_id: tenantId,
-                        material_id: materialId,
+                        raw_material_id: materialId,
                         transaction_type: 'adjustment',
                         quantity: quantity,
                         transaction_date: new Date().toISOString().split('T')[0],
@@ -1104,12 +1099,12 @@
         // Load recent adjustments
         async function loadRecentAdjustments() {
             try {
-                const { data: { user } } = await supabase.auth.getUser();
+                const { data: { user } } = await window.supabase.auth.getUser();
                 if (!user) return;
 
-                const tenantId = user.user_metadata.tenant_id;
+                const tenantId = user.id;
 
-                const { data, error } = await supabase
+                const { data, error } = await window.supabase
                     .from('p2_stock_transactions')
                     .select(`
                         transaction_date,
@@ -1182,6 +1177,10 @@
 
         // Initialize tabs
         document.addEventListener('DOMContentLoaded', async () => {
+            // Apply language
+            const saved = localStorage.getItem('nexflow_lang') || 'en';
+            applyLang(saved);
+
             // POLISH 4: Initialize unsaved changes tracking
             trackFormChanges();
             // Tab click handlers
@@ -1237,30 +1236,7 @@
             loadCompanyDetails();
         });
     </script>
+    <script src="js/navbar.js"></script>
 
-    <!-- Language Toggle Script -->
-    <script>
-        function applyLang(lang) {
-            document.querySelectorAll('[data-en]').forEach(el => {
-                if (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA') {
-                    el.placeholder = lang === 'mr' ? el.dataset.mr : el.dataset.en;
-                } else {
-                    el.textContent = lang === 'mr' ? el.dataset.mr : el.dataset.en;
-                }
-            });
-            const btn = document.getElementById('lang-toggle');
-            if (btn) btn.textContent = lang === 'mr' ? 'English' : 'मराठी';
-            localStorage.setItem('nexflow_lang', lang);
-        }
-
-        document.addEventListener('DOMContentLoaded', () => {
-            const saved = localStorage.getItem('nexflow_lang') || 'en';
-            applyLang(saved);
-            const btn = document.getElementById('lang-toggle');
-            if (btn) btn.addEventListener('click', () => {
-                applyLang(localStorage.getItem('nexflow_lang') === 'mr' ? 'en' : 'mr');
-            });
-        });
-    </script>
 </body>
 </html>

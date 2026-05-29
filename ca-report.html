@@ -6,7 +6,11 @@
     <title>CA Report | Nexflow P2</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%231A1F2E'/><text y='.9em' font-size='80' x='10' fill='%2300BCD4'>N</text></svg>">
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/supabase-client.js"></script>
+    <script src="js/auth.js"></script>
     <script src="js/utils.js"></script>
+    <script src="js/navbar.js"></script>
     <script>
         tailwind.config = {
             darkMode: 'class',
@@ -51,19 +55,550 @@
             }
 
             /* Force black text on white background */
-            body, main {
+            body, main, .bg-nexflow-dark-bg, .bg-\[#2C3440\], .bg-\[#3A4553\] {
                 background: white !important;
                 color: black !important;
+            }
+
+            table, th, td {
+                border: 1px solid black !important;
+                color: black !important;
+            }
+
+            th {
+                background: #e0e0e0 !important;
             }
         }
     </style>
 </head>
 <body class="bg-nexflow-dark-bg text-nexflow-text">
-    <nav class="bg-nexflow-teal p-4 text-white text-center text-xl font-bold">
-        Nexflow Automations
-    </nav>
-    <main class="container mx-auto px-4 py-6">
-        <!-- CA Audit Report Content -->
+    <div id="navbar-container"></div>
+    <main class="container mx-auto px-4 py-6 max-w-6xl">
+        <!-- Loading Spinner -->
+        <div id="loadingSpinner" class="flex justify-center items-center py-12">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-nexflow-teal"></div>
+        </div>
+
+        <!-- Error State -->
+        <div id="errorState" class="hidden bg-red-900 border border-red-700 rounded p-4 mb-6">
+            <p class="font-bold">Could not load report data</p>
+            <p class="text-sm" id="errorText">Check your connection and refresh the page.</p>
+        </div>
+
+        <!-- Report Content -->
+        <div id="reportContent" class="hidden">
+            <!-- COVER -->
+            <section class="mb-8 text-center border-b border-gray-600 pb-6">
+                <h1 id="companyName" class="text-3xl font-bold mb-2"></h1>
+                <p id="companyAddress1" class="text-sm"></p>
+                <p id="companyAddress2" class="text-sm"></p>
+                <p id="companyMobile" class="text-sm"></p>
+                <p id="companyGSTIN" class="text-sm"></p>
+                <h2 class="text-2xl font-bold mt-6 mb-2 text-nexflow-teal">Stock and Transaction Report</h2>
+                <p id="reportPeriod" class="text-lg mb-2"></p>
+                <p id="generatedDate" class="text-sm text-nexflow-muted"></p>
+                <p class="text-sm text-nexflow-muted">Prepared by Nexflow Automations</p>
+                <button id="printBtn" class="no-print mt-4 bg-nexflow-teal text-white px-6 py-2 rounded hover:bg-cyan-600 transition">
+                    Print Report
+                </button>
+            </section>
+
+            <!-- SECTION 1: Opening Stock -->
+            <section class="mb-8">
+                <h2 class="text-xl font-bold mb-4 text-nexflow-teal">1. Opening Stock</h2>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm border-collapse">
+                        <thead>
+                            <tr class="bg-[#2C3440]">
+                                <th class="p-2 text-left border border-gray-700">Material</th>
+                                <th class="p-2 text-center border border-gray-700">Unit</th>
+                                <th class="p-2 text-right border border-gray-700">Opening Qty</th>
+                                <th class="p-2 text-right border border-gray-700">Min Level</th>
+                                <th class="p-2 text-center border border-gray-700">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="openingStockBody">
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- SECTION 2: Purchases / GRN -->
+            <section class="mb-8">
+                <h2 class="text-xl font-bold mb-4 text-nexflow-teal">2. Purchases / GRN</h2>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm border-collapse">
+                        <thead>
+                            <tr class="bg-[#2C3440]">
+                                <th class="p-2 text-left border border-gray-700">Date</th>
+                                <th class="p-2 text-left border border-gray-700">Supplier</th>
+                                <th class="p-2 text-left border border-gray-700">Material</th>
+                                <th class="p-2 text-right border border-gray-700">Qty</th>
+                                <th class="p-2 text-center border border-gray-700">Unit</th>
+                                <th class="p-2 text-left border border-gray-700">Invoice No</th>
+                            </tr>
+                        </thead>
+                        <tbody id="grnBody">
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- SECTION 3: Consumption -->
+            <section class="mb-8">
+                <h2 class="text-xl font-bold mb-4 text-nexflow-teal">3. Consumption</h2>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm border-collapse">
+                        <thead>
+                            <tr class="bg-[#2C3440]">
+                                <th class="p-2 text-left border border-gray-700">Date</th>
+                                <th class="p-2 text-left border border-gray-700">Material</th>
+                                <th class="p-2 text-right border border-gray-700">Qty Consumed</th>
+                                <th class="p-2 text-center border border-gray-700">Unit</th>
+                                <th class="p-2 text-left border border-gray-700">Notes</th>
+                            </tr>
+                        </thead>
+                        <tbody id="consumptionBody">
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- SECTION 4: Dispatch Summary -->
+            <section class="mb-8">
+                <h2 class="text-xl font-bold mb-4 text-nexflow-teal">4. Dispatch Summary</h2>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm border-collapse">
+                        <thead>
+                            <tr class="bg-[#2C3440]">
+                                <th class="p-2 text-left border border-gray-700">Challan No</th>
+                                <th class="p-2 text-left border border-gray-700">Date</th>
+                                <th class="p-2 text-left border border-gray-700">Client</th>
+                                <th class="p-2 text-center border border-gray-700">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dispatchBody">
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- SECTION 5: Closing Stock -->
+            <section class="mb-8">
+                <h2 class="text-xl font-bold mb-4 text-nexflow-teal">5. Closing Stock</h2>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm border-collapse">
+                        <thead>
+                            <tr class="bg-[#2C3440]">
+                                <th class="p-2 text-left border border-gray-700">Material</th>
+                                <th class="p-2 text-center border border-gray-700">Unit</th>
+                                <th class="p-2 text-right border border-gray-700">Opening</th>
+                                <th class="p-2 text-right border border-gray-700">GRN</th>
+                                <th class="p-2 text-right border border-gray-700">Consumption</th>
+                                <th class="p-2 text-right border border-gray-700">Adjustments</th>
+                                <th class="p-2 text-right border border-gray-700">Closing</th>
+                                <th class="p-2 text-center border border-gray-700">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="closingStockBody">
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- SECTION 6: Supplier Summary -->
+            <section class="mb-8">
+                <h2 class="text-xl font-bold mb-4 text-nexflow-teal">6. Supplier Summary</h2>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm border-collapse">
+                        <thead>
+                            <tr class="bg-[#2C3440]">
+                                <th class="p-2 text-left border border-gray-700">Supplier</th>
+                                <th class="p-2 text-center border border-gray-700">No. of GRNs</th>
+                                <th class="p-2 text-right border border-gray-700">Total Qty</th>
+                            </tr>
+                        </thead>
+                        <tbody id="supplierSummaryBody">
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
     </main>
+
+    <script>
+        let tenantId = null;
+        let fromDate = null;
+        let toDate = null;
+
+        async function init() {
+            const loadingSpinner = document.getElementById('loadingSpinner');
+            const errorState = document.getElementById('errorState');
+            const reportContent = document.getElementById('reportContent');
+
+            try {
+                // Get URL params
+                const urlParams = new URLSearchParams(window.location.search);
+                tenantId = urlParams.get('tenant_id');
+                fromDate = urlParams.get('from');
+                toDate = urlParams.get('to');
+
+                if (!tenantId || !fromDate || !toDate) {
+                    throw new Error('Missing required parameters: tenant_id, from, to');
+                }
+
+                // Check auth
+                const authed = await checkAuthAndTenant(tenantId);
+                if (!authed) return;
+
+                // Fetch all data
+                await Promise.all([
+                    loadTenantSettings(),
+                    loadReportData()
+                ]);
+
+                // Hide loading, show report
+                loadingSpinner.classList.add('hidden');
+                reportContent.classList.remove('hidden');
+            } catch (error) {
+                console.error('Error initializing report:', error);
+                loadingSpinner.classList.add('hidden');
+                errorState.classList.remove('hidden');
+                document.getElementById('errorText').textContent = error.message;
+            }
+        }
+
+        async function loadTenantSettings() {
+            const { data, error } = await window.supabase
+                .from('p2_tenant_settings')
+                .select('*')
+                .eq('tenant_id', tenantId)
+                .maybeSingle();
+
+            if (error) throw error;
+
+            if (!data) {
+                // Settings not configured - show message but continue
+                document.getElementById('companyName').textContent = 'Company settings not configured. Please update Settings.';
+                document.getElementById('companyAddress1').textContent = '';
+                document.getElementById('companyAddress2').textContent = '';
+                document.getElementById('companyMobile').textContent = '';
+                document.getElementById('companyGSTIN').textContent = '';
+            } else {
+                // Populate cover section
+                document.getElementById('companyName').textContent = data.company_name || 'Company Name';
+                document.getElementById('companyAddress1').textContent = data.address_line1 || '';
+                document.getElementById('companyAddress2').textContent = data.address_line2 || '';
+                document.getElementById('companyMobile').textContent = data.mobile_number ? `Mobile: ${data.mobile_number}` : '';
+                document.getElementById('companyGSTIN').textContent = data.gstin ? `GSTIN: ${data.gstin}` : '';
+            }
+
+            document.getElementById('reportPeriod').textContent = `Period: ${formatDate(fromDate)} to ${formatDate(toDate)}`;
+            document.getElementById('generatedDate').textContent = `Generated on: ${formatDate(new Date().toISOString().split('T')[0])}`;
+        }
+
+        async function loadReportData() {
+            // Fetch all raw materials
+            const { data: materials, error: materialsError } = await window.supabase
+                .from('p2_raw_materials')
+                .select('*')
+                .eq('tenant_id', tenantId)
+                .order('name');
+
+            if (materialsError) throw materialsError;
+
+            // Fetch all stock transactions
+            const { data: transactions, error: transactionsError } = await window.supabase
+                .from('p2_stock_transactions')
+                .select('*')
+                .eq('tenant_id', tenantId)
+                .order('created_at');
+
+            if (transactionsError) throw transactionsError;
+
+            // Fetch all suppliers
+            const { data: suppliers, error: suppliersError } = await window.supabase
+                .from('p2_suppliers')
+                .select('*')
+                .eq('tenant_id', tenantId);
+
+            if (suppliersError) throw suppliersError;
+
+            // Fetch confirmed dispatches in period
+            const { data: dispatches, error: dispatchesError } = await window.supabase
+                .from('p2_dispatch_orders')
+                .select('*')
+                .eq('tenant_id', tenantId)
+                .eq('status', 'confirmed')
+                .gte('dispatch_date', fromDate)
+                .lte('dispatch_date', toDate)
+                .order('dispatch_date');
+
+            if (dispatchesError) throw dispatchesError;
+
+            // Build material map
+            const materialMap = {};
+            materials.forEach(m => {
+                materialMap[m.id] = m;
+            });
+
+            // Build supplier map
+            const supplierMap = {};
+            suppliers.forEach(s => {
+                supplierMap[s.id] = s;
+            });
+
+            // Filter transactions by date
+            const fromDateTime = new Date(fromDate + ' 00:00:00').getTime();
+            const toDateTime = new Date(toDate + ' 23:59:59').getTime();
+
+            const openingTransactions = transactions.filter(t => {
+                const txTime = new Date(t.created_at).getTime();
+                return txTime < fromDateTime;
+            });
+
+            const periodTransactions = transactions.filter(t => {
+                const txTime = new Date(t.created_at).getTime();
+                return txTime >= fromDateTime && txTime <= toDateTime;
+            });
+
+            // SECTION 1: Opening Stock
+            renderOpeningStock(materials, openingTransactions);
+
+            // SECTION 2: Purchases / GRN
+            renderGRN(periodTransactions, materialMap, supplierMap);
+
+            // SECTION 3: Consumption
+            renderConsumption(periodTransactions, materialMap);
+
+            // SECTION 4: Dispatch Summary
+            renderDispatchSummary(dispatches);
+
+            // SECTION 5: Closing Stock
+            renderClosingStock(materials, transactions, fromDateTime, toDateTime);
+
+            // SECTION 6: Supplier Summary
+            renderSupplierSummary(periodTransactions, supplierMap);
+        }
+
+        function renderOpeningStock(materials, openingTransactions) {
+            const tbody = document.getElementById('openingStockBody');
+            tbody.innerHTML = '';
+
+            materials.forEach(material => {
+                // Sum transactions before fromDate
+                const openingQty = openingTransactions
+                    .filter(t => t.raw_material_id === material.id)
+                    .reduce((sum, t) => sum + (t.quantity || 0), 0);
+
+                const status = openingQty < (material.min_stock_level || 0) ? 'Low' : 'OK';
+                const statusClass = status === 'Low' ? 'text-red-500' : 'text-nexflow-green';
+
+                const row = document.createElement('tr');
+                row.className = 'border-b border-gray-700';
+                row.innerHTML = `
+                    <td class="p-2 border border-gray-700">${material.name}</td>
+                    <td class="p-2 text-center border border-gray-700">${material.unit}</td>
+                    <td class="p-2 text-right border border-gray-700">${formatNumber(openingQty)}</td>
+                    <td class="p-2 text-right border border-gray-700">${formatNumber(material.min_stock_level || 0)}</td>
+                    <td class="p-2 text-center border border-gray-700 ${statusClass}">${status}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        function renderGRN(periodTransactions, materialMap, supplierMap) {
+            const tbody = document.getElementById('grnBody');
+            tbody.innerHTML = '';
+
+            const grnTransactions = periodTransactions.filter(t => t.transaction_type === 'grn');
+
+            if (grnTransactions.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="p-4 text-center text-gray-400 border border-gray-700">No GRN transactions in this period</td></tr>';
+                return;
+            }
+
+            grnTransactions.forEach(tx => {
+                const material = materialMap[tx.raw_material_id] || {};
+                const supplier = supplierMap[tx.supplier_id] || {};
+
+                const row = document.createElement('tr');
+                row.className = 'border-b border-gray-700';
+                row.innerHTML = `
+                    <td class="p-2 border border-gray-700">${formatDate(tx.created_at)}</td>
+                    <td class="p-2 border border-gray-700">${supplier.name || '-'}</td>
+                    <td class="p-2 border border-gray-700">${material.name || '-'}</td>
+                    <td class="p-2 text-right border border-gray-700">${formatNumber(tx.quantity)}</td>
+                    <td class="p-2 text-center border border-gray-700">${material.unit || '-'}</td>
+                    <td class="p-2 border border-gray-700">${tx.invoice_no || '-'}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        function renderConsumption(periodTransactions, materialMap) {
+            const tbody = document.getElementById('consumptionBody');
+            tbody.innerHTML = '';
+
+            const consumptionTransactions = periodTransactions.filter(t => t.transaction_type === 'consumption');
+
+            if (consumptionTransactions.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-400 border border-gray-700">No consumption in this period</td></tr>';
+                return;
+            }
+
+            consumptionTransactions.forEach(tx => {
+                const material = materialMap[tx.raw_material_id] || {};
+
+                const row = document.createElement('tr');
+                row.className = 'border-b border-gray-700';
+                row.innerHTML = `
+                    <td class="p-2 border border-gray-700">${formatDate(tx.created_at)}</td>
+                    <td class="p-2 border border-gray-700">${material.name || '-'}</td>
+                    <td class="p-2 text-right border border-gray-700">${formatNumber(Math.abs(tx.quantity))}</td>
+                    <td class="p-2 text-center border border-gray-700">${material.unit || '-'}</td>
+                    <td class="p-2 border border-gray-700">${tx.notes || '-'}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        function renderDispatchSummary(dispatches) {
+            const tbody = document.getElementById('dispatchBody');
+            tbody.innerHTML = '';
+
+            if (dispatches.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="p-4 text-center text-gray-400 border border-gray-700">No confirmed dispatches in this period</td></tr>';
+                return;
+            }
+
+            dispatches.forEach(dispatch => {
+                const row = document.createElement('tr');
+                row.className = 'border-b border-gray-700';
+                row.innerHTML = `
+                    <td class="p-2 border border-gray-700">${dispatch.challan_number || '-'}</td>
+                    <td class="p-2 border border-gray-700">${formatDate(dispatch.dispatch_date || dispatch.created_at)}</td>
+                    <td class="p-2 border border-gray-700">${dispatch.client_name}</td>
+                    <td class="p-2 text-center border border-gray-700">
+                        <span class="px-2 py-1 rounded text-xs bg-nexflow-green">Confirmed</span>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        function renderClosingStock(materials, allTransactions, fromDateTime, toDateTime) {
+            const tbody = document.getElementById('closingStockBody');
+            tbody.innerHTML = '';
+
+            materials.forEach(material => {
+                // Opening: all transactions before fromDate
+                const openingQty = allTransactions
+                    .filter(t => {
+                        const txTime = new Date(t.created_at).getTime();
+                        return txTime < fromDateTime && t.raw_material_id === material.id;
+                    })
+                    .reduce((sum, t) => sum + (t.quantity || 0), 0);
+
+                // GRN in period
+                const grnQty = allTransactions
+                    .filter(t => {
+                        const txTime = new Date(t.created_at).getTime();
+                        return txTime >= fromDateTime && txTime <= toDateTime &&
+                               t.raw_material_id === material.id &&
+                               t.transaction_type === 'grn';
+                    })
+                    .reduce((sum, t) => sum + (t.quantity || 0), 0);
+
+                // Consumption in period
+                const consumptionQty = allTransactions
+                    .filter(t => {
+                        const txTime = new Date(t.created_at).getTime();
+                        return txTime >= fromDateTime && txTime <= toDateTime &&
+                               t.raw_material_id === material.id &&
+                               t.transaction_type === 'consumption';
+                    })
+                    .reduce((sum, t) => sum + (t.quantity || 0), 0);
+
+                // Adjustments in period
+                const adjustmentsQty = allTransactions
+                    .filter(t => {
+                        const txTime = new Date(t.created_at).getTime();
+                        return txTime >= fromDateTime && txTime <= toDateTime &&
+                               t.raw_material_id === material.id &&
+                               t.transaction_type === 'adjustment';
+                    })
+                    .reduce((sum, t) => sum + (t.quantity || 0), 0);
+
+                const closingQty = openingQty + grnQty + consumptionQty + adjustmentsQty;
+
+                const status = closingQty < (material.min_stock_level || 0) ? 'Low' : 'OK';
+                const statusClass = status === 'Low' ? 'text-red-500' : 'text-nexflow-green';
+
+                const row = document.createElement('tr');
+                row.className = 'border-b border-gray-700';
+                row.innerHTML = `
+                    <td class="p-2 border border-gray-700">${material.name}</td>
+                    <td class="p-2 text-center border border-gray-700">${material.unit}</td>
+                    <td class="p-2 text-right border border-gray-700">${formatNumber(openingQty)}</td>
+                    <td class="p-2 text-right border border-gray-700">${formatNumber(grnQty)}</td>
+                    <td class="p-2 text-right border border-gray-700">${formatNumber(Math.abs(consumptionQty))}</td>
+                    <td class="p-2 text-right border border-gray-700">${formatNumber(adjustmentsQty)}</td>
+                    <td class="p-2 text-right border border-gray-700">${formatNumber(closingQty)}</td>
+                    <td class="p-2 text-center border border-gray-700 ${statusClass}">${status}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        function renderSupplierSummary(periodTransactions, supplierMap) {
+            const tbody = document.getElementById('supplierSummaryBody');
+            tbody.innerHTML = '';
+
+            const grnTransactions = periodTransactions.filter(t => t.transaction_type === 'grn');
+
+            if (grnTransactions.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3" class="p-4 text-center text-gray-400 border border-gray-700">No GRN transactions in this period</td></tr>';
+                return;
+            }
+
+            // Group by supplier
+            const supplierGroups = {};
+            grnTransactions.forEach(tx => {
+                const supplierId = tx.supplier_id || 'unknown';
+                if (!supplierGroups[supplierId]) {
+                    supplierGroups[supplierId] = {
+                        count: 0,
+                        totalQty: 0
+                    };
+                }
+                supplierGroups[supplierId].count += 1;
+                supplierGroups[supplierId].totalQty += (tx.quantity || 0);
+            });
+
+            // Render
+            Object.keys(supplierGroups).forEach(supplierId => {
+                const supplier = supplierMap[supplierId] || { name: 'Unknown Supplier' };
+                const group = supplierGroups[supplierId];
+
+                const row = document.createElement('tr');
+                row.className = 'border-b border-gray-700';
+                row.innerHTML = `
+                    <td class="p-2 border border-gray-700">${supplier.name}</td>
+                    <td class="p-2 text-center border border-gray-700">${group.count}</td>
+                    <td class="p-2 text-right border border-gray-700">${formatNumber(group.totalQty)}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        // Print button handler
+        document.getElementById('printBtn').addEventListener('click', () => {
+            window.print();
+        });
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
 </body>
 </html>

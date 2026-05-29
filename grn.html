@@ -5,7 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Receive Materials | Nexflow P2</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%231A1F2E'/><text y='.9em' font-size='80' x='10' fill='%2300BCD4'>N</text></svg>">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="js/supabase-client.js"></script>
+    <script src="js/auth.js"></script>
     <script src="js/utils.js"></script>
     <script src="js/navbar.js"></script>
     <script>
@@ -24,19 +27,9 @@
             }
         }
     </script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body class="bg-nexflow-dark-bg text-nexflow-text min-h-screen">
-    <nav class="bg-nexflow-teal p-4 flex justify-between items-center">
-        <span id="navTitle" data-en="Nexflow Automations" data-mr="नेक्सफ्लो ऑटोमेशन्स" class="text-xl font-bold text-white">Nexflow Automations</span>
-        <div class="flex items-center space-x-4">
-            <button id="lang-toggle" class="bg-[#00BCD4] text-white p-2 rounded text-sm">
-                मराठी
-            </button>
-            <div id="navbar-user-info"></div>
-        </div>
-    </nav>
-
+    <div id="navbar-container"></div>
     <main class="container mx-auto px-4 py-6 max-w-md">
         <h1 id="pageTitle" data-en="Goods Received Note" data-mr="माल प्राप्ती नोंद" class="text-2xl font-bold mb-6 text-center">
             Goods Received Note
@@ -60,7 +53,7 @@
                     Supplier
                 </label>
                 <div class="flex items-center space-x-2">
-                    <select id="supplierSelect" class="w-full p-2 rounded bg-[#2C3440] text-white" required>
+                    <select id="supplierSelect" class="w-full p-2 rounded bg-[#2C3440] text-white">
                         <option id="supplierDefaultOption" data-en="Select Supplier" data-mr="पुरवठादार निवडा" value="">
                             Select Supplier
                         </option>
@@ -85,15 +78,17 @@
                     </h2>
                     <div class="space-y-4">
                         <input type="text" id="newSupplierName"
+                        name="newSupplierName"
+                        name="newSupplierMobile"
                                data-en="Supplier Name"
                                data-mr="पुरवठादार नाव"
                                placeholder="Supplier Name"
-                               class="w-full p-2 rounded bg-[#3A4553] text-white" required>
+                               class="w-full p-2 rounded bg-[#3A4553] text-white">
                         <input type="tel" id="newSupplierMobile"
                                data-en="Mobile Number"
                                data-mr="मोबाइल क्रमांक"
                                placeholder="Mobile Number"
-                               class="w-full p-2 rounded bg-[#3A4553] text-white" required>
+                               class="w-full p-2 rounded bg-[#3A4553] text-white">
                         <div class="flex space-x-2">
                             <button type="button" id="saveSupplierBtn"
                                     data-en="Save"
@@ -120,7 +115,7 @@
                        class="block mb-2 text-sm font-medium">
                     Date
                 </label>
-                <input type="date" id="grnDate" class="w-full p-2 rounded bg-[#2C3440] text-white" required>
+                <input type="date" id="grnDate" class="w-full p-2 rounded bg-[#2C3440] text-white">
             </div>
 
             <!-- Multi-line Material Entry Table -->
@@ -208,11 +203,6 @@
     </main>
 
     <script>
-        const { createClient } = supabase;
-        const SUPABASE_URL = 'https://qymojfnyoklcqecwotfu.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF5bW9qZm55b2tsY3FlY3dvdGZ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgzNTczNjIsImV4cCI6MjA2MzkzMzM2Mn0.nMqXSlAYLFcpkFNnHSv71eMxKBqNhsX1xGf0rnS6Ewc';
-        const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
         let materials = [];
         let suppliers = [];
         let tenantId = null;
@@ -254,12 +244,14 @@
             const grnForm = document.getElementById('grnForm');
 
             try {
-                const { data: { user } } = await sb.auth.getUser();
-                if (!user) {
-                    window.location.href = '/login.html';
-                    return;
+                const authed = await checkAuth();
+                if (!authed) return;
+
+                const { data: { user } } = await window.supabase.auth.getUser();
+                if (!user || !user.id) {
+                    throw new Error('User or tenant ID not found');
                 }
-                tenantId = user.user_metadata.tenant_id;
+                tenantId = user.id;
 
                 // GUARD 5: Add timeout to data loading
                 const loadPromise = Promise.all([
@@ -291,7 +283,12 @@
         }
 
         async function loadSuppliers() {
-            const { data, error } = await sb
+            if (!tenantId) {
+                console.error('Tenant ID not available');
+                return;
+            }
+
+            const { data, error } = await window.supabase
                 .from('p2_suppliers')
                 .select('id, name')
                 .eq('tenant_id', tenantId)
@@ -316,7 +313,12 @@
         }
 
         async function loadMaterials() {
-            const { data, error } = await sb
+            if (!tenantId) {
+                console.error('Tenant ID not available');
+                return;
+            }
+
+            const { data, error } = await window.supabase
                 .from('p2_raw_materials')
                 .select('id, name, unit')
                 .eq('tenant_id', tenantId)
@@ -497,6 +499,8 @@
 
             const validRows = grnRows.filter(row => row.material_id && row.quantity && parseFloat(row.quantity) > 0);
 
+           const { data: { user } } = await window.supabase.auth.getUser();
+const tenantId = user.id;
             if (validRows.length === 0) {
                 const lang = localStorage.getItem('nexflow_lang') || 'en';
                 alert(lang === 'mr' ? 'कृपया किमान एक वैध ओळ जोडा' : 'Please add at least one valid material with quantity');
@@ -505,7 +509,7 @@
 
             const transactions = validRows.map(row => ({
                 tenant_id: tenantId,
-                material_id: row.material_id,
+                raw_material_id: row.material_id,
                 transaction_type: 'grn',
                 quantity: parseFloat(row.quantity),
                 supplier_id: supplierId,
@@ -514,7 +518,7 @@
             }));
 
             try {
-                const { error } = await sb
+                const { error } = await window.supabase
                     .from('p2_stock_transactions')
                     .insert(transactions);
 
@@ -558,7 +562,7 @@
             }
 
             try {
-                const { data, error } = await sb
+                const { data, error } = await window.supabase
                     .from('p2_suppliers')
                     .insert({
                         tenant_id: tenantId,
@@ -584,7 +588,7 @@
         });
 
         async function loadRecentGRN() {
-            const { data, error } = await sb
+            const { data, error } = await window.supabase
                 .from('p2_stock_transactions')
                 .select(`
                     id,
@@ -623,10 +627,6 @@
         document.addEventListener('DOMContentLoaded', () => {
             const saved = localStorage.getItem('nexflow_lang') || 'en';
             applyLang(saved);
-            const btn = document.getElementById('lang-toggle');
-            if (btn) btn.addEventListener('click', () => {
-                applyLang(localStorage.getItem('nexflow_lang') === 'mr' ? 'en' : 'mr');
-            });
 
             init();
         });

@@ -31,19 +31,7 @@
     </script>
 </head>
 <body class="bg-nexflow-dark-bg text-nexflow-text min-h-screen flex flex-col">
-    <!-- Navbar -->
-    <nav class="bg-nexflow-teal p-4 flex justify-between items-center">
-        <div class="text-xl font-bold text-white" data-en="Nexflow Automations" data-mr="नेक्सफ्लो ऑटोमेशन्स">Nexflow Automations</div>
-        <div class="flex items-center space-x-4">
-            <a href="grn.html" class="text-white hover:text-gray-200" data-en="GRN" data-mr="GRN">GRN</a>
-            <a href="dispatch.html" class="text-white hover:text-gray-200" data-en="Dispatch" data-mr="डिस्पॅच">Dispatch</a>
-            <a href="products.html" class="text-white hover:text-gray-200" data-en="Products" data-mr="उत्पादने">Products</a>
-            <a href="ca-report.html" class="text-white hover:text-gray-200" data-en="Reports" data-mr="अहवाल">Reports</a>
-            <a href="settings.html" class="text-white hover:text-gray-200" data-en="Settings" data-mr="सेटिंग्ज">Settings</a>
-            <div id="navbar-user-info"></div>
-        </div>
-    </nav>
-
+    <div id="navbar-container"></div>
     <!-- Dashboard Content -->
     <main class="container mx-auto px-4 py-6 flex-grow">
         <!-- GUARD 6: First login welcome banner -->
@@ -106,51 +94,6 @@
     </main>
 
     <script>
-        // Supabase configuration
-        const supabaseUrl = 'https://nexflow-p2.supabase.co';
-        const supabaseKey = 'YOUR_SUPABASE_ANON_KEY_HERE';
-        const supabase = supabase.createClient(supabaseUrl, supabaseKey);
-
-        // Function to create Supabase RPC for stock levels
-        async function setupStockLevelsRPC() {
-            try {
-                // Create a stored procedure in Supabase
-                const { data, error } = await supabase.rpc('create_get_current_stock_levels', {
-                    sql: `
-                    CREATE OR REPLACE FUNCTION get_current_stock_levels()
-                    RETURNS TABLE (
-                        material_name TEXT,
-                        current_stock NUMERIC,
-                        min_stock_level NUMERIC,
-                        unit TEXT
-                    ) AS $$
-                    BEGIN
-                        RETURN QUERY
-                        SELECT
-                            r.name AS material_name,
-                            COALESCE(SUM(t.quantity), 0) AS current_stock,
-                            r.min_stock_level,
-                            r.unit
-                        FROM
-                            p2_raw_materials r
-                        LEFT JOIN
-                            p2_stock_transactions t ON r.id = t.raw_material_id
-                        WHERE
-                            r.tenant_id = auth.uid()
-                        GROUP BY
-                            r.id, r.name, r.min_stock_level, r.unit;
-                    END;
-                    $$ LANGUAGE plpgsql SECURITY DEFINER;
-                    `
-                });
-
-                if (error) throw error;
-                console.log('Stock levels RPC created successfully');
-            } catch (error) {
-                console.error('Error creating stock levels RPC:', error);
-            }
-        }
-
         let allStockLevels = [];
 
         // Function to render stock level cards
@@ -213,13 +156,13 @@
         // GUARD 6: Check for first login and show welcome banner
         async function checkFirstLogin() {
             try {
-                const { data: { user } } = await supabase.auth.getUser();
+                const { data: { user } } = await window.supabase.auth.getUser();
                 if (!user) return;
 
-                const tenantId = user.user_metadata.tenant_id || localStorage.getItem('nexflow_tenant_id');
+                const tenantId = user.id || localStorage.getItem('nexflow_tenant_id');
                 if (!tenantId) return;
 
-                const { data: settings, error } = await supabase
+                const { data: settings, error } = await window.supabase
                     .from('p2_tenant_settings')
                     .select('company_name')
                     .eq('tenant_id', tenantId)
@@ -245,17 +188,47 @@
             errorState.classList.add('hidden');
 
             try {
-                // GUARD 5: Add 10-second timeout
-                const fetchPromise = supabase.rpc('get_current_stock_levels');
-                const timeoutPromise = new Promise((_, reject) =>
-                    setTimeout(() => reject(new Error('Request timeout')), 10000)
-                );
+                const { data: { user } } = await window.supabase.auth.getUser();
+                if (!user) {
+                    throw new Error('User not authenticated');
+                }
 
-                const { data, error } = await Promise.race([fetchPromise, timeoutPromise]);
+                const tenantId = user.id || localStorage.getItem('nexflow_tenant_id');
+                if (!tenantId) {
+                    throw new Error('Tenant ID not found');
+                }
 
-                if (error) throw error;
+                // Fetch raw materials
+                const { data: materials, error: matError } = await window.supabase
+                    .from('p2_raw_materials')
+                    .select('id, name, unit, min_stock_level')
+                    .eq('tenant_id', tenantId)
+                    .eq('is_active', true);
 
-                allStockLevels = data || [];
+                if (matError) throw matError;
+
+                // Fetch all stock transactions
+                const { data: transactions, error: txError } = await window.supabase
+                    .from('p2_stock_transactions')
+                    .select('raw_material_id, quantity')
+                    .eq('tenant_id', tenantId);
+
+                if (txError) throw txError;
+
+                // Calculate current stock for each material
+                const stockMap = {};
+                transactions.forEach(tx => {
+                    if (!stockMap[tx.raw_material_id]) stockMap[tx.raw_material_id] = 0;
+                    stockMap[tx.raw_material_id] += Number(tx.quantity);
+                });
+
+                allStockLevels = materials.map(mat => ({
+                    material_name: mat.name,
+                    unit: mat.unit,
+                    min_stock_level: mat.min_stock_level,
+                    current_stock: stockMap[mat.id] || 0
+                }));
+
                 renderStockLevels(allStockLevels);
 
                 // Hide loading, show search
@@ -272,37 +245,11 @@
             }
         }
 
-        // Search and clear functionality
-        document.addEventListener('DOMContentLoaded', () => {
-            const searchInput = document.getElementById('materialSearch');
-            const clearBtn = document.getElementById('clearSearch');
-
-            searchInput.addEventListener('input', (e) => {
-                const searchTerm = e.target.value;
-                if (searchTerm.length > 0) {
-                    clearBtn.classList.remove('hidden');
-                } else {
-                    clearBtn.classList.add('hidden');
-                }
-                filterMaterials(searchTerm);
-            });
-
-            clearBtn.addEventListener('click', () => {
-                searchInput.value = '';
-                clearBtn.classList.add('hidden');
-                filterMaterials('');
-            });
-        });
-
         // Initialize page
         async function initPage() {
-            // GUARD 6: Check for first login
+            const authed = await checkAuth();
+            if (!authed) return;
             await checkFirstLogin();
-
-            // First, ensure the RPC is set up
-            await setupStockLevelsRPC();
-
-            // Then fetch stock levels
             await fetchStockLevels();
         }
 
@@ -326,9 +273,31 @@
 
         window.applyLang = applyLang;
 
+        // Single DOMContentLoaded listener for both search and language
         document.addEventListener('DOMContentLoaded', () => {
+            // Language setup
             const saved = localStorage.getItem('nexflow_lang') || 'en';
             applyLang(saved);
+
+            // Search functionality
+            const searchInput = document.getElementById('materialSearch');
+            const clearBtn = document.getElementById('clearSearch');
+
+            searchInput.addEventListener('input', (e) => {
+                const searchTerm = e.target.value;
+                if (searchTerm.length > 0) {
+                    clearBtn.classList.remove('hidden');
+                } else {
+                    clearBtn.classList.add('hidden');
+                }
+                filterMaterials(searchTerm);
+            });
+
+            clearBtn.addEventListener('click', () => {
+                searchInput.value = '';
+                clearBtn.classList.add('hidden');
+                filterMaterials('');
+            });
         });
     </script>
 </body>

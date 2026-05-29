@@ -8,6 +8,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="js/supabase-client.js"></script>
+    <script src="js/auth.js"></script>
     <script src="js/utils.js"></script>
     <script>
         tailwind.config = {
@@ -204,16 +205,16 @@
         // Load challan data
         async function loadChallan() {
             try {
-                const { data: { user } } = await supabase.auth.getUser();
+                const { data: { user } } = await window.supabase.auth.getUser();
                 if (!user) {
                     window.location.href = 'login.html';
                     return;
                 }
 
-                const tenantId = user.user_metadata.tenant_id;
+                const tenantId = user.id;
 
                 // Fetch dispatch order
-                const { data: dispatchOrder, error: orderError } = await supabase
+                const { data: dispatchOrder, error: orderError } = await window.supabase
                     .from('p2_dispatch_orders')
                     .select('*')
                     .eq('id', dispatchOrderId)
@@ -223,7 +224,7 @@
                 if (orderError) throw orderError;
 
                 // Fetch dispatch items with product details
-                const { data: dispatchItems, error: itemsError } = await supabase
+                const { data: dispatchItems, error: itemsError } = await window.supabase
                     .from('p2_dispatch_items')
                     .select(`
                         *,
@@ -235,7 +236,7 @@
                 if (itemsError) throw itemsError;
 
                 // Fetch tenant settings
-                const { data: tenantSettings, error: settingsError } = await supabase
+                const { data: tenantSettings, error: settingsError } = await window.supabase
                     .from('p2_tenant_settings')
                     .select('*')
                     .eq('tenant_id', tenantId)
@@ -292,7 +293,7 @@
             document.getElementById('challan-no').textContent = challanNumber;
             document.getElementById('challan-date').textContent = formatDate(order.dispatch_date);
             document.getElementById('po-no').textContent = order.po_number || 'N/A';
-            document.getElementById('client-challan-ref').textContent = order.client_challan_ref || 'N/A';
+            document.getElementById('client-challan-ref').textContent = order.your_challan_ref || '-';
 
             // Vehicle Number (show only if exists)
             if (order.vehicle_number) {
@@ -310,11 +311,11 @@
                 row.innerHTML = `
                     <td class="border border-black p-2 text-center">${index + 1}</td>
                     <td class="border border-black p-2">${item.p2_products?.name || 'Unknown Product'}</td>
-                    <td class="border border-black p-2 text-right">${formatNumber(item.quantity)}</td>
-                    <td class="border border-black p-2 text-center">${item.p2_products?.unit || ''}</td>
+                    <td class="border border-black p-2 text-right">${formatNumber(item.qty_dispatched)}</td>
+                    <td class="border border-black p-2 text-center">${item.unit || item.p2_products?.unit || ''}</td>
                 `;
                 itemsBody.appendChild(row);
-                totalQuantity += parseFloat(item.quantity) || 0;
+                totalQuantity += parseFloat(item.qty_dispatched) || 0;
             });
 
             // Total

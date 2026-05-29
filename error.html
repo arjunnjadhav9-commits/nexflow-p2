@@ -6,6 +6,7 @@
     <title>Error | Nexflow P2</title>
     <link rel="icon" href="/public/assets/favicon.ico" type="image/x-icon">
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="js/navbar.js"></script>
     <script>
         tailwind.config = {
             darkMode: 'class',
@@ -24,17 +25,7 @@
     </script>
 </head>
 <body class="bg-nexflow-dark-bg text-nexflow-text min-h-screen flex flex-col">
-    <!-- Navbar -->
-    <nav class="bg-nexflow-teal p-4 flex justify-between items-center">
-        <div class="flex items-center">
-            <img src="/public/assets/nexflow_logo_transparent.png" alt="Nexflow Logo" style="height: 36px;" class="mr-2">
-            <div class="text-xl font-bold text-white" data-en="Nexflow Automations" data-mr="नेक्सफ्लो ऑटोमेशन्स">Nexflow Automations</div>
-        </div>
-        <div class="flex items-center space-x-4">
-            <button id="lang-toggle" class="bg-white text-nexflow-teal px-4 py-2 rounded text-sm" data-en="मराठी" data-mr="English">मराठी</button>
-        </div>
-    </nav>
-
+    <div id="navbar-container"></div>
     <!-- Error Content -->
     <main class="container mx-auto px-4 py-12 flex-grow flex items-center justify-center">
         <div class="bg-gray-800 rounded-lg p-8 max-w-md w-full text-center">

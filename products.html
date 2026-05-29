@@ -6,6 +6,9 @@
     <title>Products & BOM | Nexflow P2</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%231A1F2E'/><text y='.9em' font-size='80' x='10' fill='%2300BCD4'>N</text></svg>">
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/supabase-client.js"></script>
+    <script src="js/auth.js"></script>
     <script src="js/utils.js"></script>
     <script>
         tailwind.config = {
@@ -23,46 +26,26 @@
             }
         }
     </script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="js/auth.js"></script>
     <script src="js/navbar.js"></script>
 </head>
 <body class="bg-nexflow-dark-bg text-nexflow-text">
-    <nav class="bg-nexflow-teal p-4 flex justify-between items-center">
-        <div class="flex items-center">
-            <img src="public/assets/nexflow_logo_transparent.png" alt="Nexflow Logo" class="h-9 mr-3">
-            <div class="text-xl font-bold text-white">Nexflow Automations</div>
-        </div>
-        <div id="navbar-user-info" class="flex items-center">
-            <!-- User info will be dynamically loaded here -->
-        </div>
-    </nav>
-
-    <!-- Language Toggle Button -->
-    <div class="text-right p-2">
-        <button id="lang-toggle" class="bg-nexflow-teal text-white px-4 py-2 rounded" data-en="मराठी" data-mr="English">मराठी</button>
-    </div>
-
+    <div id="navbar-container"></div>
     <main class="container mx-auto px-4 py-6">
         <h1 class="text-3xl font-bold mb-6" data-en="Products & Bill of Materials" data-mr="उत्पादने आणि बीओएम">Products & Bill of Materials</h1>
 
-        <!-- GUARD 5: Loading Spinner -->
         <div id="loadingSpinner" class="flex justify-center items-center py-12">
             <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-nexflow-teal"></div>
         </div>
 
-        <!-- GUARD 5: Error State -->
         <div id="errorState" class="hidden bg-red-900 border border-red-700 rounded p-4 mb-6">
             <p class="font-bold" data-en="Could not load data" data-mr="डेटा लोड करू शकला नाही">Could not load data</p>
             <p class="text-sm" data-en="Check your connection and refresh the page." data-mr="तुमचे कनेक्शन तपासा आणि पृष्ठ रीफ्रेश करा.">Check your connection and refresh the page.</p>
         </div>
 
-        <!-- Section 1: Products Management -->
         <div id="productsContent" class="hidden bg-gray-800 rounded-lg p-6 mb-6">
             <h2 class="text-2xl font-bold mb-4" data-en="Products" data-mr="उत्पादने">Products</h2>
 
             <div class="grid md:grid-cols-2 gap-6 mb-6">
-                <!-- Add Product Form -->
                 <div class="bg-gray-700 p-6 rounded">
                     <h3 class="text-xl mb-4" data-en="Add New Product" data-mr="नवीन उत्पादन जोडा">Add New Product</h3>
                     <form id="add-product-form" class="space-y-4">
@@ -103,7 +86,6 @@
                     </form>
                 </div>
 
-                <!-- Products List -->
                 <div class="bg-gray-700 p-6 rounded">
                     <h3 class="text-xl mb-4" data-en="Products List" data-mr="उत्पादनांची यादी">Products List</h3>
                     <div class="overflow-x-auto">
@@ -116,15 +98,13 @@
                                 </tr>
                             </thead>
                             <tbody id="products-list">
-                                <!-- Dynamically populated -->
-                            </tbody>
+                                </tbody>
                         </table>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Section 2: Bill of Materials (BOM) -->
         <div id="bomContent" class="hidden bg-gray-800 rounded-lg p-6">
             <h2 class="text-2xl font-bold mb-4" data-en="Bill of Materials (BOM)" data-mr="बिल ऑफ मटेरियल्स (BOM)">Bill of Materials (BOM)</h2>
 
@@ -138,7 +118,6 @@
                 </p>
             </div>
 
-            <!-- Select Product to Manage BOM -->
             <div class="mb-6">
                 <label class="block mb-2 text-sm font-medium" data-en="Select Product to Manage BOM" data-mr="BOM व्यवस्थापित करण्यासाठी उत्पादन निवडा">Select Product to Manage BOM</label>
                 <select id="bom-product-select" class="w-full md:w-1/2 p-3 bg-gray-700 rounded text-white">
@@ -146,10 +125,8 @@
                 </select>
             </div>
 
-            <!-- BOM Details Container -->
             <div id="bom-details" class="hidden">
                 <div class="grid md:grid-cols-2 gap-6">
-                    <!-- Current BOM Table -->
                     <div class="bg-gray-700 p-6 rounded">
                         <h3 class="text-xl mb-4" data-en="Current Recipe" data-mr="सध्याची रेसिपी">Current Recipe</h3>
                         <div id="bom-product-name" class="text-lg font-semibold mb-4 text-nexflow-teal"></div>
@@ -164,8 +141,7 @@
                                     </tr>
                                 </thead>
                                 <tbody id="bom-list">
-                                    <!-- Dynamically populated -->
-                                </tbody>
+                                    </tbody>
                             </table>
                         </div>
                         <div id="bom-empty" class="text-center py-8 text-nexflow-muted hidden">
@@ -173,7 +149,6 @@
                         </div>
                     </div>
 
-                    <!-- Add Ingredient Form -->
                     <div class="bg-gray-700 p-6 rounded">
                         <h3 class="text-xl mb-4" data-en="Add Ingredient" data-mr="घटक जोडा">Add Ingredient</h3>
                         <form id="add-ingredient-form" class="space-y-4">
@@ -186,7 +161,7 @@
 
                             <div>
                                 <label class="block mb-2 text-sm font-medium" data-en="Quantity per Unit of Product" data-mr="उत्पादनाच्या प्रति युनिट प्रमाण">Quantity per Unit of Product</label>
-                                <input type="number" name="qty_per_unit" required step="0.01" min="0.01"
+                                <input type="number" name="qty_per_unit" required step="0.001" min="0.001"
                                     class="w-full p-3 bg-gray-600 rounded text-white"
                                     placeholder="e.g., 2.5"
                                     data-en="e.g., 2.5"
@@ -207,7 +182,6 @@
         </div>
     </main>
 
-    <!-- Edit Product Modal -->
     <div id="edit-product-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
         <div class="bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
             <h3 class="text-xl font-bold mb-4" data-en="Edit Product" data-mr="उत्पादन संपादित करा">Edit Product</h3>
@@ -258,14 +232,9 @@
     </div>
 
     <script>
-        // Supabase configuration
-        const supabaseUrl = 'https://nexflow-p2.supabase.co';
-        const supabaseKey = 'YOUR_SUPABASE_ANON_KEY'; // Replace with actual key
-        const { createClient } = supabase;
-        const supabaseClient = createClient(supabaseUrl, supabaseKey);
-
         let currentTenantId = null;
         let selectedProductId = null;
+        let materialsMap = {}; // Helper map to store raw materials details locally
 
         // Initialize page
         document.addEventListener('DOMContentLoaded', async () => {
@@ -276,9 +245,9 @@
 
             try {
                 await checkAuth();
-                const { data: { user } } = await supabaseClient.auth.getUser();
+                const { data: { user } } = await window.supabase.auth.getUser();
                 if (user) {
-                    currentTenantId = user.user_metadata.tenant_id;
+                    currentTenantId = user.id;
 
                     // GUARD 5: Add timeout to data loading
                     const loadPromise = Promise.all([
@@ -296,12 +265,14 @@
                     loadingSpinner.classList.add('hidden');
                     productsContent.classList.remove('hidden');
                     bomContent.classList.remove('hidden');
+
+                    // Setup context interaction listeners
+                    setupEventListeners();
                 } else {
                     throw new Error('No user found');
                 }
             } catch (error) {
                 console.error('Error initializing products page:', error);
-                // GUARD 5: Show error state
                 loadingSpinner.classList.add('hidden');
                 errorState.classList.remove('hidden');
             }
@@ -321,19 +292,22 @@
 
                 // GUARD 3: Get BOM counts for all products
                 const productIds = data.map(p => p.id);
-                const { data: bomCounts, error: bomError } = await supabaseClient
-                    .from('p2_product_bom')
-                    .select('product_id')
-                    .in('product_id', productIds)
-                    .eq('tenant_id', currentTenantId);
+                let bomCountMap = {};
 
-                if (bomError) console.error('Error fetching BOM counts:', bomError);
+                if (productIds.length > 0) {
+                    const { data: bomCounts, error: bomError } = await supabaseClient
+                        .from('p2_product_bom')
+                        .select('product_id')
+                        .in('product_id', productIds)
+                        .eq('tenant_id', currentTenantId);
 
-                const bomCountMap = {};
-                if (bomCounts) {
-                    bomCounts.forEach(bom => {
-                        bomCountMap[bom.product_id] = (bomCountMap[bom.product_id] || 0) + 1;
-                    });
+                    if (bomError) console.error('Error fetching BOM counts:', bomError);
+
+                    if (bomCounts) {
+                        bomCounts.forEach(bom => {
+                            bomCountMap[bom.product_id] = (bomCountMap[bom.product_id] || 0) + 1;
+                        });
+                    }
                 }
 
                 const tbody = document.getElementById('products-list');
@@ -343,7 +317,6 @@
                 bomSelect.innerHTML = '<option value="" data-en="-- Select a Product --" data-mr="-- उत्पादन निवडा --">-- Select a Product --</option>';
 
                 data.forEach(product => {
-                    // GUARD 3: Check if product has BOM
                     const hasBOM = bomCountMap[product.id] > 0;
                     const noBOMBadge = hasBOM ? '' : '<span class="bg-yellow-600 text-white text-xs px-2 py-1 rounded ml-2" data-en="No BOM ⚠" data-mr="BOM नाही ⚠">No BOM ⚠</span>';
 
@@ -366,24 +339,23 @@
                     `;
                     tbody.appendChild(row);
 
-                    // Add to BOM product select
+                    // Add to BOM product select list
                     const option = document.createElement('option');
                     option.value = product.id;
-                    option.textContent = `${product.name} (${product.unit})`;
-                    option.setAttribute('data-en', `${product.name} (${product.unit})`);
-                    option.setAttribute('data-mr', `${product.name} (${product.unit})`);
+                    option.textContent = product.name;
                     bomSelect.appendChild(option);
                 });
-
-                // Re-apply language
-                const lang = localStorage.getItem('nexflow_lang') || 'en';
-                applyLang(lang);
+                
+                if (window.utils && typeof window.utils.updateLanguage === 'function') {
+                    window.utils.updateLanguage();
+                }
             } catch (error) {
                 console.error('Error loading products:', error);
+                alert('Failed to load products');
             }
         }
 
-        // Load raw materials for ingredient dropdown
+        // Load raw materials into select dropdown and cache them
         async function loadRawMaterials() {
             try {
                 const { data, error } = await supabaseClient
@@ -396,60 +368,229 @@
                 if (error) throw error;
 
                 const select = document.getElementById('ingredient-material-select');
-                select.innerHTML = '<option value="" data-en="-- Select Raw Material --" data-mr="-- कच्चा माल निवडा --">-- Select Raw Material --</option>';
+                select.innerHTML = '<option value="" data-en="-- Select Raw Material --" data-mr="-- कचा माल निवडा --">-- Select Raw Material --</option>';
+
+                materialsMap = {}; // Reset local cache
 
                 data.forEach(material => {
+                    materialsMap[material.id] = material; // Cache complete row metadata
+
                     const option = document.createElement('option');
                     option.value = material.id;
                     option.textContent = `${material.name} (${material.unit})`;
-                    option.setAttribute('data-unit', material.unit);
-                    option.setAttribute('data-en', `${material.name} (${material.unit})`);
-                    option.setAttribute('data-mr', `${material.name} (${material.unit})`);
                     select.appendChild(option);
                 });
-
-                // Re-apply language
-                const lang = localStorage.getItem('nexflow_lang') || 'en';
-                applyLang(lang);
             } catch (error) {
                 console.error('Error loading raw materials:', error);
             }
         }
 
-        // Add product
-        document.getElementById('add-product-form').addEventListener('submit', async (e) => {
-            e.preventDefault();
+        // Setup DOM event listeners safely
+        function setupEventListeners() {
+            // Add Product form handler
+            document.getElementById('add-product-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.target);
+                
+                try {
+                    const { error } = await supabaseClient
+                        .from('p2_products')
+                        .insert({
+                            name: formData.get('name'),
+                            description: formData.get('description'),
+                            unit: formData.get('unit'),
+                            tenant_id: currentTenantId
+                        });
 
-            const formData = new FormData(e.target);
-            const name = formData.get('name').trim();
-            const description = formData.get('description').trim();
-            const unit = formData.get('unit');
+                    if (error) throw error;
 
+                    const lang = localStorage.getItem('nexflow_lang') || 'en';
+                    alert(lang === 'mr' ? 'उत्पादन यशस्वीरित्या जोडले गेले!' : 'Product added successfully!');
+                    e.target.reset();
+                    await loadProducts();
+                } catch (error) {
+                    console.error('Error adding product:', error);
+                    alert('Error creating product.');
+                }
+            });
+
+            // Select product to view/manage recipes
+            document.getElementById('bom-product-select').addEventListener('change', async (e) => {
+                selectedProductId = e.target.value;
+                const detailsContainer = document.getElementById('bom-details');
+                
+                if (!selectedProductId) {
+                    detailsContainer.classList.add('hidden');
+                    return;
+                }
+
+                const selectElement = e.target;
+                const selectedName = selectElement.options[selectElement.selectedIndex].text;
+                document.getElementById('bom-product-name').textContent = selectedName;
+                
+                detailsContainer.classList.remove('hidden');
+                await loadBOM(selectedProductId);
+            });
+
+            // Add Ingredient Form submission workflow
+            document.getElementById('add-ingredient-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.target);
+                const materialId = formData.get('material_id');
+                const qtyPerUnit = parseFloat(formData.get('qty_per_unit'));
+                
+                // Get the unit dynamically from your local cache of the raw material to fix NOT NULL constraint
+                const chosenMaterial = materialsMap[materialId];
+                const unitValue = chosenMaterial ? chosenMaterial.unit : 'NOS';
+
+                try {
+                    // Check if item already exists inside this product profile
+                    const { data: existing, error: checkError } = await supabaseClient
+                        .from('p2_product_bom')
+                        .select('id')
+                        .eq('product_id', selectedProductId)
+                        .eq('raw_material_id', materialId)
+                        .eq('tenant_id', currentTenantId);
+
+                    if (checkError) throw checkError;
+
+                    if (existing && existing.length > 0) {
+                        const lang = localStorage.getItem('nexflow_lang') || 'en';
+                        alert(lang === 'mr' ? 'हा कच्चा माल आधीच BOM मध्ये आहे' : 'This material is already in the BOM');
+                        return;
+                    }
+
+                    // Seamless write request using valid keys
+                    const { error } = await supabaseClient
+                        .from('p2_product_bom')
+                        .insert({
+                            product_id: selectedProductId,
+                            raw_material_id: materialId,
+                            qty_per_unit: qtyPerUnit,
+                            tenant_id: currentTenantId,
+                            unit: unitValue
+                        });
+
+                    if (error) throw error;
+
+                    const lang = localStorage.getItem('nexflow_lang') || 'en';
+                    alert(lang === 'mr' ? 'घटक यशस्वीरित्या जोडला!' : 'Ingredient added successfully!');
+                    e.target.reset();
+                    await loadBOM(selectedProductId);
+                    await loadProducts(); // Refresh main lists to clear out 'No BOM' warning flags
+                } catch (error) {
+                    console.error('Error adding ingredient to BOM:', error);
+                    alert('Failed to add ingredient.');
+                }
+            });
+
+            // Edit Product submit handler
+            document.getElementById('edit-product-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const id = document.getElementById('edit-product-id').value;
+                const name = document.getElementById('edit-product-name').value;
+                const description = document.getElementById('edit-product-description').value;
+                const unit = document.getElementById('edit-product-unit').value;
+
+                try {
+                    const { error } = await supabaseClient
+                        .from('p2_products')
+                        .update({ name, description, unit })
+                        .eq('id', id)
+                        .eq('tenant_id', currentTenantId);
+
+                    if (error) throw error;
+
+                    const lang = localStorage.getItem('nexflow_lang') || 'en';
+                    alert(lang === 'mr' ? 'बदल यशस्वीरित्या जतन केले!' : 'Changes saved successfully!');
+                    closeEditModal();
+                    await loadProducts();
+                } catch (error) {
+                    console.error('Error updating product:', error);
+                    alert('Failed to update product.');
+                }
+            });
+        }
+
+        // Load existing recipe combinations (BOM)
+        async function loadBOM(productId) {
             try {
-                const { error } = await supabaseClient
-                    .from('p2_products')
-                    .insert({
-                        name,
-                        description,
+                // Fetch using mapped, active column names
+                const { data, error } = await supabaseClient
+                    .from('p2_product_bom')
+                    .select(`
+                        id,
+                        qty_per_unit,
                         unit,
-                        tenant_id: currentTenantId,
-                        is_active: true
-                    });
+                        p2_raw_materials (
+                            name
+                        )
+                    `)
+                    .eq('product_id', productId)
+                    .eq('tenant_id', currentTenantId);
 
                 if (error) throw error;
 
-                const lang = localStorage.getItem('nexflow_lang') || 'en';
-                alert(lang === 'mr' ? 'उत्पादन यशस्वीरित्या जोडले!' : 'Product added successfully!');
-                e.target.reset();
+                const tbody = document.getElementById('bom-list');
+                const emptyState = document.getElementById('bom-empty');
+                tbody.innerHTML = '';
+
+                if (!data || data.length === 0) {
+                    emptyState.classList.remove('hidden');
+                    return;
+                }
+                emptyState.classList.add('hidden');
+
+                data.forEach(item => {
+                    const materialName = item.p2_raw_materials ? item.p2_raw_materials.name : 'Unknown Material';
+                    const row = document.createElement('tr');
+                    row.className = 'border-b border-gray-600';
+                    row.innerHTML = `
+                        <td class="p-2">${materialName}</td>
+                        <td class="p-2">${item.qty_per_unit}</td>
+                        <td class="p-2">${item.unit || ''}</td>
+                        <td class="p-2">
+                            <button onclick="deleteIngredient('${item.id}')"
+                                class="bg-red-600 text-white px-2 py-1 rounded text-xs hover:bg-red-700">
+                                <span data-en="Remove" data-mr="काढून टाका">Remove</span>
+                            </button>
+                        </td>
+                    `;
+                    tbody.appendChild(row);
+                });
+
+                if (window.utils && typeof window.utils.updateLanguage === 'function') {
+                    window.utils.updateLanguage();
+                }
+            } catch (error) {
+                console.error('Error loading BOM mapping lists:', error);
+            }
+        }
+
+        // Delete ingredient rule line item
+        async function deleteIngredient(bomItemId) {
+            const lang = localStorage.getItem('nexflow_lang') || 'en';
+            const confirmation = confirm(lang === 'mr' ? 'हा घटक काढायचा आहे याची खात्री आहे?' : 'Are you sure you want to remove this ingredient?');
+            if (!confirmation) return;
+
+            try {
+                const { error } = await supabaseClient
+                    .from('p2_product_bom')
+                    .delete()
+                    .eq('id', bomItemId)
+                    .eq('tenant_id', currentTenantId);
+
+                if (error) throw error;
+
+                await loadBOM(selectedProductId);
                 await loadProducts();
             } catch (error) {
-                console.error('Error adding product:', error);
-                const lang = localStorage.getItem('nexflow_lang') || 'en';
-                alert(lang === 'mr' ? 'उत्पादन जोडण्यात अयशस्वी' : 'Failed to add product');
+                console.error('Error deleting ingredient item:', error);
+                alert('Failed to remove item.');
             }
-        });
+        }
 
-        // Edit product
+        // Edit button popup utility
         function editProduct(id, name, description, unit) {
             document.getElementById('edit-product-id').value = id;
             document.getElementById('edit-product-name').value = name;
@@ -462,241 +603,27 @@
             document.getElementById('edit-product-modal').classList.add('hidden');
         }
 
-        document.getElementById('edit-product-form').addEventListener('submit', async (e) => {
-            e.preventDefault();
-
-            const id = document.getElementById('edit-product-id').value;
-            const name = document.getElementById('edit-product-name').value.trim();
-            const description = document.getElementById('edit-product-description').value.trim();
-            const unit = document.getElementById('edit-product-unit').value;
-
-            try {
-                const { error } = await supabaseClient
-                    .from('p2_products')
-                    .update({ name, description, unit })
-                    .eq('id', id);
-
-                if (error) throw error;
-
-                const lang = localStorage.getItem('nexflow_lang') || 'en';
-                alert(lang === 'mr' ? 'उत्पादन अपडेट केले!' : 'Product updated successfully!');
-                closeEditModal();
-                await loadProducts();
-
-                // Refresh BOM if this product is selected
-                if (selectedProductId === id) {
-                    await loadBOM(id);
-                }
-            } catch (error) {
-                console.error('Error updating product:', error);
-                const lang = localStorage.getItem('nexflow_lang') || 'en';
-                alert(lang === 'mr' ? 'उत्पादन अपडेट करण्यात अयशस्वी' : 'Failed to update product');
-            }
-        });
-
-        // Deactivate product
-        async function deactivateProduct(productId) {
+        // Soft delete/Deactivation trigger 
+        async function deactivateProduct(id) {
             const lang = localStorage.getItem('nexflow_lang') || 'en';
-            const confirmMsg = lang === 'mr' ? 'हे उत्पादन निष्क्रिय करायचे आहे का?' : 'Are you sure you want to deactivate this product?';
-
-            if (!confirm(confirmMsg)) return;
+            const confirmation = confirm(lang === 'mr' ? 'हे उत्पादन निष्क्रिय करायचे आहे का?' : 'Are you sure you want to deactivate this product?');
+            if (!confirmation) return;
 
             try {
                 const { error } = await supabaseClient
                     .from('p2_products')
                     .update({ is_active: false })
-                    .eq('id', productId);
+                    .eq('id', id)
+                    .eq('tenant_id', currentTenantId);
 
                 if (error) throw error;
 
                 await loadProducts();
             } catch (error) {
-                console.error('Error deactivating product:', error);
-                const lang = localStorage.getItem('nexflow_lang') || 'en';
-                alert(lang === 'mr' ? 'उत्पादन निष्क्रिय करण्यात अयशस्वी' : 'Failed to deactivate product');
+                console.error('Error deactivating product entry:', error);
+                alert('Action failed.');
             }
         }
-
-        // BOM product selection
-        document.getElementById('bom-product-select').addEventListener('change', async (e) => {
-            const productId = e.target.value;
-
-            if (productId) {
-                selectedProductId = productId;
-                document.getElementById('bom-details').classList.remove('hidden');
-                await loadBOM(productId);
-            } else {
-                selectedProductId = null;
-                document.getElementById('bom-details').classList.add('hidden');
-            }
-        });
-
-        // Load BOM for selected product
-        async function loadBOM(productId) {
-            try {
-                // Get product name
-                const { data: product, error: productError } = await supabaseClient
-                    .from('p2_products')
-                    .select('name, unit')
-                    .eq('id', productId)
-                    .single();
-
-                if (productError) throw productError;
-
-                document.getElementById('bom-product-name').textContent = `${product.name} (${product.unit})`;
-
-                // Get BOM items
-                const { data, error } = await supabaseClient
-                    .from('p2_product_bom')
-                    .select(`
-                        id,
-                        qty_per_unit,
-                        p2_raw_materials (
-                            id,
-                            name,
-                            unit
-                        )
-                    `)
-                    .eq('product_id', productId)
-                    .eq('tenant_id', currentTenantId);
-
-                if (error) throw error;
-
-                const tbody = document.getElementById('bom-list');
-                tbody.innerHTML = '';
-
-                const emptyMsg = document.getElementById('bom-empty');
-
-                if (data.length === 0) {
-                    emptyMsg.classList.remove('hidden');
-                } else {
-                    emptyMsg.classList.add('hidden');
-
-                    data.forEach(item => {
-                        const row = document.createElement('tr');
-                        row.className = 'border-b border-gray-600';
-                        row.innerHTML = `
-                            <td class="p-2">${item.p2_raw_materials.name}</td>
-                            <td class="p-2">${item.qty_per_unit}</td>
-                            <td class="p-2">${item.p2_raw_materials.unit}</td>
-                            <td class="p-2">
-                                <button onclick="removeIngredient('${item.id}')"
-                                    class="bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700">
-                                    <span data-en="Remove" data-mr="काढा">Remove</span>
-                                </button>
-                            </td>
-                        `;
-                        tbody.appendChild(row);
-                    });
-                }
-
-                // Re-apply language
-                const lang = localStorage.getItem('nexflow_lang') || 'en';
-                applyLang(lang);
-            } catch (error) {
-                console.error('Error loading BOM:', error);
-            }
-        }
-
-        // Add ingredient to BOM
-        document.getElementById('add-ingredient-form').addEventListener('submit', async (e) => {
-            e.preventDefault();
-
-            if (!selectedProductId) {
-                const lang = localStorage.getItem('nexflow_lang') || 'en';
-                alert(lang === 'mr' ? 'कृपया प्रथम उत्पादन निवडा' : 'Please select a product first');
-                return;
-            }
-
-            const formData = new FormData(e.target);
-            const materialId = formData.get('material_id');
-            const qtyPerUnit = parseFloat(formData.get('qty_per_unit'));
-
-            try {
-                // Check if this material is already in the BOM
-                const { data: existing, error: checkError } = await supabaseClient
-                    .from('p2_product_bom')
-                    .select('id')
-                    .eq('product_id', selectedProductId)
-                    .eq('material_id', materialId)
-                    .eq('tenant_id', currentTenantId);
-
-                if (checkError) throw checkError;
-
-                if (existing && existing.length > 0) {
-                    const lang = localStorage.getItem('nexflow_lang') || 'en';
-                    alert(lang === 'mr' ? 'हा कच्चा माल आधीच BOM मध्ये आहे' : 'This material is already in the BOM');
-                    return;
-                }
-
-                const { error } = await supabaseClient
-                    .from('p2_product_bom')
-                    .insert({
-                        product_id: selectedProductId,
-                        material_id: materialId,
-                        qty_per_unit: qtyPerUnit,
-                        tenant_id: currentTenantId
-                    });
-
-                if (error) throw error;
-
-                const lang = localStorage.getItem('nexflow_lang') || 'en';
-                alert(lang === 'mr' ? 'घटक यशस्वीरित्या जोडला!' : 'Ingredient added successfully!');
-                e.target.reset();
-                await loadBOM(selectedProductId);
-            } catch (error) {
-                console.error('Error adding ingredient:', error);
-                const lang = localStorage.getItem('nexflow_lang') || 'en';
-                alert(lang === 'mr' ? 'घटक जोडण्यात अयशस्वी' : 'Failed to add ingredient');
-            }
-        });
-
-        // Remove ingredient from BOM
-        async function removeIngredient(bomId) {
-            const lang = localStorage.getItem('nexflow_lang') || 'en';
-            const confirmMsg = lang === 'mr' ? 'हा घटक काढायचा आहे का?' : 'Are you sure you want to remove this ingredient?';
-
-            if (!confirm(confirmMsg)) return;
-
-            try {
-                const { error } = await supabaseClient
-                    .from('p2_product_bom')
-                    .delete()
-                    .eq('id', bomId);
-
-                if (error) throw error;
-
-                await loadBOM(selectedProductId);
-            } catch (error) {
-                console.error('Error removing ingredient:', error);
-                const lang = localStorage.getItem('nexflow_lang') || 'en';
-                alert(lang === 'mr' ? 'घटक काढण्यात अयशस्वी' : 'Failed to remove ingredient');
-            }
-        }
-    </script>
-
-    <script>
-        function applyLang(lang) {
-            document.querySelectorAll('[data-en]').forEach(el => {
-                if (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA') {
-                    el.placeholder = lang === 'mr' ? el.dataset.mr : el.dataset.en;
-                } else {
-                    el.textContent = lang === 'mr' ? el.dataset.mr : el.dataset.en;
-                }
-            });
-            const btn = document.getElementById('lang-toggle');
-            if (btn) btn.textContent = lang === 'mr' ? 'English' : 'मराठी';
-            localStorage.setItem('nexflow_lang', lang);
-        }
-
-        document.addEventListener('DOMContentLoaded', () => {
-            const saved = localStorage.getItem('nexflow_lang') || 'en';
-            applyLang(saved);
-            const btn = document.getElementById('lang-toggle');
-            if (btn) btn.addEventListener('click', () => {
-                applyLang(localStorage.getItem('nexflow_lang') === 'mr' ? 'en' : 'mr');
-            });
-        });
     </script>
 </body>
 </html>

@@ -136,6 +136,16 @@
             const lang = localStorage.getItem('nexflow_lang') || 'en';
             if (window.applyLang) {
                 window.applyLang(lang);
+            } else {
+                // Fallback: apply lang directly
+                document.querySelectorAll('[data-en]').forEach(el => {
+                    if (el.tagName === 'INPUT' || el.tagName === 'SELECT' ||
+                        el.tagName === 'TEXTAREA') {
+                        el.placeholder = lang === 'mr' ? el.dataset.mr : el.dataset.en;
+                    } else {
+                        el.textContent = lang === 'mr' ? el.dataset.mr : el.dataset.en;
+                    }
+                });
             }
         } catch (error) {
             console.error('Error initializing user info:', error);
@@ -165,6 +175,16 @@
 
                     if (window.applyLang) {
                         window.applyLang(newLang);
+                    } else {
+                        // Fallback: apply lang directly
+                        document.querySelectorAll('[data-en]').forEach(el => {
+                            if (el.tagName === 'INPUT' || el.tagName === 'SELECT' ||
+                                el.tagName === 'TEXTAREA') {
+                                el.placeholder = newLang === 'mr' ? el.dataset.mr : el.dataset.en;
+                            } else {
+                                el.textContent = newLang === 'mr' ? el.dataset.mr : el.dataset.en;
+                            }
+                        });
                     }
 
                     updateToggleButtons(newLang);
@@ -188,7 +208,7 @@
     // Main initialization
     async function initNavbar() {
         // Check if navbar placeholder exists
-        let navbarContainer = document.getElementById('nexflow-navbar-container');
+        let navbarContainer = document.getElementById('navbar-container') || document.getElementById('nexflow-navbar-container');
 
         // If not, insert at the beginning of body
         if (!navbarContainer) {

@@ -47,22 +47,7 @@
     </style>
 </head>
 <body class="bg-brand-dark-bg text-brand-text">
-    <!-- Navbar -->
-    <nav class="bg-brand-teal p-4 flex justify-between items-center">
-        <div class="flex items-center">
-            <img src="/public/assets/nexflow_logo_transparent.png" alt="Nexflow Logo" class="h-9 mr-4">
-            <a href="index.html" class="mr-4 text-white" data-en="Dashboard" data-mr="डॅशबोर्ड">Dashboard</a>
-            <a href="grn.html" class="mr-4 text-white" data-en="GRN" data-mr="जीआरएन">GRN</a>
-            <a href="dispatch.html" class="mr-4 text-white" data-en="Dispatch" data-mr="पाठवणे">Dispatch</a>
-            <a href="products.html" class="mr-4 text-white" data-en="Products" data-mr="उत्पादने">Products</a>
-            <a href="reports.html" class="mr-4 text-white" data-en="Reports" data-mr="अहवाल">Reports</a>
-        </div>
-        <div class="flex items-center space-x-4">
-            <button id="lang-toggle" class="bg-brand-green px-3 py-1 rounded" data-en="मराठी" data-mr="English">मराठी</button>
-            <div id="navbar-user-info"></div>
-        </div>
-    </nav>
-
+    <div id="navbar-container"></div>
     <!-- Reports Container -->
     <div class="container mx-auto p-6">
         <h1 class="text-2xl mb-6" data-en="Monthly Reports" data-mr="मासिक अहवाल">Monthly Reports</h1>
@@ -203,12 +188,12 @@
 
             try {
                 // Get current user's tenant_id
-                const { data: { user }, error: userError } = await supabase.auth.getUser();
+                const { data: { user }, error: userError } = await window.supabase.auth.getUser();
                 if (userError || !user) {
                     throw new Error('User not authenticated');
                 }
 
-                const tenantId = user.user_metadata.tenant_id;
+                const tenantId = user.id;
                 if (!tenantId) {
                     throw new Error('No tenant ID found for user');
                 }
@@ -243,12 +228,12 @@
 
             try {
                 // Get current user's tenant_id
-                const { data: { user }, error: userError } = await supabase.auth.getUser();
+                const { data: { user }, error: userError } = await window.supabase.auth.getUser();
                 if (userError || !user) {
                     throw new Error('User not authenticated');
                 }
 
-                const tenantId = user.user_metadata.tenant_id;
+                const tenantId = user.id;
                 if (!tenantId) {
                     throw new Error('No tenant ID found for user');
                 }
@@ -258,7 +243,7 @@
                 const lastDay = new Date(year, month, 0);
 
                 // Fetch raw materials for this tenant
-                const { data: rawMaterials, error: materialsError } = await supabase
+                const { data: rawMaterials, error: materialsError } = await window.supabase
                     .from('p2_raw_materials')
                     .select('id, name')
                     .eq('tenant_id', tenantId);
@@ -268,7 +253,7 @@
                 // Process each material
                 const materialSummary = await Promise.all(rawMaterials.map(async (material) => {
                     // Opening stock (before first day of month)
-                    const { data: openingStockData, error: openingStockError } = await supabase
+                    const { data: openingStockData, error: openingStockError } = await window.supabase
                         .from('p2_stock_transactions')
                         .select('quantity')
                         .eq('raw_material_id', material.id)
@@ -282,7 +267,7 @@
                         : 0;
 
                     // Total GRN for the month
-                    const { data: grnData, error: grnError } = await supabase
+                    const { data: grnData, error: grnError } = await window.supabase
                         .from('p2_stock_transactions')
                         .select('quantity')
                         .eq('raw_material_id', material.id)
@@ -298,7 +283,7 @@
                         : 0;
 
                     // Total Consumption for the month
-                    const { data: consumptionData, error: consumptionError } = await supabase
+                    const { data: consumptionData, error: consumptionError } = await window.supabase
                         .from('p2_stock_transactions')
                         .select('quantity')
                         .eq('raw_material_id', material.id)
@@ -342,14 +327,13 @@
                 });
 
                 // Supplier-wise GRN
-                const { data: supplierGrnData, error: supplierError } = await supabase
+                const { data: supplierGrnData, error: supplierError } = await window.supabase
                     .from('p2_stock_transactions')
                     .select('supplier_id, p2_suppliers(name), quantity')
                     .eq('tenant_id', tenantId)
                     .eq('transaction_type', 'grn')
                     .gte('created_at', firstDay.toISOString())
-                    .lte('created_at', lastDay.toISOString())
-                    .groupBy('supplier_id, p2_suppliers(name)');
+                    .lte('created_at', lastDay.toISOString());
 
                 if (supplierError) throw supplierError;
 
@@ -406,13 +390,12 @@
             localStorage.setItem('nexflow_lang', lang);
         }
 
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', async () => {
+            const authed = await checkAuth();
+            if (!authed) return;
+
             const saved = localStorage.getItem('nexflow_lang') || 'en';
             applyLang(saved);
-            const btn = document.getElementById('lang-toggle');
-            if (btn) btn.addEventListener('click', () => {
-                applyLang(localStorage.getItem('nexflow_lang') === 'mr' ? 'en' : 'mr');
-            });
         });
     </script>
 </body>

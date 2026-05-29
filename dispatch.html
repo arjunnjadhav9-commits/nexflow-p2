@@ -6,6 +6,9 @@
     <title>Dispatch | Nexflow P2</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%231A1F2E'/><text y='.9em' font-size='80' x='10' fill='%2300BCD4'>N</text></svg>">
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/supabase-client.js"></script>
+    <script src="js/auth.js"></script>
     <script src="js/utils.js"></script>
     <script src="js/navbar.js"></script>
     <script>
@@ -24,19 +27,9 @@
             }
         }
     </script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body class="bg-nexflow-dark-bg text-nexflow-text min-h-screen">
-    <nav class="bg-nexflow-teal p-4 flex justify-between items-center">
-        <span id="navTitle" data-en="Nexflow Automations" data-mr="नेक्सफ्लो ऑटोमेशन्स" class="text-xl font-bold text-white">Nexflow Automations</span>
-        <div class="flex items-center space-x-4">
-            <button id="lang-toggle" class="bg-[#00BCD4] text-white p-2 rounded text-sm">
-                मराठी
-            </button>
-            <div id="navbar-user-info"></div>
-        </div>
-    </nav>
-
+    <div id="navbar-container"></div>
     <main class="container mx-auto px-4 py-6 max-w-4xl">
         <h1 id="pageTitle" data-en="Dispatch Products" data-mr="माल पाठवा" class="text-2xl font-bold mb-6 text-center">
             Dispatch Products
@@ -68,8 +61,8 @@
 
         <!-- POLISH 5: Draft Orders Banner -->
         <div id="draftOrdersBanner" class="hidden bg-yellow-900 border border-yellow-600 rounded-lg p-4 mb-6">
-            <p class="text-white font-bold" data-en="You have unsaved draft order(s). Scroll down to view." data-mr="तुमच्याकडे न जतन केलेले मसुदा ऑर्डर आहेत. पाहण्यासाठी खाली स्क्रोल करा.">
-                <span id="draftOrdersCount"></span> You have unsaved draft order(s). Scroll down to view.
+            <p class="text-white font-bold">
+                <span id="draftOrdersCount"></span>
             </p>
         </div>
 
@@ -249,15 +242,13 @@
     </main>
 
     <script>
-        const { createClient } = supabase;
-        const SUPABASE_URL = 'https://qymojfnyoklcqecwotfu.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF5bW9qZm55b2tsY3FlY3dvdGZ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgzNTczNjIsImV4cCI6MjA2MzkzMzM2Mn0.nMqXSlAYLFcpkFNnHSv71eMxKBqNhsX1xGf0rnS6Ewc';
-        const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
         let products = [];
         let dispatchItems = [];
         let currentDispatchId = null;
         let tenantId = null;
+
+        // Run setup
+        document.addEventListener('DOMContentLoaded', init);
 
         async function init() {
             const loadingSpinner = document.getElementById('loadingSpinner');
@@ -265,16 +256,12 @@
             const dispatchForm = document.getElementById('dispatchForm');
 
             try {
-                // Get current user and tenant
-                const { data: { user } } = await sb.auth.getUser();
-                if (!user) {
-                    window.location.href = '/login.html';
-                    return;
-                }
+                const authed = await checkAuth();
+                if (!authed) return;
+                const { data: { user } } = await window.supabase.auth.getUser();
 
-                tenantId = user.user_metadata.tenant_id;
+                tenantId = user.id;
 
-                // GUARD 5: Add timeout to data loading
                 const loadPromise = Promise.all([
                     loadProducts(),
                     loadRecentDispatches()
@@ -285,36 +272,31 @@
                 );
 
                 await Promise.race([loadPromise, timeoutPromise]);
-
-                // POLISH 5: Check for draft orders
                 await checkDraftOrders();
 
-                // Hide loading, show form
                 loadingSpinner.classList.add('hidden');
                 dispatchForm.classList.remove('hidden');
-                document.querySelector('.mt-8').classList.remove('hidden');
+                setupEventHandlers();
             } catch (error) {
                 console.error('Error initializing dispatch:', error);
-                // GUARD 5: Show error state
                 loadingSpinner.classList.add('hidden');
                 errorState.classList.remove('hidden');
             }
         }
 
         async function loadProducts() {
-            const { data, error } = await sb
+            const { data, error } = await window.supabase
                 .from('p2_products')
                 .select('id, name, unit')
                 .eq('tenant_id', tenantId)
+                .eq('is_active', true)
                 .order('name');
 
-            if (error) {
-                console.error('Error loading products:', error);
-                return;
-            }
+            if (error) throw error;
 
             products = data || [];
             const select = document.getElementById('productSelect');
+            select.innerHTML = '<option value="">Choose a product</option>';
 
             products.forEach(product => {
                 const option = document.createElement('option');
@@ -324,10 +306,9 @@
             });
         }
 
-        // POLISH 5: Check for draft orders and show banner
         async function checkDraftOrders() {
             try {
-                const { data, error } = await sb
+                const { data, error } = await window.supabase
                     .from('p2_dispatch_orders')
                     .select('id')
                     .eq('tenant_id', tenantId)
@@ -341,11 +322,9 @@
 
                 if (draftCount > 0) {
                     const lang = localStorage.getItem('nexflow_lang') || 'en';
-                    const prefix = lang === 'mr'
+                    countSpan.textContent = lang === 'mr'
                         ? `तुमच्याकडे ${draftCount} न जतन केलेले मसुदा ऑर्डर आहेत.`
-                        : `You have ${draftCount} unsaved draft order(s).`;
-
-                    countSpan.textContent = prefix;
+                        : `You have ${draftCount} unsaved draft order(s). Scroll down to view.`;
                     banner.classList.remove('hidden');
                 } else {
                     banner.classList.add('hidden');
@@ -356,100 +335,178 @@
         }
 
         async function loadRecentDispatches() {
-            const { data, error } = await sb
+            const { data, error } = await window.supabase
                 .from('p2_dispatch_orders')
                 .select('id, client_name, status, challan_number, dispatch_date, created_at')
                 .eq('tenant_id', tenantId)
-                .eq('status', 'confirmed')
-                .order('dispatch_date', { ascending: false })
                 .order('created_at', { ascending: false })
                 .limit(20);
 
-            if (error) {
-                console.error('Error loading dispatches:', error);
-                return;
-            }
+            if (error) throw error;
 
             const tbody = document.getElementById('pastDispatchesBody');
             tbody.innerHTML = '';
 
-            if (data.length === 0) {
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td colspan="5" class="p-4 text-center text-gray-400" data-en="No past dispatches" data-mr="कोणतेही मागील डिस्पॅच नाहीत">
-                        No past dispatches
-                    </td>
-                `;
-                tbody.appendChild(row);
-                applyLang(localStorage.getItem('nexflow_lang') || 'en');
+            if (!data || data.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-gray-400">No past dispatches found.</td></tr>`;
                 return;
             }
 
             data.forEach(dispatch => {
                 const row = document.createElement('tr');
                 row.className = 'border-b border-gray-700';
-                const displayDate = dispatch.dispatch_date
-                    ? formatDate(dispatch.dispatch_date)
-                    : formatDate(dispatch.created_at);
+                const displayDate = dispatch.dispatch_date ? new Date(dispatch.dispatch_date).toLocaleDateString() : new Date(dispatch.created_at).toLocaleDateString();
+                const isDraft = dispatch.status === 'draft';
 
                 row.innerHTML = `
                     <td class="p-2">${dispatch.challan_number || '-'}</td>
                     <td class="p-2">${displayDate}</td>
                     <td class="p-2">${dispatch.client_name}</td>
                     <td class="p-2">
-                        <span class="px-2 py-1 rounded text-xs bg-nexflow-green" data-en="Confirmed" data-mr="निश्चित">
-                            Confirmed
+                        <span class="px-2 py-1 rounded text-xs ${isDraft ? 'bg-yellow-600 text-white' : 'bg-nexflow-green text-white'}">
+                            ${isDraft ? 'Draft' : 'Confirmed'}
                         </span>
                     </td>
                     <td class="p-2 text-center">
-                        <button onclick="viewChallan('${dispatch.id}')" class="bg-nexflow-teal text-white px-3 py-1 rounded text-sm hover:bg-cyan-600" data-en="View Challan" data-mr="चलान पहा">
-                            View Challan
-                        </button>
+                        ${isDraft ? 
+                            `<button onclick="loadDraftToForm('${dispatch.id}')" class="bg-yellow-600 text-white px-3 py-1 rounded text-sm hover:bg-yellow-700 mr-2">Resume</button>` : 
+                            `<button onclick="viewChallan('${dispatch.id}')" class="bg-nexflow-teal text-white px-3 py-1 rounded text-sm hover:bg-cyan-600">View</button>`
+                        }
                     </td>
                 `;
                 tbody.appendChild(row);
             });
-
-            applyLang(localStorage.getItem('nexflow_lang') || 'en');
         }
 
         window.viewChallan = (orderId) => {
             window.open(`/challan.html?id=${orderId}`, '_blank');
         };
 
-        document.getElementById('addProductBtn').addEventListener('click', () => {
-            const productId = document.getElementById('productSelect').value;
-            const qty = parseFloat(document.getElementById('productQty').value);
+        // Load an existing draft back into the workspace
+        window.loadDraftToForm = async (orderId) => {
+            try {
+                const { data: order, error: orderErr } = await window.supabase
+                    .from('p2_dispatch_orders')
+                    .select('*')
+                    .eq('id', orderId)
+                    .single();
 
-            if (!productId || !qty || qty <= 0) {
-                showError('Please select a product and enter a valid quantity');
-                return;
+                if (orderErr) throw orderErr;
+
+                const { data: items, error: itemsErr } = await window.supabase
+                    .from('p2_dispatch_items')
+                    .select('*, p2_products(name, unit)')
+                    .eq('dispatch_order_id', orderId);
+
+                if (itemsErr) throw itemsErr;
+
+                currentDispatchId = order.id;
+                document.getElementById('clientName').value = order.client_name;
+                document.getElementById('clientAddress').value = order.client_address || '';
+                document.getElementById('poNumber').value = order.po_number || '';
+                document.getElementById('challanRef').value = order.your_challan_ref || '';
+                document.getElementById('vehicleNumber').value = order.vehicle_number || '';
+
+                dispatchItems = items.map(item => ({
+                    product_id: item.product_id,
+                    name: item.p2_products ? item.p2_products.name : 'Unknown Product',
+                    quantity: item.quantity,
+                    unit: item.p2_products ? item.p2_products.unit : 'NOS'
+                }));
+
+                renderProductsTable();
+                document.getElementById('dispatchForm').scrollIntoView({ behavior: 'smooth' });
+            } catch (err) {
+                console.error('Error restoring draft:', err);
+                showError('Could not restore draft order.');
             }
+        };
 
-            const product = products.find(p => p.id === productId);
-            if (!product) return;
+        // Generate next sequential challan number - returns pure integer
+        async function generateChallanNumber() {
+            const { data, error } = await window.supabase
+                .from('p2_dispatch_orders')
+                .select('challan_number')
+                .eq('tenant_id', tenantId)
+                .not('challan_number', 'is', null)
+                .order('created_at', { ascending: false })
+                .limit(1);
 
-            // Check if already added
-            const existing = dispatchItems.find(item => item.product_id === productId);
-            if (existing) {
-                existing.quantity += qty;
-            } else {
-                dispatchItems.push({
-                    product_id: productId,
-                    product_name: product.name,
-                    quantity: qty,
-                    unit: product.unit
+            if (error) return 1001;
+            if (!data || data.length === 0) return 1001;
+
+            const lastNum = parseInt(data[0].challan_number, 10);
+            return isNaN(lastNum) ? 1001 : lastNum + 1;
+        }
+
+        function setupEventHandlers() {
+            // Add Product to structural grid selection
+            document.getElementById('addProductBtn').addEventListener('click', () => {
+                const productId = document.getElementById('productSelect').value;
+                const qty = parseInt(document.getElementById('productQty').value);
+
+                if (!productId || !qty || qty <= 0) {
+                    showError('Please select a product and enter a valid quantity');
+                    return;
+                }
+
+                const product = products.find(p => p.id === productId);
+                const existing = dispatchItems.find(item => item.product_id === productId);
+
+                if (existing) {
+                    existing.quantity += qty;
+                } else {
+                    dispatchItems.push({
+                        product_id: productId,
+                        name: product.name,
+                        quantity: qty,
+                        unit: product.unit
+                    });
+                }
+
+                document.getElementById('productQty').value = '';
+                document.getElementById('productSelect').value = '';
+                renderProductsTable();
+            });
+
+            // Save Draft Click
+            document.getElementById('saveDraftBtn').addEventListener('click', () => handleSaveWorkflow('draft'));
+
+            // Confirm Dispatch Click
+            document.getElementById('confirmDispatchBtn').addEventListener('click', () => {
+                if (!validateForm()) return;
+                
+                const clientName = document.getElementById('clientName').value;
+                document.getElementById('confirmClientName').textContent = clientName;
+                
+                const list = document.getElementById('confirmItemsList');
+                list.innerHTML = '';
+                dispatchItems.forEach(item => {
+                    const li = document.createElement('line');
+                    li.className = 'block';
+                    li.textContent = `${item.name} - ${item.quantity} ${item.unit}`;
+                    list.appendChild(li);
                 });
-            }
 
-            updateProductsTable();
-            document.getElementById('productSelect').value = '';
-            document.getElementById('productQty').value = '';
-        });
+                document.getElementById('confirmModal').classList.remove('hidden');
+            });
 
-        function updateProductsTable() {
+            // Cancel Modal Popup Window
+            document.getElementById('confirmModalCancel').addEventListener('click', () => {
+                document.getElementById('confirmModal').classList.add('hidden');
+            });
+
+            // Confirm inside popup model window
+            document.getElementById('confirmModalConfirm').addEventListener('click', () => {
+                document.getElementById('confirmModal').classList.add('hidden');
+                handleSaveWorkflow('confirmed');
+            });
+        }
+
+        function renderProductsTable() {
             const container = document.getElementById('productsTableContainer');
             const tbody = document.getElementById('productsTableBody');
+            tbody.innerHTML = '';
 
             if (dispatchItems.length === 0) {
                 container.classList.add('hidden');
@@ -457,357 +514,192 @@
             }
 
             container.classList.remove('hidden');
-            tbody.innerHTML = '';
-
-            dispatchItems.forEach((item, index) => {
+            dispatchItems.forEach((item, idx) => {
                 const row = document.createElement('tr');
                 row.className = 'border-b border-gray-700';
                 row.innerHTML = `
-                    <td class="p-2">${item.product_name}</td>
-                    <td class="p-2 text-right">${formatNumber(item.quantity)} ${item.unit}</td>
+                    <td class="p-2">${item.name}</td>
+                    <td class="p-2 text-right">${item.quantity} ${item.unit}</td>
                     <td class="p-2 text-center">
-                        <button onclick="removeProduct(${index})" class="text-red-500 hover:text-red-400 text-sm" data-en="Remove" data-mr="काढा">Remove</button>
+                        <button type="button" onclick="removeItem(${idx})" class="text-red-500 hover:text-red-700">Remove</button>
                     </td>
                 `;
                 tbody.appendChild(row);
             });
-
-            applyLang(localStorage.getItem('nexflow_lang') || 'en');
         }
 
-        window.removeProduct = (index) => {
+        window.removeItem = (index) => {
             dispatchItems.splice(index, 1);
-            updateProductsTable();
+            renderProductsTable();
         };
 
-        document.getElementById('saveDraftBtn').addEventListener('click', async () => {
-            if (!validateForm()) return;
-
-            const orderData = {
-                tenant_id: tenantId,
-                client_name: document.getElementById('clientName').value,
-                client_address: document.getElementById('clientAddress').value,
-                po_number: document.getElementById('poNumber').value || null,
-                your_challan_ref: document.getElementById('challanRef').value || null,
-                vehicle_number: document.getElementById('vehicleNumber').value || null,
-                status: 'draft'
-            };
-
-            try {
-                let orderId = currentDispatchId;
-
-                if (!orderId) {
-                    // Create new dispatch order
-                    const { data, error } = await sb
-                        .from('p2_dispatch_orders')
-                        .insert([orderData])
-                        .select()
-                        .single();
-
-                    if (error) throw error;
-                    orderId = data.id;
-                    currentDispatchId = orderId;
-
-                    // Insert dispatch items
-                    const items = dispatchItems.map(item => ({
-                        dispatch_order_id: orderId,
-                        tenant_id: tenantId,
-                        product_id: item.product_id,
-                        quantity: item.quantity
-                    }));
-
-                    const { error: itemsError } = await sb
-                        .from('p2_dispatch_items')
-                        .insert(items);
-
-                    if (itemsError) throw itemsError;
-                } else {
-                    // Update existing draft
-                    const { error: updateError } = await sb
-                        .from('p2_dispatch_orders')
-                        .update(orderData)
-                        .eq('id', orderId);
-
-                    if (updateError) throw updateError;
-
-                    // Delete old items and insert new ones
-                    await sb.from('p2_dispatch_items').delete().eq('dispatch_order_id', orderId);
-
-                    const items = dispatchItems.map(item => ({
-                        dispatch_order_id: orderId,
-                        tenant_id: tenantId,
-                        product_id: item.product_id,
-                        quantity: item.quantity
-                    }));
-
-                    const { error: itemsError } = await sb
-                        .from('p2_dispatch_items')
-                        .insert(items);
-
-                    if (itemsError) throw itemsError;
-                }
-
-                showSuccess('Draft saved successfully');
-                await loadRecentDispatches();
-            } catch (error) {
-                console.error('Error saving draft:', error);
-                showError('Failed to save draft: ' + error.message);
-            }
-        });
-
-        document.getElementById('confirmDispatchBtn').addEventListener('click', async () => {
-            // Enhanced validation before showing modal
-            const lang = localStorage.getItem('nexflow_lang') || 'en';
-
-            // Check client name
-            const clientName = document.getElementById('clientName').value.trim();
-            if (!clientName) {
-                showError(lang === 'mr' ? 'कृपया ग्राहक नाव प्रविष्ट करा' : 'Please enter client name');
-                document.getElementById('clientName').focus();
-                return;
-            }
-
-            // Check at least one product row
-            if (dispatchItems.length === 0) {
-                showError(lang === 'mr' ? 'कृपया किमान एक उत्पादन जोडा' : 'Please add at least one product');
-                return;
-            }
-
-            // Check all product rows have quantity > 0
-            for (const item of dispatchItems) {
-                if (!item.quantity || item.quantity <= 0) {
-                    showError(lang === 'mr' ? `${item.product_name}: परिमाण ० पेक्षा जास्त असणे आवश्यक आहे` : `${item.product_name}: Quantity must be greater than 0`);
-                    return;
-                }
-            }
-
-            // Check every product has at least one BOM ingredient
-            for (const item of dispatchItems) {
-                const { data: bomData, error: bomError } = await sb
-                    .from('p2_product_bom')
-                    .select('id')
-                    .eq('product_id', item.product_id)
-                    .eq('tenant_id', tenantId);
-
-                if (bomError) {
-                    showError(lang === 'mr' ? 'BOM तपासताना त्रुटी' : 'Error checking BOM');
-                    console.error('BOM check error:', bomError);
-                    return;
-                }
-
-                if (!bomData || bomData.length === 0) {
-                    showError(lang === 'mr'
-                        ? `उत्पादन "${item.product_name}" साठी BOM परिभाषित केलेले नाही. Products पृष्ठावर जाऊन घटक जोडा.`
-                        : `Product "${item.product_name}" has no BOM defined. Go to Products page and add ingredients before dispatching.`);
-                    return;
-                }
-            }
-
-            if (!validateForm()) return;
-
-            // First save as draft if not already saved
-            if (!currentDispatchId) {
-                await document.getElementById('saveDraftBtn').click();
-                // Wait a moment for the save to complete
-                await new Promise(resolve => setTimeout(resolve, 500));
-            }
-
-            if (!currentDispatchId) {
-                showError('Please save draft first');
-                return;
-            }
-
-            // Show confirmation modal
-            document.getElementById('confirmClientName').textContent = clientName;
-
-            const itemsList = document.getElementById('confirmItemsList');
-            itemsList.innerHTML = '';
-            dispatchItems.forEach(item => {
-                const li = document.createElement('li');
-                li.textContent = `${item.product_name}: ${formatNumber(item.quantity)} ${item.unit}`;
-                itemsList.appendChild(li);
-            });
-
-            document.getElementById('confirmModal').classList.remove('hidden');
-            applyLang(localStorage.getItem('nexflow_lang') || 'en');
-        });
-
-        document.getElementById('confirmModalCancel').addEventListener('click', () => {
-            document.getElementById('confirmModal').classList.add('hidden');
-        });
-
-        document.getElementById('confirmModalConfirm').addEventListener('click', async () => {
-            const confirmBtn = document.getElementById('confirmModalConfirm');
-            const originalBtnText = confirmBtn.textContent;
-            const lang = localStorage.getItem('nexflow_lang') || 'en';
-
-            // Disable button and show processing text
-            confirmBtn.disabled = true;
-            confirmBtn.textContent = lang === 'mr' ? 'प्रक्रिया करत आहे...' : 'Processing...';
-            confirmBtn.classList.add('opacity-50', 'cursor-not-allowed');
-
-            document.getElementById('confirmModal').classList.add('hidden');
-
-            try {
-                // Call Edge Function to confirm dispatch
-                const { data, error } = await sb.functions.invoke('confirm-dispatch', {
-                    body: { dispatch_order_id: currentDispatchId }
-                });
-
-                if (error) throw error;
-
-                if (!data.success) {
-                    if (data.error === 'Insufficient stock') {
-                        showError(`Insufficient stock for ${data.material}. Shortfall: ${data.shortfall} ${data.unit}`);
-                    } else {
-                        showError(data.error);
-                    }
-                    return;
-                }
-
-                // Success!
-                const challanNumber = data.challan_number;
-                showSuccess(`Dispatch confirmed! Challan No: ${challanNumber}`);
-
-                // Show print button
-                const printBtn = document.getElementById('printChallanBtn');
-                printBtn.onclick = () => printChallan(currentDispatchId);
-
-                // Reset form
-                resetForm();
-                await loadRecentDispatches();
-
-            } catch (error) {
-                console.error('Error confirming dispatch:', error);
-                showError('Failed to confirm dispatch: ' + error.message);
-            } finally {
-                // Re-enable button
-                confirmBtn.disabled = false;
-                confirmBtn.textContent = originalBtnText;
-                confirmBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-            }
-        });
-
         function validateForm() {
-            const clientName = document.getElementById('clientName').value.trim();
-            const clientAddress = document.getElementById('clientAddress').value.trim();
+            const name = document.getElementById('clientName').value.trim();
+            const addr = document.getElementById('clientAddress').value.trim();
 
-            if (!clientName || !clientAddress) {
-                showError('Please fill in client name and address');
+            if (!name || !addr) {
+                showError('Client Name and Client Address are strictly required.');
                 return false;
             }
-
             if (dispatchItems.length === 0) {
-                showError('Please add at least one product');
+                showError('Please add at least one product to dispatch.');
                 return false;
             }
-
             return true;
         }
 
-        function resetForm() {
+        // Unified workflow to handle draft and confirmed dispatches
+        async function handleSaveWorkflow(targetStatus) {
+            if (targetStatus === 'confirmed' && !validateForm()) return;
+
+            try {
+                clearMessages();
+
+                const rawChallan = await generateChallanNumber();
+                const payload = {
+                    tenant_id: tenantId || localStorage.getItem('supabase_tenant_id') || '00000000-0000-0000-0000-000000000000',
+                    created_by: tenantId || localStorage.getItem('supabase_tenant_id') || '00000000-0000-0000-0000-000000000000',
+                    client_name: document.getElementById('clientName')?.value || '',
+                    client_address: document.getElementById('clientAddress')?.value || '',
+                    po_number: document.getElementById('poNumber')?.value || '',
+                    your_challan_ref: document.getElementById('challanRef')?.value || '',
+                    vehicle_number: document.getElementById('vehicleNumber')?.value || '',
+                    status: String(targetStatus),
+                    challan_number: String(rawChallan || '1001'),
+                    dispatch_date: new Date().toISOString().split('T')[0]
+                };
+
+                let orderId = currentDispatchId;
+
+                if (currentDispatchId) {
+                    const { error } = await window.supabase
+                        .from('p2_dispatch_orders')
+                        .update(payload)
+                        .eq('id', currentDispatchId);
+                    if (error) throw error;
+                } else {
+                    const { data, error } = await window.supabase
+                        .from('p2_dispatch_orders')
+                        .insert([payload])
+                        .select('id')
+                        .single();
+                    if (error) throw error;
+                    orderId = data.id;
+                }
+
+                // Clear previous line items
+                const { error: delErr } = await window.supabase
+                    .from('p2_dispatch_items')
+                    .delete()
+                    .eq('dispatch_order_id', orderId);
+                if (delErr) throw delErr;
+
+                // Insert line items with type-safe quantities
+                if (dispatchItems.length > 0) {
+                    const itemsPayload = dispatchItems.map(item => {
+                        const numericQty = parseInt(item.quantity || item.qty || item.qty_dispatched || 0, 10);
+                        return {
+                            dispatch_order_id: orderId,
+                            product_id: item.product_id,
+                            qty_dispatched: isNaN(numericQty) ? 0 : numericQty,
+                            unit: (item.unit && item.unit.trim()) ? item.unit : 'NOS',
+                            tenant_id: payload.tenant_id
+                        };
+                    });
+
+                    const { error: itemsErr } = await window.supabase
+                        .from('p2_dispatch_items')
+                        .insert(itemsPayload);
+                    if (itemsErr) throw itemsErr;
+                }
+
+                let confirmResult = null;
+
+                // Handle confirmed dispatch with BOM deductions
+                if (targetStatus === 'confirmed') {
+                    const consumptionArray = [];
+
+                    for (const item of dispatchItems) {
+                        const numericQty = parseInt(item.quantity || item.qty || item.qty_dispatched || 0, 10);
+                        const safeQty = isNaN(numericQty) ? 0 : numericQty;
+
+                        const { data: bomList, error: bomErr } = await window.supabase
+                            .from('p2_product_bom')
+                            .select('raw_material_id, qty_per_unit')
+                            .eq('product_id', item.product_id);
+
+                        if (bomErr) {
+                            console.error('BOM Lookup error:', bomErr);
+                            continue;
+                        }
+
+                        if (bomList && bomList.length > 0) {
+                            for (const ingredient of bomList) {
+                                const qtyNeeded = ingredient.qty_per_unit * safeQty;
+                                consumptionArray.push({
+                                    material_id: ingredient.raw_material_id,
+                                    qty: qtyNeeded
+                                });
+                            }
+                        }
+                    }
+
+                    const { data, error: confirmErr } = await window.supabase
+                        .rpc('confirm_dispatch_transaction', {
+                            p_dispatch_order_id: orderId,
+                            p_tenant_id: payload.tenant_id,
+                            p_consumption_json: JSON.stringify(consumptionArray)
+                        });
+
+                    if (confirmErr) throw confirmErr;
+                    confirmResult = data;
+                }
+
+                // Display success message
+                const successMsg = document.getElementById('successMessage');
+                const successTxt = document.getElementById('successText');
+
+                const displayChallanNumber = (targetStatus === 'confirmed' && confirmResult?.challan_number)
+                    ? confirmResult.challan_number
+                    : payload.challan_number;
+
+                successTxt.textContent = targetStatus === 'draft'
+                    ? 'Draft details saved successfully!'
+                    : `Order confirmed! Challan No: ${displayChallanNumber}`;
+
+                successMsg.classList.remove('hidden');
+                document.getElementById('printChallanBtn').onclick = () => viewChallan(orderId);
+
+                // Reset form and reload data
+                resetWorkspaceForm();
+                await loadRecentDispatches();
+                await checkDraftOrders();
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+
+            } catch (err) {
+                console.error('Error processing dispatch:', err);
+                showError(err.message || 'Error processing dispatch order.');
+            }
+        }
+
+        function resetWorkspaceForm() {
             document.getElementById('dispatchForm').reset();
             dispatchItems = [];
             currentDispatchId = null;
-            updateProductsTable();
+            renderProductsTable();
         }
 
-        function showSuccess(message) {
-            const el = document.getElementById('successMessage');
-            const text = document.getElementById('successText');
-            text.textContent = message;
-            el.classList.remove('hidden');
-
-            document.getElementById('errorMessage').classList.add('hidden');
-
-            setTimeout(() => el.classList.add('hidden'), 10000);
-        }
-
-        function showError(message) {
-            const el = document.getElementById('errorMessage');
-            const text = document.getElementById('errorText');
-            text.textContent = message;
-            el.classList.remove('hidden');
-
-            document.getElementById('successMessage').classList.add('hidden');
-
-            setTimeout(() => el.classList.add('hidden'), 8000);
-        }
-
-        window.printChallan = (orderId) => {
-            window.open(`/challan.html?id=${orderId}`, '_blank');
-        };
-
-        window.editDraft = async (orderId) => {
-            // Load draft into form
-            const { data: order, error: orderError } = await sb
-                .from('p2_dispatch_orders')
-                .select('*')
-                .eq('id', orderId)
-                .single();
-
-            if (orderError) {
-                showError('Failed to load draft');
-                return;
-            }
-
-            const { data: items, error: itemsError } = await sb
-                .from('p2_dispatch_items')
-                .select('product_id, quantity, p2_products(name, unit)')
-                .eq('dispatch_order_id', orderId);
-
-            if (itemsError) {
-                showError('Failed to load draft items');
-                return;
-            }
-
-            // Populate form
-            document.getElementById('clientName').value = order.client_name;
-            document.getElementById('clientAddress').value = order.client_address;
-            document.getElementById('poNumber').value = order.po_number || '';
-            document.getElementById('challanRef').value = order.your_challan_ref || '';
-            document.getElementById('vehicleNumber').value = order.vehicle_number || '';
-
-            dispatchItems = items.map(item => ({
-                product_id: item.product_id,
-                product_name: item.p2_products.name,
-                quantity: item.quantity,
-                unit: item.p2_products.unit
-            }));
-
-            currentDispatchId = orderId;
-            updateProductsTable();
-
-            // Scroll to top
+        function showError(msg) {
+            const errBox = document.getElementById('errorMessage');
+            document.getElementById('errorText').textContent = msg;
+            errBox.classList.remove('hidden');
             window.scrollTo({ top: 0, behavior: 'smooth' });
-        };
-
-        // Initialize on page load
-        document.addEventListener('DOMContentLoaded', init);
-    </script>
-
-    <script>
-        function applyLang(lang) {
-            document.querySelectorAll('[data-en]').forEach(el => {
-                if (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA') {
-                    el.placeholder = lang === 'mr' ? el.dataset.mr : el.dataset.en;
-                } else {
-                    el.textContent = lang === 'mr' ? el.dataset.mr : el.dataset.en;
-                }
-            });
-            const btn = document.getElementById('lang-toggle');
-            if (btn) btn.textContent = lang === 'mr' ? 'English' : 'मराठी';
-            localStorage.setItem('nexflow_lang', lang);
         }
 
-        document.addEventListener('DOMContentLoaded', () => {
-            const saved = localStorage.getItem('nexflow_lang') || 'en';
-            applyLang(saved);
-            const btn = document.getElementById('lang-toggle');
-            if (btn) btn.addEventListener('click', () => {
-                applyLang(localStorage.getItem('nexflow_lang') === 'mr' ? 'en' : 'mr');
-            });
-        });
+        function clearMessages() {
+            document.getElementById('errorMessage').classList.add('hidden');
+            document.getElementById('successMessage').classList.add('hidden');
+        }
     </script>
 </body>
 </html>
