@@ -228,9 +228,10 @@
                     <div class="bg-gray-700 p-6 rounded">
                         <h2 class="text-xl mb-4" data-en="Add Raw Material" data-mr="कच्चा माल जोडा">Add Raw Material</h2>
                         <form id="add-material-form" class="space-y-4">
-                            <input type="text" name="name" class="w-full p-2 bg-gray-600 rounded" placeholder="Name" data-en="Name" data-mr="नाव">
+                            <input type="hidden" id="edit-material-id" name="edit_material_id" value="">
+                            <input type="text" name="name" id="material-name" class="w-full p-2 bg-gray-600 rounded" placeholder="Name" data-en="Name" data-mr="नाव">
 
-                            <select name="unit" class="w-full p-2 bg-gray-600 rounded">
+                            <select name="unit" id="material-unit" class="w-full p-2 bg-gray-600 rounded">
                                 <option value="" data-en="Select Unit" data-mr="एकक निवडा">Select Unit</option>
                                 <option value="KG" data-en="KG" data-mr="किलोग्राम">KG</option>
                                 <option value="NOS" data-en="NOS" data-mr="नग">NOS</option>
@@ -239,9 +240,9 @@
                                 <option value="PCS" data-en="PCS" data-mr="तुकडे">PCS</option>
                             </select>
 
-                            <input type="number" name="min_stock_level" class="w-full p-2 bg-gray-600 rounded" placeholder="Min Stock Level" data-en="Min Stock Level" data-mr="किमान साठा पातळी">
+                            <input type="number" name="min_stock_level" id="material-min-stock" class="w-full p-2 bg-gray-600 rounded" placeholder="Min Stock Level" data-en="Min Stock Level" data-mr="किमान साठा पातळी">
 
-                            <button type="submit" class="w-full bg-nexflow-green text-white p-2 rounded" data-en="Add Material" data-mr="सामग्री जोडा">Add Material</button>
+                            <button type="submit" id="submit-material-btn" class="w-full bg-nexflow-green text-white p-2 rounded" data-en="Add Material" data-mr="सामग्री जोडा">Add Material</button>
                         </form>
                     </div>
 
@@ -649,6 +650,10 @@ const { data, error } = await window.supabase
                         <td class="p-2">${material.unit}</td>
                         <td class="p-2">${material.min_stock_level}</td>
                         <td class="p-2">
+                            <button onclick="editMaterial('${material.id}', '${material.name.replace(/'/g, "\\'")}', '${material.unit}', ${material.min_stock_level})"
+                                class="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700 mr-2" data-en="Edit" data-mr="संपादित करा">
+                                Edit
+                            </button>
                             <button onclick="deactivateMaterial('${material.id}')"
                                 class="bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700" data-en="Deactivate" data-mr="निष्क्रिय करा">
                                 Deactivate
@@ -666,11 +671,31 @@ const { data, error } = await window.supabase
             }
         }
 
+        // Edit material function
+        function editMaterial(id, name, unit, minStockLevel) {
+            // Populate form fields
+            document.getElementById('edit-material-id').value = id;
+            document.getElementById('material-name').value = name;
+            document.getElementById('material-unit').value = unit;
+            document.getElementById('material-min-stock').value = minStockLevel;
+
+            // Change button text
+            const lang = localStorage.getItem('nexflow_lang') || 'en';
+            const submitBtn = document.getElementById('submit-material-btn');
+            submitBtn.textContent = lang === 'mr' ? 'सामग्री अपडेट करा' : 'Update Material';
+            submitBtn.setAttribute('data-en', 'Update Material');
+            submitBtn.setAttribute('data-mr', 'सामग्री अपडेट करा');
+
+            // Scroll to form
+            document.getElementById('add-material-form').scrollIntoView({ behavior: 'smooth' });
+        }
+
         // Add material
         document.getElementById('add-material-form').addEventListener('submit', async (e) => {
             e.preventDefault();
 
             const formData = new FormData(e.target);
+            const editMaterialId = formData.get('edit_material_id');
             const name = formData.get('name')?.trim();
             const unit = formData.get('unit');
             const minStockLevel = formData.get('min_stock_level');
@@ -708,7 +733,7 @@ const { data, error } = await window.supabase
 
                 const tenantId = user.id;
 
-                // GUARD 2: Check for duplicate material name (case-insensitive)
+                // Check for duplicate material name (case-insensitive), excluding current material if editing
                 const { data: existingMaterials, error: checkError } = await window.supabase
                     .from('p2_raw_materials')
                     .select('id, name')
@@ -717,7 +742,10 @@ const { data, error } = await window.supabase
 
                 if (checkError) throw checkError;
 
-                const duplicateFound = existingMaterials?.some(m => m.name.toLowerCase() === name.toLowerCase());
+                const duplicateFound = existingMaterials?.some(m =>
+                    m.name.toLowerCase() === name.toLowerCase() &&
+                    m.id !== editMaterialId
+                );
 
                 if (duplicateFound) {
                     alert(lang === 'mr'
@@ -726,24 +754,48 @@ const { data, error } = await window.supabase
                     return;
                 }
 
-                const { error } = await window.supabase
-                    .from('p2_raw_materials')
-                    .insert({
-                        name,
-                        unit,
-                        min_stock_level: minStock,
-                        tenant_id: tenantId,
-                        is_active: true
-                    });
+                if (editMaterialId) {
+                    // Update existing material
+                    const { error } = await window.supabase
+                        .from('p2_raw_materials')
+                        .update({
+                            name,
+                            unit,
+                            min_stock_level: minStock
+                        })
+                        .eq('id', editMaterialId);
 
-                if (error) throw error;
+                    if (error) throw error;
 
-                alert(lang === 'mr' ? 'साहित्य यशस्वीरित्या जोडले' : 'Material added successfully');
+                    alert(lang === 'mr' ? 'साहित्य यशस्वीरित्या अपडेट केले' : 'Material updated successfully');
+                } else {
+                    // Insert new material
+                    const { error } = await window.supabase
+                        .from('p2_raw_materials')
+                        .insert({
+                            name,
+                            unit,
+                            min_stock_level: minStock,
+                            tenant_id: tenantId,
+                            is_active: true
+                        });
+
+                    if (error) throw error;
+
+                    alert(lang === 'mr' ? 'साहित्य यशस्वीरित्या जोडले' : 'Material added successfully');
+                }
+
+                // Reset form and button text
                 e.target.reset();
+                const submitBtn = document.getElementById('submit-material-btn');
+                submitBtn.textContent = lang === 'mr' ? 'सामग्री जोडा' : 'Add Material';
+                submitBtn.setAttribute('data-en', 'Add Material');
+                submitBtn.setAttribute('data-mr', 'सामग्री जोडा');
+
                 loadMaterials();
             } catch (error) {
-                console.error('Error adding material:', error);
-                alert(lang === 'mr' ? 'साहित्य जोडण्यात अयशस्वी' : 'Failed to add material');
+                console.error('Error saving material:', error);
+                alert(lang === 'mr' ? 'साहित्य साठवण्यात अयशस्वी' : 'Failed to save material');
             }
         });
 
