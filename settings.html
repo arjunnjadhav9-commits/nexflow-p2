@@ -318,7 +318,7 @@
                                 <label class="block mb-2 text-sm font-medium" data-en="Adjustment Quantity" data-mr="समायोजन प्रमाण">Adjustment Quantity</label>
                                 <div class="flex gap-2 items-center">
                                     <button type="button" id="btn-minus" class="w-12 h-12 bg-red-600 text-white text-2xl font-bold rounded hover:bg-red-700 flex-shrink-0">−</button>
-                                    <input type="text" inputmode="decimal" min="0" id="adjustment-quantity" class="flex-1 p-2 bg-gray-600 rounded text-center" placeholder="0" required>
+                                    <input type="text" inputmode="decimal" id="adjustment-quantity" class="flex-1 p-2 bg-gray-600 rounded text-center" placeholder="0" required>
                                     <button type="button" id="btn-plus" class="w-12 h-12 bg-green-600 text-white text-2xl font-bold rounded hover:bg-green-700 flex-shrink-0 ring-2 ring-white">+</button>
                                 </div>
                                 <p id="adj-sign-label" class="text-xs text-gray-400 mt-1" data-en="Tap − to deduct, + to add" data-mr="वजा करण्यासाठी − दाबा, जोडण्यासाठी + दाबा">Tap − to deduct, + to add</p>
@@ -545,7 +545,7 @@ const { data, error } = await window.supabase
                 if (updateError) throw updateError;
 
                 // Update preview
-                document.getElementById('logo-preview').src = logoUrl;
+                document.getElementById('logo-preview').src = logoUrl + '?t='+ Date.now();
                 document.getElementById('logo-preview-container').classList.remove('hidden');
 
                 showStatus('logo-status', 'success', 'Logo uploaded successfully!', 'लोगो यशस्वीरित्या अपलोड केला!');
