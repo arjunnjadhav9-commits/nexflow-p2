@@ -128,11 +128,13 @@
                 const card = document.createElement('div');
                 card.className = `border-4 ${borderClass} p-4 rounded-lg shadow-md`;
                 card.dataset.materialName = item.material_name.toLowerCase();
+                card.dataset.materialCode = (item.material_code || '').toLowerCase();
                 card.innerHTML = `
                     <div class="flex justify-between items-center mb-2">
                         <h2 class="text-lg font-semibold">${item.material_name}</h2>
                         ${isLowStock ? '<i class="fas fa-exclamation-triangle text-low-stock-red"></i>' : ''}
                     </div>
+                    ${item.material_code ? `<p class="text-xs text-nexflow-muted -mt-1 mb-1">Code: ${item.material_code}</p>` : ''}
                     <div class="text-sm">
                         <p data-en="Current Stock: ${formatNumber(item.current_stock)} ${item.unit}" data-mr="सध्याचा साठा: ${formatNumber(item.current_stock)} ${item.unit}">Current Stock: ${formatNumber(item.current_stock)} ${item.unit}</p>
                         <p data-en="Minimum Stock Level: ${formatNumber(item.min_stock_level)} ${item.unit}" data-mr="किमान साठा पातळी: ${formatNumber(item.min_stock_level)} ${item.unit}">Minimum Stock Level: ${formatNumber(item.min_stock_level)} ${item.unit}</p>
@@ -148,7 +150,8 @@
         // Function to filter materials
         function filterMaterials(searchTerm) {
             const filtered = allStockLevels.filter(item =>
-                item.material_name.toLowerCase().includes(searchTerm.toLowerCase())
+                item.material_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                (item.material_code && item.material_code.toLowerCase().includes(searchTerm.toLowerCase()))
             );
             renderStockLevels(filtered, searchTerm.length > 0);
         }
@@ -201,7 +204,7 @@
                 // Fetch raw materials
                 const { data: materials, error: matError } = await window.supabase
                     .from('p2_raw_materials')
-                    .select('id, name, unit, min_stock_level')
+                    .select('id, name, unit, min_stock_level, material_code')
                     .eq('tenant_id', tenantId)
                     .eq('is_active', true);
 
@@ -224,6 +227,7 @@
 
                 allStockLevels = materials.map(mat => ({
                     material_name: mat.name,
+                    material_code: mat.material_code,
                     unit: mat.unit,
                     min_stock_level: mat.min_stock_level,
                     current_stock: stockMap[mat.id] || 0
