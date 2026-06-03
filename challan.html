@@ -58,6 +58,22 @@
                 page-break-inside: avoid;
             }
 
+            /* Force borders to show on print */
+            #challan-content table {
+                border-collapse: collapse !important;
+                width: 100% !important;
+            }
+            #challan-content table, 
+            #challan-content th, 
+            #challan-content td {
+                border: 1px solid black !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+            #challan-content thead tr {
+                background-color: #e5e7eb !important;
+            }
+
             /* Hide navbar, buttons, status messages */
             .no-print, nav, button, .bg-nexflow-green, .bg-nexflow-teal, .bg-red-600, .bg-yellow-900 {
                 display: none !important;
