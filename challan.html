@@ -134,40 +134,43 @@
         <!-- Challan Title -->
         <h1 class="text-2xl font-bold text-center mb-6" data-en="DELIVERY CHALLAN" data-mr="डिलिव्हरी चलान">DELIVERY CHALLAN</h1>
 
-        <!-- Two Column Meta Block -->
-        <div class="grid grid-cols-2 gap-8 mb-6">
-            <!-- Left Column: TO -->
-            <div>
-                <h3 class="font-bold mb-2" data-en="TO:" data-mr="प्रति:">TO:</h3>
-                <div id="client-details" class="text-sm">
-                    <!-- Client name and address -->
-                </div>
-            </div>
-
-            <!-- Right Column: Challan Meta -->
-            <div class="text-right">
-                <div class="mb-1">
-                    <strong data-en="Challan No:" data-mr="चलान क्रमांक:">Challan No:</strong>
-                    <span id="challan-no"></span>
-                </div>
-                <div class="mb-1">
-                    <strong data-en="Date:" data-mr="तारीख:">Date:</strong>
-                    <span id="challan-date"></span>
-                </div>
-                <div class="mb-1">
-                    <strong data-en="PO No:" data-mr="PO क्रमांक:">PO No:</strong>
-                    <span id="po-no"></span>
-                </div>
-                <div class="mb-1">
-                    <strong data-en="Your Challan Ref:" data-mr="तुमचा चलान संदर्भ:">Your Challan Ref:</strong>
-                    <span id="client-challan-ref"></span>
-                </div>
-                <div id="vehicle-number-row" class="mb-1 hidden">
-                    <strong data-en="Vehicle No:" data-mr="वाहन क्र:">Vehicle No:</strong>
-                    <span id="vehicle-no"></span>
-                </div>
-            </div>
-        </div>
+        <!-- Two Column Meta Block - Bordered Table -->
+        <table class="w-full border-collapse border border-black mb-6" style="table-layout:fixed;">
+            <tr>
+                <!-- Left: TO address -->
+                <td class="border border-black p-3 w-1/2 align-top">
+                    <div class="font-bold text-sm mb-1" data-en="TO:" data-mr="प्रति:">TO:</div>
+                    <div id="client-details" class="text-sm">
+                        <!-- Client name and address -->
+                    </div>
+                </td>
+                <!-- Right: Challan meta -->
+                <td class="border border-black p-0 w-1/2 align-top">
+                    <table class="w-full border-collapse" style="height:100%;">
+                        <tr>
+                            <td class="border border-black p-2 text-sm font-bold w-1/2" data-en="Challan No:" data-mr="चलान क्रमांक:">Challan No:</td>
+                            <td class="border border-black p-2 text-sm" id="challan-no"></td>
+                        </tr>
+                        <tr>
+                            <td class="border border-black p-2 text-sm font-bold" data-en="Date:" data-mr="तारीख:">Date:</td>
+                            <td class="border border-black p-2 text-sm" id="challan-date"></td>
+                        </tr>
+                        <tr>
+                            <td class="border border-black p-2 text-sm font-bold" data-en="PO No:" data-mr="PO क्रमांक:">PO No:</td>
+                            <td class="border border-black p-2 text-sm" id="po-no"></td>
+                        </tr>
+                        <tr>
+                            <td class="border border-black p-2 text-sm font-bold" data-en="Your Challan Ref:" data-mr="तुमचा चलान संदर्भ:">Your Challan Ref:</td>
+                            <td class="border border-black p-2 text-sm" id="client-challan-ref"></td>
+                        </tr>
+                        <tr id="vehicle-number-row" class="hidden">
+                            <td class="border border-black p-2 text-sm font-bold" data-en="Vehicle No:" data-mr="वाहन क्र:">Vehicle No:</td>
+                            <td class="border border-black p-2 text-sm" id="vehicle-no"></td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+        </table>
 
         <!-- Items Table -->
         <table class="w-full border-collapse border border-black mb-6">
