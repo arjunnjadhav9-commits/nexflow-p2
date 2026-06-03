@@ -229,6 +229,7 @@
                         <h2 class="text-xl mb-4" data-en="Add Raw Material" data-mr="कच्चा माल जोडा">Add Raw Material</h2>
                         <form id="add-material-form" class="space-y-4">
                             <input type="hidden" id="edit-material-id" name="edit_material_id" value="">
+                            <input type="text" name="material_code" id="material-code" class="w-full p-2 bg-gray-600 rounded" placeholder="Material Code (e.g. 1DHWWSR-M6)" data-en="Material Code (optional)" data-mr="साहित्य कोड (ऐच्छिक)">
                             <input type="text" name="name" id="material-name" class="w-full p-2 bg-gray-600 rounded" placeholder="Name" data-en="Name" data-mr="नाव">
 
                             <select name="unit" id="material-unit" class="w-full p-2 bg-gray-600 rounded">
@@ -253,6 +254,7 @@
                             <table class="w-full">
                                 <thead>
                                     <tr class="bg-gray-600">
+                                        <th class="p-2" data-en="Code" data-mr="कोड">Code</th>
                                         <th class="p-2" data-en="Name" data-mr="नाव">Name</th>
                                         <th class="p-2" data-en="Unit" data-mr="एकक">Unit</th>
                                         <th class="p-2" data-en="Min Stock" data-mr="किमान साठा">Min Stock</th>
@@ -646,11 +648,12 @@ const { data, error } = await window.supabase
                     const row = document.createElement('tr');
                     row.className = 'border-b border-gray-600';
                     row.innerHTML = `
+                        <td class="p-2 text-xs text-nexflow-muted">${material.material_code || '-'}</td>
                         <td class="p-2">${material.name}</td>
                         <td class="p-2">${material.unit}</td>
                         <td class="p-2">${material.min_stock_level}</td>
                         <td class="p-2">
-                            <button onclick="editMaterial('${material.id}', '${material.name.replace(/'/g, "\\'")}', '${material.unit}', ${material.min_stock_level})"
+                            <button onclick="editMaterial('${material.id}', '${material.name.replace(/'/g, "\\'")}', '${material.unit}', ${material.min_stock_level}, '${(material.material_code || '').replace(/'/g, "\\'")}')"
                                 class="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700 mr-2" data-en="Edit" data-mr="संपादित करा">
                                 Edit
                             </button>
@@ -672,9 +675,10 @@ const { data, error } = await window.supabase
         }
 
         // Edit material function
-        function editMaterial(id, name, unit, minStockLevel) {
+        function editMaterial(id, name, unit, minStockLevel, materialCode = '') {
             // Populate form fields
             document.getElementById('edit-material-id').value = id;
+            document.getElementById('material-code').value = materialCode;
             document.getElementById('material-name').value = name;
             document.getElementById('material-unit').value = unit;
             document.getElementById('material-min-stock').value = minStockLevel;
@@ -696,6 +700,7 @@ const { data, error } = await window.supabase
 
             const formData = new FormData(e.target);
             const editMaterialId = formData.get('edit_material_id');
+            const materialCode = formData.get('material_code')?.trim() || null;
             const name = formData.get('name')?.trim();
             const unit = formData.get('unit');
             const minStockLevel = formData.get('min_stock_level');
@@ -761,7 +766,8 @@ const { data, error } = await window.supabase
                         .update({
                             name,
                             unit,
-                            min_stock_level: minStock
+                            min_stock_level: minStock,
+                            material_code: materialCode
                         })
                         .eq('id', editMaterialId);
 
@@ -776,6 +782,7 @@ const { data, error } = await window.supabase
                             name,
                             unit,
                             min_stock_level: minStock,
+                            material_code: materialCode,
                             tenant_id: tenantId,
                             is_active: true
                         });
