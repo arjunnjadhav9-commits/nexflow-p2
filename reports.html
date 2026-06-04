@@ -240,7 +240,7 @@
 
                 // Define date range for the selected month
                 const firstDay = new Date(year, month - 1, 1);
-                const lastDay = new Date(year, month, 0);
+                const lastDay = new Date(year, month, 0, 23, 59, 59, 999);
 
                 // Fetch raw materials for this tenant
                 const { data: rawMaterials, error: materialsError } = await window.supabase
@@ -252,13 +252,14 @@
 
                 // Process each material
                 const materialSummary = await Promise.all(rawMaterials.map(async (material) => {
-                    // Opening stock (before first day of month)
+                    // Opening stock (adjustment transactions tagged as Opening Stock)
                     const { data: openingStockData, error: openingStockError } = await window.supabase
                         .from('p2_stock_transactions')
                         .select('quantity')
                         .eq('raw_material_id', material.id)
                         .eq('tenant_id', tenantId)
-                        .lt('created_at', firstDay.toISOString());
+                        .eq('transaction_type', 'adjustment')
+                        .eq('notes', 'Opening Stock');
 
                     if (openingStockError) throw openingStockError;
 
