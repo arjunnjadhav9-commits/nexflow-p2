@@ -618,6 +618,7 @@
                 // Handle confirmed dispatch with BOM deductions
                 if (targetStatus === 'confirmed') {
                     const consumptionArray = [];
+                    const insufficientItems = [];
 
                     for (const item of dispatchItems) {
                         const numericQty = parseInt(item.quantity || item.qty || item.qty_dispatched || 0, 10);
@@ -636,12 +637,50 @@
                         if (bomList && bomList.length > 0) {
                             for (const ingredient of bomList) {
                                 const qtyNeeded = ingredient.qty_per_unit * safeQty;
+
+                                // Check current stock from transactions
+                                const { data: txData } = await window.supabase
+                                    .from('p2_stock_transactions')
+                                    .select('quantity')
+                                    .eq('raw_material_id', ingredient.raw_material_id)
+                                    .eq('tenant_id', payload.tenant_id);
+
+                                const currentStock = txData ? txData.reduce((sum, t) => sum + Number(t.quantity), 0) : 0;
+
+                                // Get material name for error message
+                                const { data: matData } = await window.supabase
+                                    .from('p2_raw_materials')
+                                    .select('name, material_code')
+                                    .eq('id', ingredient.raw_material_id)
+                                    .single();
+
+                                if (currentStock < qtyNeeded) {
+                                    insufficientItems.push({
+                                        name: matData ? `${matData.material_code || ''} ${matData.name}`.trim() : ingredient.raw_material_id,
+                                        required: qtyNeeded,
+                                        available: currentStock
+                                    });
+                                }
+
                                 consumptionArray.push({
                                     material_id: ingredient.raw_material_id,
                                     qty: qtyNeeded
                                 });
                             }
                         }
+                    }
+
+                    // Block dispatch if any material is insufficient
+                    if (insufficientItems.length > 0) {
+                        const lang = localStorage.getItem('nexflow_lang') || 'en';
+                        const errorLines = insufficientItems.map(i =>
+                            `• ${i.name}: Need ${i.required.toFixed(2)}, Available ${i.available.toFixed(2)}`
+                        ).join('\n');
+                        const msg = lang === 'mr'
+                            ? `साठा अपुरा आहे:\n${errorLines}`
+                            : `Stock not sufficient:\n${errorLines}`;
+                        alert(msg);
+                        return;
                     }
 
                     const { data, error: confirmErr } = await window.supabase
@@ -703,3 +742,4 @@
     </script>
 </body>
 </html>
+

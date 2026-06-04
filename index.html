@@ -73,8 +73,22 @@
         </div>
 
         <!-- Stock Levels Grid -->
-        <div id="stockLevelsGrid" class="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <!-- Stock level cards will be dynamically inserted here -->
+        <div class="overflow-x-auto">
+            <table class="w-full border-collapse text-sm" id="stockLevelsGrid">
+                <thead>
+                    <tr class="bg-gray-700 text-left">
+                        <th class="p-3 border border-gray-600" data-en="Code" data-mr="कोड">Code</th>
+                        <th class="p-3 border border-gray-600" data-en="Material Name" data-mr="साहित्याचे नाव">Material Name</th>
+                        <th class="p-3 border border-gray-600 text-right" data-en="Current Stock" data-mr="सध्याचा साठा">Current Stock</th>
+                        <th class="p-3 border border-gray-600 text-right" data-en="Min Stock" data-mr="किमान साठा">Min Stock</th>
+                        <th class="p-3 border border-gray-600" data-en="Unit" data-mr="एकक">Unit</th>
+                        <th class="p-3 border border-gray-600" data-en="Status" data-mr="स्थिती">Status</th>
+                    </tr>
+                </thead>
+                <tbody id="stockLevelsBody">
+                    <!-- Rows inserted here -->
+                </tbody>
+            </table>
         </div>
 
         <!-- No Match State -->
@@ -96,17 +110,14 @@
     <script>
         let allStockLevels = [];
 
-        // Function to render stock level cards
+        // Function to render stock level table
         function renderStockLevels(stockLevels, isFiltered = false) {
-            const gridContainer = document.getElementById('stockLevelsGrid');
+            const tbody = document.getElementById('stockLevelsBody');
             const emptyState = document.getElementById('emptyState');
             const noMatchState = document.getElementById('noMatchState');
             const timestampText = document.getElementById('timestampText');
 
-            // Clear previous cards
-            gridContainer.innerHTML = '';
-
-            // Hide both states initially
+            tbody.innerHTML = '';
             emptyState.classList.add('hidden');
             noMatchState.classList.add('hidden');
 
@@ -119,32 +130,31 @@
                 return;
             }
 
-            stockLevels.forEach(item => {
+            stockLevels.forEach((item, index) => {
                 const isLowStock = item.current_stock < item.min_stock_level;
-                const borderClass = isLowStock
-                    ? 'border-low-stock-red'
-                    : 'border-nexflow-teal';
-
-                const card = document.createElement('div');
-                card.className = `border-4 ${borderClass} p-4 rounded-lg shadow-md`;
-                card.dataset.materialName = item.material_name.toLowerCase();
-                card.dataset.materialCode = (item.material_code || '').toLowerCase();
-                card.innerHTML = `
-                    <div class="flex justify-between items-center mb-2">
-                        <h2 class="text-lg font-semibold">${item.material_name}</h2>
-                        ${isLowStock ? '<i class="fas fa-exclamation-triangle text-low-stock-red"></i>' : ''}
-                    </div>
-                    ${item.material_code ? `<p class="text-xs text-nexflow-muted -mt-1 mb-1">Code: ${item.material_code}</p>` : ''}
-                    <div class="text-sm">
-                        <p data-en="Current Stock: ${formatNumber(item.current_stock)} ${item.unit}" data-mr="सध्याचा साठा: ${formatNumber(item.current_stock)} ${item.unit}">Current Stock: ${formatNumber(item.current_stock)} ${item.unit}</p>
-                        <p data-en="Minimum Stock Level: ${formatNumber(item.min_stock_level)} ${item.unit}" data-mr="किमान साठा पातळी: ${formatNumber(item.min_stock_level)} ${item.unit}">Minimum Stock Level: ${formatNumber(item.min_stock_level)} ${item.unit}</p>
-                    </div>
+                const row = document.createElement('tr');
+                row.className = `${index % 2 === 0 ? 'bg-gray-800' : 'bg-gray-850'} hover:bg-gray-700`;
+                row.dataset.materialName = item.material_name.toLowerCase();
+                row.dataset.materialCode = (item.material_code || '').toLowerCase();
+                row.innerHTML = `
+                    <td class="p-3 border border-gray-600 text-xs font-mono text-nexflow-muted whitespace-nowrap">${item.material_code || '-'}</td>
+                    <td class="p-3 border border-gray-600 font-medium ${isLowStock ? 'text-red-400' : ''}">${item.material_name}</td>
+                    <td class="p-3 border border-gray-600 text-right font-bold ${isLowStock ? 'text-red-400' : 'text-green-400'}">${formatNumber(item.current_stock)}</td>
+                    <td class="p-3 border border-gray-600 text-right text-gray-400">${formatNumber(item.min_stock_level)}</td>
+                    <td class="p-3 border border-gray-600 text-gray-400">${item.unit}</td>
+                    <td class="p-3 border border-gray-600">
+                        ${isLowStock
+                            ? '<span class="text-xs bg-red-900 text-red-300 px-2 py-1 rounded">⚠ Low Stock</span>'
+                            : '<span class="text-xs bg-green-900 text-green-300 px-2 py-1 rounded">✓ OK</span>'
+                        }
+                    </td>
                 `;
-                gridContainer.appendChild(card);
+                tbody.appendChild(row);
             });
 
-            // Update timestamp
-            timestampText.textContent = formatDate(new Date().toISOString()) + ' ' + new Date().toLocaleTimeString('en-IN');
+            if (timestampText) {
+                timestampText.textContent = formatDate(new Date().toISOString()) + ' ' + new Date().toLocaleTimeString('en-IN');
+            }
         }
 
         // Function to filter materials
