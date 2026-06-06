@@ -6,6 +6,7 @@
     <link rel="icon" href="/public/assets/favicon.ico" type="image/x-icon">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
     <script src="js/supabase-client.js"></script>
     <script src="js/utils.js"></script>
     <script src="js/auth.js"></script>
@@ -223,6 +224,47 @@
 
             <!-- Raw Materials Tab -->
             <div id="content-materials" class="tab-panel hidden">
+
+                <!-- Bulk Import Section -->
+                <div class="bg-gray-700 p-6 rounded mb-6">
+                    <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+                        <h2 class="text-xl font-semibold" data-en="Bulk Import Materials" data-mr="साहित्य बल्क आयात करा">Bulk Import Materials</h2>
+                        <button onclick="downloadTemplate()" class="px-4 py-2 bg-gray-600 text-nexflow-teal border border-nexflow-teal rounded text-sm hover:bg-gray-500 transition" data-en="⬇ Download Template" data-mr="⬇ टेम्प्लेट डाउनलोड करा">⬇ Download Template</button>
+                    </div>
+
+                    <div class="bg-gray-800 border border-dashed border-gray-500 rounded p-4 mb-4 text-center cursor-pointer hover:border-nexflow-teal transition" onclick="document.getElementById('bulk-file-input').click()">
+                        <p class="text-nexflow-muted text-sm mb-1" data-en="Click to upload Excel or CSV file" data-mr="Excel किंवा CSV फाइल अपलोड करण्यासाठी क्लिक करा">Click to upload Excel or CSV file</p>
+                        <p class="text-gray-500 text-xs" data-en="Accepted: .xlsx, .xls, .csv — Columns required: name, unit, min_stock_level. material_code is optional." data-mr="स्वीकृत: .xlsx, .xls, .csv — आवश्यक स्तंभ: name, unit, min_stock_level. material_code ऐच्छिक.">Accepted: .xlsx, .xls, .csv &mdash; Required columns: name, unit, min_stock_level. material_code is optional.</p>
+                        <input type="file" id="bulk-file-input" accept=".xlsx,.xls,.csv" class="hidden" onchange="handleBulkFile(this)">
+                    </div>
+
+                    <!-- Preview Table (hidden until file loaded) -->
+                    <div id="bulk-preview-container" class="hidden">
+                        <div class="flex items-center justify-between mb-2 flex-wrap gap-2">
+                            <p id="bulk-preview-summary" class="text-sm text-nexflow-muted"></p>
+                            <div class="flex gap-2">
+                                <button onclick="clearBulkImport()" class="px-3 py-1 bg-gray-600 text-white rounded text-sm hover:bg-gray-500" data-en="Clear" data-mr="साफ करा">Clear</button>
+                                <button onclick="submitBulkImport()" id="bulk-import-btn" class="px-4 py-1 bg-nexflow-green text-white rounded text-sm hover:bg-green-600 font-semibold" data-en="Import All" data-mr="सर्व आयात करा">Import All</button>
+                            </div>
+                        </div>
+                        <div class="overflow-x-auto max-h-64 overflow-y-auto">
+                            <table class="w-full text-sm">
+                                <thead class="sticky top-0 bg-gray-600">
+                                    <tr>
+                                        <th class="p-2 text-left" data-en="Code" data-mr="कोड">Code</th>
+                                        <th class="p-2 text-left" data-en="Name" data-mr="नाव">Name</th>
+                                        <th class="p-2 text-left" data-en="Unit" data-mr="एकक">Unit</th>
+                                        <th class="p-2 text-left" data-en="Min Stock" data-mr="किमान साठा">Min Stock</th>
+                                        <th class="p-2 text-left" data-en="Status" data-mr="स्थिती">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="bulk-preview-body"></tbody>
+                            </table>
+                        </div>
+                        <div id="bulk-import-status" class="mt-3 hidden"></div>
+                    </div>
+                </div>
+
                 <div class="grid md:grid-cols-2 gap-6">
                     <!-- Add Raw Material Form -->
                     <div class="bg-gray-700 p-6 rounded">
@@ -1264,6 +1306,209 @@ const { data, error } = await window.supabase
                 });
             });
         }
+
+        // ─── BULK IMPORT ─────────────────────────────────────────────────────────
+
+        let bulkRows = []; // parsed + validated rows ready for preview
+
+        const VALID_UNITS = ['KG', 'NOS', 'L', 'MTR', 'PCS'];
+
+        function handleBulkFile(input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+
+                    if (!rows.length) {
+                        alert('File is empty or could not be parsed.');
+                        input.value = '';
+                        return;
+                    }
+
+                    // Normalise header keys — lowercase + trim
+                    const normalised = rows.map(row => {
+                        const out = {};
+                        Object.keys(row).forEach(k => { out[k.toLowerCase().trim()] = row[k]; });
+                        return out;
+                    });
+
+                    // Validate required column presence
+                    const sample = normalised[0];
+                    if (!('name' in sample) || !('unit' in sample) || !('min_stock_level' in sample)) {
+                        alert('Missing required columns. File must have: name, unit, min_stock_level\nOptional: material_code');
+                        input.value = '';
+                        return;
+                    }
+
+                    previewBulkData(normalised);
+                } catch (err) {
+                    console.error('Parse error:', err);
+                    alert('Failed to parse file. Make sure it is a valid .xlsx, .xls, or .csv file.');
+                    input.value = '';
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function previewBulkData(rows) {
+            const lang = localStorage.getItem('nexflow_lang') || 'en';
+            bulkRows = [];
+            const tbody = document.getElementById('bulk-preview-body');
+            tbody.innerHTML = '';
+
+            let validCount = 0;
+            let errorCount = 0;
+
+            rows.forEach((row, idx) => {
+                const code = String(row['material_code'] || '').trim();
+                const name = String(row['name'] || '').trim();
+                const unit = String(row['unit'] || '').trim().toUpperCase();
+                const minStock = parseFloat(row['min_stock_level']);
+
+                // Validate
+                let errors = [];
+                if (!name) errors.push('name missing');
+                if (!VALID_UNITS.includes(unit)) errors.push(`unit must be one of: ${VALID_UNITS.join(', ')}`);
+                if (isNaN(minStock) || minStock < 0) errors.push('min_stock_level must be a number ≥ 0');
+
+                const isValid = errors.length === 0;
+                if (isValid) {
+                    validCount++;
+                    bulkRows.push({ material_code: code || null, name, unit, min_stock_level: minStock });
+                } else {
+                    errorCount++;
+                }
+
+                const tr = document.createElement('tr');
+                tr.className = 'border-b border-gray-600 ' + (isValid ? '' : 'bg-red-900 bg-opacity-30');
+                tr.innerHTML = `
+                    <td class="p-2 text-xs text-nexflow-muted">${code || '-'}</td>
+                    <td class="p-2">${name || '<span class="text-red-400">—</span>'}</td>
+                    <td class="p-2">${unit || '<span class="text-red-400">—</span>'}</td>
+                    <td class="p-2">${isNaN(minStock) ? '<span class="text-red-400">—</span>' : minStock}</td>
+                    <td class="p-2 text-xs ${isValid ? 'text-green-400' : 'text-red-400'}">
+                        ${isValid ? '✓ OK' : '✗ ' + errors.join(', ')}
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            // Summary
+            const summaryEl = document.getElementById('bulk-preview-summary');
+            summaryEl.innerHTML = `<span class="text-green-400">${validCount} valid</span>${errorCount > 0 ? ` &nbsp;·&nbsp; <span class="text-red-400">${errorCount} errors (will be skipped)</span>` : ''}`;
+
+            // Show/hide import button
+            document.getElementById('bulk-import-btn').disabled = validCount === 0;
+            document.getElementById('bulk-import-btn').classList.toggle('opacity-50', validCount === 0);
+
+            document.getElementById('bulk-preview-container').classList.remove('hidden');
+
+            // Re-apply language
+            applyLang(lang);
+        }
+
+        async function submitBulkImport() {
+            if (!bulkRows.length) return;
+
+            const btn = document.getElementById('bulk-import-btn');
+            btn.disabled = true;
+            btn.textContent = 'Importing…';
+
+            try {
+                const { data: { user } } = await window.supabase.auth.getUser();
+                if (!user) throw new Error('Not authenticated');
+                const tenantId = user.id;
+
+                // Fetch existing material names to detect duplicates
+                const { data: existing, error: fetchErr } = await window.supabase
+                    .from('p2_raw_materials')
+                    .select('name')
+                    .eq('tenant_id', tenantId)
+                    .eq('is_active', true);
+
+                if (fetchErr) throw fetchErr;
+
+                const existingNames = new Set((existing || []).map(m => m.name.toLowerCase()));
+
+                const toInsert = bulkRows.filter(r => !existingNames.has(r.name.toLowerCase()));
+                const skipped = bulkRows.length - toInsert.length;
+
+                if (!toInsert.length) {
+                    showBulkStatus('warning', `All ${bulkRows.length} materials already exist — nothing imported.`);
+                    btn.disabled = false;
+                    btn.textContent = 'Import All';
+                    return;
+                }
+
+                // Add tenant_id and is_active, batch in chunks of 50
+                const CHUNK = 50;
+                let inserted = 0;
+                for (let i = 0; i < toInsert.length; i += CHUNK) {
+                    const chunk = toInsert.slice(i, i + CHUNK).map(r => ({
+                        ...r,
+                        tenant_id: tenantId,
+                        is_active: true
+                    }));
+
+                    const { error: insErr } = await window.supabase
+                        .from('p2_raw_materials')
+                        .insert(chunk);
+
+                    if (insErr) throw insErr;
+                    inserted += chunk.length;
+                }
+
+                let msg = `✓ ${inserted} materials imported successfully.`;
+                if (skipped > 0) msg += ` ${skipped} skipped (duplicates).`;
+                showBulkStatus('success', msg);
+
+                // Reset
+                bulkRows = [];
+                document.getElementById('bulk-file-input').value = '';
+                loadMaterials();
+            } catch (err) {
+                console.error('Bulk import error:', err);
+                showBulkStatus('error', 'Import failed: ' + (err.message || 'Unknown error'));
+                btn.disabled = false;
+                btn.textContent = 'Import All';
+            }
+        }
+
+        function clearBulkImport() {
+            bulkRows = [];
+            document.getElementById('bulk-file-input').value = '';
+            document.getElementById('bulk-preview-container').classList.add('hidden');
+            document.getElementById('bulk-preview-body').innerHTML = '';
+        }
+
+        function showBulkStatus(type, message) {
+            const el = document.getElementById('bulk-import-status');
+            const colors = { success: 'bg-green-900 border-green-700', error: 'bg-red-900 border-red-700', warning: 'bg-yellow-900 border-yellow-700' };
+            el.className = `p-3 rounded border text-sm ${colors[type] || 'bg-gray-700 border-gray-500'}`;
+            el.textContent = message;
+            el.classList.remove('hidden');
+        }
+
+        function downloadTemplate() {
+            const ws = XLSX.utils.aoa_to_sheet([
+                ['material_code', 'name', 'unit', 'min_stock_level'],
+                ['MAT-001', 'Example Material', 'KG', 10],
+                ['MAT-002', 'Another Material', 'NOS', 50],
+            ]);
+            // Set column widths
+            ws['!cols'] = [{ wch: 18 }, { wch: 30 }, { wch: 10 }, { wch: 18 }];
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Materials');
+            XLSX.writeFile(wb, 'nexflow_materials_template.xlsx');
+        }
+
+        // ─── END BULK IMPORT ──────────────────────────────────────────────────────
 
         // Initialize tabs
         document.addEventListener('DOMContentLoaded', async () => {
