@@ -169,12 +169,12 @@ let currentType     = 'masters';
 
 // ─── UOM MAP ─────────────────────────────────────────────────────────────────
 const UOM_MAP = {
-  'KG':  { tally: 'KGS - KILOGRAMS', zoho: 'kg'  },
-  'L':   { tally: 'LTR - LITRES',    zoho: 'l'   },
-  'M':   { tally: 'MTR - METERS',    zoho: 'm'   },
-  'PC':  { tally: 'PCS - PIECES',    zoho: 'pcs' },
-  'NOS': { tally: 'NOS - NUMBERS',   zoho: 'qty' },
-  'PCS': { tally: 'PCS - PIECES',    zoho: 'pcs' }
+  'KG':  { tally: 'KGS', zoho: 'kg'  },
+  'L':   { tally: 'LTR', zoho: 'l'   },
+  'M':   { tally: 'MTR', zoho: 'm'   },
+  'PC':  { tally: 'PCS', zoho: 'pcs' },
+  'NOS': { tally: 'NOS', zoho: 'qty' },
+  'PCS': { tally: 'PCS', zoho: 'pcs' }
 };
 
 // ─── DATE FORMATTERS ─────────────────────────────────────────────────────────
@@ -374,10 +374,9 @@ async function exportTallyMasters() {
 
   log('Building Tally Stock Items CSV...');
   const headers = [
-    'Item Name','Stock Group','Base Unit',
-    'Opening Balance','Opening Rate','Opening Value',
-    'HSN/SAC Description','HSN/SAC',
-    'GST Applicable','Taxability','Integrated Tax'
+    'Stock Item Name', 'Under (Stock Group)', 'Units',
+    'Opening Balance', 'Opening Rate', 'Opening Value',
+    'HSN/SAC', 'Applicability of GST', 'Taxability', 'IGST Rate (%)'
   ];
   const rows = [headers];
 
@@ -385,14 +384,16 @@ async function exportTallyMasters() {
     const uom    = UOM_MAP[item.unit]?.tally || item.unit;
     const os     = openingMap[item.id] || { qty: 0, rate: 0 };
     const oValue = (os.qty * os.rate).toFixed(2);
+    const taxable = item.gst_rate > 0;
     rows.push([
-      item.name, 'Raw Materials', uom,
+      item.name,
+      'Raw Materials',
+      uom,
       os.qty, os.rate, oValue,
-      item.hsn_sac ? `HSN ${item.hsn_sac}` : '',
       item.hsn_sac || '',
-      item.gst_rate > 0 ? 'Applicable' : 'Not Applicable',
-      item.gst_rate > 0 ? 'Taxable'    : 'Exempt',
-      item.gst_rate || 0
+      taxable ? 'Applicable'  : 'Not Applicable',
+      taxable ? 'Taxable'     : '',
+      taxable ? item.gst_rate : ''
     ]);
   });
 
@@ -501,9 +502,9 @@ async function exportZohoMasters() {
 
   log('Building Zoho Items Master CSV...');
   const headers = [
-    'Item Name','SKU','Usage Unit','Item Type',
-    'Purchase Price','Initial Stock','Initial Stock Rate Per Unit',
-    'HSN Code','Tax Percentage'
+    'Item Name', 'SKU', 'Usage Unit', 'Item Type',
+    'Purchase Price', 'Initial Stock', 'Initial Stock Rate Per Unit',
+    'HSN Code', 'Tax Percentage', 'Purchase Account', 'Sales Account'
   ];
   const rows = [headers];
 
@@ -511,9 +512,17 @@ async function exportZohoMasters() {
     const uom = UOM_MAP[item.unit]?.zoho || item.unit.toLowerCase();
     const os  = openingMap[item.id] || { qty: 0, rate: 0 };
     rows.push([
-      item.name, item.material_code || '', uom, 'inventory',
-      os.rate, os.qty, os.rate,
-      item.hsn_sac || '', item.gst_rate || 0
+      item.name,
+      item.material_code || '',
+      uom,
+      'Inventory',
+      os.rate,
+      os.qty,
+      os.rate,
+      item.hsn_sac  || '',
+      item.gst_rate || 0,
+      'Cost of Goods Sold',
+      'Sales'
     ]);
   });
 
@@ -533,9 +542,9 @@ async function exportZohoTransactions() {
   const { data: txns, error } = await window.supabase
     .from('p2_stock_transactions')
     .select(`
-      transaction_date, invoice_no,
+      id, transaction_date, invoice_no,
       quantity, rate, supplier_name,
-      p2_raw_materials!inner(name, material_code)
+      p2_raw_materials!inner(name, material_code, hsn_sac, gst_rate)
     `)
     .eq('tenant_id', tenantId)
     .eq('transaction_type', 'grn')
@@ -555,18 +564,40 @@ async function exportZohoTransactions() {
   }
 
   log('Building Zoho Bills CSV...');
-  const headers = ['Vendor Name','Source of Supply','Bill Number','Bill Date','Item Name','SKU','Quantity','Purchase Price'];
+  const headers = ['Vendor Name','Source of Supply','Bill Number','Bill Date','Item Name','SKU','Quantity','Purchase Price','Account','Tax Name'];
   const rows    = [headers];
 
+  // Helper: derive Zoho tax name from gst_rate
+  function zohoTaxName(rate) {
+    if (!rate || rate <= 0) return 'GST0';
+    const r = parseFloat(rate);
+    if (r === 28) return 'GST28';
+    if (r === 18) return 'GST18';
+    if (r === 12) return 'GST12';
+    if (r ===  5) return 'GST5';
+    if (r ===  3) return 'GST3';
+    return `GST${r}`;
+  }
+
+  // Auto-increment bill number counter for rows missing invoice_no
+  let billCounter = 1;
+
   txns.forEach(t => {
+    const billNo  = t.invoice_no && t.invoice_no.trim() !== ''
+      ? t.invoice_no.trim()
+      : `GRN-${t.transaction_date}-${String(billCounter++).padStart(3,'0')}`;
+    const gstRate = t.p2_raw_materials.gst_rate || 0;
     rows.push([
-      t.supplier_name || '', 'MH',
-      t.invoice_no || '',
+      t.supplier_name   || '',
+      'MH',
+      billNo,
       fmtZoho(t.transaction_date),
       t.p2_raw_materials.name,
       t.p2_raw_materials.material_code || '',
       parseFloat(t.quantity) || 0,
-      parseFloat(t.rate)     || 0
+      parseFloat(t.rate)     || 0,
+      'Purchase Account',
+      zohoTaxName(gstRate)
     ]);
   });
 
@@ -592,3 +623,4 @@ document.addEventListener('DOMContentLoaded', async () => {
 </script>
 </body>
 </html>
+
