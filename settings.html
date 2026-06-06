@@ -234,7 +234,7 @@
 
                     <div class="bg-gray-800 border border-dashed border-gray-500 rounded p-4 mb-4 text-center cursor-pointer hover:border-nexflow-teal transition" onclick="document.getElementById('bulk-file-input').click()">
                         <p class="text-nexflow-muted text-sm mb-1" data-en="Click to upload Excel or CSV file" data-mr="Excel किंवा CSV फाइल अपलोड करण्यासाठी क्लिक करा">Click to upload Excel or CSV file</p>
-                        <p class="text-gray-500 text-xs" data-en="Accepted: .xlsx, .xls, .csv — Columns required: name, unit, min_stock_level. material_code is optional." data-mr="स्वीकृत: .xlsx, .xls, .csv — आवश्यक स्तंभ: name, unit, min_stock_level. material_code ऐच्छिक.">Accepted: .xlsx, .xls, .csv &mdash; Required columns: name, unit, min_stock_level. material_code is optional.</p>
+                        <p class="text-gray-500 text-xs" data-en="Accepted: .xlsx, .xls, .csv — Columns required: name, unit, min_stock_level. Optional: material_code, current_stock." data-mr="स्वीकृत: .xlsx, .xls, .csv — आवश्यक स्तंभ: name, unit, min_stock_level. ऐच्छिक: material_code, current_stock.">Accepted: .xlsx, .xls, .csv &mdash; Required: name, unit, min_stock_level. Optional: material_code, current_stock.</p>
                         <input type="file" id="bulk-file-input" accept=".xlsx,.xls,.csv" class="hidden" onchange="handleBulkFile(this)">
                     </div>
 
@@ -255,6 +255,7 @@
                                         <th class="p-2 text-left" data-en="Name" data-mr="नाव">Name</th>
                                         <th class="p-2 text-left" data-en="Unit" data-mr="एकक">Unit</th>
                                         <th class="p-2 text-left" data-en="Min Stock" data-mr="किमान साठा">Min Stock</th>
+                                        <th class="p-2 text-left" data-en="Opening Stock" data-mr="उद्घाटन साठा">Opening Stock</th>
                                         <th class="p-2 text-left" data-en="Status" data-mr="स्थिती">Status</th>
                                     </tr>
                                 </thead>
@@ -1370,20 +1371,25 @@ const { data, error } = await window.supabase
                 const name = String(row['name'] || '').trim();
                 const unit = String(row['unit'] || '').trim().toUpperCase();
                 const minStock = parseFloat(row['min_stock_level']);
+                const rawStock = row['current_stock'];
+                const currentStock = (rawStock === '' || rawStock === undefined || rawStock === null) ? null : parseFloat(rawStock);
 
                 // Validate
                 let errors = [];
                 if (!name) errors.push('name missing');
                 if (!VALID_UNITS.includes(unit)) errors.push(`unit must be one of: ${VALID_UNITS.join(', ')}`);
                 if (isNaN(minStock) || minStock < 0) errors.push('min_stock_level must be a number ≥ 0');
+                if (currentStock !== null && (isNaN(currentStock) || currentStock < 0)) errors.push('current_stock must be a positive number or blank');
 
                 const isValid = errors.length === 0;
                 if (isValid) {
                     validCount++;
-                    bulkRows.push({ material_code: code || null, name, unit, min_stock_level: minStock });
+                    bulkRows.push({ material_code: code || null, name, unit, min_stock_level: minStock, current_stock: (currentStock !== null && !isNaN(currentStock) && currentStock > 0) ? currentStock : null });
                 } else {
                     errorCount++;
                 }
+
+                const stockDisplay = currentStock === null ? '<span class="text-gray-500">—</span>' : `<span class="${currentStock > 0 ? 'text-green-400' : 'text-gray-400'}">${currentStock}</span>`;
 
                 const tr = document.createElement('tr');
                 tr.className = 'border-b border-gray-600 ' + (isValid ? '' : 'bg-red-900 bg-opacity-30');
@@ -1392,6 +1398,7 @@ const { data, error } = await window.supabase
                     <td class="p-2">${name || '<span class="text-red-400">—</span>'}</td>
                     <td class="p-2">${unit || '<span class="text-red-400">—</span>'}</td>
                     <td class="p-2">${isNaN(minStock) ? '<span class="text-red-400">—</span>' : minStock}</td>
+                    <td class="p-2">${stockDisplay}</td>
                     <td class="p-2 text-xs ${isValid ? 'text-green-400' : 'text-red-400'}">
                         ${isValid ? '✓ OK' : '✗ ' + errors.join(', ')}
                     </td>
@@ -1449,22 +1456,57 @@ const { data, error } = await window.supabase
                 // Add tenant_id and is_active, batch in chunks of 50
                 const CHUNK = 50;
                 let inserted = 0;
+                const insertedRows = []; // track what was actually inserted for stock transactions
                 for (let i = 0; i < toInsert.length; i += CHUNK) {
                     const chunk = toInsert.slice(i, i + CHUNK).map(r => ({
-                        ...r,
+                        material_code: r.material_code,
+                        name: r.name,
+                        unit: r.unit,
+                        min_stock_level: r.min_stock_level,
                         tenant_id: tenantId,
                         is_active: true
                     }));
 
-                    const { error: insErr } = await window.supabase
+                    const { data: insertedData, error: insErr } = await window.supabase
                         .from('p2_raw_materials')
-                        .insert(chunk);
+                        .insert(chunk)
+                        .select('id, name');
 
                     if (insErr) throw insErr;
                     inserted += chunk.length;
+                    insertedData.forEach(m => insertedRows.push(m));
                 }
 
-                let msg = `✓ ${inserted} materials imported successfully.`;
+                // Insert opening stock transactions for materials with current_stock > 0
+                const today = new Date().toISOString().split('T')[0];
+                const stockMap = {};
+                toInsert.forEach(r => { if (r.current_stock) stockMap[r.name] = r.current_stock; });
+
+                const stockTransactions = insertedRows
+                    .filter(m => stockMap[m.name])
+                    .map(m => ({
+                        tenant_id: tenantId,
+                        raw_material_id: m.id,
+                        transaction_type: 'adjustment',
+                        quantity: stockMap[m.name],
+                        notes: 'Opening Stock',
+                        transaction_date: today
+                    }));
+
+                let stockInserted = 0;
+                if (stockTransactions.length > 0) {
+                    for (let i = 0; i < stockTransactions.length; i += CHUNK) {
+                        const chunk = stockTransactions.slice(i, i + CHUNK);
+                        const { error: stockErr } = await window.supabase
+                            .from('p2_stock_transactions')
+                            .insert(chunk);
+                        if (stockErr) throw stockErr;
+                        stockInserted += chunk.length;
+                    }
+                }
+
+                let msg = `✓ ${inserted} materials imported.`;
+                if (stockInserted > 0) msg += ` Opening stock set for ${stockInserted} materials.`;
                 if (skipped > 0) msg += ` ${skipped} skipped (duplicates).`;
                 showBulkStatus('success', msg);
 
@@ -1497,12 +1539,12 @@ const { data, error } = await window.supabase
 
         function downloadTemplate() {
             const ws = XLSX.utils.aoa_to_sheet([
-                ['material_code', 'name', 'unit', 'min_stock_level'],
-                ['MAT-001', 'Example Material', 'KG', 10],
-                ['MAT-002', 'Another Material', 'NOS', 50],
+                ['material_code', 'name', 'unit', 'min_stock_level', 'current_stock'],
+                ['MAT-001', 'Example Material', 'KG', 10, 250],
+                ['MAT-002', 'Another Material', 'NOS', 50, 0],
+                ['MAT-003', 'No Stock Material', 'PCS', 5, ''],
             ]);
-            // Set column widths
-            ws['!cols'] = [{ wch: 18 }, { wch: 30 }, { wch: 10 }, { wch: 18 }];
+            ws['!cols'] = [{ wch: 18 }, { wch: 30 }, { wch: 10 }, { wch: 18 }, { wch: 16 }];
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, ws, 'Materials');
             XLSX.writeFile(wb, 'nexflow_materials_template.xlsx');
