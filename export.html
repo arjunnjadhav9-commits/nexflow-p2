@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Export for Accountant | Nexflow P2</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%231A1F2E'/><text y='.9em' font-size='80' x='10' fill='%2300BCD4'>N</text></svg>">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="js/supabase-client.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/navbar.js"></script>
+<script>
+  tailwind.config = {
+    darkMode: 'class',
+    theme: {
+      extend: {
+        colors: {
+          'nexflow-dark-bg': '#1A1F2E',
+          'nexflow-text': '#E0E0E0',
+          'nexflow-teal': '#00BCD4',
+          'nexflow-green': '#00E676',
+          'nexflow-muted': '#94A3B8'
+        }
+      }
+    }
+  }
+</script>
+</head>
+<body class="bg-nexflow-dark-bg text-nexflow-text min-h-screen">
+<div id="navbar-container"></div>
+
+<main class="container mx-auto px-4 py-6 max-w-2xl">
+
+  <h1 class="text-2xl font-bold mb-1">Export for Accountant</h1>
+  <p class="text-nexflow-muted text-sm mb-6">Generate CSV files for TallyPrime or Zoho Inventory</p>
+
+  <!-- Step 1: Platform -->
+  <div class="bg-[#2C3440] rounded-lg mb-4 overflow-hidden">
+    <div class="flex items-center gap-2 px-4 py-3 border-b border-gray-600">
+      <div class="w-2 h-2 rounded-full bg-nexflow-teal"></div>
+      <span class="text-xs font-semibold uppercase tracking-widest text-nexflow-muted">01 · Select Platform</span>
+    </div>
+    <div class="p-4">
+      <div class="grid grid-cols-2 gap-3 mb-5">
+        <button id="btn-tally" onclick="setPlatform('tally')"
+          class="platform-btn active-tally p-4 rounded-lg border-2 border-orange-500 bg-orange-500/10 text-left transition">
+          <div class="font-bold text-orange-400 font-mono text-sm mb-1">TallyPrime</div>
+          <div class="text-xs text-nexflow-muted">CSV · Masters + Vouchers</div>
+        </button>
+        <button id="btn-zoho" onclick="setPlatform('zoho')"
+          class="platform-btn p-4 rounded-lg border-2 border-gray-600 bg-transparent text-left transition hover:border-gray-500">
+          <div class="font-bold text-blue-400 font-mono text-sm mb-1">Zoho Inventory</div>
+          <div class="text-xs text-nexflow-muted">CSV · Items + Bills</div>
+        </button>
+      </div>
+
+      <div class="flex items-center gap-2 mb-3">
+        <div class="w-1.5 h-1.5 rounded-full bg-gray-500"></div>
+        <span class="text-xs font-semibold uppercase tracking-widest text-nexflow-muted">02 · Export Content</span>
+      </div>
+      <div class="grid grid-cols-2 gap-2 mb-5">
+        <button id="btn-masters" onclick="setType('masters')"
+          class="type-btn py-2 px-4 rounded border border-nexflow-teal text-nexflow-teal bg-nexflow-teal/10 text-sm font-mono transition">
+          Inventory Masters
+        </button>
+        <button id="btn-transactions" onclick="setType('transactions')"
+          class="type-btn py-2 px-4 rounded border border-gray-600 text-nexflow-muted bg-transparent text-sm font-mono transition hover:border-gray-500 hover:text-nexflow-text">
+          Transaction Logs
+        </button>
+      </div>
+
+      <!-- Template preview -->
+      <div class="grid grid-cols-2 gap-2" id="tmplGrid">
+        <div class="tmpl bg-[#1A1F2E] border border-gray-700 rounded p-3 transition" data-plat="tally" id="tmpl-tally-masters">
+          <div class="text-xs font-mono text-orange-400 uppercase tracking-wide mb-1">Tally · Masters</div>
+          <div class="text-sm text-nexflow-text">Stock Items Master</div>
+        </div>
+        <div class="tmpl bg-[#1A1F2E] border border-gray-700 rounded p-3 opacity-30 transition" data-plat="tally" id="tmpl-tally-transactions">
+          <div class="text-xs font-mono text-orange-400 uppercase tracking-wide mb-1">Tally · Vouchers</div>
+          <div class="text-sm text-nexflow-text">Purchase + Stock Journal</div>
+        </div>
+        <div class="tmpl bg-[#1A1F2E] border border-gray-700 rounded p-3 opacity-30 transition" data-plat="zoho" id="tmpl-zoho-masters">
+          <div class="text-xs font-mono text-blue-400 uppercase tracking-wide mb-1">Zoho · Masters</div>
+          <div class="text-sm text-nexflow-text">Items Master</div>
+        </div>
+        <div class="tmpl bg-[#1A1F2E] border border-gray-700 rounded p-3 opacity-30 transition" data-plat="zoho" id="tmpl-zoho-transactions">
+          <div class="text-xs font-mono text-blue-400 uppercase tracking-wide mb-1">Zoho · Bills</div>
+          <div class="text-sm text-nexflow-text">Inward Purchase Bills</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 2: Date Range (transactions only) -->
+  <div id="dateCard" class="hidden bg-[#2C3440] rounded-lg mb-4 overflow-hidden">
+    <div class="flex items-center gap-2 px-4 py-3 border-b border-gray-600">
+      <div class="w-2 h-2 rounded-full bg-nexflow-teal"></div>
+      <span class="text-xs font-semibold uppercase tracking-widest text-nexflow-muted">03 · Date Range</span>
+    </div>
+    <div class="p-4 grid grid-cols-2 gap-3">
+      <div>
+        <label class="block text-xs text-nexflow-muted uppercase tracking-wide mb-1 font-mono">From Date</label>
+        <input type="date" id="fromDate" class="w-full p-2 rounded bg-[#1A1F2E] border border-gray-600 text-nexflow-text font-mono text-sm focus:border-nexflow-teal outline-none" style="color-scheme:dark">
+      </div>
+      <div>
+        <label class="block text-xs text-nexflow-muted uppercase tracking-wide mb-1 font-mono">To Date</label>
+        <input type="date" id="toDate" class="w-full p-2 rounded bg-[#1A1F2E] border border-gray-600 text-nexflow-text font-mono text-sm focus:border-nexflow-teal outline-none" style="color-scheme:dark">
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 3: Generate -->
+  <div class="bg-[#2C3440] rounded-lg mb-4 overflow-hidden">
+    <div class="flex items-center gap-2 px-4 py-3 border-b border-gray-600">
+      <div class="w-2 h-2 rounded-full bg-nexflow-teal"></div>
+      <span class="text-xs font-semibold uppercase tracking-widest text-nexflow-muted">04 · Generate File</span>
+    </div>
+    <div class="p-4">
+      <!-- Warning box -->
+      <div id="warnBox" class="hidden bg-orange-900/30 border border-orange-500/40 rounded p-3 mb-4 text-sm text-orange-300">
+        <div class="font-mono font-bold text-xs uppercase tracking-wide mb-1">⚠ Incomplete Data Warning</div>
+        <span id="warnMsg"></span>
+      </div>
+
+      <button id="exportBtn" onclick="runExport()"
+        class="w-full py-3 rounded bg-nexflow-green text-gray-900 font-bold font-mono text-sm hover:bg-green-400 transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+        <svg id="spinner" class="hidden animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+        </svg>
+        <span id="exportBtnLabel">⬇ Download CSV</span>
+      </button>
+    </div>
+
+    <!-- Stats bar -->
+    <div id="statsBar" class="hidden flex gap-6 flex-wrap px-4 py-3 border-t border-gray-600 bg-nexflow-teal/5">
+      <div>
+        <div id="statRows" class="font-mono font-bold text-nexflow-teal text-lg">—</div>
+        <div class="text-xs text-nexflow-muted uppercase tracking-wide">Rows Exported</div>
+      </div>
+      <div>
+        <div id="statFile" class="font-mono font-bold text-nexflow-teal text-lg">—</div>
+        <div class="text-xs text-nexflow-muted uppercase tracking-wide">File</div>
+      </div>
+      <div>
+        <div id="statPlatform" class="font-mono font-bold text-nexflow-teal text-lg">—</div>
+        <div class="text-xs text-nexflow-muted uppercase tracking-wide">Platform</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Export Log -->
+  <div id="logArea" class="hidden bg-[#1A1F2E] border border-gray-700 rounded-lg overflow-hidden">
+    <div class="flex items-center gap-2 px-4 py-2 border-b border-gray-700">
+      <div class="w-1.5 h-1.5 rounded-full bg-gray-500"></div>
+      <span class="text-xs font-mono text-nexflow-muted uppercase tracking-widest">Export Log</span>
+    </div>
+    <div id="logInner" class="p-4 font-mono text-xs leading-relaxed max-h-48 overflow-y-auto space-y-1"></div>
+  </div>
+
+</main>
+
+<script>
+// ─── STATE ───────────────────────────────────────────────────────────────────
+let currentPlatform = 'tally';
+let currentType     = 'masters';
+
+// ─── UOM MAP ─────────────────────────────────────────────────────────────────
+const UOM_MAP = {
+  'KG':  { tally: 'KGS - KILOGRAMS', zoho: 'kg'  },
+  'L':   { tally: 'LTR - LITRES',    zoho: 'l'   },
+  'M':   { tally: 'MTR - METERS',    zoho: 'm'   },
+  'PC':  { tally: 'PCS - PIECES',    zoho: 'pcs' },
+  'NOS': { tally: 'NOS - NUMBERS',   zoho: 'qty' },
+  'PCS': { tally: 'PCS - PIECES',    zoho: 'pcs' }
+};
+
+// ─── DATE FORMATTERS ─────────────────────────────────────────────────────────
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+function fmtTally(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr + 'T00:00:00');
+  const dd = String(d.getDate()).padStart(2,'0');
+  return `${dd}-${MONTHS[d.getMonth()]}-${d.getFullYear()}`;
+}
+
+function fmtZoho(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr + 'T00:00:00');
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  const dd = String(d.getDate()).padStart(2,'0');
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
+
+// ─── CSV BUILDER ─────────────────────────────────────────────────────────────
+function buildCSV(rows) {
+  return rows.map(row =>
+    row.map(v => `"${String(v === null || v === undefined ? '' : v).replace(/"/g,'""')}"`).join(',')
+  ).join('\r\n');
+}
+
+function downloadCSV(filename, rows) {
+  const csv  = buildCSV(rows);
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+
+// ─── LOGGING ─────────────────────────────────────────────────────────────────
+function log(msg, type = 'info') {
+  const area  = document.getElementById('logArea');
+  const inner = document.getElementById('logInner');
+  area.classList.remove('hidden');
+  const now = new Date();
+  const ts  = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+  const line = document.createElement('div');
+  line.className = 'flex gap-3';
+  const colors = { ok: 'text-nexflow-green', err: 'text-red-400', info: 'text-nexflow-text' };
+  line.innerHTML = `<span class="text-nexflow-muted flex-shrink-0">${ts}</span><span class="${colors[type] || colors.info}">${msg}</span>`;
+  inner.appendChild(line);
+  inner.scrollTop = inner.scrollHeight;
+}
+
+function clearLog() {
+  document.getElementById('logInner').innerHTML = '';
+  document.getElementById('logArea').classList.add('hidden');
+}
+
+// ─── UI HELPERS ──────────────────────────────────────────────────────────────
+function setPlatform(p) {
+  currentPlatform = p;
+  const tallyBtn = document.getElementById('btn-tally');
+  const zohoBtn  = document.getElementById('btn-zoho');
+  if (p === 'tally') {
+    tallyBtn.className = 'platform-btn p-4 rounded-lg border-2 border-orange-500 bg-orange-500/10 text-left transition';
+    zohoBtn.className  = 'platform-btn p-4 rounded-lg border-2 border-gray-600 bg-transparent text-left transition hover:border-gray-500';
+  } else {
+    zohoBtn.className  = 'platform-btn p-4 rounded-lg border-2 border-blue-500 bg-blue-500/10 text-left transition';
+    tallyBtn.className = 'platform-btn p-4 rounded-lg border-2 border-gray-600 bg-transparent text-left transition hover:border-gray-500';
+  }
+  updateTemplateHighlight();
+}
+
+function setType(t) {
+  currentType = t;
+  const mastersBtn = document.getElementById('btn-masters');
+  const txnBtn     = document.getElementById('btn-transactions');
+  if (t === 'masters') {
+    mastersBtn.className = 'type-btn py-2 px-4 rounded border border-nexflow-teal text-nexflow-teal bg-nexflow-teal/10 text-sm font-mono transition';
+    txnBtn.className     = 'type-btn py-2 px-4 rounded border border-gray-600 text-nexflow-muted bg-transparent text-sm font-mono transition hover:border-gray-500 hover:text-nexflow-text';
+  } else {
+    txnBtn.className     = 'type-btn py-2 px-4 rounded border border-nexflow-teal text-nexflow-teal bg-nexflow-teal/10 text-sm font-mono transition';
+    mastersBtn.className = 'type-btn py-2 px-4 rounded border border-gray-600 text-nexflow-muted bg-transparent text-sm font-mono transition hover:border-gray-500 hover:text-nexflow-text';
+  }
+  document.getElementById('dateCard').classList.toggle('hidden', t !== 'transactions');
+  updateTemplateHighlight();
+}
+
+function updateTemplateHighlight() {
+  document.querySelectorAll('.tmpl').forEach(el => {
+    const platMatch = el.dataset.plat === currentPlatform;
+    const typeMatch = el.id.includes(currentType === 'masters' ? 'masters' : 'transactions');
+    el.classList.toggle('opacity-30', !(platMatch && typeMatch));
+    el.classList.toggle('border-nexflow-teal', platMatch && typeMatch);
+    el.classList.toggle('border-gray-700', !(platMatch && typeMatch));
+  });
+}
+
+function setLoading(on) {
+  const btn  = document.getElementById('exportBtn');
+  const spin = document.getElementById('spinner');
+  const lbl  = document.getElementById('exportBtnLabel');
+  btn.disabled = on;
+  spin.classList.toggle('hidden', !on);
+  lbl.textContent = on ? 'Generating...' : '⬇ Download CSV';
+}
+
+function showStats(rows, filename) {
+  document.getElementById('statRows').textContent     = rows;
+  document.getElementById('statFile').textContent     = filename;
+  document.getElementById('statPlatform').textContent = currentPlatform === 'tally' ? 'TallyPrime' : 'Zoho';
+  document.getElementById('statsBar').classList.remove('hidden');
+  document.getElementById('statsBar').style.display   = 'flex';
+}
+
+function showWarn(msg) {
+  const box = document.getElementById('warnBox');
+  document.getElementById('warnMsg').textContent = msg;
+  box.classList.toggle('hidden', !msg);
+}
+
+// ─── AUTH ────────────────────────────────────────────────────────────────────
+async function getTenantId() {
+  const { data: { user } } = await window.supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated. Please log in.');
+  return user.id;
+}
+
+// ─── EXPORT ROUTER ───────────────────────────────────────────────────────────
+async function runExport() {
+  clearLog();
+  showWarn('');
+  setLoading(true);
+  try {
+    if (currentPlatform === 'tally') {
+      if (currentType === 'masters') await exportTallyMasters();
+      else                           await exportTallyTransactions();
+    } else {
+      if (currentType === 'masters') await exportZohoMasters();
+      else                           await exportZohoTransactions();
+    }
+  } catch (err) {
+    log(`ERROR: ${err.message}`, 'err');
+    showWarn(err.message);
+  } finally {
+    setLoading(false);
+  }
+}
+
+function getDateRange() {
+  const from = document.getElementById('fromDate').value;
+  const to   = document.getElementById('toDate').value;
+  if (!from || !to) throw new Error('Select a From Date and To Date before exporting transactions.');
+  if (from > to)    throw new Error('From Date cannot be after To Date.');
+  return { from, to };
+}
+
+// ─── TALLY: STOCK ITEMS MASTER ───────────────────────────────────────────────
+async function exportTallyMasters() {
+  log('Fetching session...');
+  const tenantId = await getTenantId();
+
+  log('Fetching raw materials...');
+  const { data: items, error } = await window.supabase
+    .from('p2_raw_materials')
+    .select('id, material_code, name, unit, hsn_sac, gst_rate')
+    .eq('tenant_id', tenantId)
+    .eq('is_active', true)
+    .order('name');
+
+  if (error) throw new Error(`Supabase error: ${error.message}`);
+  if (!items.length) throw new Error('No active materials found.');
+  log(`Fetched ${items.length} materials.`);
+
+  const missingHsn = items.filter(i => !i.hsn_sac).length;
+  if (missingHsn > 0) {
+    showWarn(`${missingHsn} material(s) have no HSN code. CA will need to fill these in Tally manually.`);
+    log(`Warning: ${missingHsn} items missing HSN code.`, 'err');
+  }
+
+  log('Fetching opening stock...');
+  const { data: opening, error: oe } = await window.supabase
+    .from('p2_stock_transactions')
+    .select('raw_material_id, quantity, rate')
+    .eq('tenant_id', tenantId)
+    .eq('transaction_type', 'adjustment')
+    .eq('notes', 'Opening Stock');
+
+  if (oe) throw new Error(`Opening stock fetch error: ${oe.message}`);
+
+  const openingMap = {};
+  (opening || []).forEach(o => {
+    openingMap[o.raw_material_id] = {
+      qty:  parseFloat(o.quantity) || 0,
+      rate: parseFloat(o.rate)     || 0
+    };
+  });
+
+  log('Building Tally Stock Items CSV...');
+  const headers = [
+    'Item Name','Stock Group','Base Unit',
+    'Opening Balance','Opening Rate','Opening Value',
+    'HSN/SAC Description','HSN/SAC',
+    'GST Applicable','Taxability','Integrated Tax'
+  ];
+  const rows = [headers];
+
+  items.forEach(item => {
+    const uom    = UOM_MAP[item.unit]?.tally || item.unit;
+    const os     = openingMap[item.id] || { qty: 0, rate: 0 };
+    const oValue = (os.qty * os.rate).toFixed(2);
+    rows.push([
+      item.name, 'Raw Materials', uom,
+      os.qty, os.rate, oValue,
+      item.hsn_sac ? `HSN ${item.hsn_sac}` : '',
+      item.hsn_sac || '',
+      item.gst_rate > 0 ? 'Applicable' : 'Not Applicable',
+      item.gst_rate > 0 ? 'Taxable'    : 'Exempt',
+      item.gst_rate || 0
+    ]);
+  });
+
+  const filename = `Tally_StockMaster_${new Date().toISOString().slice(0,10)}.csv`;
+  downloadCSV(filename, rows);
+  log(`Downloaded: ${filename}`, 'ok');
+  showStats(rows.length - 1, filename);
+}
+
+// ─── TALLY: TRANSACTION VOUCHERS ─────────────────────────────────────────────
+async function exportTallyTransactions() {
+  const { from, to } = getDateRange();
+  log('Fetching session...');
+  const tenantId = await getTenantId();
+
+  log(`Fetching transactions ${from} → ${to}...`);
+  const { data: txns, error } = await window.supabase
+    .from('p2_stock_transactions')
+    .select(`
+      transaction_type, transaction_date, invoice_no,
+      quantity, rate, notes, supplier_name,
+      p2_raw_materials!inner(name, material_code)
+    `)
+    .eq('tenant_id', tenantId)
+    .in('transaction_type', ['grn', 'consumption'])
+    .gte('transaction_date', from)
+    .lte('transaction_date', to)
+    .order('transaction_date');
+
+  if (error) throw new Error(`Supabase error: ${error.message}`);
+  if (!txns.length) throw new Error('No transactions found in selected date range.');
+  log(`Fetched ${txns.length} transactions.`);
+
+  const missingRate     = txns.filter(t => !t.rate && t.transaction_type === 'grn').length;
+  const missingSupplier = txns.filter(t => t.transaction_type === 'grn' && !t.supplier_name).length;
+  if (missingRate > 0 || missingSupplier > 0) {
+    showWarn(`${missingRate} GRN row(s) missing rate. ${missingSupplier} GRN row(s) missing supplier. These export as blank — CA will fill manually.`);
+    log(`Warning: ${missingRate} missing rate, ${missingSupplier} missing supplier.`, 'err');
+  }
+
+  log('Building Tally Vouchers CSV...');
+  const headers = ['Date','Voucher Type','Voucher No','Party Ledger Name','Item Name','Billed Quantity','Rate','Amount'];
+  const rows    = [headers];
+
+  txns.forEach(t => {
+    const voucherType = t.transaction_type === 'grn' ? 'Purchase' : 'Stock Journal';
+    const partyName   = t.transaction_type === 'grn' ? (t.supplier_name || '') : (t.notes || 'Production Floor');
+    const rate        = parseFloat(t.rate) || 0;
+    const qty         = parseFloat(t.quantity) || 0;
+    rows.push([
+      fmtTally(t.transaction_date),
+      voucherType,
+      t.invoice_no || t.transaction_type.toUpperCase() + '-' + t.transaction_date,
+      partyName,
+      t.p2_raw_materials.name,
+      qty, rate,
+      (qty * rate).toFixed(2)
+    ]);
+  });
+
+  const filename = `Tally_Vouchers_${from}_to_${to}.csv`;
+  downloadCSV(filename, rows);
+  log(`Downloaded: ${filename}`, 'ok');
+  showStats(rows.length - 1, filename);
+}
+
+// ─── ZOHO: ITEMS MASTER ──────────────────────────────────────────────────────
+async function exportZohoMasters() {
+  log('Fetching session...');
+  const tenantId = await getTenantId();
+
+  log('Fetching raw materials...');
+  const { data: items, error } = await window.supabase
+    .from('p2_raw_materials')
+    .select('id, material_code, name, unit, hsn_sac, gst_rate')
+    .eq('tenant_id', tenantId)
+    .eq('is_active', true)
+    .order('name');
+
+  if (error) throw new Error(`Supabase error: ${error.message}`);
+  if (!items.length) throw new Error('No active materials found.');
+  log(`Fetched ${items.length} materials.`);
+
+  log('Fetching opening stock...');
+  const { data: opening, error: oe } = await window.supabase
+    .from('p2_stock_transactions')
+    .select('raw_material_id, quantity, rate')
+    .eq('tenant_id', tenantId)
+    .eq('transaction_type', 'adjustment')
+    .eq('notes', 'Opening Stock');
+
+  if (oe) throw new Error(`Opening stock fetch error: ${oe.message}`);
+  const openingMap = {};
+  (opening || []).forEach(o => {
+    openingMap[o.raw_material_id] = {
+      qty:  parseFloat(o.quantity) || 0,
+      rate: parseFloat(o.rate)     || 0
+    };
+  });
+
+  const missingCode = items.filter(i => !i.material_code).length;
+  if (missingCode > 0) {
+    showWarn(`${missingCode} material(s) have no SKU (material code). Zoho requires SKU — these rows may cause import errors.`);
+    log(`Warning: ${missingCode} items missing SKU.`, 'err');
+  }
+
+  log('Building Zoho Items Master CSV...');
+  const headers = [
+    'Item Name','SKU','Usage Unit','Item Type',
+    'Purchase Price','Initial Stock','Initial Stock Rate Per Unit',
+    'HSN Code','Tax Percentage'
+  ];
+  const rows = [headers];
+
+  items.forEach(item => {
+    const uom = UOM_MAP[item.unit]?.zoho || item.unit.toLowerCase();
+    const os  = openingMap[item.id] || { qty: 0, rate: 0 };
+    rows.push([
+      item.name, item.material_code || '', uom, 'inventory',
+      os.rate, os.qty, os.rate,
+      item.hsn_sac || '', item.gst_rate || 0
+    ]);
+  });
+
+  const filename = `Zoho_ItemsMaster_${new Date().toISOString().slice(0,10)}.csv`;
+  downloadCSV(filename, rows);
+  log(`Downloaded: ${filename}`, 'ok');
+  showStats(rows.length - 1, filename);
+}
+
+// ─── ZOHO: INWARD BILLS ──────────────────────────────────────────────────────
+async function exportZohoTransactions() {
+  const { from, to } = getDateRange();
+  log('Fetching session...');
+  const tenantId = await getTenantId();
+
+  log(`Fetching GRN transactions ${from} → ${to}...`);
+  const { data: txns, error } = await window.supabase
+    .from('p2_stock_transactions')
+    .select(`
+      transaction_date, invoice_no,
+      quantity, rate, supplier_name,
+      p2_raw_materials!inner(name, material_code)
+    `)
+    .eq('tenant_id', tenantId)
+    .eq('transaction_type', 'grn')
+    .gte('transaction_date', from)
+    .lte('transaction_date', to)
+    .order('transaction_date');
+
+  if (error) throw new Error(`Supabase error: ${error.message}`);
+  if (!txns.length) throw new Error('No GRN transactions found in selected date range.');
+  log(`Fetched ${txns.length} GRN transactions.`);
+
+  const missingSupplier = txns.filter(t => !t.supplier_name).length;
+  const missingRate     = txns.filter(t => !t.rate).length;
+  if (missingSupplier > 0 || missingRate > 0) {
+    showWarn(`${missingSupplier} row(s) missing vendor name. ${missingRate} row(s) missing rate. Zoho bills need both — CA will fill manually.`);
+    log(`Warning: ${missingSupplier} missing vendor, ${missingRate} missing rate.`, 'err');
+  }
+
+  log('Building Zoho Bills CSV...');
+  const headers = ['Vendor Name','Source of Supply','Bill Number','Bill Date','Item Name','SKU','Quantity','Purchase Price'];
+  const rows    = [headers];
+
+  txns.forEach(t => {
+    rows.push([
+      t.supplier_name || '', 'MH',
+      t.invoice_no || '',
+      fmtZoho(t.transaction_date),
+      t.p2_raw_materials.name,
+      t.p2_raw_materials.material_code || '',
+      parseFloat(t.quantity) || 0,
+      parseFloat(t.rate)     || 0
+    ]);
+  });
+
+  const filename = `Zoho_InwardBills_${from}_to_${to}.csv`;
+  downloadCSV(filename, rows);
+  log(`Downloaded: ${filename}`, 'ok');
+  showStats(rows.length - 1, filename);
+}
+
+// ─── INIT ────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', async () => {
+  const authed = await checkAuth();
+  if (!authed) return;
+
+  const now  = new Date();
+  const y    = now.getFullYear();
+  const m    = String(now.getMonth() + 1).padStart(2, '0');
+  const last = new Date(y, now.getMonth() + 1, 0).getDate();
+  document.getElementById('fromDate').value = `${y}-${m}-01`;
+  document.getElementById('toDate').value   = `${y}-${m}-${last}`;
+  updateTemplateHighlight();
+});
+</script>
+</body>
+</html>

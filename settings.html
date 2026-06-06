@@ -235,7 +235,7 @@
 
                     <div class="bg-gray-800 border border-dashed border-gray-500 rounded p-4 mb-4 text-center cursor-pointer hover:border-nexflow-teal transition" onclick="document.getElementById('bulk-file-input').click()">
                         <p class="text-nexflow-muted text-sm mb-1" data-en="Click to upload Excel or CSV file" data-mr="Excel किंवा CSV फाइल अपलोड करण्यासाठी क्लिक करा">Click to upload Excel or CSV file</p>
-                        <p class="text-gray-500 text-xs" data-en="Accepted: .xlsx, .xls, .csv — Columns required: name, unit, min_stock_level. Optional: material_code, current_stock." data-mr="स्वीकृत: .xlsx, .xls, .csv — आवश्यक स्तंभ: name, unit, min_stock_level. ऐच्छिक: material_code, current_stock.">Accepted: .xlsx, .xls, .csv &mdash; Required: name, unit, min_stock_level. Optional: material_code, current_stock.</p>
+                        <p class="text-gray-500 text-xs" data-en="Accepted: .xlsx, .xls, .csv — Columns required: name, unit, min_stock_level. Optional: material_code, current_stock, hsn_sac, gst_rate." data-mr="स्वीकृत: .xlsx, .xls, .csv — आवश्यक स्तंभ: name, unit, min_stock_level. ऐच्छिक: material_code, current_stock, hsn_sac, gst_rate.">Accepted: .xlsx, .xls, .csv &mdash; Required: name, unit, min_stock_level. Optional: material_code, current_stock, hsn_sac, gst_rate.</p>
                         <input type="file" id="bulk-file-input" accept=".xlsx,.xls,.csv" class="hidden" onchange="handleBulkFile(this)">
                     </div>
 
@@ -257,6 +257,8 @@
                                         <th class="p-2 text-left" data-en="Unit" data-mr="एकक">Unit</th>
                                         <th class="p-2 text-left" data-en="Min Stock" data-mr="किमान साठा">Min Stock</th>
                                         <th class="p-2 text-left" data-en="Opening Stock" data-mr="उद्घाटन साठा">Opening Stock</th>
+                                        <th class="p-2 text-left" data-en="HSN" data-mr="HSN">HSN</th>
+                                        <th class="p-2 text-left" data-en="GST%" data-mr="GST%">GST%</th>
                                         <th class="p-2 text-left" data-en="Status" data-mr="स्थिती">Status</th>
                                     </tr>
                                 </thead>
@@ -276,16 +278,34 @@
                             <input type="text" name="material_code" id="material-code" class="w-full p-2 bg-gray-600 rounded" placeholder="Material Code (e.g. 1DHWWSR-M6)" data-en="Material Code (optional)" data-mr="साहित्य कोड (ऐच्छिक)">
                             <input type="text" name="name" id="material-name" class="w-full p-2 bg-gray-600 rounded" placeholder="Name" data-en="Name" data-mr="नाव">
 
+                            <!-- Unit values match DB exactly: KG, L, M, PC -->
                             <select name="unit" id="material-unit" class="w-full p-2 bg-gray-600 rounded">
                                 <option value="" data-en="Select Unit" data-mr="एकक निवडा">Select Unit</option>
-                                <option value="KG" data-en="KG" data-mr="किलोग्राम">KG</option>
-                                <option value="NOS" data-en="NOS" data-mr="नग">NOS</option>
-                                <option value="L" data-en="L" data-mr="लिटर">L</option>
-                                <option value="MTR" data-en="MTR" data-mr="मीटर">MTR</option>
-                                <option value="PCS" data-en="PCS" data-mr="तुकडे">PCS</option>
+                                <option value="KG" data-en="KG — Kilograms" data-mr="KG — किलोग्राम">KG — Kilograms</option>
+                                <option value="L" data-en="L — Litres" data-mr="L — लिटर">L — Litres</option>
+                                <option value="M" data-en="M — Meters" data-mr="M — मीटर">M — Meters</option>
+                                <option value="PC" data-en="PC — Pieces" data-mr="PC — नग">PC — Pieces</option>
                             </select>
 
                             <input type="number" name="min_stock_level" id="material-min-stock" class="w-full p-2 bg-gray-600 rounded" placeholder="Min Stock Level" data-en="Min Stock Level" data-mr="किमान साठा पातळी">
+
+                            <!-- HSN + GST — optional, used for Tally/Zoho export -->
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-xs mb-1 text-nexflow-muted" data-en="HSN Code (optional)" data-mr="HSN कोड (ऐच्छिक)">HSN Code (optional)</label>
+                                    <input type="text" name="hsn_sac" id="material-hsn" maxlength="8" class="w-full p-2 bg-gray-600 rounded text-sm" placeholder="e.g. 721420" data-en="e.g. 721420" data-mr="उदा. 721420">
+                                </div>
+                                <div>
+                                    <label class="block text-xs mb-1 text-nexflow-muted" data-en="GST Rate (optional)" data-mr="GST दर (ऐच्छिक)">GST Rate (optional)</label>
+                                    <select name="gst_rate" id="material-gst" class="w-full p-2 bg-gray-600 rounded text-sm">
+                                        <option value="0">0% / Exempt</option>
+                                        <option value="5">5%</option>
+                                        <option value="12">12%</option>
+                                        <option value="18">18%</option>
+                                        <option value="28">28%</option>
+                                    </select>
+                                </div>
+                            </div>
 
                             <button type="submit" id="submit-material-btn" class="w-full bg-nexflow-green text-white p-2 rounded" data-en="Add Material" data-mr="सामग्री जोडा">Add Material</button>
                         </form>
@@ -302,6 +322,8 @@
                                         <th class="p-2" data-en="Name" data-mr="नाव">Name</th>
                                         <th class="p-2" data-en="Unit" data-mr="एकक">Unit</th>
                                         <th class="p-2" data-en="Min Stock" data-mr="किमान साठा">Min Stock</th>
+                                        <th class="p-2" data-en="HSN" data-mr="HSN">HSN</th>
+                                        <th class="p-2" data-en="GST" data-mr="GST">GST</th>
                                         <th class="p-2" data-en="Actions" data-mr="क्रिया">Actions</th>
                                     </tr>
                                 </thead>
@@ -843,8 +865,10 @@ const { data, error } = await window.supabase
                         <td class="p-2">${material.name}</td>
                         <td class="p-2">${material.unit}</td>
                         <td class="p-2">${material.min_stock_level}</td>
+                        <td class="p-2 text-xs text-nexflow-muted">${material.hsn_sac || '-'}</td>
+                        <td class="p-2 text-xs text-nexflow-muted">${material.gst_rate > 0 ? material.gst_rate + '%' : '-'}</td>
                         <td class="p-2">
-                            <button onclick="editMaterial('${material.id}', '${material.name.replace(/'/g, "\\'")}', '${material.unit}', ${material.min_stock_level}, '${(material.material_code || '').replace(/'/g, "\\'")}')"
+                            <button onclick="editMaterial('${material.id}', '${material.name.replace(/'/g, "\\'")}', '${material.unit}', ${material.min_stock_level}, '${(material.material_code || '').replace(/'/g, "\\'")}', '${(material.hsn_sac || '').replace(/'/g, "\\'")}', ${material.gst_rate || 0})"
                                 class="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700 mr-2" data-en="Edit" data-mr="संपादित करा">
                                 Edit
                             </button>
@@ -866,13 +890,15 @@ const { data, error } = await window.supabase
         }
 
         // Edit material function
-        function editMaterial(id, name, unit, minStockLevel, materialCode = '') {
+        function editMaterial(id, name, unit, minStockLevel, materialCode = '', hsnSac = '', gstRate = 0) {
             // Populate form fields
             document.getElementById('edit-material-id').value = id;
             document.getElementById('material-code').value = materialCode;
             document.getElementById('material-name').value = name;
             document.getElementById('material-unit').value = unit;
             document.getElementById('material-min-stock').value = minStockLevel;
+            document.getElementById('material-hsn').value = hsnSac;
+            document.getElementById('material-gst').value = gstRate;
 
             // Change button text
             const lang = localStorage.getItem('nexflow_lang') || 'en';
@@ -895,6 +921,8 @@ const { data, error } = await window.supabase
             const name = formData.get('name')?.trim();
             const unit = formData.get('unit');
             const minStockLevel = formData.get('min_stock_level');
+            const hsnSac = formData.get('hsn_sac')?.trim() || null;
+            const gstRate = parseFloat(formData.get('gst_rate')) || 0;
 
             const lang = localStorage.getItem('nexflow_lang') || 'en';
 
@@ -958,7 +986,9 @@ const { data, error } = await window.supabase
                             name,
                             unit,
                             min_stock_level: minStock,
-                            material_code: materialCode
+                            material_code: materialCode,
+                            hsn_sac: hsnSac,
+                            gst_rate: gstRate
                         })
                         .eq('id', editMaterialId);
 
@@ -974,6 +1004,8 @@ const { data, error } = await window.supabase
                             unit,
                             min_stock_level: minStock,
                             material_code: materialCode,
+                            hsn_sac: hsnSac,
+                            gst_rate: gstRate,
                             tenant_id: tenantId,
                             is_active: true
                         });
@@ -1521,6 +1553,8 @@ const { data, error } = await window.supabase
                 const minStock = parseFloat(row['min_stock_level']);
                 const rawStock = row['current_stock'];
                 const currentStock = (rawStock === '' || rawStock === undefined || rawStock === null) ? null : parseFloat(rawStock);
+                const hsnSac = String(row['hsn_sac'] || '').trim() || null;
+                const gstRate = (row['gst_rate'] === '' || row['gst_rate'] === undefined || row['gst_rate'] === null) ? 0 : parseFloat(row['gst_rate']);
 
                 // Validate
                 let errors = [];
@@ -1532,7 +1566,7 @@ const { data, error } = await window.supabase
                 const isValid = errors.length === 0;
                 if (isValid) {
                     validCount++;
-                    bulkRows.push({ material_code: code || null, name, unit, min_stock_level: minStock, current_stock: (currentStock !== null && !isNaN(currentStock) && currentStock > 0) ? currentStock : null });
+                    bulkRows.push({ material_code: code || null, name, unit, min_stock_level: minStock, current_stock: (currentStock !== null && !isNaN(currentStock) && currentStock > 0) ? currentStock : null, hsn_sac: hsnSac, gst_rate: isNaN(gstRate) ? 0 : gstRate });
                 } else {
                     errorCount++;
                 }
@@ -1547,6 +1581,8 @@ const { data, error } = await window.supabase
                     <td class="p-2">${unit || '<span class="text-red-400">—</span>'}</td>
                     <td class="p-2">${isNaN(minStock) ? '<span class="text-red-400">—</span>' : minStock}</td>
                     <td class="p-2">${stockDisplay}</td>
+                    <td class="p-2 text-xs text-nexflow-muted">${hsnSac || '—'}</td>
+                    <td class="p-2 text-xs text-nexflow-muted">${(!isNaN(gstRate) && gstRate > 0) ? gstRate + '%' : '—'}</td>
                     <td class="p-2 text-xs ${isValid ? 'text-green-400' : 'text-red-400'}">
                         ${isValid ? '✓ OK' : '✗ ' + errors.join(', ')}
                     </td>
@@ -1611,6 +1647,8 @@ const { data, error } = await window.supabase
                         name: r.name,
                         unit: r.unit,
                         min_stock_level: r.min_stock_level,
+                        hsn_sac: r.hsn_sac || null,
+                        gst_rate: r.gst_rate || 0,
                         tenant_id: tenantId,
                         is_active: true
                     }));
@@ -1687,12 +1725,12 @@ const { data, error } = await window.supabase
 
         function downloadTemplate() {
             const ws = XLSX.utils.aoa_to_sheet([
-                ['material_code', 'name', 'unit', 'min_stock_level', 'current_stock'],
-                ['MAT-001', 'Example Material', 'KG', 10, 250],
-                ['MAT-002', 'Another Material', 'NOS', 50, 0],
-                ['MAT-003', 'No Stock Material', 'PCS', 5, ''],
+                ['material_code', 'name', 'unit', 'min_stock_level', 'current_stock', 'hsn_sac', 'gst_rate'],
+                ['MAT-001', 'Example Material', 'KG', 10, 250, '721420', 18],
+                ['MAT-002', 'Another Material', 'NOS', 50, 0, '', 5],
+                ['MAT-003', 'No Stock Material', 'PCS', 5, '', '', 0],
             ]);
-            ws['!cols'] = [{ wch: 18 }, { wch: 30 }, { wch: 10 }, { wch: 18 }, { wch: 16 }];
+            ws['!cols'] = [{ wch: 18 }, { wch: 30 }, { wch: 10 }, { wch: 18 }, { wch: 16 }, { wch: 14 }, { wch: 12 }];
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, ws, 'Materials');
             XLSX.writeFile(wb, 'nexflow_materials_template.xlsx');
