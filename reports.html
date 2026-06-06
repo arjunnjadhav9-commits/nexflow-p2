@@ -274,8 +274,8 @@
                         .eq('raw_material_id', material.id)
                         .eq('tenant_id', tenantId)
                         .eq('transaction_type', 'grn')
-                        .gte('created_at', firstDay.toISOString())
-                        .lte('created_at', lastDay.toISOString());
+                        .gte('transaction_date', firstDay.toISOString().split('T')[0])
+                        .lte('transaction_date', lastDay.toISOString().split('T')[0]);
 
                     if (grnError) throw grnError;
 
@@ -290,8 +290,8 @@
                         .eq('raw_material_id', material.id)
                         .eq('tenant_id', tenantId)
                         .eq('transaction_type', 'consumption')
-                        .gte('created_at', firstDay.toISOString())
-                        .lte('created_at', lastDay.toISOString());
+                        .gte('transaction_date', firstDay.toISOString().split('T')[0])
+                        .lte('transaction_date', lastDay.toISOString().split('T')[0]);
 
                     if (consumptionError) throw consumptionError;
 
@@ -333,8 +333,8 @@
                     .select('supplier_id, p2_suppliers(name), quantity')
                     .eq('tenant_id', tenantId)
                     .eq('transaction_type', 'grn')
-                    .gte('created_at', firstDay.toISOString())
-                    .lte('created_at', lastDay.toISOString());
+                    .gte('transaction_date', firstDay.toISOString().split('T')[0])
+                    .lte('transaction_date', lastDay.toISOString().split('T')[0]);
 
                 if (supplierError) throw supplierError;
 

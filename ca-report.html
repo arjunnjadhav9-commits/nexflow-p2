@@ -135,6 +135,8 @@
                                 <th class="p-2 text-left border border-gray-700">Material</th>
                                 <th class="p-2 text-right border border-gray-700">Qty</th>
                                 <th class="p-2 text-center border border-gray-700">Unit</th>
+                                <th class="p-2 text-right border border-gray-700">Rate (₹)</th>
+                                <th class="p-2 text-right border border-gray-700">Value (₹)</th>
                                 <th class="p-2 text-left border border-gray-700">Invoice No</th>
                             </tr>
                         </thead>
@@ -223,6 +225,50 @@
                     </table>
                 </div>
             </section>
+            <!-- SECTION 7: Purchase Value Summary -->
+            <section class="mb-8">
+                <h2 class="text-xl font-bold mb-4 text-nexflow-teal">7. Purchase Value Summary</h2>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm border-collapse">
+                        <thead>
+                            <tr class="bg-[#2C3440]">
+                                <th class="p-2 text-left border border-gray-700">Material</th>
+                                <th class="p-2 text-center border border-gray-700">Unit</th>
+                                <th class="p-2 text-right border border-gray-700">Total GRN Qty</th>
+                                <th class="p-2 text-right border border-gray-700">Rate (₹)</th>
+                                <th class="p-2 text-right border border-gray-700">Purchase Value (₹)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="purchaseValueBody"></tbody>
+                        <tfoot>
+                            <tr class="bg-[#2C3440] font-bold">
+                                <td colspan="4" class="p-2 text-right border border-gray-700">Total Purchase Value</td>
+                                <td id="totalPurchaseValue" class="p-2 text-right border border-gray-700">—</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </section>
+
+            <!-- SECTION 8: Product Selling Prices -->
+            <section class="mb-8">
+                <h2 class="text-xl font-bold mb-4 text-nexflow-teal">8. Product Selling Prices (Current)</h2>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm border-collapse">
+                        <thead>
+                            <tr class="bg-[#2C3440]">
+                                <th class="p-2 text-left border border-gray-700">Product</th>
+                                <th class="p-2 text-center border border-gray-700">Unit</th>
+                                <th class="p-2 text-right border border-gray-700">Selling Price (₹)</th>
+                                <th class="p-2 text-left border border-gray-700">Effective Date</th>
+                                <th class="p-2 text-left border border-gray-700">Notes</th>
+                            </tr>
+                        </thead>
+                        <tbody id="productPricesBody"></tbody>
+                    </table>
+                </div>
+            </section>
+
         </div>
     </main>
 
@@ -307,16 +353,16 @@
 
             if (materialsError) throw materialsError;
 
-            // Fetch all stock transactions
+            // Fetch all stock transactions — use transaction_date for filtering
             const { data: transactions, error: transactionsError } = await window.supabase
                 .from('p2_stock_transactions')
                 .select('*')
                 .eq('tenant_id', tenantId)
-                .order('created_at');
+                .order('transaction_date');
 
             if (transactionsError) throw transactionsError;
 
-            // Fetch all suppliers
+            // Fetch suppliers
             const { data: suppliers, error: suppliersError } = await window.supabase
                 .from('p2_suppliers')
                 .select('*')
@@ -336,37 +382,66 @@
 
             if (dispatchesError) throw dispatchesError;
 
-            // Build material map
+            // Fetch material prices — latest per material as of toDate
+            const { data: materialPrices } = await window.supabase
+                .from('p2_material_prices')
+                .select('raw_material_id, price_per_unit, effective_date')
+                .eq('tenant_id', tenantId)
+                .lte('effective_date', toDate)
+                .order('effective_date', { ascending: false });
+
+            // Build latest price map per material (first entry = most recent due to desc order)
+            const latestPriceMap = {};
+            (materialPrices || []).forEach(p => {
+                if (!latestPriceMap[p.raw_material_id]) {
+                    latestPriceMap[p.raw_material_id] = p.price_per_unit;
+                }
+            });
+
+            // Fetch current product prices
+            const { data: productPricesData } = await window.supabase
+                .from('p2_product_prices')
+                .select('product_id, price, effective_date, notes')
+                .eq('tenant_id', tenantId)
+                .lte('effective_date', toDate)
+                .order('effective_date', { ascending: false });
+
+            // Fetch products
+            const { data: products } = await window.supabase
+                .from('p2_products')
+                .select('id, name, unit')
+                .eq('tenant_id', tenantId)
+                .eq('is_active', true)
+                .order('name');
+
+            // Build latest product price map
+            const latestProductPriceMap = {};
+            (productPricesData || []).forEach(p => {
+                if (!latestProductPriceMap[p.product_id]) {
+                    latestProductPriceMap[p.product_id] = p;
+                }
+            });
+
+            // Build material and supplier maps
             const materialMap = {};
-            materials.forEach(m => {
-                materialMap[m.id] = m;
-            });
-
-            // Build supplier map
+            materials.forEach(m => { materialMap[m.id] = m; });
             const supplierMap = {};
-            suppliers.forEach(s => {
-                supplierMap[s.id] = s;
-            });
+            suppliers.forEach(s => { supplierMap[s.id] = s; });
 
-            // Filter transactions by date
-            const fromDateTime = new Date(fromDate + ' 00:00:00').getTime();
-            const toDateTime = new Date(toDate + ' 23:59:59').getTime();
+            // Filter transactions by transaction_date (correct field per MASTER_CONTEXT)
+            const periodTransactions = transactions.filter(t => {
+                return t.transaction_date >= fromDate && t.transaction_date <= toDate;
+            });
 
             const openingTransactions = transactions.filter(t => {
-                const txTime = new Date(t.created_at).getTime();
-                return txTime < fromDateTime;
-            });
-
-            const periodTransactions = transactions.filter(t => {
-                const txTime = new Date(t.created_at).getTime();
-                return txTime >= fromDateTime && txTime <= toDateTime;
+                return t.transaction_date < fromDate;
             });
 
             // SECTION 1: Opening Stock
             renderOpeningStock(materials, openingTransactions);
 
             // SECTION 2: Purchases / GRN
-            renderGRN(periodTransactions, materialMap, supplierMap);
+            renderGRN(periodTransactions, materialMap, supplierMap, latestPriceMap);
 
             // SECTION 3: Consumption
             renderConsumption(periodTransactions, materialMap);
@@ -375,10 +450,16 @@
             renderDispatchSummary(dispatches);
 
             // SECTION 5: Closing Stock
-            renderClosingStock(materials, transactions, fromDateTime, toDateTime);
+            renderClosingStock(materials, transactions, fromDate, toDate);
 
             // SECTION 6: Supplier Summary
             renderSupplierSummary(periodTransactions, supplierMap);
+
+            // SECTION 7: Purchase Value Summary
+            renderPurchaseValueSummary(periodTransactions, materialMap, latestPriceMap);
+
+            // SECTION 8: Product Prices
+            renderProductPrices(products || [], latestProductPriceMap);
         }
 
         function renderOpeningStock(materials, openingTransactions) {
@@ -407,29 +488,33 @@
             });
         }
 
-        function renderGRN(periodTransactions, materialMap, supplierMap) {
+        function renderGRN(periodTransactions, materialMap, supplierMap, latestPriceMap) {
             const tbody = document.getElementById('grnBody');
             tbody.innerHTML = '';
 
             const grnTransactions = periodTransactions.filter(t => t.transaction_type === 'grn');
 
             if (grnTransactions.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" class="p-4 text-center text-gray-400 border border-gray-700">No GRN transactions in this period</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="8" class="p-4 text-center text-gray-400 border border-gray-700">No GRN transactions in this period</td></tr>';
                 return;
             }
 
             grnTransactions.forEach(tx => {
                 const material = materialMap[tx.raw_material_id] || {};
                 const supplier = supplierMap[tx.supplier_id] || {};
+                const rate = latestPriceMap[tx.raw_material_id] || null;
+                const value = rate ? (tx.quantity * rate) : null;
 
                 const row = document.createElement('tr');
                 row.className = 'border-b border-gray-700';
                 row.innerHTML = `
-                    <td class="p-2 border border-gray-700">${formatDate(tx.created_at)}</td>
+                    <td class="p-2 border border-gray-700">${tx.transaction_date || formatDate(tx.created_at)}</td>
                     <td class="p-2 border border-gray-700">${supplier.name || '-'}</td>
                     <td class="p-2 border border-gray-700">${material.name || '-'}</td>
                     <td class="p-2 text-right border border-gray-700">${formatNumber(tx.quantity)}</td>
                     <td class="p-2 text-center border border-gray-700">${material.unit || '-'}</td>
+                    <td class="p-2 text-right border border-gray-700">${rate ? '₹' + formatNumber(rate) : '<span class="text-gray-500">—</span>'}</td>
+                    <td class="p-2 text-right border border-gray-700">${value ? '₹' + formatNumber(value) : '<span class="text-gray-500">—</span>'}</td>
                     <td class="p-2 border border-gray-700">${tx.invoice_no || '-'}</td>
                 `;
                 tbody.appendChild(row);
@@ -453,7 +538,7 @@
                 const row = document.createElement('tr');
                 row.className = 'border-b border-gray-700';
                 row.innerHTML = `
-                    <td class="p-2 border border-gray-700">${formatDate(tx.created_at)}</td>
+                    <td class="p-2 border border-gray-700">${tx.transaction_date || formatDate(tx.created_at)}</td>
                     <td class="p-2 border border-gray-700">${material.name || '-'}</td>
                     <td class="p-2 text-right border border-gray-700">${formatNumber(Math.abs(tx.quantity))}</td>
                     <td class="p-2 text-center border border-gray-700">${material.unit || '-'}</td>
@@ -487,51 +572,31 @@
             });
         }
 
-        function renderClosingStock(materials, allTransactions, fromDateTime, toDateTime) {
+        function renderClosingStock(materials, allTransactions, fromDate, toDate) {
             const tbody = document.getElementById('closingStockBody');
             tbody.innerHTML = '';
 
             materials.forEach(material => {
-                // Opening: all transactions before fromDate
                 const openingQty = allTransactions
-                    .filter(t => {
-                        const txTime = new Date(t.created_at).getTime();
-                        return txTime < fromDateTime && t.raw_material_id === material.id;
-                    })
+                    .filter(t => t.transaction_date < fromDate && t.raw_material_id === material.id)
                     .reduce((sum, t) => sum + (t.quantity || 0), 0);
 
-                // GRN in period
                 const grnQty = allTransactions
-                    .filter(t => {
-                        const txTime = new Date(t.created_at).getTime();
-                        return txTime >= fromDateTime && txTime <= toDateTime &&
-                               t.raw_material_id === material.id &&
-                               t.transaction_type === 'grn';
-                    })
+                    .filter(t => t.transaction_date >= fromDate && t.transaction_date <= toDate &&
+                               t.raw_material_id === material.id && t.transaction_type === 'grn')
                     .reduce((sum, t) => sum + (t.quantity || 0), 0);
 
-                // Consumption in period
                 const consumptionQty = allTransactions
-                    .filter(t => {
-                        const txTime = new Date(t.created_at).getTime();
-                        return txTime >= fromDateTime && txTime <= toDateTime &&
-                               t.raw_material_id === material.id &&
-                               t.transaction_type === 'consumption';
-                    })
+                    .filter(t => t.transaction_date >= fromDate && t.transaction_date <= toDate &&
+                               t.raw_material_id === material.id && t.transaction_type === 'consumption')
                     .reduce((sum, t) => sum + (t.quantity || 0), 0);
 
-                // Adjustments in period
                 const adjustmentsQty = allTransactions
-                    .filter(t => {
-                        const txTime = new Date(t.created_at).getTime();
-                        return txTime >= fromDateTime && txTime <= toDateTime &&
-                               t.raw_material_id === material.id &&
-                               t.transaction_type === 'adjustment';
-                    })
+                    .filter(t => t.transaction_date >= fromDate && t.transaction_date <= toDate &&
+                               t.raw_material_id === material.id && t.transaction_type === 'adjustment')
                     .reduce((sum, t) => sum + (t.quantity || 0), 0);
 
                 const closingQty = openingQty + grnQty + consumptionQty + adjustmentsQty;
-
                 const status = closingQty < (material.min_stock_level || 0) ? 'Low' : 'OK';
                 const statusClass = status === 'Low' ? 'text-red-500' : 'text-nexflow-green';
 
@@ -562,31 +627,92 @@
                 return;
             }
 
-            // Group by supplier
             const supplierGroups = {};
             grnTransactions.forEach(tx => {
                 const supplierId = tx.supplier_id || 'unknown';
-                if (!supplierGroups[supplierId]) {
-                    supplierGroups[supplierId] = {
-                        count: 0,
-                        totalQty: 0
-                    };
-                }
+                if (!supplierGroups[supplierId]) supplierGroups[supplierId] = { count: 0, totalQty: 0 };
                 supplierGroups[supplierId].count += 1;
                 supplierGroups[supplierId].totalQty += (tx.quantity || 0);
             });
 
-            // Render
             Object.keys(supplierGroups).forEach(supplierId => {
                 const supplier = supplierMap[supplierId] || { name: 'Unknown Supplier' };
                 const group = supplierGroups[supplierId];
-
                 const row = document.createElement('tr');
                 row.className = 'border-b border-gray-700';
                 row.innerHTML = `
                     <td class="p-2 border border-gray-700">${supplier.name}</td>
                     <td class="p-2 text-center border border-gray-700">${group.count}</td>
                     <td class="p-2 text-right border border-gray-700">${formatNumber(group.totalQty)}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        function renderPurchaseValueSummary(periodTransactions, materialMap, latestPriceMap) {
+            const tbody = document.getElementById('purchaseValueBody');
+            tbody.innerHTML = '';
+
+            const grnTransactions = periodTransactions.filter(t => t.transaction_type === 'grn');
+
+            // Group GRN qty by material
+            const grnByMaterial = {};
+            grnTransactions.forEach(tx => {
+                if (!grnByMaterial[tx.raw_material_id]) grnByMaterial[tx.raw_material_id] = 0;
+                grnByMaterial[tx.raw_material_id] += (tx.quantity || 0);
+            });
+
+            if (!Object.keys(grnByMaterial).length) {
+                tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-400 border border-gray-700">No GRN transactions in this period</td></tr>';
+                document.getElementById('totalPurchaseValue').textContent = '—';
+                return;
+            }
+
+            let grandTotal = 0;
+            let hasAnyPrice = false;
+
+            Object.keys(grnByMaterial).forEach(matId => {
+                const material = materialMap[matId] || {};
+                const qty = grnByMaterial[matId];
+                const rate = latestPriceMap[matId] || null;
+                const value = rate ? qty * rate : null;
+                if (value) { grandTotal += value; hasAnyPrice = true; }
+
+                const row = document.createElement('tr');
+                row.className = 'border-b border-gray-700';
+                row.innerHTML = `
+                    <td class="p-2 border border-gray-700">${material.name || '-'}</td>
+                    <td class="p-2 text-center border border-gray-700">${material.unit || '-'}</td>
+                    <td class="p-2 text-right border border-gray-700">${formatNumber(qty)}</td>
+                    <td class="p-2 text-right border border-gray-700">${rate ? '₹' + formatNumber(rate) : '<span class="text-gray-500">No price set</span>'}</td>
+                    <td class="p-2 text-right border border-gray-700 font-mono">${value ? '₹' + formatNumber(value) : '<span class="text-gray-500">—</span>'}</td>
+                `;
+                tbody.appendChild(row);
+            });
+
+            document.getElementById('totalPurchaseValue').textContent =
+                hasAnyPrice ? '₹' + formatNumber(grandTotal) : '— (set prices in Settings)';
+        }
+
+        function renderProductPrices(products, latestProductPriceMap) {
+            const tbody = document.getElementById('productPricesBody');
+            tbody.innerHTML = '';
+
+            if (!products.length) {
+                tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-400 border border-gray-700">No products found</td></tr>';
+                return;
+            }
+
+            products.forEach(product => {
+                const priceData = latestProductPriceMap[product.id];
+                const row = document.createElement('tr');
+                row.className = 'border-b border-gray-700';
+                row.innerHTML = `
+                    <td class="p-2 border border-gray-700">${product.name}</td>
+                    <td class="p-2 text-center border border-gray-700">${product.unit}</td>
+                    <td class="p-2 text-right border border-gray-700 font-mono">${priceData ? '₹' + formatNumber(priceData.price) : '<span class="text-gray-500">Not set</span>'}</td>
+                    <td class="p-2 border border-gray-700">${priceData ? priceData.effective_date : '—'}</td>
+                    <td class="p-2 border border-gray-700 text-sm text-gray-400">${priceData ? (priceData.notes || '—') : '—'}</td>
                 `;
                 tbody.appendChild(row);
             });
