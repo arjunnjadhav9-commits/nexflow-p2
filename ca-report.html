@@ -277,8 +277,9 @@
         let fromDate = null;
         let toDate = null;
 
-        async function init() {const authed = await checkauth();
-            if(!authed)return;
+        async function init() {
+            const authed = await checkAuth();
+            if (!authed) return;
             requireOwner();
             const loadingSpinner = document.getElementById('loadingSpinner');
             const errorState = document.getElementById('errorState');
