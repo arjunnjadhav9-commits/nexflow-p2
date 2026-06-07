@@ -1011,8 +1011,8 @@ if (!isPro()) {
         .select('*', { count: 'exact', head: true })
         .eq('tenant_id', tenantId)
         .eq('is_active', true);
-    if (count >= 150) {
-        alert('Material limit reached (150 materials). Upgrade to Pro for unlimited materials.');
+    if (count >= 250) {
+        alert('Material limit reached (250 materials). Upgrade to Pro for unlimited materials.');
         return;
     }
 }
@@ -1656,10 +1656,10 @@ const toInsert = bulkRows.filter(r => !existingNames.has(r.name.toLowerCase()));
 if (!isPro()) {
     const currentCount = existing.length;
     const afterImport = currentCount + toInsert.length;
-    if (afterImport > 150) {
-        const allowed = 150 - currentCount;
+    if (afterImport > 250) {
+        const allowed = 250 - currentCount;
         if (allowed <= 0) {
-            showBulkStatus('warning', 'Material limit reached (150). Upgrade to Pro for unlimited materials.');
+            showBulkStatus('warning', 'Material limit reached (250). Upgrade to Pro for unlimited materials.');
             btn.disabled = false;
             btn.textContent = 'Import All';
             return;
