@@ -431,15 +431,18 @@
             const supplierMap = {};
             suppliers.forEach(s => { supplierMap[s.id] = s; });
 
-            // opening_stock type always treated as opening balance, never as period activity
+            // Opening stock = adjustment transactions with notes='Opening Stock' (always, regardless of date)
+            // Period transactions exclude those opening stock rows
+            const isOpeningStock = t => t.transaction_type === 'adjustment' && t.notes === 'Opening Stock';
+
             const periodTransactions = transactions.filter(t => {
-                return t.transaction_type !== 'opening_stock' &&
+                return !isOpeningStock(t) &&
                        t.transaction_date >= fromDate && t.transaction_date <= toDate;
             });
 
             const openingTransactions = transactions.filter(t => {
-                return t.transaction_type === 'opening_stock' ||
-                       (t.transaction_type !== 'opening_stock' && t.transaction_date < fromDate);
+                return isOpeningStock(t) ||
+                       (!isOpeningStock(t) && t.transaction_date < fromDate);
             });
 
             // SECTION 1: Opening Stock
@@ -582,11 +585,10 @@
             tbody.innerHTML = '';
 
             materials.forEach(material => {
-                // opening_stock type always counts as opening regardless of date
+                const isOpeningStock = t => t.transaction_type === 'adjustment' && t.notes === 'Opening Stock';
                 const openingQty = allTransactions
                     .filter(t => t.raw_material_id === material.id &&
-                        (t.transaction_type === 'opening_stock' ||
-                         (t.transaction_type !== 'opening_stock' && t.transaction_date < fromDate)))
+                        (isOpeningStock(t) || (!isOpeningStock(t) && t.transaction_date < fromDate)))
                     .reduce((sum, t) => sum + (t.quantity || 0), 0);
 
                 const grnQty = allTransactions
@@ -601,7 +603,8 @@
 
                 const adjustmentsQty = allTransactions
                     .filter(t => t.transaction_date >= fromDate && t.transaction_date <= toDate &&
-                               t.raw_material_id === material.id && t.transaction_type === 'adjustment')
+                               t.raw_material_id === material.id && t.transaction_type === 'adjustment' &&
+                               t.notes !== 'Opening Stock')
                     .reduce((sum, t) => sum + (t.quantity || 0), 0);
 
                 const closingQty = openingQty + grnQty + consumptionQty + adjustmentsQty;
