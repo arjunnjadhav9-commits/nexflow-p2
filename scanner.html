@@ -5,8 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Scanner | Nexflow P2</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%231A1F2E'/><text y='.9em' font-size='80' x='10' fill='%2300BCD4'>N</text></svg>">
-    <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script src="js/supabase-client.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/utils.js"></script>
@@ -61,8 +62,19 @@
                 </button>
             </div>
 
-            <!-- Camera Viewfinder -->
-            <div class="relative bg-black rounded-lg overflow-hidden" style="aspect-ratio: 1/1;">
+            <!-- Desktop Fallback (shown when BarcodeDetector not supported) -->
+            <div id="desktopFallback" class="hidden bg-gray-800 rounded-lg p-6 text-center border border-gray-600">
+                <div class="text-4xl mb-3">📱</div>
+                <h2 class="text-lg font-bold text-white mb-2">Scanner is a Mobile Feature</h2>
+                <p class="text-nexflow-muted text-sm mb-5">Open this page on your Android phone using Chrome to scan QR codes. Scan the QR below to open it directly.</p>
+                <div class="flex justify-center mb-4">
+                    <div id="desktopQR" class="bg-white p-3 rounded-lg inline-block"></div>
+                </div>
+                <p id="desktopURL" class="text-nexflow-teal text-xs break-all"></p>
+            </div>
+
+            <!-- Camera Viewfinder (mobile only) -->
+            <div id="cameraViewfinder" class="relative bg-black rounded-lg overflow-hidden" style="aspect-ratio: 1/1;">
                 <video id="cameraFeed" class="w-full h-full object-cover" autoplay muted playsinline></video>
                 <!-- Scan overlay -->
                 <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -79,10 +91,10 @@
                 </div>
             </div>
 
-            <!-- Camera Error -->
+            <!-- Camera Permission Error (mobile only) -->
             <div id="cameraError" class="hidden bg-red-900 border border-red-700 rounded-lg p-4 text-center text-sm">
-                <p class="font-bold mb-1">Camera not available</p>
-                <p class="text-nexflow-muted">Allow camera access or use a supported browser (Chrome on Android).</p>
+                <p class="font-bold mb-1">Camera access denied</p>
+                <p class="text-nexflow-muted">Please allow camera access in your browser settings and reload.</p>
             </div>
 
             <!-- Scanned Material Card (hidden until scan) -->
@@ -241,11 +253,26 @@
 
         // ─── CAMERA / SCANNER ─────────────────────────────────────────────────
         async function startCamera() {
-            // BarcodeDetector API — native in Chrome Android, no library needed
             if (!('BarcodeDetector' in window)) {
-                document.getElementById('cameraError').classList.remove('hidden');
-                document.getElementById('cameraFeed').classList.add('hidden');
-                setScanStatus('BarcodeDetector not supported. Use Chrome on Android.', 'error');
+                // Desktop or unsupported browser — show mobile handoff screen
+                document.getElementById('cameraViewfinder').classList.add('hidden');
+                document.getElementById('desktopFallback').classList.remove('hidden');
+
+                // Hide mode toggle — not useful on desktop
+                document.querySelector('.bg-gray-800.rounded-lg.p-1.flex').classList.add('hidden');
+
+                // Generate QR code pointing to this scanner page
+                const scannerURL = window.location.href;
+                document.getElementById('desktopURL').textContent = scannerURL;
+
+                new QRCode(document.getElementById('desktopQR'), {
+                    text: scannerURL,
+                    width: 160,
+                    height: 160,
+                    colorDark: '#000000',
+                    colorLight: '#ffffff',
+                    correctLevel: QRCode.CorrectLevel.M
+                });
                 return;
             }
 
