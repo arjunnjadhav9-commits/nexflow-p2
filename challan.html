@@ -361,10 +361,12 @@
         }
 
         // Initialize on page load
-        document.addEventListener('DOMContentLoaded', () => {
-            checkMobileDevice();
-            loadChallan();
-        });
+        document.addEventListener('DOMContentLoaded', async () => {
+    const authed = await checkAuth();
+    if (!authed) return;
+    checkMobileDevice();
+    loadChallan();
+});
     </script>
 
     <!-- Language Toggle Script -->

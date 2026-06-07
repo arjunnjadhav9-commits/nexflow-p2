@@ -244,8 +244,9 @@
             const bomContent = document.getElementById('bomContent');
 
             try {
-                await checkAuth();
-                const { data: { user } } = await window.supabase.auth.getUser();
+                const authed = await checkAuth();
+if (!authed) return;
+const { data: { user } } = await window.supabase.auth.getUser();
                 if (user) {
                     currentTenantId = user.id;
 

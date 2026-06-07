@@ -7,6 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script src="js/supabase-client.js"></script>
     <script src="js/utils.js"></script>
     <script src="js/auth.js"></script>
@@ -313,7 +314,13 @@
 
                     <!-- Raw Materials Table -->
                     <div class="bg-gray-700 p-6 rounded">
-                        <h2 class="text-xl mb-4" data-en="Raw Materials List" data-mr="कच्च्या मालाची यादी">Raw Materials List</h2>
+                        <div class="flex items-center justify-between mb-4">
+                            <h2 class="text-xl" data-en="Raw Materials List" data-mr="कच्च्या मालाची यादी">Raw Materials List</h2>
+                            <button onclick="openQRModal()" id="btn-print-qr"
+                                class="px-3 py-1 bg-nexflow-teal text-white rounded text-sm hover:bg-cyan-600 transition hidden">
+                                🖨️ Print QR Labels
+                            </button>
+                        </div>
                         <div class="overflow-x-auto">
                             <table class="w-full">
                                 <thead>
@@ -997,9 +1004,22 @@ const { data, error } = await window.supabase
                     alert(lang === 'mr' ? 'साहित्य यशस्वीरित्या अपडेट केले' : 'Material updated successfully');
                 } else {
                     // Insert new material
-                    const { error } = await window.supabase
-                        .from('p2_raw_materials')
-                        .insert({
+// Check material limit for Lite plan
+if (!isPro()) {
+    const { count } = await window.supabase
+        .from('p2_raw_materials')
+        .select('*', { count: 'exact', head: true })
+        .eq('tenant_id', tenantId)
+        .eq('is_active', true);
+    if (count >= 150) {
+        alert('Material limit reached (150 materials). Upgrade to Pro for unlimited materials.');
+        return;
+    }
+}
+
+const { error } = await window.supabase
+    .from('p2_raw_materials')
+    .insert({
                             name,
                             unit,
                             min_stock_level: minStock,
@@ -1239,7 +1259,11 @@ const { data, error } = await window.supabase
 
         // Invite staff member
         document.getElementById('invite-staff-form').addEventListener('submit', async (e) => {
-            e.preventDefault();
+    e.preventDefault();
+    if (!isPro()) {
+        showStatus('invite-status', 'error', 'Staff invites are a Pro feature. Upgrade to add team members.', 'स्टाफ आमंत्रण प्रो वैशिष्ट्य आहे.');
+        return;
+    }
 
             const formData = new FormData(e.target);
             const email = formData.get('email').trim();
@@ -1626,8 +1650,24 @@ const { data, error } = await window.supabase
                 if (fetchErr) throw fetchErr;
 
                 const existingNames = new Set((existing || []).map(m => m.name.toLowerCase()));
+const toInsert = bulkRows.filter(r => !existingNames.has(r.name.toLowerCase()));
 
-                const toInsert = bulkRows.filter(r => !existingNames.has(r.name.toLowerCase()));
+// Check material limit for Lite plan
+if (!isPro()) {
+    const currentCount = existing.length;
+    const afterImport = currentCount + toInsert.length;
+    if (afterImport > 150) {
+        const allowed = 150 - currentCount;
+        if (allowed <= 0) {
+            showBulkStatus('warning', 'Material limit reached (150). Upgrade to Pro for unlimited materials.');
+            btn.disabled = false;
+            btn.textContent = 'Import All';
+            return;
+        }
+        toInsert.splice(allowed);
+        showBulkStatus('warning', `Lite plan limit: only ${allowed} materials imported. Upgrade to Pro for unlimited.`);
+    }
+}
                 const skipped = bulkRows.length - toInsert.length;
 
                 if (!toInsert.length) {
@@ -2081,8 +2121,11 @@ const { data, error } = await window.supabase
 
         // Initialize tabs
         document.addEventListener('DOMContentLoaded', async () => {
-            // Apply language
-            const saved = localStorage.getItem('nexflow_lang') || 'en';
+    const authed = await checkAuth();
+    if (!authed) return;
+    requireOwner();
+    // Apply language
+    const saved = localStorage.getItem('nexflow_lang') || 'en';
             applyLang(saved);
 
             // POLISH 4: Initialize unsaved changes tracking
@@ -2153,6 +2196,145 @@ const { data, error } = await window.supabase
         });
     </script>
     <script src="js/navbar.js"></script>
+
+    <!-- QR Labels Modal -->
+    <div id="qr-modal" class="fixed inset-0 bg-black bg-opacity-80 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-gray-800 rounded-lg w-full max-w-4xl max-h-screen overflow-y-auto">
+            <div class="flex items-center justify-between p-4 border-b border-gray-600 no-print">
+                <h2 class="text-xl font-semibold">QR Labels — Print & Stick on Shelves</h2>
+                <div class="flex gap-2">
+                    <button onclick="printQRLabels()"
+                        class="px-4 py-2 bg-nexflow-green text-white rounded hover:bg-green-600 font-semibold">
+                        🖨️ Print
+                    </button>
+                    <button onclick="closeQRModal()"
+                        class="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-500">
+                        Close
+                    </button>
+                </div>
+            </div>
+            <div id="qr-labels-grid" class="p-4 grid grid-cols-3 gap-4"></div>
+        </div>
+    </div>
+
+    <style>
+        @media print {
+            body > *:not(#qr-print-area) { display: none !important; }
+            #qr-print-area {
+                display: grid !important;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 12px;
+                padding: 12px;
+            }
+            .qr-label-card {
+                border: 1px solid #000;
+                border-radius: 6px;
+                padding: 10px;
+                text-align: center;
+                page-break-inside: avoid;
+                background: #fff !important;
+                color: #000 !important;
+            }
+            .qr-label-card p { color: #000 !important; }
+            .no-print { display: none !important; }
+        }
+    </style>
+
+    <script>
+        // ─── QR LABEL GENERATION ─────────────────────────────────────────────
+
+        async function openQRModal() {
+            if (!isPro()) {
+                alert('QR Labels is a Pro plan feature. Upgrade to Pro to use this.');
+                return;
+            }
+
+            const grid = document.getElementById('qr-labels-grid');
+            grid.innerHTML = '<p class="col-span-3 text-center text-nexflow-muted py-8">Generating QR codes...</p>';
+            document.getElementById('qr-modal').classList.remove('hidden');
+
+            try {
+                const { data: { user } } = await window.supabase.auth.getUser();
+                const tenantId = user.id;
+
+                const { data, error } = await window.supabase
+                    .from('p2_raw_materials')
+                    .select('id, name, unit, material_code, tenant_id')
+                    .eq('tenant_id', tenantId)
+                    .eq('is_active', true)
+                    .order('name');
+
+                if (error) throw error;
+
+                grid.innerHTML = '';
+
+                if (!data.length) {
+                    grid.innerHTML = '<p class="col-span-3 text-center text-nexflow-muted py-8">No active materials found.</p>';
+                    return;
+                }
+
+                data.forEach(mat => {
+                    const payload = JSON.stringify({
+                        id: mat.id,
+                        tid: mat.tenant_id,
+                        name: mat.name,
+                        unit: mat.unit,
+                        code: mat.material_code || ''
+                    });
+
+                    const card = document.createElement('div');
+                    card.className = 'qr-label-card bg-gray-700 rounded p-3 text-center border border-gray-600';
+                    card.innerHTML = `
+                        <div id="qr-${mat.id}" class="flex justify-center mb-2"></div>
+                        <p class="text-sm font-semibold text-white leading-tight">${mat.name}</p>
+                        ${mat.material_code ? `<p class="text-xs text-nexflow-muted mt-1">${mat.material_code}</p>` : ''}
+                        <p class="text-xs text-nexflow-teal mt-1">${mat.unit}</p>
+                    `;
+                    grid.appendChild(card);
+
+                    new QRCode(document.getElementById(`qr-${mat.id}`), {
+                        text: payload,
+                        width: 100,
+                        height: 100,
+                        colorDark: '#000000',
+                        colorLight: '#ffffff',
+                        correctLevel: QRCode.CorrectLevel.M
+                    });
+                });
+
+            } catch (err) {
+                grid.innerHTML = `<p class="col-span-3 text-center text-red-400 py-8">Error: ${err.message}</p>`;
+            }
+        }
+
+        function closeQRModal() {
+            document.getElementById('qr-modal').classList.add('hidden');
+            document.getElementById('qr-labels-grid').innerHTML = '';
+        }
+
+        function printQRLabels() {
+            const existing = document.getElementById('qr-print-area');
+            if (existing) existing.remove();
+
+            const printArea = document.getElementById('qr-labels-grid').cloneNode(true);
+            printArea.id = 'qr-print-area';
+            printArea.style.display = 'none';
+            document.body.appendChild(printArea);
+            window.print();
+            printArea.remove();
+        }
+
+        // Show QR button when materials tab is opened, if Pro
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('tab-materials').addEventListener('click', () => {
+                if (isPro()) {
+                    document.getElementById('btn-print-qr').classList.remove('hidden');
+                }
+            });
+        });
+
+        // ─── END QR LABEL GENERATION ─────────────────────────────────────────
+    </script>
 
 </body>
 </html>

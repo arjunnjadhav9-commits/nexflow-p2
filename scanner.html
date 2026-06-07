@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scanner | Nexflow P2</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%231A1F2E'/><text y='.9em' font-size='80' x='10' fill='%2300BCD4'>N</text></svg>">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/supabase-client.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/navbar.js"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        'nexflow-dark-bg': '#1A1F2E',
+                        'nexflow-text': '#E0E0E0',
+                        'nexflow-teal': '#00BCD4',
+                        'nexflow-green': '#00E676',
+                        'nexflow-muted': '#94A3B8'
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-nexflow-dark-bg text-nexflow-text min-h-screen">
+    <div id="navbar-container"></div>
+    <main class="container mx-auto px-4 py-6 max-w-lg">
+
+        <h1 class="text-2xl font-bold mb-2 text-center">📷 QR Scanner</h1>
+        <p class="text-center text-nexflow-muted text-sm mb-6">Scan material QR code to receive or issue stock</p>
+
+        <!-- Loading Spinner -->
+        <div id="loadingSpinner" class="flex justify-center items-center py-12">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-nexflow-teal"></div>
+        </div>
+
+        <!-- Pro Gate Error -->
+        <div id="proGateError" class="hidden bg-yellow-900 border border-yellow-600 rounded-lg p-6 text-center">
+            <p class="text-xl mb-2">🔒 Pro Feature</p>
+            <p class="text-nexflow-muted text-sm">QR Scanner is available on the Pro plan. Contact Nexflow to upgrade.</p>
+        </div>
+
+        <!-- Main Content -->
+        <div id="mainContent" class="hidden space-y-4">
+
+            <!-- Mode Toggle -->
+            <div class="bg-gray-800 rounded-lg p-1 flex">
+                <button id="modeReceive" onclick="setMode('receive')"
+                    class="flex-1 py-2 rounded-md text-sm font-semibold transition bg-nexflow-teal text-white">
+                    📥 Receive (GRN)
+                </button>
+                <button id="modeIssue" onclick="setMode('issue')"
+                    class="flex-1 py-2 rounded-md text-sm font-semibold transition text-nexflow-muted">
+                    📤 Issue (Consumption)
+                </button>
+            </div>
+
+            <!-- Camera Viewfinder -->
+            <div class="relative bg-black rounded-lg overflow-hidden" style="aspect-ratio: 1/1;">
+                <video id="cameraFeed" class="w-full h-full object-cover" autoplay muted playsinline></video>
+                <!-- Scan overlay -->
+                <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <div class="w-56 h-56 border-2 border-nexflow-teal rounded-lg relative">
+                        <div class="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 border-nexflow-teal rounded-tl"></div>
+                        <div class="absolute top-0 right-0 w-6 h-6 border-t-4 border-r-4 border-nexflow-teal rounded-tr"></div>
+                        <div class="absolute bottom-0 left-0 w-6 h-6 border-b-4 border-l-4 border-nexflow-teal rounded-bl"></div>
+                        <div class="absolute bottom-0 right-0 w-6 h-6 border-b-4 border-r-4 border-nexflow-teal rounded-br"></div>
+                    </div>
+                </div>
+                <!-- Status overlay -->
+                <div id="scanStatus" class="absolute bottom-3 left-0 right-0 flex justify-center">
+                    <span class="bg-black bg-opacity-70 text-nexflow-muted text-xs px-3 py-1 rounded-full">Point camera at QR code</span>
+                </div>
+            </div>
+
+            <!-- Camera Error -->
+            <div id="cameraError" class="hidden bg-red-900 border border-red-700 rounded-lg p-4 text-center text-sm">
+                <p class="font-bold mb-1">Camera not available</p>
+                <p class="text-nexflow-muted">Allow camera access or use a supported browser (Chrome on Android).</p>
+            </div>
+
+            <!-- Scanned Material Card (hidden until scan) -->
+            <div id="scannedCard" class="hidden bg-gray-800 rounded-lg p-4 border border-nexflow-teal">
+                <div class="flex items-start justify-between mb-3">
+                    <div>
+                        <p class="text-xs text-nexflow-muted uppercase tracking-wider mb-1">Scanned Material</p>
+                        <p id="scannedName" class="text-lg font-bold text-white"></p>
+                        <p id="scannedCode" class="text-xs text-nexflow-muted mt-0.5"></p>
+                    </div>
+                    <span id="scannedUnit" class="bg-nexflow-teal text-white text-xs px-2 py-1 rounded font-semibold"></span>
+                </div>
+
+                <!-- Current Stock -->
+                <div class="bg-gray-700 rounded p-2 mb-3 flex justify-between items-center text-sm">
+                    <span class="text-nexflow-muted">Current Stock</span>
+                    <span id="currentStock" class="font-bold text-nexflow-green"></span>
+                </div>
+
+                <!-- Entry Form -->
+                <div class="space-y-3">
+
+                    <!-- Date -->
+                    <div>
+                        <label class="block text-xs text-nexflow-muted mb-1">Date</label>
+                        <input type="date" id="entryDate"
+                            class="w-full p-2 rounded bg-gray-700 text-white text-sm">
+                    </div>
+
+                    <!-- Quantity -->
+                    <div>
+                        <label class="block text-xs text-nexflow-muted mb-1">Quantity</label>
+                        <div class="flex items-center gap-2">
+                            <input type="number" id="entryQty" min="0.01" step="0.01"
+                                placeholder="0.00"
+                                class="flex-1 p-2 rounded bg-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-nexflow-teal">
+                            <span id="entryUnit" class="text-nexflow-muted text-sm w-12 text-right"></span>
+                        </div>
+                    </div>
+
+                    <!-- GRN-only fields -->
+                    <div id="grnFields" class="space-y-3">
+                        <div>
+                            <label class="block text-xs text-nexflow-muted mb-1">Supplier (optional)</label>
+                            <select id="entrySupplier" class="w-full p-2 rounded bg-gray-700 text-white text-sm">
+                                <option value="">Select Supplier</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs text-nexflow-muted mb-1">Rate ₹ (optional)</label>
+                            <input type="number" id="entryRate" min="0" step="0.01" placeholder="0.00"
+                                class="w-full p-2 rounded bg-gray-700 text-white text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-nexflow-muted mb-1">Invoice No (optional)</label>
+                            <input type="text" id="entryInvoice" placeholder="e.g. INV-001"
+                                class="w-full p-2 rounded bg-gray-700 text-white text-sm">
+                        </div>
+                    </div>
+
+                    <!-- Issue-only fields -->
+                    <div id="issueFields" class="hidden space-y-3">
+                        <div>
+                            <label class="block text-xs text-nexflow-muted mb-1">Reference / Work Order (optional)</label>
+                            <input type="text" id="entryRef" placeholder="e.g. WO-045"
+                                class="w-full p-2 rounded bg-gray-700 text-white text-sm">
+                        </div>
+                    </div>
+
+                    <!-- Submit -->
+                    <div class="flex gap-2 pt-1">
+                        <button onclick="submitEntry()"
+                            id="submitBtn"
+                            class="flex-1 py-3 bg-nexflow-teal text-white font-semibold rounded-lg hover:bg-cyan-600 transition text-sm">
+                            ✅ Submit GRN Entry
+                        </button>
+                        <button onclick="cancelScan()"
+                            class="px-4 py-3 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition text-sm">
+                            ✖
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Entries -->
+            <div class="bg-gray-800 rounded-lg p-4">
+                <p class="text-sm font-semibold text-nexflow-muted mb-3">Recent Scan Entries</p>
+                <div id="recentEntries">
+                    <p class="text-xs text-nexflow-muted text-center py-4">No entries yet this session</p>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <script>
+        // ─── STATE ────────────────────────────────────────────────────────────
+        let tenantId = null;
+        let currentMode = 'receive'; // 'receive' | 'issue'
+        let scannedMaterial = null;  // { id, tid, name, unit, code }
+        let suppliers = [];
+        let barcodeDetector = null;
+        let scanLoop = null;
+        let sessionEntries = [];
+
+        // ─── INIT ─────────────────────────────────────────────────────────────
+        document.addEventListener('DOMContentLoaded', async () => {
+            const authed = await checkAuth();
+            if (!authed) return;
+
+            if (!isPro()) {
+                document.getElementById('loadingSpinner').classList.add('hidden');
+                document.getElementById('proGateError').classList.remove('hidden');
+                return;
+            }
+
+            const { data: { user } } = await window.supabase.auth.getUser();
+            tenantId = user.id;
+
+            await loadSuppliers();
+
+            document.getElementById('entryDate').value = new Date().toISOString().split('T')[0];
+
+            document.getElementById('loadingSpinner').classList.add('hidden');
+            document.getElementById('mainContent').classList.remove('hidden');
+
+            startCamera();
+        });
+
+        // ─── MODE TOGGLE ──────────────────────────────────────────────────────
+        function setMode(mode) {
+            currentMode = mode;
+            cancelScan();
+
+            const receiveBtn = document.getElementById('modeReceive');
+            const issueBtn = document.getElementById('modeIssue');
+
+            if (mode === 'receive') {
+                receiveBtn.classList.add('bg-nexflow-teal', 'text-white');
+                receiveBtn.classList.remove('text-nexflow-muted');
+                issueBtn.classList.remove('bg-nexflow-teal', 'text-white');
+                issueBtn.classList.add('text-nexflow-muted');
+                document.getElementById('grnFields').classList.remove('hidden');
+                document.getElementById('issueFields').classList.add('hidden');
+                document.getElementById('submitBtn').textContent = '✅ Submit GRN Entry';
+            } else {
+                issueBtn.classList.add('bg-nexflow-teal', 'text-white');
+                issueBtn.classList.remove('text-nexflow-muted');
+                receiveBtn.classList.remove('bg-nexflow-teal', 'text-white');
+                receiveBtn.classList.add('text-nexflow-muted');
+                document.getElementById('grnFields').classList.add('hidden');
+                document.getElementById('issueFields').classList.remove('hidden');
+                document.getElementById('submitBtn').textContent = '✅ Submit Issue Entry';
+            }
+        }
+
+        // ─── CAMERA / SCANNER ─────────────────────────────────────────────────
+        async function startCamera() {
+            // BarcodeDetector API — native in Chrome Android, no library needed
+            if (!('BarcodeDetector' in window)) {
+                document.getElementById('cameraError').classList.remove('hidden');
+                document.getElementById('cameraFeed').classList.add('hidden');
+                setScanStatus('BarcodeDetector not supported. Use Chrome on Android.', 'error');
+                return;
+            }
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+                });
+
+                const video = document.getElementById('cameraFeed');
+                video.srcObject = stream;
+                await video.play();
+
+                barcodeDetector = new BarcodeDetector({ formats: ['qr_code'] });
+                setScanStatus('Point camera at QR code', 'idle');
+                scanLoop = requestAnimationFrame(detectFrame);
+
+            } catch (err) {
+                document.getElementById('cameraError').classList.remove('hidden');
+                setScanStatus('Camera access denied', 'error');
+                console.error('Camera error:', err);
+            }
+        }
+
+        async function detectFrame() {
+            const video = document.getElementById('cameraFeed');
+
+            if (video.readyState === video.HAVE_ENOUGH_DATA && !scannedMaterial) {
+                try {
+                    const barcodes = await barcodeDetector.detect(video);
+                    if (barcodes.length > 0) {
+                        const raw = barcodes[0].rawValue;
+                        await handleScan(raw);
+                        return; // stop loop until user dismisses
+                    }
+                } catch (err) {
+                    // silent — detection errors are expected on some frames
+                }
+            }
+
+            scanLoop = requestAnimationFrame(detectFrame);
+        }
+
+        async function handleScan(rawValue) {
+            setScanStatus('QR detected — loading...', 'success');
+
+            let payload;
+            try {
+                payload = JSON.parse(rawValue);
+            } catch {
+                setScanStatus('Invalid QR — not a Nexflow code', 'error');
+                scanLoop = requestAnimationFrame(detectFrame);
+                return;
+            }
+
+            // Validate tenant
+            if (!payload.id || payload.tid !== tenantId) {
+                setScanStatus('QR does not belong to this account', 'error');
+                scanLoop = requestAnimationFrame(detectFrame);
+                return;
+            }
+
+            // Fetch current stock
+            const { data: txData, error: txErr } = await window.supabase
+                .from('p2_stock_transactions')
+                .select('quantity')
+                .eq('raw_material_id', payload.id)
+                .eq('tenant_id', tenantId);
+
+            if (txErr) {
+                setScanStatus('Error loading stock: ' + txErr.message, 'error');
+                scanLoop = requestAnimationFrame(detectFrame);
+                return;
+            }
+
+            const currentStockQty = txData ? txData.reduce((sum, t) => sum + Number(t.quantity), 0) : 0;
+
+            // Set state
+            scannedMaterial = payload;
+
+            // Populate card
+            document.getElementById('scannedName').textContent = payload.name;
+            document.getElementById('scannedCode').textContent = payload.code ? `Code: ${payload.code}` : '';
+            document.getElementById('scannedUnit').textContent = payload.unit;
+            document.getElementById('entryUnit').textContent = payload.unit;
+            document.getElementById('currentStock').textContent = `${formatNumber(currentStockQty)} ${payload.unit}`;
+            document.getElementById('entryQty').value = '';
+            document.getElementById('entryQty').focus();
+
+            document.getElementById('scannedCard').classList.remove('hidden');
+            setScanStatus('✅ Material scanned', 'success');
+
+            // Vibrate on mobile
+            if (navigator.vibrate) navigator.vibrate(100);
+        }
+
+        function cancelScan() {
+            scannedMaterial = null;
+            document.getElementById('scannedCard').classList.add('hidden');
+            document.getElementById('entryQty').value = '';
+            document.getElementById('entryRate').value = '';
+            document.getElementById('entryInvoice').value = '';
+            document.getElementById('entryRef').value = '';
+            setScanStatus('Point camera at QR code', 'idle');
+            if (!scanLoop) scanLoop = requestAnimationFrame(detectFrame);
+        }
+
+        function setScanStatus(msg, type) {
+            const el = document.getElementById('scanStatus');
+            const colorMap = {
+                idle: 'text-nexflow-muted',
+                success: 'text-nexflow-green',
+                error: 'text-red-400'
+            };
+            el.innerHTML = `<span class="bg-black bg-opacity-70 ${colorMap[type] || 'text-nexflow-muted'} text-xs px-3 py-1 rounded-full">${msg}</span>`;
+        }
+
+        // ─── SUPPLIERS ────────────────────────────────────────────────────────
+        async function loadSuppliers() {
+            const { data, error } = await window.supabase
+                .from('p2_suppliers')
+                .select('id, name')
+                .eq('tenant_id', tenantId)
+                .eq('is_active', true)
+                .order('name');
+
+            if (error) return;
+            suppliers = data || [];
+
+            const select = document.getElementById('entrySupplier');
+            select.innerHTML = '<option value="">Select Supplier</option>';
+            suppliers.forEach(s => {
+                const opt = document.createElement('option');
+                opt.value = s.id;
+                opt.textContent = s.name;
+                select.appendChild(opt);
+            });
+        }
+
+        // ─── SUBMIT ───────────────────────────────────────────────────────────
+        async function submitEntry() {
+            if (!scannedMaterial) return;
+
+            const qty = parseFloat(document.getElementById('entryQty').value);
+            const date = document.getElementById('entryDate').value;
+
+            if (!qty || qty <= 0) {
+                alert('Please enter a valid quantity greater than 0.');
+                return;
+            }
+            if (!date) {
+                alert('Please select a date.');
+                return;
+            }
+
+            const btn = document.getElementById('submitBtn');
+            btn.disabled = true;
+            btn.textContent = 'Saving...';
+
+            try {
+                if (currentMode === 'receive') {
+                    // ── GRN Insert ──────────────────────────────────────────
+                    const supplierId = document.getElementById('entrySupplier').value || null;
+                    const rate = document.getElementById('entryRate').value;
+                    const invoiceNo = document.getElementById('entryInvoice').value.trim() || null;
+
+                    const selectedSupplier = suppliers.find(s => s.id === supplierId);
+                    const supplierName = selectedSupplier ? selectedSupplier.name : null;
+
+                    const { error } = await window.supabase
+                        .from('p2_stock_transactions')
+                        .insert({
+                            tenant_id: tenantId,
+                            raw_material_id: scannedMaterial.id,
+                            transaction_type: 'grn',
+                            quantity: qty,
+                            rate: rate !== '' ? parseFloat(rate) : null,
+                            supplier_id: supplierId,
+                            supplier_name: supplierName,
+                            transaction_date: date,
+                            invoice_no: invoiceNo
+                        });
+
+                    if (error) throw error;
+
+                    addSessionEntry('GRN', scannedMaterial.name, qty, scannedMaterial.unit, supplierName);
+                    alert(`✅ GRN saved: ${qty} ${scannedMaterial.unit} of ${scannedMaterial.name}`);
+
+                } else {
+                    // ── Consumption Insert ──────────────────────────────────
+                    // Stock check first
+                    const { data: txData } = await window.supabase
+                        .from('p2_stock_transactions')
+                        .select('quantity')
+                        .eq('raw_material_id', scannedMaterial.id)
+                        .eq('tenant_id', tenantId);
+
+                    const currentStockQty = txData ? txData.reduce((sum, t) => sum + Number(t.quantity), 0) : 0;
+
+                    if (qty > currentStockQty) {
+                        alert(`⚠️ Insufficient stock.\nAvailable: ${formatNumber(currentStockQty)} ${scannedMaterial.unit}\nRequested: ${formatNumber(qty)} ${scannedMaterial.unit}`);
+                        btn.disabled = false;
+                        btn.textContent = '✅ Submit Issue Entry';
+                        return;
+                    }
+
+                    const ref = document.getElementById('entryRef').value.trim() || null;
+
+                    const { error } = await window.supabase
+                        .from('p2_stock_transactions')
+                        .insert({
+                            tenant_id: tenantId,
+                            raw_material_id: scannedMaterial.id,
+                            transaction_type: 'consumption',
+                            quantity: -qty,   // negative = deduction
+                            transaction_date: date,
+                            invoice_no: ref
+                        });
+
+                    if (error) throw error;
+
+                    addSessionEntry('Issue', scannedMaterial.name, qty, scannedMaterial.unit, ref || '—');
+                    alert(`✅ Stock issued: ${qty} ${scannedMaterial.unit} of ${scannedMaterial.name}`);
+                }
+
+                cancelScan();
+
+            } catch (err) {
+                console.error('Submit error:', err);
+                alert('Error saving entry: ' + err.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = currentMode === 'receive' ? '✅ Submit GRN Entry' : '✅ Submit Issue Entry';
+            }
+        }
+
+        // ─── SESSION LOG ──────────────────────────────────────────────────────
+        function addSessionEntry(type, name, qty, unit, ref) {
+            sessionEntries.unshift({ type, name, qty, unit, ref, time: new Date() });
+            renderRecentEntries();
+        }
+
+        function renderRecentEntries() {
+            const container = document.getElementById('recentEntries');
+            if (sessionEntries.length === 0) {
+                container.innerHTML = '<p class="text-xs text-nexflow-muted text-center py-4">No entries yet this session</p>';
+                return;
+            }
+
+            container.innerHTML = sessionEntries.slice(0, 10).map(e => `
+                <div class="flex items-center justify-between py-2 border-b border-gray-700 last:border-0">
+                    <div>
+                        <span class="text-xs font-semibold ${e.type === 'GRN' ? 'text-nexflow-green' : 'text-yellow-400'} mr-2">${e.type}</span>
+                        <span class="text-sm text-white">${e.name}</span>
+                        ${e.ref && e.ref !== '—' ? `<span class="text-xs text-nexflow-muted ml-1">(${e.ref})</span>` : ''}
+                    </div>
+                    <span class="text-sm font-semibold ${e.type === 'GRN' ? 'text-nexflow-green' : 'text-red-400'}">
+                        ${e.type === 'GRN' ? '+' : '-'}${formatNumber(e.qty)} ${e.unit}
+                    </span>
+                </div>
+            `).join('');
+        }
+    </script>
+</body>
+</html>

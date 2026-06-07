@@ -32,6 +32,7 @@
             { href: 'dispatch.html', labelEn: 'Dispatch', labelMr: 'डिस्पॅच' },
             { href: 'products.html', labelEn: 'Products', labelMr: 'उत्पादने' },
             { href: 'reports.html', labelEn: 'Reports', labelMr: 'अहवाल' },
+            { href: 'scanner.html', labelEn: '📷 Scanner', labelMr: '📷 स्कॅनर' },
             { href: 'settings.html', labelEn: 'Settings', labelMr: 'सेटिंग्ज' }
         ];
 
