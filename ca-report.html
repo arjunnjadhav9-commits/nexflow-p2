@@ -431,13 +431,15 @@
             const supplierMap = {};
             suppliers.forEach(s => { supplierMap[s.id] = s; });
 
-            // Filter transactions by transaction_date (correct field per MASTER_CONTEXT)
+            // opening_stock type always treated as opening balance, never as period activity
             const periodTransactions = transactions.filter(t => {
-                return t.transaction_date >= fromDate && t.transaction_date <= toDate;
+                return t.transaction_type !== 'opening_stock' &&
+                       t.transaction_date >= fromDate && t.transaction_date <= toDate;
             });
 
             const openingTransactions = transactions.filter(t => {
-                return t.transaction_date < fromDate;
+                return t.transaction_type === 'opening_stock' ||
+                       (t.transaction_type !== 'opening_stock' && t.transaction_date < fromDate);
             });
 
             // SECTION 1: Opening Stock
@@ -580,8 +582,11 @@
             tbody.innerHTML = '';
 
             materials.forEach(material => {
+                // opening_stock type always counts as opening regardless of date
                 const openingQty = allTransactions
-                    .filter(t => t.transaction_date < fromDate && t.raw_material_id === material.id)
+                    .filter(t => t.raw_material_id === material.id &&
+                        (t.transaction_type === 'opening_stock' ||
+                         (t.transaction_type !== 'opening_stock' && t.transaction_date < fromDate)))
                     .reduce((sum, t) => sum + (t.quantity || 0), 0);
 
                 const grnQty = allTransactions

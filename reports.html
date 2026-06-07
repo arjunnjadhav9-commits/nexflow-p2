@@ -252,19 +252,21 @@
 
                 // Process each material
                 const materialSummary = await Promise.all(rawMaterials.map(async (material) => {
-                    // Opening stock (adjustment transactions tagged as Opening Stock)
+                    // Opening stock — fetch both opening_stock type and legacy adjustment+notes pattern
                     const { data: openingStockData, error: openingStockError } = await window.supabase
                         .from('p2_stock_transactions')
-                        .select('quantity')
+                        .select('quantity, transaction_type, notes')
                         .eq('raw_material_id', material.id)
                         .eq('tenant_id', tenantId)
-                        .eq('transaction_type', 'adjustment')
-                        .eq('notes', 'Opening Stock');
+                        .in('transaction_type', ['opening_stock', 'adjustment']);
 
                     if (openingStockError) throw openingStockError;
 
                     const openingStock = openingStockData
-                        ? openingStockData.reduce((sum, t) => sum + t.quantity, 0)
+                        ? openingStockData
+                            .filter(t => t.transaction_type === 'opening_stock' ||
+                                        (t.transaction_type === 'adjustment' && t.notes === 'Opening Stock'))
+                            .reduce((sum, t) => sum + t.quantity, 0)
                         : 0;
 
                     // Total GRN for the month
