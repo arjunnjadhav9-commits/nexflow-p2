@@ -250,6 +250,9 @@ const { data: { user } } = await window.supabase.auth.getUser();
                 if (user) {
                     currentTenantId = user.id;
 
+                    // ── DEMO MODE: disable all writes if demo user ──
+                    applyDemoModeToForms();
+
                     // GUARD 5: Add timeout to data loading
                     const loadPromise = Promise.all([
                         loadProducts(),

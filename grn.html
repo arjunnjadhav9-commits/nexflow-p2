@@ -248,6 +248,9 @@
                 const authed = await checkAuth();
                 if (!authed) return;
 
+                // ── DEMO MODE: disable all writes if demo user ──
+                applyDemoModeToForms();
+
                 const { data: { user } } = await window.supabase.auth.getUser();
                 if (!user || !user.id) {
                     throw new Error('User or tenant ID not found');

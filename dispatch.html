@@ -260,6 +260,9 @@
                 if (!authed) return;
                 const { data: { user } } = await window.supabase.auth.getUser();
 
+                // ── DEMO MODE: disable all writes if demo user ──
+                applyDemoModeToForms();
+
                 tenantId = user.id;
 
                 const loadPromise = Promise.all([
@@ -759,4 +762,3 @@
     </script>
 </body>
 </html>
-

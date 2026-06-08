@@ -18,9 +18,22 @@ async function checkAuth() {
     localStorage.setItem('nexflow_tenant_id', tenantId);
     localStorage.setItem('user_role', 'owner');
 
+    // Fetch is_demo flag and store in sessionStorage
+    try {
+        const { data: tenantData } = await window.supabase
+            .from('p2_tenants')
+            .select('is_demo')
+            .eq('id', tenantId)
+            .single();
+        sessionStorage.setItem('nexflow_is_demo', tenantData?.is_demo ? 'true' : 'false');
+    } catch (e) {
+        sessionStorage.setItem('nexflow_is_demo', 'false');
+    }
+
     // Set up auth state change listener
     window.supabase.auth.onAuthStateChange((event, session) => {
         if (event === 'SIGNED_OUT' || !session) {
+            sessionStorage.removeItem('nexflow_is_demo');
             window.location.href = 'login.html';
         }
     });

@@ -129,6 +129,63 @@ if (typeof window !== 'undefined') {
     window.showStatusMessage = showStatusMessage;
     window.initNumberInputSanitization = initNumberInputSanitization;
 
+    // ── DEMO MODE ──────────────────────────────────────────────
+    // True when the logged-in user is the read-only demo account.
+    // Set by checkAuth() in auth.js after login.
+    window.isDemo = sessionStorage.getItem('nexflow_is_demo') === 'true';
+
+    /**
+     * Apply demo-mode guard to a button element.
+     * In demo mode: disables the button and shows a tooltip.
+     * In normal mode: attaches the click handler as usual.
+     *
+     * @param {HTMLElement} btn - The button element
+     * @param {Function} onClickFn - The handler to attach when NOT demo
+     */
+    window.demoGuard = function(btn, onClickFn) {
+        if (!btn) return;
+        if (window.isDemo) {
+            btn.disabled = true;
+            btn.style.opacity = '0.4';
+            btn.style.cursor = 'not-allowed';
+            btn.title = 'Demo mode — read only. Contact Arjun: arjunjadhav29052006@gmail.com';
+            // Remove any existing onclick attributes
+            btn.removeAttribute('onclick');
+        } else {
+            if (onClickFn) btn.addEventListener('click', onClickFn);
+        }
+    };
+
+    /**
+     * Disable all write forms in demo mode.
+     * Call once per page after DOM is ready.
+     * Disables every <form> submit and hides its submit buttons.
+     */
+    window.applyDemoModeToForms = function() {
+        if (!window.isDemo) return;
+        document.querySelectorAll('form').forEach(form => {
+            form.addEventListener('submit', e => {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                alert('Demo mode — read only.\nContact Arjun to get started: arjunjadhav29052006@gmail.com');
+            }, true); // capture phase — fires before any other submit handler
+        });
+        // Dim all submit/save/add/delete buttons
+        document.querySelectorAll(
+            'button[type="submit"], button[id*="save"], button[id*="Save"], ' +
+            'button[id*="add"], button[id*="Add"], button[id*="delete"], ' +
+            'button[id*="confirm"], button[id*="import"], button[id*="Import"], ' +
+            'button[onclick*="submit"], button[onclick*="import"]'
+        ).forEach(btn => {
+            btn.disabled = true;
+            btn.style.opacity = '0.4';
+            btn.style.cursor = 'not-allowed';
+            btn.title = 'Demo mode — read only. Contact Arjun: arjunjadhav29052006@gmail.com';
+            btn.removeAttribute('onclick');
+        });
+    };
+    // ───────────────────────────────────────────────────────────
+
     // Auto-init number sanitization on page load
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', initNumberInputSanitization);

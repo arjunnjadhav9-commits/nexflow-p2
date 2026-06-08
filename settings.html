@@ -2124,6 +2124,29 @@ if (!isPro()) {
     const authed = await checkAuth();
     if (!authed) return;
     requireOwner();
+
+    // ── DEMO MODE: disable all writes if demo user ──
+    applyDemoModeToForms();
+
+    // Also guard onclick= buttons not caught by form listener
+    if (window.isDemo) {
+        ['bulk-import-btn', 'price-import-btn', 'btn-print-qr'].forEach(id => {
+            const btn = document.getElementById(id);
+            if (btn) {
+                btn.disabled = true;
+                btn.style.opacity = '0.4';
+                btn.style.cursor = 'not-allowed';
+                btn.title = 'Demo mode — read only. Contact Arjun: arjunjadhav29052006@gmail.com';
+                btn.removeAttribute('onclick');
+            }
+        });
+        // Override onclick functions so inline calls are also blocked
+        window.submitBulkImport = () => alert('Demo mode — read only.\nContact Arjun: arjunjadhav29052006@gmail.com');
+        window.submitSinglePrice = () => alert('Demo mode — read only.\nContact Arjun: arjunjadhav29052006@gmail.com');
+        window.submitProductPrice = () => alert('Demo mode — read only.\nContact Arjun: arjunjadhav29052006@gmail.com');
+        window.submitPriceImport = () => alert('Demo mode — read only.\nContact Arjun: arjunjadhav29052006@gmail.com');
+        window.openQRModal = () => alert('Demo mode — read only.\nContact Arjun: arjunjadhav29052006@gmail.com');
+    }
     // Apply language
     const saved = localStorage.getItem('nexflow_lang') || 'en';
             applyLang(saved);
