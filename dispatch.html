@@ -4,242 +4,253 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dispatch | Nexflow P2</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%231A1F2E'/><text y='.9em' font-size='80' x='10' fill='%2300BCD4'>N</text></svg>">
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%230c0e14'/><text y='.9em' font-size='80' x='10' fill='%23ff5c1a'>N</text></svg>">
+    <link rel="stylesheet" href="css/nexflow-design.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="js/supabase-client.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/utils.js"></script>
     <script src="js/navbar.js"></script>
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    colors: {
-                        'nexflow-dark-bg': '#1A1F2E',
-                        'nexflow-text': '#E0E0E0',
-                        'nexflow-teal': '#00BCD4',
-                        'nexflow-green': '#00E676',
-                        'nexflow-muted': '#94A3B8'
-                    }
-                }
-            }
+
+    <style>
+        .nx-modal-overlay {
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.65);
+            z-index: 500;
+            display: flex; align-items: center; justify-content: center;
+            padding: 20px;
         }
-    </script>
+        .nx-modal {
+            background: var(--surface);
+            border: 1px solid var(--border2);
+            border-radius: var(--radius-lg);
+            padding: 28px; width: 100%; max-width: 460px;
+            box-shadow: var(--shadow-md);
+        }
+        .nx-modal-title {
+            font-family: var(--condensed); font-weight: 800; font-size: 16px;
+            color: var(--white); text-transform: uppercase; letter-spacing: 0.5px;
+            margin-bottom: 20px;
+        }
+        #productsTableContainer { display: none; margin-top: 18px; }
+        #loadingSpinner { display: flex; align-items: center; justify-content: center; padding: 60px 20px; }
+        #errorState { display: none; }
+        #successMessage { display: none; }
+        #errorMessage { display: none; }
+        #draftOrdersBanner { display: none; }
+        #dispatchForm { display: none; }
+    </style>
 </head>
-<body class="bg-nexflow-dark-bg text-nexflow-text min-h-screen">
+<body>
     <div id="navbar-container"></div>
-    <main class="container mx-auto px-4 py-6 max-w-4xl">
-        <h1 id="pageTitle" data-en="Dispatch Products" data-mr="माल पाठवा" class="text-2xl font-bold mb-6 text-center">
-            Dispatch Products
-        </h1>
 
-        <!-- GUARD 5: Loading Spinner -->
-        <div id="loadingSpinner" class="flex justify-center items-center py-12">
-            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-nexflow-teal"></div>
-        </div>
+    <div class="nx-main">
+        <div class="nx-page">
 
-        <!-- GUARD 5: Error State -->
-        <div id="errorState" class="hidden bg-red-900 border border-red-700 rounded p-4 mb-6">
-            <p class="font-bold" data-en="Could not load data" data-mr="डेटा लोड करू शकला नाही">Could not load data</p>
-            <p class="text-sm" data-en="Check your connection and refresh the page." data-mr="तुमचे कनेक्शन तपासा आणि पृष्ठ रीफ्रेश करा.">Check your connection and refresh the page.</p>
-        </div>
-
-        <!-- Success Message -->
-        <div id="successMessage" class="hidden bg-nexflow-green text-white p-4 rounded mb-6">
-            <p id="successText" class="font-bold"></p>
-            <button id="printChallanBtn" class="mt-2 bg-white text-nexflow-green px-4 py-2 rounded hover:bg-gray-100">
-                <span data-en="Print Challan" data-mr="चलान प्रिंट करा">Print Challan</span>
-            </button>
-        </div>
-
-        <!-- Error Message -->
-        <div id="errorMessage" class="hidden bg-red-600 text-white p-4 rounded mb-6">
-            <p id="errorText"></p>
-        </div>
-
-        <!-- POLISH 5: Draft Orders Banner -->
-        <div id="draftOrdersBanner" class="hidden bg-yellow-900 border border-yellow-600 rounded-lg p-4 mb-6">
-            <p class="text-white font-bold">
-                <span id="draftOrdersCount"></span>
-            </p>
-        </div>
-
-        <form id="dispatchForm" class="space-y-6 hidden">
-            <!-- Client Information -->
-            <div class="bg-[#2C3440] p-4 rounded">
-                <h2 id="clientInfoTitle" data-en="Client Information" data-mr="ग्राहक माहिती" class="text-lg font-bold mb-4">
-                    Client Information
-                </h2>
-
-                <div class="space-y-4">
-                    <div>
-                        <label id="clientNameLabel" data-en="Client Name" data-mr="ग्राहक नाव" class="block mb-2 text-sm font-medium">
-                            Client Name
-                        </label>
-                        <input type="text" id="clientName" data-en="Enter client name" data-mr="ग्राहक नाव प्रविष्ट करा"
-                               placeholder="Enter client name" class="w-full p-2 rounded bg-[#3A4553] text-white" required>
+            <!-- PAGE HEADER -->
+            <div class="nx-page-header">
+                <div>
+                    <div class="nx-eyebrow">Stock Out</div>
+                    <div class="nx-page-title" id="pageTitle" data-en="Dispatch Products" data-mr="माल पाठवा">
+                        Dispatch <span>Products</span>
                     </div>
-
-                    <div>
-                        <label id="clientAddressLabel" data-en="Client Address" data-mr="ग्राहक पत्ता" class="block mb-2 text-sm font-medium">
-                            Client Address
-                        </label>
-                        <textarea id="clientAddress" rows="3" data-en="Enter client address" data-mr="ग्राहक पत्ता प्रविष्ट करा"
-                                  placeholder="Enter client address" class="w-full p-2 rounded bg-[#3A4553] text-white" required></textarea>
-                    </div>
-
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label id="poNumberLabel" data-en="PO Number" data-mr="PO क्रमांक" class="block mb-2 text-sm font-medium">
-                                PO Number
-                            </label>
-                            <input type="text" id="poNumber" data-en="Enter PO number" data-mr="PO क्रमांक प्रविष्ट करा"
-                                   placeholder="Enter PO number" class="w-full p-2 rounded bg-[#3A4553] text-white">
-                        </div>
-
-                        <div>
-                            <label id="challanRefLabel" data-en="Your Challan Ref" data-mr="तुमचा चलान संदर्भ" class="block mb-2 text-sm font-medium">
-                                Your Challan Ref
-                            </label>
-                            <input type="text" id="challanRef" data-en="Optional reference" data-mr="वैकल्पिक संदर्भ"
-                                   placeholder="Optional reference" class="w-full p-2 rounded bg-[#3A4553] text-white">
-                        </div>
-                    </div>
-
-                    <div>
-                        <label id="vehicleNumberLabel" data-en="Vehicle Number" data-mr="वाहन क्रमांक" class="block mb-2 text-sm font-medium">
-                            Vehicle Number
-                        </label>
-                        <input type="text" id="vehicleNumber" data-en="Enter vehicle number" data-mr="वाहन क्रमांक प्रविष्ट करा"
-                               placeholder="Enter vehicle number" class="w-full p-2 rounded bg-[#3A4553] text-white">
-                    </div>
+                    <div class="nx-page-sub">Create challan, deduct stock, log dispatch</div>
                 </div>
             </div>
 
-            <!-- Product Selection -->
-            <div class="bg-[#2C3440] p-4 rounded">
-                <h2 id="productsTitle" data-en="Products to Dispatch" data-mr="पाठवायची उत्पादने" class="text-lg font-bold mb-4">
-                    Products to Dispatch
-                </h2>
+            <!-- LOADING -->
+            <div id="loadingSpinner">
+                <div class="nx-loading"><div class="nx-spinner"></div><span>Loading...</span></div>
+            </div>
 
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                    <div class="md:col-span-2">
-                        <label id="productLabel" data-en="Select Product" data-mr="उत्पादन निवडा" class="block mb-2 text-sm font-medium">
-                            Select Product
-                        </label>
-                        <select id="productSelect" class="w-full p-2 rounded bg-[#3A4553] text-white">
-                            <option id="productDefaultOption" data-en="Choose a product" data-mr="उत्पादन निवडा" value="">
-                                Choose a product
-                            </option>
-                        </select>
-                    </div>
-
-                    <div>
-                        <label id="qtyLabel" data-en="Quantity" data-mr="परिमाण" class="block mb-2 text-sm font-medium">
-                            Quantity
-                        </label>
-                        <input type="number" id="productQty" min="1" step="1" data-en="Qty" data-mr="परिमाण"
-                               placeholder="Qty" class="w-full p-2 rounded bg-[#3A4553] text-white">
-                    </div>
+            <!-- ERROR STATE -->
+            <div id="errorState" class="nx-alert nx-alert-red nx-mb-24">
+                <span class="nx-alert-icon">⚠</span>
+                <div>
+                    <div class="nx-bold" data-en="Could not load data" data-mr="डेटा लोड करू शकला नाही">Could not load data</div>
+                    <div data-en="Check your connection and refresh the page." data-mr="तुमचे कनेक्शन तपासा आणि पृष्ठ रीफ्रेश करा.">Check your connection and refresh the page.</div>
                 </div>
+            </div>
 
-                <button type="button" id="addProductBtn" data-en="Add Product" data-mr="उत्पादन जोडा"
-                        class="w-full bg-nexflow-teal text-white p-2 rounded hover:bg-blue-600 transition">
-                    Add Product
-                </button>
+            <!-- SUCCESS MESSAGE -->
+            <div id="successMessage" class="nx-alert nx-alert-green nx-mb-24">
+                <span class="nx-alert-icon">✅</span>
+                <div>
+                    <div id="successText" class="nx-bold"></div>
+                    <button id="printChallanBtn" class="nx-btn nx-btn-ghost nx-btn-sm nx-mt-8"
+                            data-en="Print Challan" data-mr="चलान प्रिंट करा">Print Challan</button>
+                </div>
+            </div>
 
-                <!-- Products Table -->
-                <div id="productsTableContainer" class="hidden mt-6">
-                    <table class="w-full text-sm">
+            <!-- ERROR MESSAGE -->
+            <div id="errorMessage" class="nx-alert nx-alert-red nx-mb-24">
+                <span class="nx-alert-icon">⚠</span>
+                <div id="errorText"></div>
+            </div>
+
+            <!-- DRAFT BANNER -->
+            <div id="draftOrdersBanner" class="nx-alert nx-alert-yellow nx-mb-24">
+                <span class="nx-alert-icon">📋</span>
+                <div id="draftOrdersCount"></div>
+            </div>
+
+            <!-- DISPATCH FORM -->
+            <form id="dispatchForm">
+                <div class="nx-grid-2" style="align-items: start; margin-bottom: 18px;">
+
+                    <!-- LEFT: Client Info -->
+                    <div class="nx-card">
+                        <div class="nx-card-header">
+                            <div class="nx-card-title" id="clientInfoTitle" data-en="Client Information" data-mr="ग्राहक माहिती">Client Information</div>
+                        </div>
+
+                        <div class="nx-form-group">
+                            <label id="clientNameLabel" data-en="Client Name" data-mr="ग्राहक नाव">Client Name</label>
+                            <input type="text" id="clientName" class="nx-input"
+                                   data-en="Enter client name" data-mr="ग्राहक नाव प्रविष्ट करा"
+                                   placeholder="Enter client name" required>
+                        </div>
+
+                        <div class="nx-form-group">
+                            <label id="clientAddressLabel" data-en="Client Address" data-mr="ग्राहक पत्ता">Client Address</label>
+                            <textarea id="clientAddress" rows="3" class="nx-input"
+                                      data-en="Enter client address" data-mr="ग्राहक पत्ता प्रविष्ट करा"
+                                      placeholder="Enter client address" required style="resize:vertical;"></textarea>
+                        </div>
+
+                        <div class="nx-form-row">
+                            <div class="nx-form-group">
+                                <label id="poNumberLabel" data-en="PO Number" data-mr="PO क्रमांक">PO Number</label>
+                                <input type="text" id="poNumber" class="nx-input"
+                                       data-en="Enter PO number" data-mr="PO क्रमांक प्रविष्ट करा"
+                                       placeholder="Enter PO number">
+                            </div>
+                            <div class="nx-form-group">
+                                <label id="challanRefLabel" data-en="Your Challan Ref" data-mr="तुमचा चलान संदर्भ">Your Challan Ref</label>
+                                <input type="text" id="challanRef" class="nx-input"
+                                       data-en="Optional reference" data-mr="वैकल्पिक संदर्भ"
+                                       placeholder="Optional reference">
+                            </div>
+                        </div>
+
+                        <div class="nx-form-group">
+                            <label id="vehicleNumberLabel" data-en="Vehicle Number" data-mr="वाहन क्रमांक">Vehicle Number</label>
+                            <input type="text" id="vehicleNumber" class="nx-input"
+                                   data-en="Enter vehicle number" data-mr="वाहन क्रमांक प्रविष्ट करा"
+                                   placeholder="Enter vehicle number">
+                        </div>
+                    </div>
+
+                    <!-- RIGHT: Products -->
+                    <div class="nx-card">
+                        <div class="nx-card-header">
+                            <div class="nx-card-title" id="productsTitle" data-en="Products to Dispatch" data-mr="पाठवायची उत्पादने">Products to Dispatch</div>
+                        </div>
+
+                        <div style="display:grid; grid-template-columns: 1fr auto; gap:12px; align-items:end; margin-bottom:14px;">
+                            <div class="nx-form-group" style="margin:0;">
+                                <label id="productLabel" data-en="Select Product" data-mr="उत्पादन निवडा">Select Product</label>
+                                <select id="productSelect" class="nx-input">
+                                    <option id="productDefaultOption" data-en="Choose a product" data-mr="उत्पादन निवडा" value="">Choose a product</option>
+                                </select>
+                            </div>
+                            <div class="nx-form-group" style="margin:0; width:90px;">
+                                <label id="qtyLabel" data-en="Quantity" data-mr="परिमाण">Qty</label>
+                                <input type="number" id="productQty" min="1" step="1" class="nx-input"
+                                       data-en="Qty" data-mr="परिमाण" placeholder="Qty">
+                            </div>
+                        </div>
+
+                        <button type="button" id="addProductBtn" data-en="Add Product" data-mr="उत्पादन जोडा"
+                                class="nx-btn nx-btn-ghost nx-btn-full">
+                            + Add Product
+                        </button>
+
+                        <!-- Products added table -->
+                        <div id="productsTableContainer">
+                            <div class="nx-table-wrap">
+                                <table class="nx-table">
+                                    <thead>
+                                        <tr>
+                                            <th id="productNameHeader" data-en="Product"  data-mr="उत्पादन">Product</th>
+                                            <th id="qtyHeader"         data-en="Quantity" data-mr="परिमाण" style="text-align:right;">Qty</th>
+                                            <th id="actionHeader"      data-en="Action"   data-mr="कृती" style="text-align:center;">Del</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="productsTableBody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Action buttons -->
+                        <div style="display:flex; gap:10px; margin-top:20px;">
+                            <button type="button" id="saveDraftBtn" data-en="Save Draft" data-mr="मसुदा साठवा"
+                                    class="nx-btn nx-btn-secondary" style="flex:1;">
+                                Save Draft
+                            </button>
+                            <button type="button" id="confirmDispatchBtn" data-en="Confirm Dispatch" data-mr="डिस्पॅच निश्चित करा"
+                                    class="nx-btn nx-btn-green" style="flex:1;">
+                                Confirm Dispatch
+                            </button>
+                        </div>
+                    </div>
+
+                </div>
+            </form>
+
+            <!-- PAST DISPATCHES -->
+            <div class="nx-card nx-mt-24">
+                <div class="nx-card-header">
+                    <div class="nx-card-title" id="pastDispatchesTitle" data-en="Past Dispatches" data-mr="मागील डिस्पॅच">Past Dispatches</div>
+                </div>
+                <div class="nx-table-wrap">
+                    <table class="nx-table">
                         <thead>
-                            <tr class="bg-[#3A4553]">
-                                <th id="productNameHeader" data-en="Product" data-mr="उत्पादन" class="p-2 text-left">Product</th>
-                                <th id="qtyHeader" data-en="Quantity" data-mr="परिमाण" class="p-2 text-right">Quantity</th>
-                                <th id="actionHeader" data-en="Action" data-mr="कृती" class="p-2 text-center">Action</th>
+                            <tr>
+                                <th id="challanHeader"  data-en="Challan No"   data-mr="चलान क्रं">Challan No</th>
+                                <th id="dateHeader"     data-en="Date"         data-mr="तारीख">Date</th>
+                                <th id="clientHeader"   data-en="Client Name"  data-mr="ग्राहक नाव">Client Name</th>
+                                <th id="statusHeader"   data-en="Status"       data-mr="स्थिती">Status</th>
+                                <th id="actionsHeader"  data-en="Actions"      data-mr="कृती" style="text-align:center;">Actions</th>
                             </tr>
                         </thead>
-                        <tbody id="productsTableBody">
-                        </tbody>
+                        <tbody id="pastDispatchesBody"></tbody>
                     </table>
                 </div>
             </div>
 
-            <!-- Action Buttons -->
-            <div class="flex flex-col md:flex-row gap-4">
-                <button type="button" id="saveDraftBtn" data-en="Save Draft" data-mr="मसुदा साठवा"
-                        class="flex-1 bg-gray-600 text-white p-3 rounded hover:bg-gray-700 transition">
-                    Save Draft
-                </button>
-                <button type="button" id="confirmDispatchBtn" data-en="Confirm Dispatch" data-mr="डिस्पॅच निश्चित करा"
-                        class="flex-1 bg-nexflow-green text-white p-3 rounded hover:bg-green-600 transition">
-                    Confirm Dispatch
-                </button>
-            </div>
-        </form>
+        </div>
+    </div>
 
-        <!-- Confirmation Modal -->
-        <div id="confirmModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center">
-            <div class="bg-[#2C3440] p-6 rounded-lg max-w-md w-full mx-4">
-                <h2 class="text-xl font-bold mb-4" data-en="Confirm Dispatch?" data-mr="डिस्पॅच निश्चित करायचं?">
-                    Confirm Dispatch?
-                </h2>
-                <div class="space-y-3 mb-6 text-sm">
-                    <div>
-                        <span class="font-bold" data-en="Client:" data-mr="ग्राहक:">Client:</span>
-                        <span id="confirmClientName"></span>
-                    </div>
-                    <div>
-                        <span class="font-bold" data-en="Items:" data-mr="वस्तू:">Items:</span>
-                        <ul id="confirmItemsList" class="list-disc list-inside ml-4 mt-1"></ul>
-                    </div>
-                    <div class="bg-yellow-900 border border-yellow-700 rounded p-3 mt-4">
-                        <p data-en="This will deduct raw materials from stock. This cannot be undone."
-                           data-mr="हे कच्च्या मालाचा साठा कमी करेल. हे पूर्ववत केले जाऊ शकत नाही.">
-                            This will deduct raw materials from stock. This cannot be undone.
-                        </p>
-                    </div>
+    <!-- CONFIRM MODAL -->
+    <div id="confirmModal" class="nx-modal-overlay" style="display:none;">
+        <div class="nx-modal">
+            <div class="nx-modal-title" data-en="Confirm Dispatch?" data-mr="डिस्पॅच निश्चित करायचं?">Confirm Dispatch?</div>
+            <div style="font-size:13px; margin-bottom:20px;">
+                <div style="margin-bottom:10px;">
+                    <span class="nx-bold" data-en="Client:" data-mr="ग्राहक:">Client:</span>
+                    <span id="confirmClientName" style="margin-left:6px; color:var(--white);"></span>
                 </div>
-                <div class="flex space-x-3">
-                    <button id="confirmModalConfirm"
-                            data-en="Confirm"
-                            data-mr="निश्चित करा"
-                            class="flex-1 bg-nexflow-green text-white p-3 rounded hover:bg-green-600 transition">
-                        Confirm
-                    </button>
-                    <button id="confirmModalCancel"
-                            data-en="Cancel"
-                            data-mr="रद्द करा"
-                            class="flex-1 bg-gray-600 text-white p-3 rounded hover:bg-gray-700 transition">
-                        Cancel
-                    </button>
+                <div style="margin-bottom:10px;">
+                    <span class="nx-bold" data-en="Items:" data-mr="वस्तू:">Items:</span>
+                    <ul id="confirmItemsList" style="margin-top:6px; padding-left:16px; list-style:disc;"></ul>
+                </div>
+                <div class="nx-alert nx-alert-yellow" style="margin-bottom:0;">
+                    <span class="nx-alert-icon">⚠</span>
+                    <span data-en="This will deduct raw materials from stock. This cannot be undone."
+                          data-mr="हे कच्च्या मालाचा साठा कमी करेल. हे पूर्ववत केले जाऊ शकत नाही.">
+                        This will deduct raw materials from stock. This cannot be undone.
+                    </span>
                 </div>
             </div>
-        </div>
-
-        <!-- Past Dispatches -->
-        <div class="mt-8">
-            <h2 id="pastDispatchesTitle" data-en="Past Dispatches" data-mr="मागील डिस्पॅच" class="text-xl font-bold mb-4">
-                Past Dispatches
-            </h2>
-            <div class="overflow-x-auto">
-                <table class="w-full text-sm">
-                    <thead>
-                        <tr class="bg-[#2C3440]">
-                            <th id="challanHeader" data-en="Challan No" data-mr="चलान क्रं" class="p-2 text-left">Challan No</th>
-                            <th id="dateHeader" data-en="Date" data-mr="तारीख" class="p-2 text-left">Date</th>
-                            <th id="clientHeader" data-en="Client Name" data-mr="ग्राहक नाव" class="p-2 text-left">Client Name</th>
-                            <th id="statusHeader" data-en="Status" data-mr="स्थिती" class="p-2 text-left">Status</th>
-                            <th id="actionsHeader" data-en="Actions" data-mr="कृती" class="p-2 text-center">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="pastDispatchesBody">
-                    </tbody>
-                </table>
+            <div style="display:flex; gap:10px;">
+                <button id="confirmModalConfirm" data-en="Confirm" data-mr="निश्चित करा"
+                        class="nx-btn nx-btn-green" style="flex:1;">Confirm</button>
+                <button id="confirmModalCancel"  data-en="Cancel"  data-mr="रद्द करा"
+                        class="nx-btn nx-btn-ghost" style="flex:1;">Cancel</button>
             </div>
         </div>
-    </main>
+    </div>
 
     <script>
         let products = [];
@@ -247,7 +258,6 @@
         let currentDispatchId = null;
         let tenantId = null;
 
-        // Run setup
         document.addEventListener('DOMContentLoaded', init);
 
         async function init() {
@@ -260,7 +270,6 @@
                 if (!authed) return;
                 const { data: { user } } = await window.supabase.auth.getUser();
 
-                // ── DEMO MODE: disable all writes if demo user ──
                 applyDemoModeToForms();
 
                 tenantId = user.id;
@@ -277,13 +286,13 @@
                 await Promise.race([loadPromise, timeoutPromise]);
                 await checkDraftOrders();
 
-                loadingSpinner.classList.add('hidden');
-                dispatchForm.classList.remove('hidden');
+                loadingSpinner.style.display = 'none';
+                dispatchForm.style.display = 'block';
                 setupEventHandlers();
             } catch (error) {
                 console.error('Error initializing dispatch:', error);
-                loadingSpinner.classList.add('hidden');
-                errorState.classList.remove('hidden');
+                loadingSpinner.style.display = 'none';
+                errorState.style.display = 'flex';
             }
         }
 
@@ -328,9 +337,9 @@
                     countSpan.textContent = lang === 'mr'
                         ? `तुमच्याकडे ${draftCount} न जतन केलेले मसुदा ऑर्डर आहेत.`
                         : `You have ${draftCount} unsaved draft order(s). Scroll down to view.`;
-                    banner.classList.remove('hidden');
+                    banner.style.display = 'flex';
                 } else {
-                    banner.classList.add('hidden');
+                    banner.style.display = 'none';
                 }
             } catch (error) {
                 console.error('Error checking draft orders:', error);
@@ -351,29 +360,30 @@
             tbody.innerHTML = '';
 
             if (!data || data.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-gray-400">No past dispatches found.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="5" style="padding:20px; text-align:center; color:var(--mid);">No past dispatches found.</td></tr>`;
                 return;
             }
 
             data.forEach(dispatch => {
                 const row = document.createElement('tr');
-                row.className = 'border-b border-gray-700';
-                const displayDate = dispatch.dispatch_date ? new Date(dispatch.dispatch_date).toLocaleDateString() : new Date(dispatch.created_at).toLocaleDateString();
+                const displayDate = dispatch.dispatch_date
+                    ? new Date(dispatch.dispatch_date).toLocaleDateString()
+                    : new Date(dispatch.created_at).toLocaleDateString();
                 const isDraft = dispatch.status === 'draft';
 
                 row.innerHTML = `
-                    <td class="p-2">${dispatch.challan_number || '-'}</td>
-                    <td class="p-2">${displayDate}</td>
-                    <td class="p-2">${dispatch.client_name}</td>
-                    <td class="p-2">
-                        <span class="px-2 py-1 rounded text-xs ${isDraft ? 'bg-yellow-600 text-white' : 'bg-nexflow-green text-white'}">
+                    <td class="nx-td-mono">${dispatch.challan_number || '-'}</td>
+                    <td>${displayDate}</td>
+                    <td class="nx-td-bold">${dispatch.client_name}</td>
+                    <td>
+                        <span class="nx-badge ${isDraft ? 'nx-badge-yellow' : 'nx-badge-green'}">
                             ${isDraft ? 'Draft' : 'Confirmed'}
                         </span>
                     </td>
-                    <td class="p-2 text-center">
-                        ${isDraft ? 
-                            `<button onclick="loadDraftToForm('${dispatch.id}')" class="bg-yellow-600 text-white px-3 py-1 rounded text-sm hover:bg-yellow-700 mr-2">Resume</button>` : 
-                            `<button onclick="viewChallan('${dispatch.id}')" class="bg-nexflow-teal text-white px-3 py-1 rounded text-sm hover:bg-cyan-600">View</button>`
+                    <td style="text-align:center;">
+                        ${isDraft
+                            ? `<button onclick="loadDraftToForm('${dispatch.id}')" class="nx-btn nx-btn-secondary nx-btn-sm">Resume</button>`
+                            : `<button onclick="viewChallan('${dispatch.id}')" class="nx-btn nx-btn-ghost nx-btn-sm">View</button>`
                         }
                     </td>
                 `;
@@ -385,7 +395,6 @@
             window.open(`/challan.html?id=${orderId}`, '_blank');
         };
 
-        // Load an existing draft back into the workspace
         window.loadDraftToForm = async (orderId) => {
             try {
                 const { data: order, error: orderErr } = await window.supabase
@@ -425,7 +434,6 @@
             }
         };
 
-        // Generate next sequential challan number - returns pure integer
         async function generateChallanNumber() {
             const { data, error } = await window.supabase
                 .from('p2_dispatch_orders')
@@ -443,7 +451,6 @@
         }
 
         function setupEventHandlers() {
-            // Add Product to structural grid selection
             document.getElementById('addProductBtn').addEventListener('click', () => {
                 const productId = document.getElementById('productSelect').value;
                 const qty = parseInt(document.getElementById('productQty').value);
@@ -459,12 +466,7 @@
                 if (existing) {
                     existing.quantity += qty;
                 } else {
-                    dispatchItems.push({
-                        product_id: productId,
-                        name: product.name,
-                        quantity: qty,
-                        unit: product.unit
-                    });
+                    dispatchItems.push({ product_id: productId, name: product.name, quantity: qty, unit: product.unit });
                 }
 
                 document.getElementById('productQty').value = '';
@@ -472,16 +474,14 @@
                 renderProductsTable();
             });
 
-            // Save Draft Click
             document.getElementById('saveDraftBtn').addEventListener('click', () => handleSaveWorkflow('draft'));
 
-            // Confirm Dispatch Click
             document.getElementById('confirmDispatchBtn').addEventListener('click', () => {
                 if (!validateForm()) return;
-                
+
                 const clientName = document.getElementById('clientName').value;
                 document.getElementById('confirmClientName').textContent = clientName;
-                
+
                 const list = document.getElementById('confirmItemsList');
                 list.innerHTML = '';
                 dispatchItems.forEach(item => {
@@ -491,17 +491,15 @@
                     list.appendChild(li);
                 });
 
-                document.getElementById('confirmModal').classList.remove('hidden');
+                document.getElementById('confirmModal').style.display = 'flex';
             });
 
-            // Cancel Modal Popup Window
             document.getElementById('confirmModalCancel').addEventListener('click', () => {
-                document.getElementById('confirmModal').classList.add('hidden');
+                document.getElementById('confirmModal').style.display = 'none';
             });
 
-            // Confirm inside popup model window
             document.getElementById('confirmModalConfirm').addEventListener('click', () => {
-                document.getElementById('confirmModal').classList.add('hidden');
+                document.getElementById('confirmModal').style.display = 'none';
                 handleSaveWorkflow('confirmed');
             });
         }
@@ -512,19 +510,18 @@
             tbody.innerHTML = '';
 
             if (dispatchItems.length === 0) {
-                container.classList.add('hidden');
+                container.style.display = 'none';
                 return;
             }
 
-            container.classList.remove('hidden');
+            container.style.display = 'block';
             dispatchItems.forEach((item, idx) => {
                 const row = document.createElement('tr');
-                row.className = 'border-b border-gray-700';
                 row.innerHTML = `
-                    <td class="p-2">${item.name}</td>
-                    <td class="p-2 text-right">${item.quantity} ${item.unit}</td>
-                    <td class="p-2 text-center">
-                        <button type="button" onclick="removeItem(${idx})" class="text-red-500 hover:text-red-700">Remove</button>
+                    <td class="nx-td-bold">${item.name}</td>
+                    <td style="text-align:right;">${item.quantity} ${item.unit}</td>
+                    <td style="text-align:center;">
+                        <button type="button" onclick="removeItem(${idx})" class="nx-btn nx-btn-danger nx-btn-sm">✕</button>
                     </td>
                 `;
                 tbody.appendChild(row);
@@ -551,14 +548,12 @@
             return true;
         }
 
-        // Unified workflow to handle draft and confirmed dispatches
         async function handleSaveWorkflow(targetStatus) {
             if (targetStatus === 'confirmed' && !validateForm()) return;
 
             try {
                 clearMessages();
 
-                // STOCK CHECK FIRST — before any DB writes
                 if (targetStatus === 'confirmed') {
                     const insufficientItems = [];
                     const tenantIdForCheck = tenantId || localStorage.getItem('supabase_tenant_id') || '00000000-0000-0000-0000-000000000000';
@@ -610,7 +605,7 @@
                             ? `साठा अपुरा आहे:\n${errorLines}`
                             : `Stock not sufficient:\n${errorLines}`;
                         alert(msg);
-                        return; // STOP — nothing written to DB yet
+                        return;
                     }
                 }
 
@@ -646,14 +641,12 @@
                     orderId = data.id;
                 }
 
-                // Clear previous line items
                 const { error: delErr } = await window.supabase
                     .from('p2_dispatch_items')
                     .delete()
                     .eq('dispatch_order_id', orderId);
                 if (delErr) throw delErr;
 
-                // Insert line items with type-safe quantities
                 if (dispatchItems.length > 0) {
                     const itemsPayload = dispatchItems.map(item => {
                         const numericQty = parseInt(item.quantity || item.qty || item.qty_dispatched || 0, 10);
@@ -674,7 +667,6 @@
 
                 let confirmResult = null;
 
-                // Handle confirmed dispatch with BOM deductions
                 if (targetStatus === 'confirmed') {
                     const consumptionArray = [];
 
@@ -687,18 +679,12 @@
                             .select('raw_material_id, qty_per_unit')
                             .eq('product_id', item.product_id);
 
-                        if (bomErr) {
-                            console.error('BOM Lookup error:', bomErr);
-                            continue;
-                        }
+                        if (bomErr) { console.error('BOM Lookup error:', bomErr); continue; }
 
                         if (bomList && bomList.length > 0) {
                             for (const ingredient of bomList) {
                                 const qtyNeeded = ingredient.qty_per_unit * safeQty;
-                                consumptionArray.push({
-                                    material_id: ingredient.raw_material_id,
-                                    qty: qtyNeeded
-                                });
+                                consumptionArray.push({ material_id: ingredient.raw_material_id, qty: qtyNeeded });
                             }
                         }
                     }
@@ -714,7 +700,6 @@
                     confirmResult = data;
                 }
 
-                // Display success message
                 const successMsg = document.getElementById('successMessage');
                 const successTxt = document.getElementById('successText');
 
@@ -726,10 +711,9 @@
                     ? 'Draft details saved successfully!'
                     : `Order confirmed! Challan No: ${displayChallanNumber}`;
 
-                successMsg.classList.remove('hidden');
+                successMsg.style.display = 'flex';
                 document.getElementById('printChallanBtn').onclick = () => viewChallan(orderId);
 
-                // Reset form and reload data
                 resetWorkspaceForm();
                 await loadRecentDispatches();
                 await checkDraftOrders();
@@ -751,13 +735,13 @@
         function showError(msg) {
             const errBox = document.getElementById('errorMessage');
             document.getElementById('errorText').textContent = msg;
-            errBox.classList.remove('hidden');
+            errBox.style.display = 'flex';
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
         function clearMessages() {
-            document.getElementById('errorMessage').classList.add('hidden');
-            document.getElementById('successMessage').classList.add('hidden');
+            document.getElementById('errorMessage').style.display = 'none';
+            document.getElementById('successMessage').style.display = 'none';
         }
     </script>
 </body>

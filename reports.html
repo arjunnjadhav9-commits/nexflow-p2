@@ -4,245 +4,240 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Reports | Nexflow P2</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%231A1F2E'/><text y='.9em' font-size='80' x='10' fill='%2300BCD4'>N</text></svg>">
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%230c0e14'/><text y='.9em' font-size='80' x='10' fill='%23ff5c1a'>N</text></svg>">
+    <link rel="stylesheet" href="css/nexflow-design.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="js/supabase-client.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/utils.js"></script>
     <script src="js/navbar.js"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        'brand-teal': '#00BCD4',
-                        'brand-green': '#00E676',
-                        'brand-dark-bg': '#1A1F2E',
-                        'brand-text': '#E0E0E0',
-                        'brand-muted': '#94A3B8'
-                    }
-                }
-            }
-        }
-    </script>
+
     <style>
         @media print {
-            body * {
-                visibility: hidden;
-            }
-            #printable-report, #printable-report * {
-                visibility: visible;
-            }
-            #printable-report {
-                position: absolute;
-                left: 0;
-                top: 0;
-                width: 100%;
-            }
-            .no-print {
-                display: none;
-            }
+            body * { visibility: hidden; }
+            #printable-report, #printable-report * { visibility: visible; }
+            #printable-report { position: absolute; left: 0; top: 0; width: 100%; }
+            .no-print { display: none !important; }
         }
     </style>
 </head>
-<body class="bg-brand-dark-bg text-brand-text">
+<body>
     <div id="navbar-container"></div>
-    <!-- Reports Container -->
-    <div class="container mx-auto p-6">
-        <h1 class="text-2xl mb-6" data-en="Monthly Reports" data-mr="मासिक अहवाल">Monthly Reports</h1>
 
-        <!-- CA Report Section -->
-        <div class="mb-8 p-6 bg-gray-800 rounded">
-            <h2 class="text-xl mb-4" data-en="CA-Ready Stock & Transaction Report" data-mr="CA-तयार स्टॉक आणि व्यवहार अहवाल">CA-Ready Stock & Transaction Report</h2>
-            <div class="flex space-x-4 items-end">
+    <div class="nx-main">
+        <div class="nx-page">
+
+            <!-- PAGE HEADER -->
+            <div class="nx-page-header no-print">
                 <div>
-                    <label for="ca-from-date" class="block mb-2" data-en="From Date" data-mr="सुरुवातीची तारीख">From Date</label>
-                    <input type="date" id="ca-from-date" class="bg-brand-dark-bg border border-brand-muted p-2 rounded">
+                    <div class="nx-eyebrow">Analytics</div>
+                    <div class="nx-page-title">Monthly <span>Reports</span></div>
+                    <div class="nx-page-sub">Material consumption, supplier GRN, and CA-ready data</div>
                 </div>
-                <div>
-                    <label for="ca-to-date" class="block mb-2" data-en="To Date" data-mr="शेवटची तारीख">To Date</label>
-                    <input type="date" id="ca-to-date" class="bg-brand-dark-bg border border-brand-muted p-2 rounded">
+            </div>
+
+            <!-- CA REPORT CARD -->
+            <div class="nx-card nx-mb-24 no-print">
+                <div class="nx-card-header">
+                    <div class="nx-card-title" data-en="CA-Ready Stock & Transaction Report" data-mr="CA-तयार स्टॉक आणि व्यवहार अहवाल">
+                        CA-Ready Stock &amp; Transaction Report
+                    </div>
                 </div>
-                <button id="generate-ca-report" class="bg-brand-green px-6 py-2 rounded" data-en="Generate CA Report" data-mr="CA अहवाल तयार करा">Generate CA Report</button>
-            </div>
-            <div id="ca-error" class="hidden mt-3 text-red-500 text-sm" data-en="From date cannot be after To date." data-mr="सुरुवातीची तारीख शेवटच्या तारखेनंतर असू शकत नाही.">
-                From date cannot be after To date.
-            </div>
-            <div id="ca-success" class="hidden mt-3 text-brand-green text-sm" data-en="Report opened in new tab. To generate a new report, change dates and click again." data-mr="अहवाल नवीन टॅबमध्ये उघडला. नवीन अहवाल तयार करण्यासाठी तारखा बदला आणि पुन्हा क्लिक करा.">
-                Report opened in new tab. To generate a new report, change dates and click again.
-            </div>
-        </div>
-
-        <!-- Report Selection -->
-        <div class="mb-6 flex space-x-4">
-            <div>
-                <label for="month" class="block mb-2" data-en="Select Month" data-mr="महिना निवडा">Select Month</label>
-                <select id="month" class="bg-brand-dark-bg border border-brand-muted p-2 rounded">
-                    <option value="1" data-en="January" data-mr="जानेवारी">January</option>
-                    <option value="2" data-en="February" data-mr="फेब्रुवारी">February</option>
-                    <option value="3" data-en="March" data-mr="मार्च">March</option>
-                    <option value="4" data-en="April" data-mr="एप्रिल">April</option>
-                    <option value="5" data-en="May" data-mr="मे">May</option>
-                    <option value="6" data-en="June" data-mr="जून">June</option>
-                    <option value="7" data-en="July" data-mr="जुलै">July</option>
-                    <option value="8" data-en="August" data-mr="ऑगस्ट">August</option>
-                    <option value="9" data-en="September" data-mr="सप्टेंबर">September</option>
-                    <option value="10" data-en="October" data-mr="ऑक्टोबर">October</option>
-                    <option value="11" data-en="November" data-mr="नोव्हेंबर">November</option>
-                    <option value="12" data-en="December" data-mr="डिसेंबर">December</option>
-                </select>
+                <div style="display:flex; gap:14px; align-items:flex-end; flex-wrap:wrap;">
+                    <div class="nx-form-group" style="margin:0;">
+                        <label for="ca-from-date" data-en="From Date" data-mr="सुरुवातीची तारीख">From Date</label>
+                        <input type="date" id="ca-from-date" class="nx-input" style="width:160px;">
+                    </div>
+                    <div class="nx-form-group" style="margin:0;">
+                        <label for="ca-to-date" data-en="To Date" data-mr="शेवटची तारीख">To Date</label>
+                        <input type="date" id="ca-to-date" class="nx-input" style="width:160px;">
+                    </div>
+                    <button id="generate-ca-report" class="nx-btn nx-btn-primary"
+                            data-en="Generate CA Report" data-mr="CA अहवाल तयार करा">Generate CA Report</button>
+                </div>
+                <div id="ca-error" style="display:none;" class="nx-alert nx-alert-red" style="margin-top:12px;">
+                    <span class="nx-alert-icon">⚠</span>
+                    <span data-en="From date cannot be after To date." data-mr="सुरुवातीची तारीख शेवटच्या तारखेनंतर असू शकत नाही.">
+                        From date cannot be after To date.
+                    </span>
+                </div>
+                <div id="ca-success" style="display:none;" class="nx-alert nx-alert-green" style="margin-top:12px;">
+                    <span class="nx-alert-icon">✅</span>
+                    <span data-en="Report opened in new tab. Change dates and click again for a new report."
+                          data-mr="अहवाल नवीन टॅबमध्ये उघडला. नवीन अहवालासाठी तारखा बदला आणि पुन्हा क्लिक करा.">
+                        Report opened in new tab. Change dates and click again for a new report.
+                    </span>
+                </div>
             </div>
 
-            <div>
-                <label for="year" class="block mb-2" data-en="Select Year" data-mr="वर्ष निवडा">Select Year</label>
-                <select id="year" class="bg-brand-dark-bg border border-brand-muted p-2 rounded">
-                    <option value="2024">2024</option>
-                    <option value="2025">2025</option>
-                    <option value="2026">2026</option>
-                    <option value="2027">2027</option>
-                    <option value="2028">2028</option>
-                    <option value="2029">2029</option>
-                    <option value="2030">2030</option>
-                </select>
+            <!-- MONTH/YEAR SELECTOR -->
+            <div class="nx-card nx-mb-24 no-print">
+                <div class="nx-card-header">
+                    <div class="nx-card-title" data-en="Monthly Report" data-mr="मासिक अहवाल">Monthly Report</div>
+                </div>
+                <div style="display:flex; gap:14px; align-items:flex-end; flex-wrap:wrap;">
+                    <div class="nx-form-group" style="margin:0;">
+                        <label for="month" data-en="Select Month" data-mr="महिना निवडा">Select Month</label>
+                        <select id="month" class="nx-input" style="width:150px;">
+                            <option value="1"  data-en="January"   data-mr="जानेवारी">January</option>
+                            <option value="2"  data-en="February"  data-mr="फेब्रुवारी">February</option>
+                            <option value="3"  data-en="March"     data-mr="मार्च">March</option>
+                            <option value="4"  data-en="April"     data-mr="एप्रिल">April</option>
+                            <option value="5"  data-en="May"       data-mr="मे">May</option>
+                            <option value="6"  data-en="June"      data-mr="जून">June</option>
+                            <option value="7"  data-en="July"      data-mr="जुलै">July</option>
+                            <option value="8"  data-en="August"    data-mr="ऑगस्ट">August</option>
+                            <option value="9"  data-en="September" data-mr="सप्टेंबर">September</option>
+                            <option value="10" data-en="October"   data-mr="ऑक्टोबर">October</option>
+                            <option value="11" data-en="November"  data-mr="नोव्हेंबर">November</option>
+                            <option value="12" data-en="December"  data-mr="डिसेंबर">December</option>
+                        </select>
+                    </div>
+                    <div class="nx-form-group" style="margin:0;">
+                        <label for="year" data-en="Select Year" data-mr="वर्ष निवडा">Select Year</label>
+                        <select id="year" class="nx-input" style="width:110px;">
+                            <option value="2024">2024</option>
+                            <option value="2025">2025</option>
+                            <option value="2026">2026</option>
+                            <option value="2027">2027</option>
+                            <option value="2028">2028</option>
+                            <option value="2029">2029</option>
+                            <option value="2030">2030</option>
+                        </select>
+                    </div>
+                    <button id="generate-report" class="nx-btn nx-btn-primary"
+                            data-en="Generate Report" data-mr="अहवाल तयार करा">Generate Report</button>
+                    <button id="print-report" class="nx-btn nx-btn-secondary no-print"
+                            data-en="Print" data-mr="छपाई">Print</button>
+                </div>
             </div>
 
-            <div class="flex items-end">
-                <button id="generate-report" class="bg-brand-green px-4 py-2 rounded" data-en="Generate Report" data-mr="अहवाल तयार करा">Generate Report</button>
-                <button id="print-report" class="bg-brand-teal px-4 py-2 rounded ml-4 no-print" data-en="Print" data-mr="छपाई">Print</button>
-            </div>
-        </div>
+            <!-- PRINTABLE REPORT SECTION -->
+            <div id="printable-report">
 
-        <!-- Report Display -->
-        <div id="printable-report">
-            <div class="mb-6">
-                <h2 class="text-xl mb-4" data-en="Material Summary" data-mr="सामग्री सारांश">Material Summary</h2>
-                <table id="material-summary" class="w-full border-collapse border border-brand-muted">
-                    <thead>
-                        <tr class="bg-brand-teal">
-                            <th class="border p-2" data-en="Material" data-mr="सामग्री">Material</th>
-                            <th class="border p-2" data-en="Opening Stock" data-mr="सुरुवातीचा साठा">Opening Stock</th>
-                            <th class="border p-2" data-en="Total GRN" data-mr="एकूण जीआरएन">Total GRN</th>
-                            <th class="border p-2" data-en="Total Consumption" data-mr="एकूण वापर">Total Consumption</th>
-                            <th class="border p-2" data-en="Net Change" data-mr="नेट बदल">Net Change</th>
-                            <th class="border p-2" data-en="Closing Stock" data-mr="अंतिम साठा">Closing Stock</th>
-                        </tr>
-                    </thead>
-                    <tbody id="material-summary-body">
-                        <!-- Report data will be populated here -->
-                    </tbody>
-                </table>
-            </div>
+                <!-- Material Summary -->
+                <div class="nx-card nx-mb-24">
+                    <div class="nx-card-header">
+                        <div class="nx-card-title" data-en="Material Summary" data-mr="सामग्री सारांश">Material Summary</div>
+                    </div>
+                    <div class="nx-table-wrap">
+                        <table class="nx-table" id="material-summary">
+                            <thead>
+                                <tr>
+                                    <th data-en="Material"          data-mr="सामग्री">Material</th>
+                                    <th data-en="Opening Stock"     data-mr="सुरुवातीचा साठा" style="text-align:right;">Opening Stock</th>
+                                    <th data-en="Total GRN"         data-mr="एकूण जीआरएन" style="text-align:right;">Total GRN</th>
+                                    <th data-en="Total Consumption" data-mr="एकूण वापर" style="text-align:right;">Total Consumption</th>
+                                    <th data-en="Net Change"        data-mr="नेट बदल" style="text-align:right;">Net Change</th>
+                                    <th data-en="Closing Stock"     data-mr="अंतिम साठा" style="text-align:right;">Closing Stock</th>
+                                </tr>
+                            </thead>
+                            <tbody id="material-summary-body">
+                                <tr>
+                                    <td colspan="6" style="text-align:center; padding:32px; color:var(--mid);"
+                                        data-en="Select a month and click Generate Report."
+                                        data-mr="महिना निवडा आणि अहवाल तयार करा क्लिक करा.">
+                                        Select a month and click Generate Report.
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
 
-            <div>
-                <h2 class="text-xl mb-4" data-en="Supplier-wise GRN" data-mr="पुरवठादार-निहाय जीआरएन">Supplier-wise GRN</h2>
-                <table id="supplier-summary" class="w-full border-collapse border border-brand-muted">
-                    <thead>
-                        <tr class="bg-brand-teal">
-                            <th class="border p-2" data-en="Supplier" data-mr="पुरवठादार">Supplier</th>
-                            <th class="border p-2" data-en="Total GRN" data-mr="एकूण जीआरएन">Total GRN</th>
-                        </tr>
-                    </thead>
-                    <tbody id="supplier-summary-body">
-                        <!-- Report data will be populated here -->
-                    </tbody>
-                </table>
-            </div>
+                <!-- Supplier-wise GRN -->
+                <div class="nx-card">
+                    <div class="nx-card-header">
+                        <div class="nx-card-title" data-en="Supplier-wise GRN" data-mr="पुरवठादार-निहाय जीआरएन">Supplier-wise GRN</div>
+                    </div>
+                    <div class="nx-table-wrap">
+                        <table class="nx-table" id="supplier-summary">
+                            <thead>
+                                <tr>
+                                    <th data-en="Supplier"  data-mr="पुरवठादार">Supplier</th>
+                                    <th data-en="Total GRN" data-mr="एकूण जीआरएन" style="text-align:right;">Total GRN</th>
+                                </tr>
+                            </thead>
+                            <tbody id="supplier-summary-body">
+                                <tr>
+                                    <td colspan="2" style="text-align:center; padding:32px; color:var(--mid);"
+                                        data-en="Select a month and click Generate Report."
+                                        data-mr="महिना निवडा आणि अहवाल तयार करा क्लिक करा.">
+                                        Select a month and click Generate Report.
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div><!-- end printable-report -->
+
         </div>
     </div>
 
     <script>
-        // Year dropdown
+        // Set defaults on load
         const yearSelect = document.getElementById('year');
-        const currentYear = new Date().getFullYear();
-        yearSelect.value = currentYear;
-
-        // Set default dates for CA report (current month)
         const today = new Date();
-        const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-        const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-        document.getElementById('ca-from-date').valueAsDate = firstDayOfMonth;
-        document.getElementById('ca-to-date').valueAsDate = lastDayOfMonth;
+        yearSelect.value = today.getFullYear();
+        document.getElementById('month').value = today.getMonth() + 1;
 
-        // CA Report generation
+        const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+        const lastDayOfMonth  = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+        document.getElementById('ca-from-date').valueAsDate = firstDayOfMonth;
+        document.getElementById('ca-to-date').valueAsDate   = lastDayOfMonth;
+
+        // ── CA REPORT ────────────────────────────────────────────
         document.getElementById('generate-ca-report').addEventListener('click', async () => {
-            const fromDate = document.getElementById('ca-from-date').value;
-            const toDate = document.getElementById('ca-to-date').value;
-            const errorDiv = document.getElementById('ca-error');
+            const fromDate   = document.getElementById('ca-from-date').value;
+            const toDate     = document.getElementById('ca-to-date').value;
+            const errorDiv   = document.getElementById('ca-error');
             const successDiv = document.getElementById('ca-success');
 
-            // Hide messages initially
-            errorDiv.classList.add('hidden');
-            successDiv.classList.add('hidden');
+            errorDiv.style.display   = 'none';
+            successDiv.style.display = 'none';
 
-            if (!fromDate || !toDate) {
-                alert('Please select both from and to dates');
-                return;
-            }
+            if (!fromDate || !toDate) { alert('Please select both from and to dates'); return; }
 
-            // Validate date range
             if (new Date(fromDate) > new Date(toDate)) {
-                errorDiv.classList.remove('hidden');
+                errorDiv.style.display = 'flex';
                 return;
             }
 
             try {
-                // Get current user's tenant_id
                 const { data: { user }, error: userError } = await window.supabase.auth.getUser();
-                if (userError || !user) {
-                    throw new Error('User not authenticated');
-                }
-
-                const tenantId = user.id;
-                if (!tenantId) {
-                    throw new Error('No tenant ID found for user');
-                }
-
-                // Open CA report in new tab
-                const url = `ca-report.html?tenant_id=${tenantId}&from=${fromDate}&to=${toDate}`;
-                window.open(url, '_blank');
-
-                // Show success message
-                successDiv.classList.remove('hidden');
+                if (userError || !user) throw new Error('User not authenticated');
+                window.open(`ca-report.html?tenant_id=${user.id}&from=${fromDate}&to=${toDate}`, '_blank');
+                successDiv.style.display = 'flex';
             } catch (error) {
                 console.error('Error generating CA report:', error);
                 alert('Error generating CA report: ' + error.message);
             }
         });
 
-        // Print functionality
-        document.getElementById('print-report').addEventListener('click', () => {
-            window.print();
-        });
+        // ── PRINT ─────────────────────────────────────────────────
+        document.getElementById('print-report').addEventListener('click', () => window.print());
 
-        // Report Generation
+        // ── MONTHLY REPORT ────────────────────────────────────────
         document.getElementById('generate-report').addEventListener('click', async () => {
             const month = document.getElementById('month').value;
-            const year = document.getElementById('year').value;
+            const year  = document.getElementById('year').value;
 
-            // Clear previous results
             const materialSummaryBody = document.getElementById('material-summary-body');
             const supplierSummaryBody = document.getElementById('supplier-summary-body');
-            materialSummaryBody.innerHTML = '';
-            supplierSummaryBody.innerHTML = '';
+
+            materialSummaryBody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--mid);">Loading...</td></tr>`;
+            supplierSummaryBody.innerHTML = `<tr><td colspan="2" style="text-align:center;padding:24px;color:var(--mid);">Loading...</td></tr>`;
 
             try {
-                // Get current user's tenant_id
                 const { data: { user }, error: userError } = await window.supabase.auth.getUser();
-                if (userError || !user) {
-                    throw new Error('User not authenticated');
-                }
+                if (userError || !user) throw new Error('User not authenticated');
 
                 const tenantId = user.id;
-                if (!tenantId) {
-                    throw new Error('No tenant ID found for user');
-                }
-
-                // Define date range for the selected month
                 const firstDay = new Date(year, month - 1, 1);
-                const lastDay = new Date(year, month, 0, 23, 59, 59, 999);
+                const lastDay  = new Date(year, month, 0, 23, 59, 59, 999);
 
-                // Fetch raw materials for this tenant
                 const { data: rawMaterials, error: materialsError } = await window.supabase
                     .from('p2_raw_materials')
                     .select('id, name')
@@ -250,9 +245,7 @@
 
                 if (materialsError) throw materialsError;
 
-                // Process each material
                 const materialSummary = await Promise.all(rawMaterials.map(async (material) => {
-                    // Opening stock — fetch both opening_stock type and legacy adjustment+notes pattern
                     const { data: openingStockData, error: openingStockError } = await window.supabase
                         .from('p2_stock_transactions')
                         .select('quantity, transaction_type, notes')
@@ -269,7 +262,6 @@
                             .reduce((sum, t) => sum + t.quantity, 0)
                         : 0;
 
-                    // Total GRN for the month
                     const { data: grnData, error: grnError } = await window.supabase
                         .from('p2_stock_transactions')
                         .select('quantity')
@@ -280,12 +272,8 @@
                         .lte('transaction_date', lastDay.toISOString().split('T')[0]);
 
                     if (grnError) throw grnError;
+                    const totalGrn = grnData ? grnData.reduce((sum, t) => sum + t.quantity, 0) : 0;
 
-                    const totalGrn = grnData
-                        ? grnData.reduce((sum, t) => sum + t.quantity, 0)
-                        : 0;
-
-                    // Total Consumption for the month
                     const { data: consumptionData, error: consumptionError } = await window.supabase
                         .from('p2_stock_transactions')
                         .select('quantity')
@@ -296,38 +284,35 @@
                         .lte('transaction_date', lastDay.toISOString().split('T')[0]);
 
                     if (consumptionError) throw consumptionError;
-
                     const totalConsumption = consumptionData
                         ? consumptionData.reduce((sum, t) => sum + Math.abs(t.quantity), 0)
                         : 0;
 
-                    // Net change and closing stock
-                    const netChange = totalGrn - totalConsumption;
+                    const netChange    = totalGrn - totalConsumption;
                     const closingStock = openingStock + netChange;
 
-                    return {
-                        name: material.name,
-                        openingStock,
-                        totalGrn,
-                        totalConsumption,
-                        netChange,
-                        closingStock
-                    };
+                    return { name: material.name, openingStock, totalGrn, totalConsumption, netChange, closingStock };
                 }));
 
-                // Populate material summary table
-                materialSummary.forEach(material => {
-                    const row = document.createElement('tr');
-                    row.innerHTML = `
-                        <td class="border p-2">${material.name}</td>
-                        <td class="border p-2">${material.openingStock.toFixed(2)}</td>
-                        <td class="border p-2">${material.totalGrn.toFixed(2)}</td>
-                        <td class="border p-2">${material.totalConsumption.toFixed(2)}</td>
-                        <td class="border p-2">${material.netChange.toFixed(2)}</td>
-                        <td class="border p-2">${material.closingStock.toFixed(2)}</td>
-                    `;
-                    materialSummaryBody.appendChild(row);
-                });
+                materialSummaryBody.innerHTML = '';
+
+                if (materialSummary.length === 0) {
+                    materialSummaryBody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--mid);" data-en="No transactions found for this period" data-mr="या कालावधीत कोणतीही व्यवहार आढळले नाहीत">No transactions found for this period</td></tr>`;
+                } else {
+                    materialSummary.forEach(mat => {
+                        const netColor = mat.netChange >= 0 ? 'var(--green)' : 'var(--red)';
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td class="nx-td-bold">${mat.name}</td>
+                            <td style="text-align:right;">${mat.openingStock.toFixed(2)}</td>
+                            <td style="text-align:right; color:var(--green);">${mat.totalGrn.toFixed(2)}</td>
+                            <td style="text-align:right; color:var(--red);">${mat.totalConsumption.toFixed(2)}</td>
+                            <td style="text-align:right; font-weight:700; color:${netColor};">${mat.netChange >= 0 ? '+' : ''}${mat.netChange.toFixed(2)}</td>
+                            <td style="text-align:right; font-weight:700; color:var(--white);">${mat.closingStock.toFixed(2)}</td>
+                        `;
+                        materialSummaryBody.appendChild(row);
+                    });
+                }
 
                 // Supplier-wise GRN
                 const { data: supplierGrnData, error: supplierError } = await window.supabase
@@ -340,46 +325,34 @@
 
                 if (supplierError) throw supplierError;
 
-                // Group supplier GRN totals
                 const supplierTotals = {};
                 supplierGrnData.forEach(item => {
-                    const supplierName = item.p2_suppliers?.name || 'Unknown Supplier';
-                    supplierTotals[supplierName] = (supplierTotals[supplierName] || 0) + item.quantity;
+                    const name = item.p2_suppliers?.name || 'Unknown Supplier';
+                    supplierTotals[name] = (supplierTotals[name] || 0) + item.quantity;
                 });
 
-                // Populate supplier summary table
-                Object.entries(supplierTotals).forEach(([supplierName, totalGrn]) => {
-                    const row = document.createElement('tr');
-                    row.innerHTML = `
-                        <td class="border p-2">${supplierName}</td>
-                        <td class="border p-2">${totalGrn.toFixed(2)}</td>
-                    `;
-                    supplierSummaryBody.appendChild(row);
-                });
-
-                // Handle no data scenario
-                if (materialSummary.length === 0) {
-                    const row = document.createElement('tr');
-                    row.innerHTML = `<td colspan="6" class="text-center p-4" data-en="No transactions found for this period" data-mr="या कालावधीत कोणतीही व्यवहार आढळले नाहीत">No transactions found for this period</td>`;
-                    materialSummaryBody.appendChild(row);
-                }
+                supplierSummaryBody.innerHTML = '';
 
                 if (Object.keys(supplierTotals).length === 0) {
-                    const row = document.createElement('tr');
-                    row.innerHTML = `<td colspan="2" class="text-center p-4" data-en="No GRN transactions found for this period" data-mr="या कालावधीत कोणतेही जीआरएन व्यवहार आढळले नाहीत">No GRN transactions found for this period</td>`;
-                    supplierSummaryBody.appendChild(row);
+                    supplierSummaryBody.innerHTML = `<tr><td colspan="2" style="text-align:center;padding:32px;color:var(--mid);" data-en="No GRN transactions found for this period" data-mr="या कालावधीत कोणतेही जीआरएन व्यवहार आढळले नाहीत">No GRN transactions found for this period</td></tr>`;
+                } else {
+                    Object.entries(supplierTotals).forEach(([name, total]) => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td class="nx-td-bold">${name}</td>
+                            <td style="text-align:right;">${total.toFixed(2)}</td>
+                        `;
+                        supplierSummaryBody.appendChild(row);
+                    });
                 }
 
             } catch (error) {
                 console.error('Error generating report:', error);
-                const materialErrorRow = document.createElement('tr');
-                materialErrorRow.innerHTML = `<td colspan="6" class="text-center p-4 text-red-500" data-en="Error generating report: ${error.message}" data-mr="अहवाल तयार करताना त्रुटी: ${error.message}">Error generating report: ${error.message}</td>`;
-                materialSummaryBody.appendChild(materialErrorRow);
+                materialSummaryBody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--red);">Error generating report: ${error.message}</td></tr>`;
             }
         });
-    </script>
 
-    <script>
+        // ── LANG ──────────────────────────────────────────────────
         function applyLang(lang) {
             document.querySelectorAll('[data-en]').forEach(el => {
                 if (el.tagName === 'INPUT' || el.tagName === 'SELECT') {
@@ -388,15 +361,13 @@
                     el.textContent = lang === 'mr' ? el.dataset.mr : el.dataset.en;
                 }
             });
-            const btn = document.getElementById('lang-toggle');
-            if (btn) btn.textContent = lang === 'mr' ? 'English' : 'मराठी';
             localStorage.setItem('nexflow_lang', lang);
         }
+        window.applyLang = applyLang;
 
         document.addEventListener('DOMContentLoaded', async () => {
             const authed = await checkAuth();
             if (!authed) return;
-
             const saved = localStorage.getItem('nexflow_lang') || 'en';
             applyLang(saved);
         });

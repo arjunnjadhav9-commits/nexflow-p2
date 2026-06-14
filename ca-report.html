@@ -4,315 +4,327 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CA Report | Nexflow P2</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%231A1F2E'/><text y='.9em' font-size='80' x='10' fill='%2300BCD4'>N</text></svg>">
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%230c0e14'/><text y='.9em' font-size='80' x='10' fill='%23ff5c1a'>N</text></svg>">
+    <link rel="stylesheet" href="css/nexflow-design.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="js/supabase-client.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/utils.js"></script>
     <script src="js/navbar.js"></script>
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    colors: {
-                        'nexflow-dark-bg': '#1A1F2E',
-                        'nexflow-text': '#E0E0E0',
-                        'nexflow-teal': '#00BCD4',
-                        'nexflow-green': '#00E676',
-                        'nexflow-muted': '#94A3B8'
-                    }
-                }
-            }
-        }
-    </script>
+
     <style>
+        /* ── SECTION HEADINGS ── */
+        .ca-section-title {
+            font-family: var(--condensed);
+            font-weight: 800;
+            font-size: 15px;
+            color: var(--orange);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+        .ca-section-title::before {
+            content: '';
+            display: inline-block;
+            width: 3px; height: 16px;
+            background: var(--orange);
+            border-radius: 2px;
+            flex-shrink: 0;
+        }
+
+        /* ── COVER BLOCK ── */
+        .ca-cover {
+            text-align: center;
+            padding: 32px 24px 28px;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 28px;
+        }
+        .ca-company-name {
+            font-family: var(--condensed);
+            font-weight: 900;
+            font-size: 28px;
+            color: var(--white);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+        }
+        .ca-company-meta {
+            font-size: 13px;
+            color: var(--mid);
+            line-height: 1.8;
+        }
+        .ca-report-title {
+            font-family: var(--condensed);
+            font-weight: 800;
+            font-size: 20px;
+            color: var(--orange);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin: 20px 0 6px;
+        }
+        .ca-period {
+            font-size: 14px;
+            color: var(--light);
+            margin-bottom: 4px;
+        }
+        .ca-generated {
+            font-size: 12px;
+            color: var(--mid);
+        }
+
+        /* ── PRINT ── */
         @media print {
-            /* Hide buttons and navbar */
-            nav, button, .no-print {
-                display: none !important;
-            }
-
-            /* Page break before each section heading except first */
-            main h2:not(:first-of-type) {
-                page-break-before: always;
-            }
-
-            /* Prevent table row breaks */
-            tr {
-                page-break-inside: avoid;
-            }
-
-            /* Set font size for print */
-            body {
-                font-size: 9pt;
-            }
-
-            /* Set page margins */
-            @page {
-                margin: 10mm;
-            }
-
-            /* Force black text on white background */
-            body, main, .bg-nexflow-dark-bg, .bg-\[#2C3440\], .bg-\[#3A4553\] {
-                background: white !important;
-                color: black !important;
-            }
-
-            table, th, td {
-                border: 1px solid black !important;
-                color: black !important;
-            }
-
-            th {
-                background: #e0e0e0 !important;
-            }
+            nav, button, .no-print, #navbar-container { display: none !important; }
+            body, .nx-main, .nx-page, .nx-card,
+            .ca-cover, section { background: white !important; color: black !important; }
+            .ca-company-name, .ca-section-title, .ca-report-title { color: black !important; }
+            .ca-company-meta, .ca-period, .ca-generated { color: #444 !important; }
+            .ca-section-title::before { background: black !important; }
+            .nx-table th { background: #e0e0e0 !important; color: black !important; }
+            .nx-table td, .nx-table th { border: 1px solid #999 !important; color: black !important; }
+            .nx-table tbody tr:hover { background: transparent !important; }
+            .nx-badge { background: transparent !important; color: black !important; border: 1px solid #999 !important; }
+            .nx-card { border: 1px solid #ccc !important; box-shadow: none !important; margin-bottom: 16px !important; }
+            section { page-break-inside: avoid; margin-bottom: 20px !important; }
+            h2:not(:first-of-type) { page-break-before: always; }
+            tr { page-break-inside: avoid; }
+            body { font-size: 9pt; }
+            @page { margin: 10mm; }
         }
     </style>
 </head>
-<body class="bg-nexflow-dark-bg text-nexflow-text">
+<body>
     <div id="navbar-container"></div>
-    <main class="container mx-auto px-4 py-6 max-w-6xl">
-        <!-- Loading Spinner -->
-        <div id="loadingSpinner" class="flex justify-center items-center py-12">
-            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-nexflow-teal"></div>
+
+    <div class="nx-main">
+        <div class="nx-page" style="max-width:1100px;">
+
+            <!-- LOADING -->
+            <div id="loadingSpinner">
+                <div class="nx-loading"><div class="nx-spinner"></div><span>Loading report...</span></div>
+            </div>
+
+            <!-- ERROR -->
+            <div id="errorState" style="display:none;" class="nx-alert nx-alert-red nx-mb-24">
+                <span class="nx-alert-icon">⚠</span>
+                <div>
+                    <div class="nx-bold">Could not load report data</div>
+                    <div id="errorText">Check your connection and refresh the page.</div>
+                </div>
+            </div>
+
+            <!-- REPORT CONTENT -->
+            <div id="reportContent" style="display:none;">
+
+                <!-- COVER -->
+                <div class="nx-card nx-mb-24">
+                    <div class="ca-cover">
+                        <div class="ca-company-name" id="companyName"></div>
+                        <div class="ca-company-meta">
+                            <div id="companyAddress1"></div>
+                            <div id="companyAddress2"></div>
+                            <div id="companyMobile"></div>
+                            <div id="companyGSTIN"></div>
+                        </div>
+                        <div class="ca-report-title">Stock &amp; Transaction Report</div>
+                        <div class="ca-period" id="reportPeriod"></div>
+                        <div class="ca-generated" id="generatedDate"></div>
+                        <div class="ca-generated" style="margin-top:2px;">Prepared by Nexflow Automations</div>
+                    </div>
+                    <div style="display:flex; justify-content:center;">
+                        <button id="printBtn" class="nx-btn nx-btn-primary no-print">Print Report</button>
+                    </div>
+                </div>
+
+                <!-- SECTION 1: Opening Stock -->
+                <section class="nx-card nx-mb-24">
+                    <div class="ca-section-title">1. Opening Stock</div>
+                    <div class="nx-table-wrap">
+                        <table class="nx-table">
+                            <thead><tr>
+                                <th>Material</th>
+                                <th style="text-align:center;">Unit</th>
+                                <th style="text-align:right;">Opening Qty</th>
+                                <th style="text-align:right;">Min Level</th>
+                                <th style="text-align:center;">Status</th>
+                            </tr></thead>
+                            <tbody id="openingStockBody"></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- SECTION 2: Purchases / GRN -->
+                <section class="nx-card nx-mb-24">
+                    <div class="ca-section-title">2. Purchases / GRN</div>
+                    <div class="nx-table-wrap">
+                        <table class="nx-table">
+                            <thead><tr>
+                                <th>Date</th>
+                                <th>Supplier</th>
+                                <th>Material</th>
+                                <th style="text-align:right;">Qty</th>
+                                <th style="text-align:center;">Unit</th>
+                                <th style="text-align:right;">Rate (₹)</th>
+                                <th style="text-align:right;">Value (₹)</th>
+                                <th>Invoice No</th>
+                            </tr></thead>
+                            <tbody id="grnBody"></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- SECTION 3: Consumption -->
+                <section class="nx-card nx-mb-24">
+                    <div class="ca-section-title">3. Consumption</div>
+                    <div class="nx-table-wrap">
+                        <table class="nx-table">
+                            <thead><tr>
+                                <th>Date</th>
+                                <th>Material</th>
+                                <th style="text-align:right;">Qty Consumed</th>
+                                <th style="text-align:center;">Unit</th>
+                                <th>Notes</th>
+                            </tr></thead>
+                            <tbody id="consumptionBody"></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- SECTION 4: Dispatch Summary -->
+                <section class="nx-card nx-mb-24">
+                    <div class="ca-section-title">4. Dispatch Summary</div>
+                    <div class="nx-table-wrap">
+                        <table class="nx-table">
+                            <thead><tr>
+                                <th>Challan No</th>
+                                <th>Date</th>
+                                <th>Client</th>
+                                <th style="text-align:center;">Status</th>
+                            </tr></thead>
+                            <tbody id="dispatchBody"></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- SECTION 5: Closing Stock -->
+                <section class="nx-card nx-mb-24">
+                    <div class="ca-section-title">5. Closing Stock</div>
+                    <div class="nx-table-wrap">
+                        <table class="nx-table">
+                            <thead><tr>
+                                <th>Material</th>
+                                <th style="text-align:center;">Unit</th>
+                                <th style="text-align:right;">Opening</th>
+                                <th style="text-align:right;">GRN</th>
+                                <th style="text-align:right;">Consumption</th>
+                                <th style="text-align:right;">Adjustments</th>
+                                <th style="text-align:right;">Closing</th>
+                                <th style="text-align:center;">Status</th>
+                            </tr></thead>
+                            <tbody id="closingStockBody"></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- SECTION 6: Supplier Summary -->
+                <section class="nx-card nx-mb-24">
+                    <div class="ca-section-title">6. Supplier Summary</div>
+                    <div class="nx-table-wrap">
+                        <table class="nx-table">
+                            <thead><tr>
+                                <th>Supplier</th>
+                                <th style="text-align:center;">No. of GRNs</th>
+                                <th style="text-align:right;">Total Qty</th>
+                            </tr></thead>
+                            <tbody id="supplierSummaryBody"></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- SECTION 7: Purchase Value Summary -->
+                <section class="nx-card nx-mb-24">
+                    <div class="ca-section-title">7. Purchase Value Summary</div>
+                    <div class="nx-table-wrap">
+                        <table class="nx-table">
+                            <thead><tr>
+                                <th>Material</th>
+                                <th style="text-align:center;">Unit</th>
+                                <th style="text-align:right;">Total GRN Qty</th>
+                                <th style="text-align:right;">Rate (₹)</th>
+                                <th style="text-align:right;">Purchase Value (₹)</th>
+                            </tr></thead>
+                            <tbody id="purchaseValueBody"></tbody>
+                            <tfoot>
+                                <tr style="background:var(--surface2); font-weight:700;">
+                                    <td colspan="4" style="padding:12px 16px; text-align:right; color:var(--mid); font-family:var(--condensed); text-transform:uppercase; font-size:11px; letter-spacing:1px;">Total Purchase Value</td>
+                                    <td id="totalPurchaseValue" style="padding:12px 16px; text-align:right; color:var(--white); font-family:var(--condensed); font-size:16px; font-weight:900;">—</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- SECTION 8: Product Selling Prices -->
+                <section class="nx-card">
+                    <div class="ca-section-title">8. Product Selling Prices (Current)</div>
+                    <div class="nx-table-wrap">
+                        <table class="nx-table">
+                            <thead><tr>
+                                <th>Product</th>
+                                <th style="text-align:center;">Unit</th>
+                                <th style="text-align:right;">Selling Price (₹)</th>
+                                <th>Effective Date</th>
+                                <th>Notes</th>
+                            </tr></thead>
+                            <tbody id="productPricesBody"></tbody>
+                        </table>
+                    </div>
+                </section>
+
+            </div><!-- end reportContent -->
         </div>
-
-        <!-- Error State -->
-        <div id="errorState" class="hidden bg-red-900 border border-red-700 rounded p-4 mb-6">
-            <p class="font-bold">Could not load report data</p>
-            <p class="text-sm" id="errorText">Check your connection and refresh the page.</p>
-        </div>
-
-        <!-- Report Content -->
-        <div id="reportContent" class="hidden">
-            <!-- COVER -->
-            <section class="mb-8 text-center border-b border-gray-600 pb-6">
-                <h1 id="companyName" class="text-3xl font-bold mb-2"></h1>
-                <p id="companyAddress1" class="text-sm"></p>
-                <p id="companyAddress2" class="text-sm"></p>
-                <p id="companyMobile" class="text-sm"></p>
-                <p id="companyGSTIN" class="text-sm"></p>
-                <h2 class="text-2xl font-bold mt-6 mb-2 text-nexflow-teal">Stock and Transaction Report</h2>
-                <p id="reportPeriod" class="text-lg mb-2"></p>
-                <p id="generatedDate" class="text-sm text-nexflow-muted"></p>
-                <p class="text-sm text-nexflow-muted">Prepared by Nexflow Automations</p>
-                <button id="printBtn" class="no-print mt-4 bg-nexflow-teal text-white px-6 py-2 rounded hover:bg-cyan-600 transition">
-                    Print Report
-                </button>
-            </section>
-
-            <!-- SECTION 1: Opening Stock -->
-            <section class="mb-8">
-                <h2 class="text-xl font-bold mb-4 text-nexflow-teal">1. Opening Stock</h2>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-sm border-collapse">
-                        <thead>
-                            <tr class="bg-[#2C3440]">
-                                <th class="p-2 text-left border border-gray-700">Material</th>
-                                <th class="p-2 text-center border border-gray-700">Unit</th>
-                                <th class="p-2 text-right border border-gray-700">Opening Qty</th>
-                                <th class="p-2 text-right border border-gray-700">Min Level</th>
-                                <th class="p-2 text-center border border-gray-700">Status</th>
-                            </tr>
-                        </thead>
-                        <tbody id="openingStockBody">
-                        </tbody>
-                    </table>
-                </div>
-            </section>
-
-            <!-- SECTION 2: Purchases / GRN -->
-            <section class="mb-8">
-                <h2 class="text-xl font-bold mb-4 text-nexflow-teal">2. Purchases / GRN</h2>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-sm border-collapse">
-                        <thead>
-                            <tr class="bg-[#2C3440]">
-                                <th class="p-2 text-left border border-gray-700">Date</th>
-                                <th class="p-2 text-left border border-gray-700">Supplier</th>
-                                <th class="p-2 text-left border border-gray-700">Material</th>
-                                <th class="p-2 text-right border border-gray-700">Qty</th>
-                                <th class="p-2 text-center border border-gray-700">Unit</th>
-                                <th class="p-2 text-right border border-gray-700">Rate (₹)</th>
-                                <th class="p-2 text-right border border-gray-700">Value (₹)</th>
-                                <th class="p-2 text-left border border-gray-700">Invoice No</th>
-                            </tr>
-                        </thead>
-                        <tbody id="grnBody">
-                        </tbody>
-                    </table>
-                </div>
-            </section>
-
-            <!-- SECTION 3: Consumption -->
-            <section class="mb-8">
-                <h2 class="text-xl font-bold mb-4 text-nexflow-teal">3. Consumption</h2>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-sm border-collapse">
-                        <thead>
-                            <tr class="bg-[#2C3440]">
-                                <th class="p-2 text-left border border-gray-700">Date</th>
-                                <th class="p-2 text-left border border-gray-700">Material</th>
-                                <th class="p-2 text-right border border-gray-700">Qty Consumed</th>
-                                <th class="p-2 text-center border border-gray-700">Unit</th>
-                                <th class="p-2 text-left border border-gray-700">Notes</th>
-                            </tr>
-                        </thead>
-                        <tbody id="consumptionBody">
-                        </tbody>
-                    </table>
-                </div>
-            </section>
-
-            <!-- SECTION 4: Dispatch Summary -->
-            <section class="mb-8">
-                <h2 class="text-xl font-bold mb-4 text-nexflow-teal">4. Dispatch Summary</h2>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-sm border-collapse">
-                        <thead>
-                            <tr class="bg-[#2C3440]">
-                                <th class="p-2 text-left border border-gray-700">Challan No</th>
-                                <th class="p-2 text-left border border-gray-700">Date</th>
-                                <th class="p-2 text-left border border-gray-700">Client</th>
-                                <th class="p-2 text-center border border-gray-700">Status</th>
-                            </tr>
-                        </thead>
-                        <tbody id="dispatchBody">
-                        </tbody>
-                    </table>
-                </div>
-            </section>
-
-            <!-- SECTION 5: Closing Stock -->
-            <section class="mb-8">
-                <h2 class="text-xl font-bold mb-4 text-nexflow-teal">5. Closing Stock</h2>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-sm border-collapse">
-                        <thead>
-                            <tr class="bg-[#2C3440]">
-                                <th class="p-2 text-left border border-gray-700">Material</th>
-                                <th class="p-2 text-center border border-gray-700">Unit</th>
-                                <th class="p-2 text-right border border-gray-700">Opening</th>
-                                <th class="p-2 text-right border border-gray-700">GRN</th>
-                                <th class="p-2 text-right border border-gray-700">Consumption</th>
-                                <th class="p-2 text-right border border-gray-700">Adjustments</th>
-                                <th class="p-2 text-right border border-gray-700">Closing</th>
-                                <th class="p-2 text-center border border-gray-700">Status</th>
-                            </tr>
-                        </thead>
-                        <tbody id="closingStockBody">
-                        </tbody>
-                    </table>
-                </div>
-            </section>
-
-            <!-- SECTION 6: Supplier Summary -->
-            <section class="mb-8">
-                <h2 class="text-xl font-bold mb-4 text-nexflow-teal">6. Supplier Summary</h2>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-sm border-collapse">
-                        <thead>
-                            <tr class="bg-[#2C3440]">
-                                <th class="p-2 text-left border border-gray-700">Supplier</th>
-                                <th class="p-2 text-center border border-gray-700">No. of GRNs</th>
-                                <th class="p-2 text-right border border-gray-700">Total Qty</th>
-                            </tr>
-                        </thead>
-                        <tbody id="supplierSummaryBody">
-                        </tbody>
-                    </table>
-                </div>
-            </section>
-            <!-- SECTION 7: Purchase Value Summary -->
-            <section class="mb-8">
-                <h2 class="text-xl font-bold mb-4 text-nexflow-teal">7. Purchase Value Summary</h2>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-sm border-collapse">
-                        <thead>
-                            <tr class="bg-[#2C3440]">
-                                <th class="p-2 text-left border border-gray-700">Material</th>
-                                <th class="p-2 text-center border border-gray-700">Unit</th>
-                                <th class="p-2 text-right border border-gray-700">Total GRN Qty</th>
-                                <th class="p-2 text-right border border-gray-700">Rate (₹)</th>
-                                <th class="p-2 text-right border border-gray-700">Purchase Value (₹)</th>
-                            </tr>
-                        </thead>
-                        <tbody id="purchaseValueBody"></tbody>
-                        <tfoot>
-                            <tr class="bg-[#2C3440] font-bold">
-                                <td colspan="4" class="p-2 text-right border border-gray-700">Total Purchase Value</td>
-                                <td id="totalPurchaseValue" class="p-2 text-right border border-gray-700">—</td>
-                            </tr>
-                        </tfoot>
-                    </table>
-                </div>
-            </section>
-
-            <!-- SECTION 8: Product Selling Prices -->
-            <section class="mb-8">
-                <h2 class="text-xl font-bold mb-4 text-nexflow-teal">8. Product Selling Prices (Current)</h2>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-sm border-collapse">
-                        <thead>
-                            <tr class="bg-[#2C3440]">
-                                <th class="p-2 text-left border border-gray-700">Product</th>
-                                <th class="p-2 text-center border border-gray-700">Unit</th>
-                                <th class="p-2 text-right border border-gray-700">Selling Price (₹)</th>
-                                <th class="p-2 text-left border border-gray-700">Effective Date</th>
-                                <th class="p-2 text-left border border-gray-700">Notes</th>
-                            </tr>
-                        </thead>
-                        <tbody id="productPricesBody"></tbody>
-                    </table>
-                </div>
-            </section>
-
-        </div>
-    </main>
+    </div>
 
     <script>
         let tenantId = null;
         let fromDate = null;
-        let toDate = null;
+        let toDate   = null;
+
+        const EMPTY = (cols, msg) =>
+            `<tr><td colspan="${cols}" style="text-align:center;padding:24px;color:var(--mid);">${msg}</td></tr>`;
 
         async function init() {
             const authed = await checkAuth();
             if (!authed) return;
             requireOwner();
+
             const loadingSpinner = document.getElementById('loadingSpinner');
-            const errorState = document.getElementById('errorState');
-            const reportContent = document.getElementById('reportContent');
+            const errorState     = document.getElementById('errorState');
+            const reportContent  = document.getElementById('reportContent');
 
             try {
-                // Get URL params
                 const urlParams = new URLSearchParams(window.location.search);
                 tenantId = urlParams.get('tenant_id');
                 fromDate = urlParams.get('from');
-                toDate = urlParams.get('to');
+                toDate   = urlParams.get('to');
 
-                if (!tenantId || !fromDate || !toDate) {
+                if (!tenantId || !fromDate || !toDate)
                     throw new Error('Missing required parameters: tenant_id, from, to');
-                }
 
-                // Check auth
-                const authed = await checkAuthAndTenant(tenantId);
-                if (!authed) return;
+                const authed2 = await checkAuthAndTenant(tenantId);
+                if (!authed2) return;
 
-                // Fetch all data
-                await Promise.all([
-                    loadTenantSettings(),
-                    loadReportData()
-                ]);
+                await Promise.all([loadTenantSettings(), loadReportData()]);
 
-                // Hide loading, show report
-                loadingSpinner.classList.add('hidden');
-                reportContent.classList.remove('hidden');
+                loadingSpinner.style.display  = 'none';
+                reportContent.style.display   = 'block';
             } catch (error) {
                 console.error('Error initializing report:', error);
-                loadingSpinner.classList.add('hidden');
-                errorState.classList.remove('hidden');
+                loadingSpinner.style.display = 'none';
+                errorState.style.display     = 'flex';
                 document.getElementById('errorText').textContent = error.message;
             }
         }
@@ -327,414 +339,260 @@
             if (error) throw error;
 
             if (!data) {
-                // Settings not configured - show message but continue
                 document.getElementById('companyName').textContent = 'Company settings not configured. Please update Settings.';
-                document.getElementById('companyAddress1').textContent = '';
-                document.getElementById('companyAddress2').textContent = '';
-                document.getElementById('companyMobile').textContent = '';
-                document.getElementById('companyGSTIN').textContent = '';
             } else {
-                // Populate cover section
-                document.getElementById('companyName').textContent = data.company_name || 'Company Name';
+                document.getElementById('companyName').textContent     = data.company_name || 'Company Name';
                 document.getElementById('companyAddress1').textContent = data.address_line1 || '';
                 document.getElementById('companyAddress2').textContent = data.address_line2 || '';
-                document.getElementById('companyMobile').textContent = data.mobile_number ? `Mobile: ${data.mobile_number}` : '';
-                document.getElementById('companyGSTIN').textContent = data.gstin ? `GSTIN: ${data.gstin}` : '';
+                document.getElementById('companyMobile').textContent   = data.mobile_number ? `Mobile: ${data.mobile_number}` : '';
+                document.getElementById('companyGSTIN').textContent    = data.gstin ? `GSTIN: ${data.gstin}` : '';
             }
 
-            document.getElementById('reportPeriod').textContent = `Period: ${formatDate(fromDate)} to ${formatDate(toDate)}`;
+            document.getElementById('reportPeriod').textContent  = `Period: ${formatDate(fromDate)} to ${formatDate(toDate)}`;
             document.getElementById('generatedDate').textContent = `Generated on: ${formatDate(new Date().toISOString().split('T')[0])}`;
         }
 
         async function loadReportData() {
-            // Fetch all raw materials
             const { data: materials, error: materialsError } = await window.supabase
-                .from('p2_raw_materials')
-                .select('*')
-                .eq('tenant_id', tenantId)
-                .order('name');
-
+                .from('p2_raw_materials').select('*').eq('tenant_id', tenantId).order('name');
             if (materialsError) throw materialsError;
 
-            // Fetch all stock transactions — use transaction_date for filtering
             const { data: transactions, error: transactionsError } = await window.supabase
-                .from('p2_stock_transactions')
-                .select('*')
-                .eq('tenant_id', tenantId)
-                .order('transaction_date');
-
+                .from('p2_stock_transactions').select('*').eq('tenant_id', tenantId).order('transaction_date');
             if (transactionsError) throw transactionsError;
 
-            // Fetch suppliers
             const { data: suppliers, error: suppliersError } = await window.supabase
-                .from('p2_suppliers')
-                .select('*')
-                .eq('tenant_id', tenantId);
-
+                .from('p2_suppliers').select('*').eq('tenant_id', tenantId);
             if (suppliersError) throw suppliersError;
 
-            // Fetch confirmed dispatches in period
             const { data: dispatches, error: dispatchesError } = await window.supabase
-                .from('p2_dispatch_orders')
-                .select('*')
-                .eq('tenant_id', tenantId)
-                .eq('status', 'confirmed')
-                .gte('dispatch_date', fromDate)
-                .lte('dispatch_date', toDate)
-                .order('dispatch_date');
-
+                .from('p2_dispatch_orders').select('*')
+                .eq('tenant_id', tenantId).eq('status', 'confirmed')
+                .gte('dispatch_date', fromDate).lte('dispatch_date', toDate).order('dispatch_date');
             if (dispatchesError) throw dispatchesError;
 
-            // Fetch material prices — latest per material as of toDate
             const { data: materialPrices } = await window.supabase
                 .from('p2_material_prices')
                 .select('raw_material_id, price_per_unit, effective_date')
-                .eq('tenant_id', tenantId)
-                .lte('effective_date', toDate)
+                .eq('tenant_id', tenantId).lte('effective_date', toDate)
                 .order('effective_date', { ascending: false });
 
-            // Build latest price map per material (first entry = most recent due to desc order)
             const latestPriceMap = {};
             (materialPrices || []).forEach(p => {
-                if (!latestPriceMap[p.raw_material_id]) {
-                    latestPriceMap[p.raw_material_id] = p.price_per_unit;
-                }
+                if (!latestPriceMap[p.raw_material_id]) latestPriceMap[p.raw_material_id] = p.price_per_unit;
             });
 
-            // Fetch current product prices
             const { data: productPricesData } = await window.supabase
                 .from('p2_product_prices')
                 .select('product_id, price, effective_date, notes')
-                .eq('tenant_id', tenantId)
-                .lte('effective_date', toDate)
+                .eq('tenant_id', tenantId).lte('effective_date', toDate)
                 .order('effective_date', { ascending: false });
 
-            // Fetch products
             const { data: products } = await window.supabase
-                .from('p2_products')
-                .select('id, name, unit')
-                .eq('tenant_id', tenantId)
-                .eq('is_active', true)
-                .order('name');
+                .from('p2_products').select('id, name, unit')
+                .eq('tenant_id', tenantId).eq('is_active', true).order('name');
 
-            // Build latest product price map
             const latestProductPriceMap = {};
             (productPricesData || []).forEach(p => {
-                if (!latestProductPriceMap[p.product_id]) {
-                    latestProductPriceMap[p.product_id] = p;
-                }
+                if (!latestProductPriceMap[p.product_id]) latestProductPriceMap[p.product_id] = p;
             });
 
-            // Build material and supplier maps
-            const materialMap = {};
+            const materialMap  = {};
             materials.forEach(m => { materialMap[m.id] = m; });
-            const supplierMap = {};
+            const supplierMap  = {};
             suppliers.forEach(s => { supplierMap[s.id] = s; });
 
-            // Opening stock = adjustment transactions with notes='Opening Stock' (always, regardless of date)
-            // Period transactions exclude those opening stock rows
-            const isOpeningStock = t => t.transaction_type === 'adjustment' && t.notes === 'Opening Stock';
+            const isOpeningStock  = t => t.transaction_type === 'adjustment' && t.notes === 'Opening Stock';
+            const periodTx        = transactions.filter(t => !isOpeningStock(t) && t.transaction_date >= fromDate && t.transaction_date <= toDate);
+            const openingTx       = transactions.filter(t => isOpeningStock(t) || (!isOpeningStock(t) && t.transaction_date < fromDate));
 
-            const periodTransactions = transactions.filter(t => {
-                return !isOpeningStock(t) &&
-                       t.transaction_date >= fromDate && t.transaction_date <= toDate;
-            });
-
-            const openingTransactions = transactions.filter(t => {
-                return isOpeningStock(t) ||
-                       (!isOpeningStock(t) && t.transaction_date < fromDate);
-            });
-
-            // SECTION 1: Opening Stock
-            renderOpeningStock(materials, openingTransactions);
-
-            // SECTION 2: Purchases / GRN
-            renderGRN(periodTransactions, materialMap, supplierMap, latestPriceMap);
-
-            // SECTION 3: Consumption
-            renderConsumption(periodTransactions, materialMap);
-
-            // SECTION 4: Dispatch Summary
+            renderOpeningStock(materials, openingTx);
+            renderGRN(periodTx, materialMap, supplierMap, latestPriceMap);
+            renderConsumption(periodTx, materialMap);
             renderDispatchSummary(dispatches);
-
-            // SECTION 5: Closing Stock
             renderClosingStock(materials, transactions, fromDate, toDate);
-
-            // SECTION 6: Supplier Summary
-            renderSupplierSummary(periodTransactions, supplierMap);
-
-            // SECTION 7: Purchase Value Summary
-            renderPurchaseValueSummary(periodTransactions, materialMap, latestPriceMap);
-
-            // SECTION 8: Product Prices
+            renderSupplierSummary(periodTx, supplierMap);
+            renderPurchaseValueSummary(periodTx, materialMap, latestPriceMap);
             renderProductPrices(products || [], latestProductPriceMap);
         }
 
-        function renderOpeningStock(materials, openingTransactions) {
+        function renderOpeningStock(materials, openingTx) {
             const tbody = document.getElementById('openingStockBody');
             tbody.innerHTML = '';
-
             materials.forEach(material => {
-                // Sum transactions before fromDate
-                const openingQty = openingTransactions
-                    .filter(t => t.raw_material_id === material.id)
+                const openingQty = openingTx.filter(t => t.raw_material_id === material.id)
                     .reduce((sum, t) => sum + (t.quantity || 0), 0);
-
-                const status = openingQty < (material.min_stock_level || 0) ? 'Low' : 'OK';
-                const statusClass = status === 'Low' ? 'text-red-500' : 'text-nexflow-green';
-
+                const isLow = openingQty < (material.min_stock_level || 0);
                 const row = document.createElement('tr');
-                row.className = 'border-b border-gray-700';
                 row.innerHTML = `
-                    <td class="p-2 border border-gray-700">${material.name}</td>
-                    <td class="p-2 text-center border border-gray-700">${material.unit}</td>
-                    <td class="p-2 text-right border border-gray-700">${formatNumber(openingQty)}</td>
-                    <td class="p-2 text-right border border-gray-700">${formatNumber(material.min_stock_level || 0)}</td>
-                    <td class="p-2 text-center border border-gray-700 ${statusClass}">${status}</td>
-                `;
+                    <td class="nx-td-bold">${material.name}</td>
+                    <td style="text-align:center;color:var(--mid);">${material.unit}</td>
+                    <td style="text-align:right;">${formatNumber(openingQty)}</td>
+                    <td style="text-align:right;color:var(--mid);">${formatNumber(material.min_stock_level || 0)}</td>
+                    <td style="text-align:center;">
+                        <span class="nx-badge ${isLow ? 'nx-badge-red' : 'nx-badge-green'}">${isLow ? 'Low' : 'OK'}</span>
+                    </td>`;
                 tbody.appendChild(row);
             });
         }
 
-        function renderGRN(periodTransactions, materialMap, supplierMap, latestPriceMap) {
+        function renderGRN(periodTx, materialMap, supplierMap, latestPriceMap) {
             const tbody = document.getElementById('grnBody');
+            const grnTx = periodTx.filter(t => t.transaction_type === 'grn');
+            if (!grnTx.length) { tbody.innerHTML = EMPTY(8, 'No GRN transactions in this period'); return; }
             tbody.innerHTML = '';
-
-            const grnTransactions = periodTransactions.filter(t => t.transaction_type === 'grn');
-
-            if (grnTransactions.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="8" class="p-4 text-center text-gray-400 border border-gray-700">No GRN transactions in this period</td></tr>';
-                return;
-            }
-
-            grnTransactions.forEach(tx => {
-                const material = materialMap[tx.raw_material_id] || {};
+            grnTx.forEach(tx => {
+                const mat      = materialMap[tx.raw_material_id] || {};
                 const supplier = supplierMap[tx.supplier_id] || {};
-                const rate = latestPriceMap[tx.raw_material_id] || null;
-                const value = rate ? (tx.quantity * rate) : null;
-
+                const rate     = latestPriceMap[tx.raw_material_id] || null;
+                const value    = rate ? tx.quantity * rate : null;
                 const row = document.createElement('tr');
-                row.className = 'border-b border-gray-700';
                 row.innerHTML = `
-                    <td class="p-2 border border-gray-700">${tx.transaction_date || formatDate(tx.created_at)}</td>
-                    <td class="p-2 border border-gray-700">${supplier.name || '-'}</td>
-                    <td class="p-2 border border-gray-700">${material.name || '-'}</td>
-                    <td class="p-2 text-right border border-gray-700">${formatNumber(tx.quantity)}</td>
-                    <td class="p-2 text-center border border-gray-700">${material.unit || '-'}</td>
-                    <td class="p-2 text-right border border-gray-700">${rate ? '₹' + formatNumber(rate) : '<span class="text-gray-500">—</span>'}</td>
-                    <td class="p-2 text-right border border-gray-700">${value ? '₹' + formatNumber(value) : '<span class="text-gray-500">—</span>'}</td>
-                    <td class="p-2 border border-gray-700">${tx.invoice_no || '-'}</td>
-                `;
+                    <td class="nx-td-mono">${tx.transaction_date || formatDate(tx.created_at)}</td>
+                    <td>${supplier.name || '—'}</td>
+                    <td class="nx-td-bold">${mat.name || '—'}</td>
+                    <td style="text-align:right;">${formatNumber(tx.quantity)}</td>
+                    <td style="text-align:center;color:var(--mid);">${mat.unit || '—'}</td>
+                    <td style="text-align:right;">${rate ? '₹' + formatNumber(rate) : '<span style="color:var(--mid)">—</span>'}</td>
+                    <td style="text-align:right;font-weight:700;">${value ? '₹' + formatNumber(value) : '<span style="color:var(--mid)">—</span>'}</td>
+                    <td class="nx-td-mono">${tx.invoice_no || '—'}</td>`;
                 tbody.appendChild(row);
             });
         }
 
-        function renderConsumption(periodTransactions, materialMap) {
+        function renderConsumption(periodTx, materialMap) {
             const tbody = document.getElementById('consumptionBody');
+            const consTx = periodTx.filter(t => t.transaction_type === 'consumption');
+            if (!consTx.length) { tbody.innerHTML = EMPTY(5, 'No consumption in this period'); return; }
             tbody.innerHTML = '';
-
-            const consumptionTransactions = periodTransactions.filter(t => t.transaction_type === 'consumption');
-
-            if (consumptionTransactions.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-400 border border-gray-700">No consumption in this period</td></tr>';
-                return;
-            }
-
-            consumptionTransactions.forEach(tx => {
-                const material = materialMap[tx.raw_material_id] || {};
-
+            consTx.forEach(tx => {
+                const mat = materialMap[tx.raw_material_id] || {};
                 const row = document.createElement('tr');
-                row.className = 'border-b border-gray-700';
                 row.innerHTML = `
-                    <td class="p-2 border border-gray-700">${tx.transaction_date || formatDate(tx.created_at)}</td>
-                    <td class="p-2 border border-gray-700">${material.name || '-'}</td>
-                    <td class="p-2 text-right border border-gray-700">${formatNumber(Math.abs(tx.quantity))}</td>
-                    <td class="p-2 text-center border border-gray-700">${material.unit || '-'}</td>
-                    <td class="p-2 border border-gray-700">${tx.notes || '-'}</td>
-                `;
+                    <td class="nx-td-mono">${tx.transaction_date || formatDate(tx.created_at)}</td>
+                    <td class="nx-td-bold">${mat.name || '—'}</td>
+                    <td style="text-align:right;color:var(--red);">${formatNumber(Math.abs(tx.quantity))}</td>
+                    <td style="text-align:center;color:var(--mid);">${mat.unit || '—'}</td>
+                    <td style="color:var(--mid);">${tx.notes || '—'}</td>`;
                 tbody.appendChild(row);
             });
         }
 
         function renderDispatchSummary(dispatches) {
             const tbody = document.getElementById('dispatchBody');
+            if (!dispatches.length) { tbody.innerHTML = EMPTY(4, 'No confirmed dispatches in this period'); return; }
             tbody.innerHTML = '';
-
-            if (dispatches.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="4" class="p-4 text-center text-gray-400 border border-gray-700">No confirmed dispatches in this period</td></tr>';
-                return;
-            }
-
-            dispatches.forEach(dispatch => {
+            dispatches.forEach(d => {
                 const row = document.createElement('tr');
-                row.className = 'border-b border-gray-700';
                 row.innerHTML = `
-                    <td class="p-2 border border-gray-700">${dispatch.challan_number || '-'}</td>
-                    <td class="p-2 border border-gray-700">${formatDate(dispatch.dispatch_date || dispatch.created_at)}</td>
-                    <td class="p-2 border border-gray-700">${dispatch.client_name}</td>
-                    <td class="p-2 text-center border border-gray-700">
-                        <span class="px-2 py-1 rounded text-xs bg-nexflow-green">Confirmed</span>
-                    </td>
-                `;
+                    <td class="nx-td-mono">${d.challan_number || '—'}</td>
+                    <td class="nx-td-mono">${formatDate(d.dispatch_date || d.created_at)}</td>
+                    <td class="nx-td-bold">${d.client_name}</td>
+                    <td style="text-align:center;"><span class="nx-badge nx-badge-green">Confirmed</span></td>`;
                 tbody.appendChild(row);
             });
         }
 
-        function renderClosingStock(materials, allTransactions, fromDate, toDate) {
+        function renderClosingStock(materials, allTx, fromDate, toDate) {
             const tbody = document.getElementById('closingStockBody');
             tbody.innerHTML = '';
-
+            const isOS = t => t.transaction_type === 'adjustment' && t.notes === 'Opening Stock';
             materials.forEach(material => {
-                const isOpeningStock = t => t.transaction_type === 'adjustment' && t.notes === 'Opening Stock';
-                const openingQty = allTransactions
-                    .filter(t => t.raw_material_id === material.id &&
-                        (isOpeningStock(t) || (!isOpeningStock(t) && t.transaction_date < fromDate)))
-                    .reduce((sum, t) => sum + (t.quantity || 0), 0);
-
-                const grnQty = allTransactions
-                    .filter(t => t.transaction_date >= fromDate && t.transaction_date <= toDate &&
-                               t.raw_material_id === material.id && t.transaction_type === 'grn')
-                    .reduce((sum, t) => sum + (t.quantity || 0), 0);
-
-                const consumptionQty = allTransactions
-                    .filter(t => t.transaction_date >= fromDate && t.transaction_date <= toDate &&
-                               t.raw_material_id === material.id && t.transaction_type === 'consumption')
-                    .reduce((sum, t) => sum + (t.quantity || 0), 0);
-
-                const adjustmentsQty = allTransactions
-                    .filter(t => t.transaction_date >= fromDate && t.transaction_date <= toDate &&
-                               t.raw_material_id === material.id && t.transaction_type === 'adjustment' &&
-                               t.notes !== 'Opening Stock')
-                    .reduce((sum, t) => sum + (t.quantity || 0), 0);
-
-                const closingQty = openingQty + grnQty + consumptionQty + adjustmentsQty;
-                const status = closingQty < (material.min_stock_level || 0) ? 'Low' : 'OK';
-                const statusClass = status === 'Low' ? 'text-red-500' : 'text-nexflow-green';
-
+                const openingQty     = allTx.filter(t => t.raw_material_id === material.id && (isOS(t) || (!isOS(t) && t.transaction_date < fromDate))).reduce((s, t) => s + (t.quantity || 0), 0);
+                const grnQty         = allTx.filter(t => t.transaction_date >= fromDate && t.transaction_date <= toDate && t.raw_material_id === material.id && t.transaction_type === 'grn').reduce((s, t) => s + (t.quantity || 0), 0);
+                const consumptionQty = allTx.filter(t => t.transaction_date >= fromDate && t.transaction_date <= toDate && t.raw_material_id === material.id && t.transaction_type === 'consumption').reduce((s, t) => s + (t.quantity || 0), 0);
+                const adjustmentsQty = allTx.filter(t => t.transaction_date >= fromDate && t.transaction_date <= toDate && t.raw_material_id === material.id && t.transaction_type === 'adjustment' && t.notes !== 'Opening Stock').reduce((s, t) => s + (t.quantity || 0), 0);
+                const closingQty     = openingQty + grnQty + consumptionQty + adjustmentsQty;
+                const isLow          = closingQty < (material.min_stock_level || 0);
                 const row = document.createElement('tr');
-                row.className = 'border-b border-gray-700';
                 row.innerHTML = `
-                    <td class="p-2 border border-gray-700">${material.name}</td>
-                    <td class="p-2 text-center border border-gray-700">${material.unit}</td>
-                    <td class="p-2 text-right border border-gray-700">${formatNumber(openingQty)}</td>
-                    <td class="p-2 text-right border border-gray-700">${formatNumber(grnQty)}</td>
-                    <td class="p-2 text-right border border-gray-700">${formatNumber(Math.abs(consumptionQty))}</td>
-                    <td class="p-2 text-right border border-gray-700">${formatNumber(adjustmentsQty)}</td>
-                    <td class="p-2 text-right border border-gray-700">${formatNumber(closingQty)}</td>
-                    <td class="p-2 text-center border border-gray-700 ${statusClass}">${status}</td>
-                `;
+                    <td class="nx-td-bold">${material.name}</td>
+                    <td style="text-align:center;color:var(--mid);">${material.unit}</td>
+                    <td style="text-align:right;">${formatNumber(openingQty)}</td>
+                    <td style="text-align:right;color:var(--green);">${formatNumber(grnQty)}</td>
+                    <td style="text-align:right;color:var(--red);">${formatNumber(Math.abs(consumptionQty))}</td>
+                    <td style="text-align:right;color:var(--mid);">${formatNumber(adjustmentsQty)}</td>
+                    <td style="text-align:right;font-weight:700;color:var(--white);">${formatNumber(closingQty)}</td>
+                    <td style="text-align:center;"><span class="nx-badge ${isLow ? 'nx-badge-red' : 'nx-badge-green'}">${isLow ? 'Low' : 'OK'}</span></td>`;
                 tbody.appendChild(row);
             });
         }
 
-        function renderSupplierSummary(periodTransactions, supplierMap) {
-            const tbody = document.getElementById('supplierSummaryBody');
+        function renderSupplierSummary(periodTx, supplierMap) {
+            const tbody  = document.getElementById('supplierSummaryBody');
+            const grnTx  = periodTx.filter(t => t.transaction_type === 'grn');
+            if (!grnTx.length) { tbody.innerHTML = EMPTY(3, 'No GRN transactions in this period'); return; }
             tbody.innerHTML = '';
-
-            const grnTransactions = periodTransactions.filter(t => t.transaction_type === 'grn');
-
-            if (grnTransactions.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="3" class="p-4 text-center text-gray-400 border border-gray-700">No GRN transactions in this period</td></tr>';
-                return;
-            }
-
-            const supplierGroups = {};
-            grnTransactions.forEach(tx => {
-                const supplierId = tx.supplier_id || 'unknown';
-                if (!supplierGroups[supplierId]) supplierGroups[supplierId] = { count: 0, totalQty: 0 };
-                supplierGroups[supplierId].count += 1;
-                supplierGroups[supplierId].totalQty += (tx.quantity || 0);
+            const groups = {};
+            grnTx.forEach(tx => {
+                const id = tx.supplier_id || 'unknown';
+                if (!groups[id]) groups[id] = { count: 0, totalQty: 0 };
+                groups[id].count++;
+                groups[id].totalQty += (tx.quantity || 0);
             });
-
-            Object.keys(supplierGroups).forEach(supplierId => {
-                const supplier = supplierMap[supplierId] || { name: 'Unknown Supplier' };
-                const group = supplierGroups[supplierId];
+            Object.keys(groups).forEach(id => {
+                const supplier = supplierMap[id] || { name: 'Unknown Supplier' };
                 const row = document.createElement('tr');
-                row.className = 'border-b border-gray-700';
                 row.innerHTML = `
-                    <td class="p-2 border border-gray-700">${supplier.name}</td>
-                    <td class="p-2 text-center border border-gray-700">${group.count}</td>
-                    <td class="p-2 text-right border border-gray-700">${formatNumber(group.totalQty)}</td>
-                `;
+                    <td class="nx-td-bold">${supplier.name}</td>
+                    <td style="text-align:center;">${groups[id].count}</td>
+                    <td style="text-align:right;">${formatNumber(groups[id].totalQty)}</td>`;
                 tbody.appendChild(row);
             });
         }
 
-        function renderPurchaseValueSummary(periodTransactions, materialMap, latestPriceMap) {
-            const tbody = document.getElementById('purchaseValueBody');
-            tbody.innerHTML = '';
-
-            const grnTransactions = periodTransactions.filter(t => t.transaction_type === 'grn');
-
-            // Group GRN qty by material
-            const grnByMaterial = {};
-            grnTransactions.forEach(tx => {
-                if (!grnByMaterial[tx.raw_material_id]) grnByMaterial[tx.raw_material_id] = 0;
-                grnByMaterial[tx.raw_material_id] += (tx.quantity || 0);
+        function renderPurchaseValueSummary(periodTx, materialMap, latestPriceMap) {
+            const tbody  = document.getElementById('purchaseValueBody');
+            const grnTx  = periodTx.filter(t => t.transaction_type === 'grn');
+            const byMat  = {};
+            grnTx.forEach(tx => {
+                if (!byMat[tx.raw_material_id]) byMat[tx.raw_material_id] = 0;
+                byMat[tx.raw_material_id] += (tx.quantity || 0);
             });
-
-            if (!Object.keys(grnByMaterial).length) {
-                tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-400 border border-gray-700">No GRN transactions in this period</td></tr>';
+            if (!Object.keys(byMat).length) {
+                tbody.innerHTML = EMPTY(5, 'No GRN transactions in this period');
                 document.getElementById('totalPurchaseValue').textContent = '—';
                 return;
             }
-
-            let grandTotal = 0;
-            let hasAnyPrice = false;
-
-            Object.keys(grnByMaterial).forEach(matId => {
-                const material = materialMap[matId] || {};
-                const qty = grnByMaterial[matId];
-                const rate = latestPriceMap[matId] || null;
+            tbody.innerHTML = '';
+            let grandTotal = 0; let hasPrice = false;
+            Object.keys(byMat).forEach(matId => {
+                const mat   = materialMap[matId] || {};
+                const qty   = byMat[matId];
+                const rate  = latestPriceMap[matId] || null;
                 const value = rate ? qty * rate : null;
-                if (value) { grandTotal += value; hasAnyPrice = true; }
-
+                if (value) { grandTotal += value; hasPrice = true; }
                 const row = document.createElement('tr');
-                row.className = 'border-b border-gray-700';
                 row.innerHTML = `
-                    <td class="p-2 border border-gray-700">${material.name || '-'}</td>
-                    <td class="p-2 text-center border border-gray-700">${material.unit || '-'}</td>
-                    <td class="p-2 text-right border border-gray-700">${formatNumber(qty)}</td>
-                    <td class="p-2 text-right border border-gray-700">${rate ? '₹' + formatNumber(rate) : '<span class="text-gray-500">No price set</span>'}</td>
-                    <td class="p-2 text-right border border-gray-700 font-mono">${value ? '₹' + formatNumber(value) : '<span class="text-gray-500">—</span>'}</td>
-                `;
+                    <td class="nx-td-bold">${mat.name || '—'}</td>
+                    <td style="text-align:center;color:var(--mid);">${mat.unit || '—'}</td>
+                    <td style="text-align:right;">${formatNumber(qty)}</td>
+                    <td style="text-align:right;">${rate ? '₹' + formatNumber(rate) : '<span style="color:var(--mid)">No price set</span>'}</td>
+                    <td style="text-align:right;font-weight:700;">${value ? '₹' + formatNumber(value) : '<span style="color:var(--mid)">—</span>'}</td>`;
                 tbody.appendChild(row);
             });
-
             document.getElementById('totalPurchaseValue').textContent =
-                hasAnyPrice ? '₹' + formatNumber(grandTotal) : '— (set prices in Settings)';
+                hasPrice ? '₹' + formatNumber(grandTotal) : '— (set prices in Settings)';
         }
 
         function renderProductPrices(products, latestProductPriceMap) {
             const tbody = document.getElementById('productPricesBody');
+            if (!products.length) { tbody.innerHTML = EMPTY(5, 'No products found'); return; }
             tbody.innerHTML = '';
-
-            if (!products.length) {
-                tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-400 border border-gray-700">No products found</td></tr>';
-                return;
-            }
-
             products.forEach(product => {
-                const priceData = latestProductPriceMap[product.id];
+                const pd  = latestProductPriceMap[product.id];
                 const row = document.createElement('tr');
-                row.className = 'border-b border-gray-700';
                 row.innerHTML = `
-                    <td class="p-2 border border-gray-700">${product.name}</td>
-                    <td class="p-2 text-center border border-gray-700">${product.unit}</td>
-                    <td class="p-2 text-right border border-gray-700 font-mono">${priceData ? '₹' + formatNumber(priceData.price) : '<span class="text-gray-500">Not set</span>'}</td>
-                    <td class="p-2 border border-gray-700">${priceData ? priceData.effective_date : '—'}</td>
-                    <td class="p-2 border border-gray-700 text-sm text-gray-400">${priceData ? (priceData.notes || '—') : '—'}</td>
-                `;
+                    <td class="nx-td-bold">${product.name}</td>
+                    <td style="text-align:center;color:var(--mid);">${product.unit}</td>
+                    <td style="text-align:right;font-weight:700;">${pd ? '₹' + formatNumber(pd.price) : '<span style="color:var(--mid)">Not set</span>'}</td>
+                    <td class="nx-td-mono">${pd ? pd.effective_date : '—'}</td>
+                    <td style="color:var(--mid);">${pd ? (pd.notes || '—') : '—'}</td>`;
                 tbody.appendChild(row);
             });
         }
 
-        // Print button handler
-        document.getElementById('printBtn').addEventListener('click', () => {
-            window.print();
-        });
-
-        // Initialize on page load
+        document.getElementById('printBtn').addEventListener('click', () => window.print());
         document.addEventListener('DOMContentLoaded', init);
     </script>
 </body>

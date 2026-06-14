@@ -4,163 +4,223 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Export for Accountant | Nexflow P2</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%231A1F2E'/><text y='.9em' font-size='80' x='10' fill='%2300BCD4'>N</text></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%230c0e14'/><text y='.9em' font-size='80' x='10' fill='%23ff5c1a'>N</text></svg>">
+<link rel="stylesheet" href="css/nexflow-design.css">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdn.tailwindcss.com"></script>
 <script src="js/supabase-client.js"></script>
 <script src="js/auth.js"></script>
 <script src="js/utils.js"></script>
 <script src="js/navbar.js"></script>
-<script>
-  tailwind.config = {
-    darkMode: 'class',
-    theme: {
-      extend: {
-        colors: {
-          'nexflow-dark-bg': '#1A1F2E',
-          'nexflow-text': '#E0E0E0',
-          'nexflow-teal': '#00BCD4',
-          'nexflow-green': '#00E676',
-          'nexflow-muted': '#94A3B8'
-        }
-      }
-    }
+<style>
+  /* Platform buttons */
+  .plat-btn {
+    padding: 14px 16px;
+    border-radius: var(--radius);
+    border: 2px solid var(--border);
+    background: var(--surface2);
+    text-align: left;
+    cursor: pointer;
+    transition: all 0.15s;
   }
-</script>
+  .plat-btn:hover { border-color: var(--border2); }
+  .plat-btn.active-tally { border-color: var(--orange); background: var(--orange-dim); }
+  .plat-btn.active-zoho  { border-color: #3b82f6;      background: rgba(59,130,246,0.1); }
+  .plat-name-tally { font-family: var(--condensed); font-weight: 800; font-size: 14px; color: var(--orange); text-transform: uppercase; margin-bottom: 3px; }
+  .plat-name-zoho  { font-family: var(--condensed); font-weight: 800; font-size: 14px; color: #60a5fa;       text-transform: uppercase; margin-bottom: 3px; }
+  .plat-sub  { font-size: 11px; color: var(--mid); }
+
+  /* Type buttons */
+  .type-btn {
+    padding: 9px 16px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border2);
+    background: transparent;
+    color: var(--mid);
+    font-family: var(--condensed);
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .type-btn:hover { border-color: var(--mid); color: var(--text); }
+  .type-btn.active { border-color: var(--orange); color: var(--orange); background: var(--orange-dim); }
+
+  /* Template preview cards */
+  .tmpl {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 12px;
+    transition: all 0.15s;
+  }
+  .tmpl.dim  { opacity: 0.3; }
+  .tmpl.lit  { border-color: var(--orange); opacity: 1; }
+  .tmpl-label-tally { font-family: var(--condensed); font-size: 10px; color: var(--orange); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+  .tmpl-label-zoho  { font-family: var(--condensed); font-size: 10px; color: #60a5fa;       text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+  .tmpl-desc { font-size: 13px; color: var(--light); }
+
+  /* Log area */
+  #logArea { display: none; }
+  #logInner {
+    padding: 14px 16px;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    line-height: 1.8;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+  .log-row { display: flex; gap: 12px; }
+  .log-ts   { color: var(--mid); flex-shrink: 0; }
+  .log-ok   { color: var(--green); }
+  .log-err  { color: var(--red); }
+  .log-info { color: var(--light); }
+
+  /* Stats bar */
+  #statsBar { display: none; }
+  .stat-val  { font-family: var(--condensed); font-weight: 900; font-size: 22px; color: var(--orange); line-height: 1; }
+  .stat-lbl  { font-size: 10px; color: var(--mid); text-transform: uppercase; letter-spacing: 1px; margin-top: 3px; }
+
+  /* Export spinner */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spin { animation: spin 0.7s linear infinite; display: inline-block; }
+
+  /* date card */
+  #dateCard { display: none; }
+
+  /* Warn box */
+  #warnBox { display: none; }
+</style>
 </head>
-<body class="bg-nexflow-dark-bg text-nexflow-text min-h-screen">
+<body>
 <div id="navbar-container"></div>
 
-<main class="container mx-auto px-4 py-6 max-w-2xl">
+<div class="nx-main">
+<div class="nx-page" style="max-width: 720px;">
 
-  <h1 class="text-2xl font-bold mb-1">Export for Accountant</h1>
-  <p class="text-nexflow-muted text-sm mb-6">Generate CSV files for TallyPrime or Zoho Inventory</p>
-
-  <!-- Step 1: Platform -->
-  <div class="bg-[#2C3440] rounded-lg mb-4 overflow-hidden">
-    <div class="flex items-center gap-2 px-4 py-3 border-b border-gray-600">
-      <div class="w-2 h-2 rounded-full bg-nexflow-teal"></div>
-      <span class="text-xs font-semibold uppercase tracking-widest text-nexflow-muted">01 · Select Platform</span>
-    </div>
-    <div class="p-4">
-      <div class="grid grid-cols-2 gap-3 mb-5">
-        <button id="btn-tally" onclick="setPlatform('tally')"
-          class="platform-btn active-tally p-4 rounded-lg border-2 border-orange-500 bg-orange-500/10 text-left transition">
-          <div class="font-bold text-orange-400 font-mono text-sm mb-1">TallyPrime</div>
-          <div class="text-xs text-nexflow-muted">CSV · Masters + Vouchers</div>
-        </button>
-        <button id="btn-zoho" onclick="setPlatform('zoho')"
-          class="platform-btn p-4 rounded-lg border-2 border-gray-600 bg-transparent text-left transition hover:border-gray-500">
-          <div class="font-bold text-blue-400 font-mono text-sm mb-1">Zoho Inventory</div>
-          <div class="text-xs text-nexflow-muted">CSV · Items + Bills</div>
-        </button>
-      </div>
-
-      <div class="flex items-center gap-2 mb-3">
-        <div class="w-1.5 h-1.5 rounded-full bg-gray-500"></div>
-        <span class="text-xs font-semibold uppercase tracking-widest text-nexflow-muted">02 · Export Content</span>
-      </div>
-      <div class="grid grid-cols-2 gap-2 mb-5">
-        <button id="btn-masters" onclick="setType('masters')"
-          class="type-btn py-2 px-4 rounded border border-nexflow-teal text-nexflow-teal bg-nexflow-teal/10 text-sm font-mono transition">
-          Inventory Masters
-        </button>
-        <button id="btn-transactions" onclick="setType('transactions')"
-          class="type-btn py-2 px-4 rounded border border-gray-600 text-nexflow-muted bg-transparent text-sm font-mono transition hover:border-gray-500 hover:text-nexflow-text">
-          Transaction Logs
-        </button>
-      </div>
-
-      <!-- Template preview -->
-      <div class="grid grid-cols-2 gap-2" id="tmplGrid">
-        <div class="tmpl bg-[#1A1F2E] border border-gray-700 rounded p-3 transition" data-plat="tally" id="tmpl-tally-masters">
-          <div class="text-xs font-mono text-orange-400 uppercase tracking-wide mb-1">Tally · Masters</div>
-          <div class="text-sm text-nexflow-text">Stock Items Master</div>
-        </div>
-        <div class="tmpl bg-[#1A1F2E] border border-gray-700 rounded p-3 opacity-30 transition" data-plat="tally" id="tmpl-tally-transactions">
-          <div class="text-xs font-mono text-orange-400 uppercase tracking-wide mb-1">Tally · Vouchers</div>
-          <div class="text-sm text-nexflow-text">Purchase + Stock Journal</div>
-        </div>
-        <div class="tmpl bg-[#1A1F2E] border border-gray-700 rounded p-3 opacity-30 transition" data-plat="zoho" id="tmpl-zoho-masters">
-          <div class="text-xs font-mono text-blue-400 uppercase tracking-wide mb-1">Zoho · Masters</div>
-          <div class="text-sm text-nexflow-text">Items Master</div>
-        </div>
-        <div class="tmpl bg-[#1A1F2E] border border-gray-700 rounded p-3 opacity-30 transition" data-plat="zoho" id="tmpl-zoho-transactions">
-          <div class="text-xs font-mono text-blue-400 uppercase tracking-wide mb-1">Zoho · Bills</div>
-          <div class="text-sm text-nexflow-text">Inward Purchase Bills</div>
-        </div>
-      </div>
+  <!-- PAGE HEADER -->
+  <div class="nx-page-header">
+    <div>
+      <div class="nx-eyebrow">Accountant Tools</div>
+      <div class="nx-page-title">Export <span>for CA</span></div>
+      <div class="nx-page-sub">Generate CSV files for TallyPrime or Zoho Inventory</div>
     </div>
   </div>
 
-  <!-- Step 2: Date Range (transactions only) -->
-  <div id="dateCard" class="hidden bg-[#2C3440] rounded-lg mb-4 overflow-hidden">
-    <div class="flex items-center gap-2 px-4 py-3 border-b border-gray-600">
-      <div class="w-2 h-2 rounded-full bg-nexflow-teal"></div>
-      <span class="text-xs font-semibold uppercase tracking-widest text-nexflow-muted">03 · Date Range</span>
-    </div>
-    <div class="p-4 grid grid-cols-2 gap-3">
-      <div>
-        <label class="block text-xs text-nexflow-muted uppercase tracking-wide mb-1 font-mono">From Date</label>
-        <input type="date" id="fromDate" class="w-full p-2 rounded bg-[#1A1F2E] border border-gray-600 text-nexflow-text font-mono text-sm focus:border-nexflow-teal outline-none" style="color-scheme:dark">
-      </div>
-      <div>
-        <label class="block text-xs text-nexflow-muted uppercase tracking-wide mb-1 font-mono">To Date</label>
-        <input type="date" id="toDate" class="w-full p-2 rounded bg-[#1A1F2E] border border-gray-600 text-nexflow-text font-mono text-sm focus:border-nexflow-teal outline-none" style="color-scheme:dark">
+  <!-- STEP 1: Platform + Type -->
+  <div class="nx-card nx-mb-16">
+    <div class="nx-card-header">
+      <div class="nx-card-title">
+        <div class="nx-step-label"><span class="nx-step-num">1</span> Select Platform</div>
       </div>
     </div>
-  </div>
 
-  <!-- Step 3: Generate -->
-  <div class="bg-[#2C3440] rounded-lg mb-4 overflow-hidden">
-    <div class="flex items-center gap-2 px-4 py-3 border-b border-gray-600">
-      <div class="w-2 h-2 rounded-full bg-nexflow-teal"></div>
-      <span class="text-xs font-semibold uppercase tracking-widest text-nexflow-muted">04 · Generate File</span>
-    </div>
-    <div class="p-4">
-      <!-- Warning box -->
-      <div id="warnBox" class="hidden bg-orange-900/30 border border-orange-500/40 rounded p-3 mb-4 text-sm text-orange-300">
-        <div class="font-mono font-bold text-xs uppercase tracking-wide mb-1">⚠ Incomplete Data Warning</div>
-        <span id="warnMsg"></span>
-      </div>
-
-      <button id="exportBtn" onclick="runExport()"
-        class="w-full py-3 rounded bg-nexflow-green text-gray-900 font-bold font-mono text-sm hover:bg-green-400 transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
-        <svg id="spinner" class="hidden animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
-          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
-        </svg>
-        <span id="exportBtnLabel">⬇ Download CSV</span>
+    <div class="nx-grid-2" style="margin-bottom: 20px;">
+      <button id="btn-tally" onclick="setPlatform('tally')" class="plat-btn active-tally">
+        <div class="plat-name-tally">TallyPrime</div>
+        <div class="plat-sub">CSV · Masters + Vouchers</div>
+      </button>
+      <button id="btn-zoho" onclick="setPlatform('zoho')" class="plat-btn">
+        <div class="plat-name-zoho">Zoho Inventory</div>
+        <div class="plat-sub">CSV · Items + Bills</div>
       </button>
     </div>
 
+    <div class="nx-step-label nx-mb-16"><span class="nx-step-num">2</span> Export Content</div>
+    <div style="display:flex; gap:8px; margin-bottom:20px;">
+      <button id="btn-masters"      onclick="setType('masters')"      class="type-btn active">Inventory Masters</button>
+      <button id="btn-transactions" onclick="setType('transactions')" class="type-btn">Transaction Logs</button>
+    </div>
+
+    <!-- Template preview -->
+    <div class="nx-grid-2" id="tmplGrid">
+      <div class="tmpl lit" data-plat="tally" id="tmpl-tally-masters">
+        <div class="tmpl-label-tally">Tally · Masters</div>
+        <div class="tmpl-desc">Stock Items Master</div>
+      </div>
+      <div class="tmpl dim" data-plat="tally" id="tmpl-tally-transactions">
+        <div class="tmpl-label-tally">Tally · Vouchers</div>
+        <div class="tmpl-desc">Purchase + Stock Journal</div>
+      </div>
+      <div class="tmpl dim" data-plat="zoho" id="tmpl-zoho-masters">
+        <div class="tmpl-label-zoho">Zoho · Masters</div>
+        <div class="tmpl-desc">Items Master</div>
+      </div>
+      <div class="tmpl dim" data-plat="zoho" id="tmpl-zoho-transactions">
+        <div class="tmpl-label-zoho">Zoho · Bills</div>
+        <div class="tmpl-desc">Inward Purchase Bills</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 2: Date Range (transactions only) -->
+  <div id="dateCard" class="nx-card nx-mb-16">
+    <div class="nx-card-header">
+      <div class="nx-card-title">
+        <div class="nx-step-label"><span class="nx-step-num">3</span> Date Range</div>
+      </div>
+    </div>
+    <div class="nx-form-row">
+      <div class="nx-form-group">
+        <label>From Date</label>
+        <input type="date" id="fromDate" class="nx-input" style="color-scheme:dark;">
+      </div>
+      <div class="nx-form-group">
+        <label>To Date</label>
+        <input type="date" id="toDate" class="nx-input" style="color-scheme:dark;">
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 3: Generate -->
+  <div class="nx-card nx-mb-16">
+    <div class="nx-card-header">
+      <div class="nx-card-title">
+        <div class="nx-step-label"><span class="nx-step-num">4</span> Generate File</div>
+      </div>
+    </div>
+
+    <!-- Warning box -->
+    <div id="warnBox" class="nx-alert nx-alert-orange nx-mb-16">
+      <span class="nx-alert-icon">⚠</span>
+      <div>
+        <div class="nx-bold" style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px;">Incomplete Data Warning</div>
+        <span id="warnMsg" style="font-size:13px;"></span>
+      </div>
+    </div>
+
+    <button id="exportBtn" onclick="runExport()" class="nx-btn nx-btn-green nx-btn-full nx-btn-lg">
+      <span id="exportBtnLabel">⬇ Download CSV</span>
+    </button>
+
     <!-- Stats bar -->
-    <div id="statsBar" class="hidden flex gap-6 flex-wrap px-4 py-3 border-t border-gray-600 bg-nexflow-teal/5">
+    <div id="statsBar" style="display:flex; gap:28px; flex-wrap:wrap; padding-top:18px; margin-top:18px; border-top:1px solid var(--border);">
       <div>
-        <div id="statRows" class="font-mono font-bold text-nexflow-teal text-lg">—</div>
-        <div class="text-xs text-nexflow-muted uppercase tracking-wide">Rows Exported</div>
+        <div id="statRows" class="stat-val">—</div>
+        <div class="stat-lbl">Rows Exported</div>
       </div>
       <div>
-        <div id="statFile" class="font-mono font-bold text-nexflow-teal text-lg">—</div>
-        <div class="text-xs text-nexflow-muted uppercase tracking-wide">File</div>
+        <div id="statFile" class="stat-val" style="font-size:14px; word-break:break-all;">—</div>
+        <div class="stat-lbl">File</div>
       </div>
       <div>
-        <div id="statPlatform" class="font-mono font-bold text-nexflow-teal text-lg">—</div>
-        <div class="text-xs text-nexflow-muted uppercase tracking-wide">Platform</div>
+        <div id="statPlatform" class="stat-val">—</div>
+        <div class="stat-lbl">Platform</div>
       </div>
     </div>
   </div>
 
   <!-- Export Log -->
-  <div id="logArea" class="hidden bg-[#1A1F2E] border border-gray-700 rounded-lg overflow-hidden">
-    <div class="flex items-center gap-2 px-4 py-2 border-b border-gray-700">
-      <div class="w-1.5 h-1.5 rounded-full bg-gray-500"></div>
-      <span class="text-xs font-mono text-nexflow-muted uppercase tracking-widest">Export Log</span>
+  <div id="logArea" class="nx-card">
+    <div class="nx-card-header">
+      <div class="nx-card-title">Export Log</div>
     </div>
-    <div id="logInner" class="p-4 font-mono text-xs leading-relaxed max-h-48 overflow-y-auto space-y-1"></div>
+    <div id="logInner"></div>
   </div>
 
-</main>
+</div>
+</div>
 
 <script>
 // ─── STATE ───────────────────────────────────────────────────────────────────
@@ -182,14 +242,14 @@ const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov
 
 function fmtTally(dateStr) {
   if (!dateStr) return '';
-  const d = new Date(dateStr + 'T00:00:00');
+  const d  = new Date(dateStr + 'T00:00:00');
   const dd = String(d.getDate()).padStart(2,'0');
   return `${dd}-${MONTHS[d.getMonth()]}-${d.getFullYear()}`;
 }
 
 function fmtZoho(dateStr) {
   if (!dateStr) return '';
-  const d = new Date(dateStr + 'T00:00:00');
+  const d  = new Date(dateStr + 'T00:00:00');
   const mm = String(d.getMonth()+1).padStart(2,'0');
   const dd = String(d.getDate()).padStart(2,'0');
   return `${d.getFullYear()}-${mm}-${dd}`;
@@ -216,20 +276,20 @@ function downloadCSV(filename, rows) {
 function log(msg, type = 'info') {
   const area  = document.getElementById('logArea');
   const inner = document.getElementById('logInner');
-  area.classList.remove('hidden');
+  area.style.display = 'block';
   const now = new Date();
   const ts  = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
   const line = document.createElement('div');
-  line.className = 'flex gap-3';
-  const colors = { ok: 'text-nexflow-green', err: 'text-red-400', info: 'text-nexflow-text' };
-  line.innerHTML = `<span class="text-nexflow-muted flex-shrink-0">${ts}</span><span class="${colors[type] || colors.info}">${msg}</span>`;
+  line.className = 'log-row';
+  const cls = type === 'ok' ? 'log-ok' : type === 'err' ? 'log-err' : 'log-info';
+  line.innerHTML = `<span class="log-ts">${ts}</span><span class="${cls}">${msg}</span>`;
   inner.appendChild(line);
   inner.scrollTop = inner.scrollHeight;
 }
 
 function clearLog() {
   document.getElementById('logInner').innerHTML = '';
-  document.getElementById('logArea').classList.add('hidden');
+  document.getElementById('logArea').style.display = 'none';
 }
 
 // ─── UI HELPERS ──────────────────────────────────────────────────────────────
@@ -237,28 +297,16 @@ function setPlatform(p) {
   currentPlatform = p;
   const tallyBtn = document.getElementById('btn-tally');
   const zohoBtn  = document.getElementById('btn-zoho');
-  if (p === 'tally') {
-    tallyBtn.className = 'platform-btn p-4 rounded-lg border-2 border-orange-500 bg-orange-500/10 text-left transition';
-    zohoBtn.className  = 'platform-btn p-4 rounded-lg border-2 border-gray-600 bg-transparent text-left transition hover:border-gray-500';
-  } else {
-    zohoBtn.className  = 'platform-btn p-4 rounded-lg border-2 border-blue-500 bg-blue-500/10 text-left transition';
-    tallyBtn.className = 'platform-btn p-4 rounded-lg border-2 border-gray-600 bg-transparent text-left transition hover:border-gray-500';
-  }
+  tallyBtn.className = 'plat-btn' + (p === 'tally' ? ' active-tally' : '');
+  zohoBtn.className  = 'plat-btn' + (p === 'zoho'  ? ' active-zoho'  : '');
   updateTemplateHighlight();
 }
 
 function setType(t) {
   currentType = t;
-  const mastersBtn = document.getElementById('btn-masters');
-  const txnBtn     = document.getElementById('btn-transactions');
-  if (t === 'masters') {
-    mastersBtn.className = 'type-btn py-2 px-4 rounded border border-nexflow-teal text-nexflow-teal bg-nexflow-teal/10 text-sm font-mono transition';
-    txnBtn.className     = 'type-btn py-2 px-4 rounded border border-gray-600 text-nexflow-muted bg-transparent text-sm font-mono transition hover:border-gray-500 hover:text-nexflow-text';
-  } else {
-    txnBtn.className     = 'type-btn py-2 px-4 rounded border border-nexflow-teal text-nexflow-teal bg-nexflow-teal/10 text-sm font-mono transition';
-    mastersBtn.className = 'type-btn py-2 px-4 rounded border border-gray-600 text-nexflow-muted bg-transparent text-sm font-mono transition hover:border-gray-500 hover:text-nexflow-text';
-  }
-  document.getElementById('dateCard').classList.toggle('hidden', t !== 'transactions');
+  document.getElementById('btn-masters').className      = 'type-btn' + (t === 'masters'      ? ' active' : '');
+  document.getElementById('btn-transactions').className = 'type-btn' + (t === 'transactions' ? ' active' : '');
+  document.getElementById('dateCard').style.display = t === 'transactions' ? 'block' : 'none';
   updateTemplateHighlight();
 }
 
@@ -266,33 +314,32 @@ function updateTemplateHighlight() {
   document.querySelectorAll('.tmpl').forEach(el => {
     const platMatch = el.dataset.plat === currentPlatform;
     const typeMatch = el.id.includes(currentType === 'masters' ? 'masters' : 'transactions');
-    el.classList.toggle('opacity-30', !(platMatch && typeMatch));
-    el.classList.toggle('border-nexflow-teal', platMatch && typeMatch);
-    el.classList.toggle('border-gray-700', !(platMatch && typeMatch));
+    const active    = platMatch && typeMatch;
+    el.classList.toggle('lit', active);
+    el.classList.toggle('dim', !active);
   });
 }
 
 function setLoading(on) {
-  const btn  = document.getElementById('exportBtn');
-  const spin = document.getElementById('spinner');
-  const lbl  = document.getElementById('exportBtnLabel');
+  const btn = document.getElementById('exportBtn');
+  const lbl = document.getElementById('exportBtnLabel');
   btn.disabled = on;
-  spin.classList.toggle('hidden', !on);
-  lbl.textContent = on ? 'Generating...' : '⬇ Download CSV';
+  lbl.innerHTML = on
+    ? '<span class="spin" style="display:inline-block; margin-right:8px;">⟳</span>Generating...'
+    : '⬇ Download CSV';
 }
 
 function showStats(rows, filename) {
   document.getElementById('statRows').textContent     = rows;
   document.getElementById('statFile').textContent     = filename;
   document.getElementById('statPlatform').textContent = currentPlatform === 'tally' ? 'TallyPrime' : 'Zoho';
-  document.getElementById('statsBar').classList.remove('hidden');
   document.getElementById('statsBar').style.display   = 'flex';
 }
 
 function showWarn(msg) {
   const box = document.getElementById('warnBox');
   document.getElementById('warnMsg').textContent = msg;
-  box.classList.toggle('hidden', !msg);
+  box.style.display = msg ? 'flex' : 'none';
 }
 
 // ─── AUTH ────────────────────────────────────────────────────────────────────
@@ -567,7 +614,6 @@ async function exportZohoTransactions() {
   const headers = ['Vendor Name','Source of Supply','Bill Number','Bill Date','Item Name','SKU','Quantity','Purchase Price','Account','Tax Name'];
   const rows    = [headers];
 
-  // Helper: derive Zoho tax name from gst_rate
   function zohoTaxName(rate) {
     if (!rate || rate <= 0) return 'GST0';
     const r = parseFloat(rate);
@@ -579,7 +625,6 @@ async function exportZohoTransactions() {
     return `GST${r}`;
   }
 
-  // Auto-increment bill number counter for rows missing invoice_no
   let billCounter = 1;
 
   txns.forEach(t => {

@@ -4,410 +4,457 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Products & BOM | Nexflow P2</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%231A1F2E'/><text y='.9em' font-size='80' x='10' fill='%2300BCD4'>N</text></svg>">
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%230c0e14'/><text y='.9em' font-size='80' x='10' fill='%23ff5c1a'>N</text></svg>">
+    <link rel="stylesheet" href="css/nexflow-design.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="js/supabase-client.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/utils.js"></script>
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    colors: {
-                        'nexflow-dark-bg': '#1A1F2E',
-                        'nexflow-text': '#E0E0E0',
-                        'nexflow-teal': '#00BCD4',
-                        'nexflow-green': '#00E676',
-                        'nexflow-muted': '#94A3B8'
-                    }
-                }
-            }
-        }
-    </script>
     <script src="js/navbar.js"></script>
+
+    <style>
+        .nx-modal-overlay {
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.65);
+            z-index: 500;
+            display: flex; align-items: center; justify-content: center;
+            padding: 20px;
+        }
+        .nx-modal {
+            background: var(--surface);
+            border: 1px solid var(--border2);
+            border-radius: var(--radius-lg);
+            padding: 28px; width: 100%; max-width: 460px;
+            box-shadow: var(--shadow-md);
+        }
+        .nx-modal-title {
+            font-family: var(--condensed); font-weight: 800; font-size: 16px;
+            color: var(--white); text-transform: uppercase; letter-spacing: 0.5px;
+            margin-bottom: 20px;
+        }
+        #bomDetails { display: none; }
+    </style>
 </head>
-<body class="bg-nexflow-dark-bg text-nexflow-text">
+<body>
     <div id="navbar-container"></div>
-    <main class="container mx-auto px-4 py-6">
-        <h1 class="text-3xl font-bold mb-6" data-en="Products & Bill of Materials" data-mr="उत्पादने आणि बीओएम">Products & Bill of Materials</h1>
 
-        <div id="loadingSpinner" class="flex justify-center items-center py-12">
-            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-nexflow-teal"></div>
-        </div>
+    <div class="nx-main">
+        <div class="nx-page">
 
-        <div id="errorState" class="hidden bg-red-900 border border-red-700 rounded p-4 mb-6">
-            <p class="font-bold" data-en="Could not load data" data-mr="डेटा लोड करू शकला नाही">Could not load data</p>
-            <p class="text-sm" data-en="Check your connection and refresh the page." data-mr="तुमचे कनेक्शन तपासा आणि पृष्ठ रीफ्रेश करा.">Check your connection and refresh the page.</p>
-        </div>
-
-        <div id="productsContent" class="hidden bg-gray-800 rounded-lg p-6 mb-6">
-            <h2 class="text-2xl font-bold mb-4" data-en="Products" data-mr="उत्पादने">Products</h2>
-
-            <div class="grid md:grid-cols-2 gap-6 mb-6">
-                <div class="bg-gray-700 p-6 rounded">
-                    <h3 class="text-xl mb-4" data-en="Add New Product" data-mr="नवीन उत्पादन जोडा">Add New Product</h3>
-                    <form id="add-product-form" class="space-y-4">
-                        <div>
-                            <label class="block mb-2 text-sm font-medium" data-en="Product Name" data-mr="उत्पादन नाव">Product Name</label>
-                            <input type="text" name="name" required
-                                class="w-full p-3 bg-gray-600 rounded text-white"
-                                placeholder="Enter product name"
-                                data-en="Enter product name"
-                                data-mr="उत्पादन नाव प्रविष्ट करा">
-                        </div>
-
-                        <div>
-                            <label class="block mb-2 text-sm font-medium" data-en="Description" data-mr="वर्णन">Description</label>
-                            <textarea name="description" rows="2"
-                                class="w-full p-3 bg-gray-600 rounded text-white"
-                                placeholder="Optional description"
-                                data-en="Optional description"
-                                data-mr="वर्णन (वैकल्पिक)"></textarea>
-                        </div>
-
-                        <div>
-                            <label class="block mb-2 text-sm font-medium" data-en="Unit" data-mr="एकक">Unit</label>
-                            <select name="unit" required class="w-full p-3 bg-gray-600 rounded text-white">
-                                <option value="" data-en="Select Unit" data-mr="एकक निवडा">Select Unit</option>
-                                <option value="NOS" data-en="NOS (Numbers)" data-mr="नग">NOS (Numbers)</option>
-                                <option value="KG" data-en="KG (Kilograms)" data-mr="किलोग्राम">KG (Kilograms)</option>
-                                <option value="L" data-en="L (Liters)" data-mr="लिटर">L (Liters)</option>
-                                <option value="MTR" data-en="MTR (Meters)" data-mr="मीटर">MTR (Meters)</option>
-                                <option value="PCS" data-en="PCS (Pieces)" data-mr="तुकडे">PCS (Pieces)</option>
-                            </select>
-                        </div>
-
-                        <button type="submit" class="w-full bg-nexflow-green text-white p-3 rounded hover:bg-green-600 transition font-medium"
-                            data-en="Add Product" data-mr="उत्पादन जोडा">
-                            Add Product
-                        </button>
-                    </form>
-                </div>
-
-                <div class="bg-gray-700 p-6 rounded">
-                    <h3 class="text-xl mb-4" data-en="Products List" data-mr="उत्पादनांची यादी">Products List</h3>
-                    <div class="overflow-x-auto">
-                        <table class="w-full">
-                            <thead>
-                                <tr class="bg-gray-600">
-                                    <th class="p-2 text-left" data-en="Name" data-mr="नाव">Name</th>
-                                    <th class="p-2 text-left" data-en="Unit" data-mr="एकक">Unit</th>
-                                    <th class="p-2 text-left" data-en="Actions" data-mr="क्रिया">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody id="products-list">
-                                </tbody>
-                        </table>
-                    </div>
+            <!-- PAGE HEADER -->
+            <div class="nx-page-header">
+                <div>
+                    <div class="nx-eyebrow">Bill of Materials</div>
+                    <div class="nx-page-title">Products <span>&amp; BOM</span></div>
+                    <div class="nx-page-sub">Define products and their raw material consumption</div>
                 </div>
             </div>
-        </div>
 
-        <div id="bomContent" class="hidden bg-gray-800 rounded-lg p-6">
-            <h2 class="text-2xl font-bold mb-4" data-en="Bill of Materials (BOM)" data-mr="बिल ऑफ मटेरियल्स (BOM)">Bill of Materials (BOM)</h2>
-
-            <div class="bg-blue-900 border border-blue-700 rounded p-4 mb-6">
-                <h3 class="font-bold mb-2" data-en="📋 How BOM Works" data-mr="📋 BOM कसे कार्य करते">📋 How BOM Works</h3>
-                <p class="text-sm mb-2" data-en="Define the recipe for each product. Example: KS6: 4 × Nuts, 2 KG Copper, 1 × Bracket" data-mr="प्रत्येक उत्पादनासाठी रेसिपी परिभाषित करा. उदाहरण: KS6: 4 × नट्स, 2 KG कॉपर, 1 × ब्रॅकेट">
-                    Define the recipe for each product. Example: KS6: 4 × Nuts, 2 KG Copper, 1 × Bracket
-                </p>
-                <p class="text-sm" data-en="When you dispatch 10 units of KS6, it will auto-deduct: 40 Nuts, 20 KG Copper, 10 Brackets" data-mr="जेव्हा तुम्ही KS6 च्या 10 युनिट डिस्पॅच कराल, तेव्हा स्वयंचलितपणे कपात होईल: 40 नट्स, 20 KG कॉपर, 10 ब्रॅकेट">
-                    When you dispatch 10 units of KS6, it will auto-deduct: 40 Nuts, 20 KG Copper, 10 Brackets
-                </p>
+            <!-- LOADING -->
+            <div id="loadingSpinner">
+                <div class="nx-loading"><div class="nx-spinner"></div><span>Loading...</span></div>
             </div>
 
-            <div class="mb-6">
-                <label class="block mb-2 text-sm font-medium" data-en="Select Product to Manage BOM" data-mr="BOM व्यवस्थापित करण्यासाठी उत्पादन निवडा">Select Product to Manage BOM</label>
-                <select id="bom-product-select" class="w-full md:w-1/2 p-3 bg-gray-700 rounded text-white">
-                    <option value="" data-en="-- Select a Product --" data-mr="-- उत्पादन निवडा --">-- Select a Product --</option>
-                </select>
+            <!-- ERROR STATE -->
+            <div id="errorState" style="display:none;" class="nx-alert nx-alert-red nx-mb-24">
+                <span class="nx-alert-icon">⚠</span>
+                <div>
+                    <div class="nx-bold" data-en="Could not load data" data-mr="डेटा लोड करू शकला नाही">Could not load data</div>
+                    <div data-en="Check your connection and refresh the page." data-mr="तुमचे कनेक्शन तपासा आणि पृष्ठ रीफ्रेश करा.">Check your connection and refresh the page.</div>
+                </div>
             </div>
 
-            <div id="bom-details" class="hidden">
-                <div class="grid md:grid-cols-2 gap-6">
-                    <div class="bg-gray-700 p-6 rounded">
-                        <h3 class="text-xl mb-4" data-en="Current Recipe" data-mr="सध्याची रेसिपी">Current Recipe</h3>
-                        <div id="bom-product-name" class="text-lg font-semibold mb-4 text-nexflow-teal"></div>
-                        <div class="overflow-x-auto">
-                            <table class="w-full">
-                                <thead>
-                                    <tr class="bg-gray-600">
-                                        <th class="p-2 text-left" data-en="Raw Material" data-mr="कच्चा माल">Raw Material</th>
-                                        <th class="p-2 text-left" data-en="Qty/Unit" data-mr="प्रति युनिट">Qty/Unit</th>
-                                        <th class="p-2 text-left" data-en="Unit" data-mr="एकक">Unit</th>
-                                        <th class="p-2 text-left" data-en="Actions" data-mr="क्रिया">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="bom-list">
-                                    </tbody>
-                            </table>
-                        </div>
-                        <div id="bom-empty" class="text-center py-8 text-nexflow-muted hidden">
-                            <p data-en="No ingredients added yet" data-mr="अद्याप कोणतेही घटक जोडलेले नाहीत">No ingredients added yet</p>
-                        </div>
-                    </div>
+            <!-- MAIN CONTENT -->
+            <div id="productsContent" style="display:none;">
 
-                    <div class="bg-gray-700 p-6 rounded">
-                        <h3 class="text-xl mb-4" data-en="Add Ingredient" data-mr="घटक जोडा">Add Ingredient</h3>
-                        <form id="add-ingredient-form" class="space-y-4">
-                            <div>
-                                <label class="block mb-2 text-sm font-medium" data-en="Raw Material" data-mr="कच्चा माल">Raw Material</label>
-                                <select name="material_id" required id="ingredient-material-select" class="w-full p-3 bg-gray-600 rounded text-white">
-                                    <option value="" data-en="-- Select Raw Material --" data-mr="-- कच्चा माल निवडा --">-- Select Raw Material --</option>
+                <!-- ── SECTION: PRODUCTS ── -->
+                <div class="nx-grid-2" style="align-items:start; margin-bottom:24px;">
+
+                    <!-- Add Product -->
+                    <div class="nx-card">
+                        <div class="nx-card-header">
+                            <div class="nx-card-title" data-en="Add New Product" data-mr="नवीन उत्पादन जोडा">Add New Product</div>
+                        </div>
+                        <form id="add-product-form">
+                            <div class="nx-form-group">
+                                <label data-en="Product Name" data-mr="उत्पादन नाव">Product Name</label>
+                                <input type="text" name="name" required class="nx-input"
+                                       data-en="Enter product name" data-mr="उत्पादन नाव प्रविष्ट करा"
+                                       placeholder="Enter product name">
+                            </div>
+                            <div class="nx-form-group">
+                                <label data-en="Description" data-mr="वर्णन">Description</label>
+                                <textarea name="description" rows="2" class="nx-input"
+                                          data-en="Optional description" data-mr="वर्णन (वैकल्पिक)"
+                                          placeholder="Optional description" style="resize:vertical;"></textarea>
+                            </div>
+                            <div class="nx-form-group">
+                                <label data-en="Unit" data-mr="एकक">Unit</label>
+                                <select name="unit" required class="nx-input">
+                                    <option value="" data-en="Select Unit" data-mr="एकक निवडा">Select Unit</option>
+                                    <option value="NOS" data-en="NOS (Numbers)" data-mr="नग">NOS (Numbers)</option>
+                                    <option value="KG"  data-en="KG (Kilograms)" data-mr="किलोग्राम">KG (Kilograms)</option>
+                                    <option value="L"   data-en="L (Liters)"     data-mr="लिटर">L (Liters)</option>
+                                    <option value="MTR" data-en="MTR (Meters)"   data-mr="मीटर">MTR (Meters)</option>
+                                    <option value="PCS" data-en="PCS (Pieces)"   data-mr="तुकडे">PCS (Pieces)</option>
                                 </select>
                             </div>
-
-                            <div>
-                                <label class="block mb-2 text-sm font-medium" data-en="Quantity per Unit of Product" data-mr="उत्पादनाच्या प्रति युनिट प्रमाण">Quantity per Unit of Product</label>
-                                <input type="number" name="qty_per_unit" required step="0.001" min="0.001"
-                                    class="w-full p-3 bg-gray-600 rounded text-white"
-                                    placeholder="e.g., 2.5"
-                                    data-en="e.g., 2.5"
-                                    data-mr="उदा., 2.5">
-                                <p class="text-xs text-nexflow-muted mt-1" data-en="Example: If 1 unit of product needs 2.5 KG of this material, enter 2.5" data-mr="उदाहरण: जर उत्पादनाच्या 1 युनिटला या सामग्रीच्या 2.5 KG लागत असेल तर 2.5 प्रविष्ट करा">
-                                    Example: If 1 unit of product needs 2.5 KG of this material, enter 2.5
-                                </p>
-                            </div>
-
-                            <button type="submit" class="w-full bg-nexflow-green text-white p-3 rounded hover:bg-green-600 transition font-medium"
-                                data-en="Add to Recipe" data-mr="रेसिपीमध्ये जोडा">
-                                Add to Recipe
-                            </button>
+                            <button type="submit" class="nx-btn nx-btn-green nx-btn-full"
+                                    data-en="Add Product" data-mr="उत्पादन जोडा">Add Product</button>
                         </form>
                     </div>
+
+                    <!-- Products List -->
+                    <div class="nx-card">
+                        <div class="nx-card-header">
+                            <div class="nx-card-title" data-en="Products List" data-mr="उत्पादनांची यादी">Products List</div>
+                        </div>
+                        <div class="nx-table-wrap">
+                            <table class="nx-table">
+                                <thead>
+                                    <tr>
+                                        <th data-en="Name"    data-mr="नाव">Name</th>
+                                        <th data-en="Unit"    data-mr="एकक">Unit</th>
+                                        <th data-en="BOM"     data-mr="BOM">BOM</th>
+                                        <th data-en="Actions" data-mr="क्रिया" style="text-align:center;">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="products-list"></tbody>
+                            </table>
+                        </div>
+                        <div id="productsEmpty" style="display:none;" class="nx-empty-state">
+                            <div class="nx-empty-icon">📦</div>
+                            <div data-en="No products added yet." data-mr="अद्याप कोणतेही उत्पादन जोडलेले नाही.">No products added yet.</div>
+                        </div>
+                    </div>
                 </div>
-            </div>
+
+                <!-- ── SECTION: BOM ── -->
+                <div class="nx-card">
+                    <div class="nx-card-header">
+                        <div class="nx-card-title" data-en="Bill of Materials (BOM)" data-mr="बिल ऑफ मटेरियल्स (BOM)">Bill of Materials (BOM)</div>
+                    </div>
+
+                    <!-- How BOM works info -->
+                    <div class="nx-alert nx-alert-orange nx-mb-24">
+                        <span class="nx-alert-icon">📋</span>
+                        <div>
+                            <div class="nx-bold" data-en="How BOM Works" data-mr="BOM कसे कार्य करते">How BOM Works</div>
+                            <div style="font-size:13px; margin-top:4px;"
+                                 data-en="Define the recipe for each product. When you dispatch 10 units of KS6 with BOM: 2 KG Copper → auto-deducts 20 KG Copper from stock."
+                                 data-mr="प्रत्येक उत्पादनासाठी रेसिपी परिभाषित करा. जेव्हा तुम्ही KS6 च्या 10 युनिट डिस्पॅच कराल, BOM: 2 KG कॉपर → स्टॉकमधून 20 KG कॉपर स्वयंचलितपणे कपात होईल.">
+                                Define the recipe for each product. When you dispatch 10 units of KS6 with BOM: 2 KG Copper → auto-deducts 20 KG Copper from stock.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Product selector -->
+                    <div class="nx-form-group" style="max-width:400px;">
+                        <label data-en="Select Product to Manage BOM" data-mr="BOM व्यवस्थापित करण्यासाठी उत्पादन निवडा">
+                            Select Product to Manage BOM
+                        </label>
+                        <select id="bom-product-select" class="nx-input">
+                            <option value="" data-en="-- Select a Product --" data-mr="-- उत्पादन निवडा --">-- Select a Product --</option>
+                        </select>
+                    </div>
+
+                    <!-- BOM details (shown after selecting product) -->
+                    <div id="bomDetails">
+                        <div class="nx-section-divider">
+                            <span id="bom-product-name" style="color:var(--orange); font-family:var(--condensed); font-weight:800; font-size:14px; text-transform:uppercase; letter-spacing:0.5px;"></span>
+                        </div>
+
+                        <div class="nx-grid-2" style="align-items:start;">
+
+                            <!-- Current Recipe -->
+                            <div>
+                                <div class="nx-section-title" data-en="Current Recipe" data-mr="सध्याची रेसिपी">Current Recipe</div>
+                                <div class="nx-table-wrap">
+                                    <table class="nx-table">
+                                        <thead>
+                                            <tr>
+                                                <th data-en="Raw Material" data-mr="कच्चा माल">Raw Material</th>
+                                                <th data-en="Qty/Unit"     data-mr="प्रति युनिट" style="text-align:right;">Qty/Unit</th>
+                                                <th data-en="Unit"         data-mr="एकक">Unit</th>
+                                                <th data-en="Actions"      data-mr="क्रिया" style="text-align:center;">Del</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="bom-list"></tbody>
+                                    </table>
+                                </div>
+                                <div id="bom-empty" style="display:none;" class="nx-empty-state">
+                                    <div class="nx-empty-icon">🧪</div>
+                                    <div data-en="No ingredients added yet." data-mr="अद्याप कोणतेही घटक जोडलेले नाहीत.">No ingredients added yet.</div>
+                                </div>
+                            </div>
+
+                            <!-- Add Ingredient -->
+                            <div>
+                                <div class="nx-section-title" data-en="Add Ingredient" data-mr="घटक जोडा">Add Ingredient</div>
+                                <div class="nx-card" style="background:var(--surface2);">
+                                    <form id="add-ingredient-form">
+                                        <div class="nx-form-group">
+                                            <label data-en="Raw Material" data-mr="कच्चा माल">Raw Material</label>
+                                            <select name="material_id" required id="ingredient-material-select" class="nx-input">
+                                                <option value="" data-en="-- Select Raw Material --" data-mr="-- कच्चा माल निवडा --">-- Select Raw Material --</option>
+                                            </select>
+                                        </div>
+                                        <div class="nx-form-group">
+                                            <label data-en="Quantity per Unit of Product" data-mr="उत्पादनाच्या प्रति युनिट प्रमाण">Quantity per Unit of Product</label>
+                                            <input type="number" name="qty_per_unit" required step="0.001" min="0.001"
+                                                   class="nx-input"
+                                                   data-en="e.g., 2.5" data-mr="उदा., 2.5"
+                                                   placeholder="e.g., 2.5">
+                                            <div style="font-size:11px; color:var(--mid); margin-top:5px;"
+                                                 data-en="If 1 unit needs 2.5 KG of this material, enter 2.5"
+                                                 data-mr="जर 1 युनिटला 2.5 KG लागत असेल तर 2.5 प्रविष्ट करा">
+                                                If 1 unit needs 2.5 KG of this material, enter 2.5
+                                            </div>
+                                        </div>
+                                        <button type="submit" class="nx-btn nx-btn-green nx-btn-full"
+                                                data-en="Add to Recipe" data-mr="रेसिपीमध्ये जोडा">Add to Recipe</button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div><!-- end productsContent -->
+
         </div>
-    </main>
+    </div>
 
-    <div id="edit-product-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div class="bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
-            <h3 class="text-xl font-bold mb-4" data-en="Edit Product" data-mr="उत्पादन संपादित करा">Edit Product</h3>
-            <form id="edit-product-form" class="space-y-4">
+    <!-- EDIT PRODUCT MODAL -->
+    <div id="edit-product-modal" class="nx-modal-overlay" style="display:none;">
+        <div class="nx-modal">
+            <div class="nx-modal-title" data-en="Edit Product" data-mr="उत्पादन संपादित करा">Edit Product</div>
+            <form id="edit-product-form">
                 <input type="hidden" id="edit-product-id">
-
-                <div>
-                    <label class="block mb-2 text-sm font-medium" data-en="Product Name" data-mr="उत्पादन नाव">Product Name</label>
-                    <input type="text" id="edit-product-name" required
-                        class="w-full p-3 bg-gray-600 rounded text-white"
-                        placeholder="Enter product name"
-                        data-en="Enter product name"
-                        data-mr="उत्पादन नाव प्रविष्ट करा">
+                <div class="nx-form-group">
+                    <label data-en="Product Name" data-mr="उत्पादन नाव">Product Name</label>
+                    <input type="text" id="edit-product-name" required class="nx-input"
+                           data-en="Enter product name" data-mr="उत्पादन नाव प्रविष्ट करा"
+                           placeholder="Enter product name">
                 </div>
-
-                <div>
-                    <label class="block mb-2 text-sm font-medium" data-en="Description" data-mr="वर्णन">Description</label>
-                    <textarea id="edit-product-description" rows="2"
-                        class="w-full p-3 bg-gray-600 rounded text-white"
-                        placeholder="Optional description"
-                        data-en="Optional description"
-                        data-mr="वर्णन (वैकल्पिक)"></textarea>
+                <div class="nx-form-group">
+                    <label data-en="Description" data-mr="वर्णन">Description</label>
+                    <textarea id="edit-product-description" rows="2" class="nx-input"
+                              data-en="Optional description" data-mr="वर्णन (वैकल्पिक)"
+                              placeholder="Optional description" style="resize:vertical;"></textarea>
                 </div>
-
-                <div>
-                    <label class="block mb-2 text-sm font-medium" data-en="Unit" data-mr="एकक">Unit</label>
-                    <select id="edit-product-unit" required class="w-full p-3 bg-gray-600 rounded text-white">
+                <div class="nx-form-group">
+                    <label data-en="Unit" data-mr="एकक">Unit</label>
+                    <select id="edit-product-unit" required class="nx-input">
                         <option value="NOS" data-en="NOS (Numbers)" data-mr="नग">NOS (Numbers)</option>
-                        <option value="KG" data-en="KG (Kilograms)" data-mr="किलोग्राम">KG (Kilograms)</option>
-                        <option value="L" data-en="L (Liters)" data-mr="लिटर">L (Liters)</option>
-                        <option value="MTR" data-en="MTR (Meters)" data-mr="मीटर">MTR (Meters)</option>
-                        <option value="PCS" data-en="PCS (Pieces)" data-mr="तुकडे">PCS (Pieces)</option>
+                        <option value="KG"  data-en="KG (Kilograms)" data-mr="किलोग्राम">KG (Kilograms)</option>
+                        <option value="L"   data-en="L (Liters)"     data-mr="लिटर">L (Liters)</option>
+                        <option value="MTR" data-en="MTR (Meters)"   data-mr="मीटर">MTR (Meters)</option>
+                        <option value="PCS" data-en="PCS (Pieces)"   data-mr="तुकडे">PCS (Pieces)</option>
                     </select>
                 </div>
-
-                <div class="flex space-x-3">
-                    <button type="submit" class="flex-1 bg-nexflow-green text-white p-3 rounded hover:bg-green-600 transition"
-                        data-en="Save Changes" data-mr="बदल साठवा">
-                        Save Changes
-                    </button>
-                    <button type="button" onclick="closeEditModal()" class="flex-1 bg-gray-600 text-white p-3 rounded hover:bg-gray-500 transition"
-                        data-en="Cancel" data-mr="रद्द करा">
-                        Cancel
-                    </button>
+                <div style="display:flex; gap:10px;">
+                    <button type="submit" class="nx-btn nx-btn-green" style="flex:1;"
+                            data-en="Save Changes" data-mr="बदल साठवा">Save Changes</button>
+                    <button type="button" onclick="closeEditModal()" class="nx-btn nx-btn-ghost" style="flex:1;"
+                            data-en="Cancel" data-mr="रद्द करा">Cancel</button>
                 </div>
             </form>
         </div>
     </div>
 
     <script>
-        let currentTenantId = null;
+        let currentTenantId  = null;
         let selectedProductId = null;
-        let materialsMap = {}; // Helper map to store raw materials details locally
+        let materialsMap     = {};
 
-        // Initialize page
         document.addEventListener('DOMContentLoaded', async () => {
-            const loadingSpinner = document.getElementById('loadingSpinner');
-            const errorState = document.getElementById('errorState');
+            const loadingSpinner  = document.getElementById('loadingSpinner');
+            const errorState      = document.getElementById('errorState');
             const productsContent = document.getElementById('productsContent');
-            const bomContent = document.getElementById('bomContent');
 
             try {
                 const authed = await checkAuth();
-if (!authed) return;
-const { data: { user } } = await window.supabase.auth.getUser();
-                if (user) {
-                    currentTenantId = user.id;
+                if (!authed) return;
 
-                    // ── DEMO MODE: disable all writes if demo user ──
-                    applyDemoModeToForms();
+                const { data: { user } } = await window.supabase.auth.getUser();
+                if (!user) throw new Error('No user found');
 
-                    // GUARD 5: Add timeout to data loading
-                    const loadPromise = Promise.all([
-                        loadProducts(),
-                        loadRawMaterials()
-                    ]);
+                currentTenantId = user.id;
+                applyDemoModeToForms();
 
-                    const timeoutPromise = new Promise((_, reject) =>
-                        setTimeout(() => reject(new Error('Request timeout')), 10000)
-                    );
+                const loadPromise = Promise.all([loadProducts(), loadRawMaterials()]);
+                const timeoutPromise = new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error('Request timeout')), 10000)
+                );
 
-                    await Promise.race([loadPromise, timeoutPromise]);
+                await Promise.race([loadPromise, timeoutPromise]);
 
-                    // Hide loading, show content
-                    loadingSpinner.classList.add('hidden');
-                    productsContent.classList.remove('hidden');
-                    bomContent.classList.remove('hidden');
+                loadingSpinner.style.display  = 'none';
+                productsContent.style.display = 'block';
+                setupEventListeners();
 
-                    // Setup context interaction listeners
-                    setupEventListeners();
-                } else {
-                    throw new Error('No user found');
-                }
             } catch (error) {
                 console.error('Error initializing products page:', error);
-                loadingSpinner.classList.add('hidden');
-                errorState.classList.remove('hidden');
+                loadingSpinner.style.display = 'none';
+                errorState.style.display     = 'flex';
             }
         });
 
-        // Load products
         async function loadProducts() {
-            try {
-                const { data, error } = await supabaseClient
-                    .from('p2_products')
-                    .select('*')
-                    .eq('tenant_id', currentTenantId)
-                    .eq('is_active', true)
-                    .order('name');
+            const { data, error } = await supabaseClient
+                .from('p2_products')
+                .select('*')
+                .eq('tenant_id', currentTenantId)
+                .eq('is_active', true)
+                .order('name');
 
-                if (error) throw error;
+            if (error) throw error;
 
-                // GUARD 3: Get BOM counts for all products
-                const productIds = data.map(p => p.id);
-                let bomCountMap = {};
+            const productIds = data.map(p => p.id);
+            let bomCountMap  = {};
 
-                if (productIds.length > 0) {
-                    const { data: bomCounts, error: bomError } = await supabaseClient
-                        .from('p2_product_bom')
-                        .select('product_id')
-                        .in('product_id', productIds)
-                        .eq('tenant_id', currentTenantId);
+            if (productIds.length > 0) {
+                const { data: bomCounts, error: bomError } = await supabaseClient
+                    .from('p2_product_bom')
+                    .select('product_id')
+                    .in('product_id', productIds)
+                    .eq('tenant_id', currentTenantId);
 
-                    if (bomError) console.error('Error fetching BOM counts:', bomError);
-
-                    if (bomCounts) {
-                        bomCounts.forEach(bom => {
-                            bomCountMap[bom.product_id] = (bomCountMap[bom.product_id] || 0) + 1;
-                        });
-                    }
+                if (bomError) console.error('Error fetching BOM counts:', bomError);
+                if (bomCounts) {
+                    bomCounts.forEach(bom => {
+                        bomCountMap[bom.product_id] = (bomCountMap[bom.product_id] || 0) + 1;
+                    });
                 }
+            }
 
-                const tbody = document.getElementById('products-list');
-                tbody.innerHTML = '';
+            const tbody    = document.getElementById('products-list');
+            const bomSelect = document.getElementById('bom-product-select');
+            const emptyEl  = document.getElementById('productsEmpty');
 
-                const bomSelect = document.getElementById('bom-product-select');
-                bomSelect.innerHTML = '<option value="" data-en="-- Select a Product --" data-mr="-- उत्पादन निवडा --">-- Select a Product --</option>';
+            tbody.innerHTML = '';
+            bomSelect.innerHTML = '<option value="" data-en="-- Select a Product --" data-mr="-- उत्पादन निवडा --">-- Select a Product --</option>';
 
-                data.forEach(product => {
-                    const hasBOM = bomCountMap[product.id] > 0;
-                    const noBOMBadge = hasBOM ? '' : '<span class="bg-yellow-600 text-white text-xs px-2 py-1 rounded ml-2" data-en="No BOM ⚠" data-mr="BOM नाही ⚠">No BOM ⚠</span>';
+            if (!data || data.length === 0) {
+                emptyEl.style.display = 'block';
+                return;
+            }
+            emptyEl.style.display = 'none';
 
-                    // Add to products table
-                    const row = document.createElement('tr');
-                    row.className = 'border-b border-gray-600';
-                    row.innerHTML = `
-                        <td class="p-2">${product.name}${noBOMBadge}</td>
-                        <td class="p-2">${product.unit}</td>
-                        <td class="p-2">
+            data.forEach(product => {
+                const hasBOM    = bomCountMap[product.id] > 0;
+                const bomBadge  = hasBOM
+                    ? '<span class="nx-badge nx-badge-green">BOM Set</span>'
+                    : '<span class="nx-badge nx-badge-yellow" data-en="No BOM ⚠" data-mr="BOM नाही ⚠">No BOM ⚠</span>';
+
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="nx-td-bold">${product.name}</td>
+                    <td style="color:var(--mid);">${product.unit}</td>
+                    <td>${bomBadge}</td>
+                    <td style="text-align:center;">
+                        <div style="display:flex; gap:6px; justify-content:center;">
                             <button onclick="editProduct('${product.id}', '${product.name.replace(/'/g, "\\'")}', '${(product.description || '').replace(/'/g, "\\'")}', '${product.unit}')"
-                                class="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700 mr-2">
-                                <span data-en="Edit" data-mr="संपादित करा">Edit</span>
-                            </button>
+                                    class="nx-btn nx-btn-secondary nx-btn-sm"
+                                    data-en="Edit" data-mr="संपादित करा">Edit</button>
                             <button onclick="deactivateProduct('${product.id}')"
-                                class="bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700">
-                                <span data-en="Deactivate" data-mr="निष्क्रिय करा">Deactivate</span>
-                            </button>
-                        </td>
-                    `;
-                    tbody.appendChild(row);
+                                    class="nx-btn nx-btn-danger nx-btn-sm"
+                                    data-en="Deactivate" data-mr="निष्क्रिय करा">Deactivate</button>
+                        </div>
+                    </td>
+                `;
+                tbody.appendChild(row);
 
-                    // Add to BOM product select list
-                    const option = document.createElement('option');
-                    option.value = product.id;
-                    option.textContent = product.name;
-                    bomSelect.appendChild(option);
-                });
-                
-                if (window.utils && typeof window.utils.updateLanguage === 'function') {
-                    window.utils.updateLanguage();
-                }
-            } catch (error) {
-                console.error('Error loading products:', error);
-                alert('Failed to load products');
+                const option = document.createElement('option');
+                option.value       = product.id;
+                option.textContent = product.name;
+                bomSelect.appendChild(option);
+            });
+
+            if (window.utils && typeof window.utils.updateLanguage === 'function') {
+                window.utils.updateLanguage();
             }
         }
 
-        // Load raw materials into select dropdown and cache them
         async function loadRawMaterials() {
-            try {
-                const { data, error } = await supabaseClient
-                    .from('p2_raw_materials')
-                    .select('*')
-                    .eq('tenant_id', currentTenantId)
-                    .eq('is_active', true)
-                    .order('name');
+            const { data, error } = await supabaseClient
+                .from('p2_raw_materials')
+                .select('*')
+                .eq('tenant_id', currentTenantId)
+                .eq('is_active', true)
+                .order('name');
 
-                if (error) throw error;
+            if (error) throw error;
 
-                const select = document.getElementById('ingredient-material-select');
-                select.innerHTML = '<option value="" data-en="-- Select Raw Material --" data-mr="-- कचा माल निवडा --">-- Select Raw Material --</option>';
+            const select = document.getElementById('ingredient-material-select');
+            select.innerHTML = '<option value="" data-en="-- Select Raw Material --" data-mr="-- कच्चा माल निवडा --">-- Select Raw Material --</option>';
 
-                materialsMap = {}; // Reset local cache
+            materialsMap = {};
+            data.forEach(material => {
+                materialsMap[material.id] = material;
+                const option = document.createElement('option');
+                option.value       = material.id;
+                option.textContent = `${material.name} (${material.unit})`;
+                select.appendChild(option);
+            });
+        }
 
-                data.forEach(material => {
-                    materialsMap[material.id] = material; // Cache complete row metadata
+        async function loadBOM(productId) {
+            const { data, error } = await supabaseClient
+                .from('p2_product_bom')
+                .select(`id, qty_per_unit, unit, p2_raw_materials (name)`)
+                .eq('product_id', productId)
+                .eq('tenant_id', currentTenantId);
 
-                    const option = document.createElement('option');
-                    option.value = material.id;
-                    option.textContent = `${material.name} (${material.unit})`;
-                    select.appendChild(option);
-                });
-            } catch (error) {
-                console.error('Error loading raw materials:', error);
+            if (error) throw error;
+
+            const tbody   = document.getElementById('bom-list');
+            const emptyEl = document.getElementById('bom-empty');
+            tbody.innerHTML = '';
+
+            if (!data || data.length === 0) {
+                emptyEl.style.display = 'block';
+                return;
+            }
+            emptyEl.style.display = 'none';
+
+            data.forEach(item => {
+                const matName = item.p2_raw_materials ? item.p2_raw_materials.name : 'Unknown';
+                const row     = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="nx-td-bold">${matName}</td>
+                    <td style="text-align:right;">${item.qty_per_unit}</td>
+                    <td style="color:var(--mid);">${item.unit || ''}</td>
+                    <td style="text-align:center;">
+                        <button onclick="deleteIngredient('${item.id}')"
+                                class="nx-btn nx-btn-danger nx-btn-sm"
+                                data-en="Remove" data-mr="काढून टाका">Remove</button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+
+            if (window.utils && typeof window.utils.updateLanguage === 'function') {
+                window.utils.updateLanguage();
             }
         }
 
-        // Setup DOM event listeners safely
         function setupEventListeners() {
-            // Add Product form handler
+            // Add Product
             document.getElementById('add-product-form').addEventListener('submit', async (e) => {
                 e.preventDefault();
                 const formData = new FormData(e.target);
-                
                 try {
                     const { error } = await supabaseClient
                         .from('p2_products')
                         .insert({
-                            name: formData.get('name'),
+                            name:        formData.get('name'),
                             description: formData.get('description'),
-                            unit: formData.get('unit'),
-                            tenant_id: currentTenantId
+                            unit:        formData.get('unit'),
+                            tenant_id:   currentTenantId
                         });
-
                     if (error) throw error;
-
                     const lang = localStorage.getItem('nexflow_lang') || 'en';
                     alert(lang === 'mr' ? 'उत्पादन यशस्वीरित्या जोडले गेले!' : 'Product added successfully!');
                     e.target.reset();
@@ -418,37 +465,30 @@ const { data: { user } } = await window.supabase.auth.getUser();
                 }
             });
 
-            // Select product to view/manage recipes
+            // BOM product selector
             document.getElementById('bom-product-select').addEventListener('change', async (e) => {
                 selectedProductId = e.target.value;
-                const detailsContainer = document.getElementById('bom-details');
-                
+                const details = document.getElementById('bomDetails');
                 if (!selectedProductId) {
-                    detailsContainer.classList.add('hidden');
+                    details.style.display = 'none';
                     return;
                 }
-
-                const selectElement = e.target;
-                const selectedName = selectElement.options[selectElement.selectedIndex].text;
-                document.getElementById('bom-product-name').textContent = selectedName;
-                
-                detailsContainer.classList.remove('hidden');
+                const sel = e.target;
+                document.getElementById('bom-product-name').textContent = sel.options[sel.selectedIndex].text;
+                details.style.display = 'block';
                 await loadBOM(selectedProductId);
             });
 
-            // Add Ingredient Form submission workflow
+            // Add Ingredient
             document.getElementById('add-ingredient-form').addEventListener('submit', async (e) => {
                 e.preventDefault();
-                const formData = new FormData(e.target);
+                const formData   = new FormData(e.target);
                 const materialId = formData.get('material_id');
                 const qtyPerUnit = parseFloat(formData.get('qty_per_unit'));
-                
-                // Get the unit dynamically from your local cache of the raw material to fix NOT NULL constraint
-                const chosenMaterial = materialsMap[materialId];
-                const unitValue = chosenMaterial ? chosenMaterial.unit : 'NOS';
+                const chosenMat  = materialsMap[materialId];
+                const unitValue  = chosenMat ? chosenMat.unit : 'NOS';
 
                 try {
-                    // Check if item already exists inside this product profile
                     const { data: existing, error: checkError } = await supabaseClient
                         .from('p2_product_bom')
                         .select('id')
@@ -464,47 +504,42 @@ const { data: { user } } = await window.supabase.auth.getUser();
                         return;
                     }
 
-                    // Seamless write request using valid keys
                     const { error } = await supabaseClient
                         .from('p2_product_bom')
                         .insert({
-                            product_id: selectedProductId,
+                            product_id:      selectedProductId,
                             raw_material_id: materialId,
-                            qty_per_unit: qtyPerUnit,
-                            tenant_id: currentTenantId,
-                            unit: unitValue
+                            qty_per_unit:    qtyPerUnit,
+                            tenant_id:       currentTenantId,
+                            unit:            unitValue
                         });
-
                     if (error) throw error;
 
                     const lang = localStorage.getItem('nexflow_lang') || 'en';
                     alert(lang === 'mr' ? 'घटक यशस्वीरित्या जोडला!' : 'Ingredient added successfully!');
                     e.target.reset();
                     await loadBOM(selectedProductId);
-                    await loadProducts(); // Refresh main lists to clear out 'No BOM' warning flags
+                    await loadProducts();
                 } catch (error) {
-                    console.error('Error adding ingredient to BOM:', error);
+                    console.error('Error adding ingredient:', error);
                     alert('Failed to add ingredient.');
                 }
             });
 
-            // Edit Product submit handler
+            // Edit Product form
             document.getElementById('edit-product-form').addEventListener('submit', async (e) => {
                 e.preventDefault();
-                const id = document.getElementById('edit-product-id').value;
-                const name = document.getElementById('edit-product-name').value;
+                const id          = document.getElementById('edit-product-id').value;
+                const name        = document.getElementById('edit-product-name').value;
                 const description = document.getElementById('edit-product-description').value;
-                const unit = document.getElementById('edit-product-unit').value;
-
+                const unit        = document.getElementById('edit-product-unit').value;
                 try {
                     const { error } = await supabaseClient
                         .from('p2_products')
                         .update({ name, description, unit })
                         .eq('id', id)
                         .eq('tenant_id', currentTenantId);
-
                     if (error) throw error;
-
                     const lang = localStorage.getItem('nexflow_lang') || 'en';
                     alert(lang === 'mr' ? 'बदल यशस्वीरित्या जतन केले!' : 'Changes saved successfully!');
                     closeEditModal();
@@ -516,118 +551,70 @@ const { data: { user } } = await window.supabase.auth.getUser();
             });
         }
 
-        // Load existing recipe combinations (BOM)
-        async function loadBOM(productId) {
-            try {
-                // Fetch using mapped, active column names
-                const { data, error } = await supabaseClient
-                    .from('p2_product_bom')
-                    .select(`
-                        id,
-                        qty_per_unit,
-                        unit,
-                        p2_raw_materials (
-                            name
-                        )
-                    `)
-                    .eq('product_id', productId)
-                    .eq('tenant_id', currentTenantId);
-
-                if (error) throw error;
-
-                const tbody = document.getElementById('bom-list');
-                const emptyState = document.getElementById('bom-empty');
-                tbody.innerHTML = '';
-
-                if (!data || data.length === 0) {
-                    emptyState.classList.remove('hidden');
-                    return;
-                }
-                emptyState.classList.add('hidden');
-
-                data.forEach(item => {
-                    const materialName = item.p2_raw_materials ? item.p2_raw_materials.name : 'Unknown Material';
-                    const row = document.createElement('tr');
-                    row.className = 'border-b border-gray-600';
-                    row.innerHTML = `
-                        <td class="p-2">${materialName}</td>
-                        <td class="p-2">${item.qty_per_unit}</td>
-                        <td class="p-2">${item.unit || ''}</td>
-                        <td class="p-2">
-                            <button onclick="deleteIngredient('${item.id}')"
-                                class="bg-red-600 text-white px-2 py-1 rounded text-xs hover:bg-red-700">
-                                <span data-en="Remove" data-mr="काढून टाका">Remove</span>
-                            </button>
-                        </td>
-                    `;
-                    tbody.appendChild(row);
-                });
-
-                if (window.utils && typeof window.utils.updateLanguage === 'function') {
-                    window.utils.updateLanguage();
-                }
-            } catch (error) {
-                console.error('Error loading BOM mapping lists:', error);
-            }
-        }
-
-        // Delete ingredient rule line item
         async function deleteIngredient(bomItemId) {
             const lang = localStorage.getItem('nexflow_lang') || 'en';
-            const confirmation = confirm(lang === 'mr' ? 'हा घटक काढायचा आहे याची खात्री आहे?' : 'Are you sure you want to remove this ingredient?');
-            if (!confirmation) return;
-
+            if (!confirm(lang === 'mr' ? 'हा घटक काढायचा आहे याची खात्री आहे?' : 'Are you sure you want to remove this ingredient?')) return;
             try {
                 const { error } = await supabaseClient
                     .from('p2_product_bom')
                     .delete()
                     .eq('id', bomItemId)
                     .eq('tenant_id', currentTenantId);
-
                 if (error) throw error;
-
                 await loadBOM(selectedProductId);
                 await loadProducts();
             } catch (error) {
-                console.error('Error deleting ingredient item:', error);
+                console.error('Error deleting ingredient:', error);
                 alert('Failed to remove item.');
             }
         }
 
-        // Edit button popup utility
         function editProduct(id, name, description, unit) {
-            document.getElementById('edit-product-id').value = id;
-            document.getElementById('edit-product-name').value = name;
+            document.getElementById('edit-product-id').value          = id;
+            document.getElementById('edit-product-name').value        = name;
             document.getElementById('edit-product-description').value = description;
-            document.getElementById('edit-product-unit').value = unit;
-            document.getElementById('edit-product-modal').classList.remove('hidden');
+            document.getElementById('edit-product-unit').value        = unit;
+            document.getElementById('edit-product-modal').style.display = 'flex';
         }
 
         function closeEditModal() {
-            document.getElementById('edit-product-modal').classList.add('hidden');
+            document.getElementById('edit-product-modal').style.display = 'none';
         }
 
-        // Soft delete/Deactivation trigger 
         async function deactivateProduct(id) {
             const lang = localStorage.getItem('nexflow_lang') || 'en';
-            const confirmation = confirm(lang === 'mr' ? 'हे उत्पादन निष्क्रिय करायचे आहे का?' : 'Are you sure you want to deactivate this product?');
-            if (!confirmation) return;
-
+            if (!confirm(lang === 'mr' ? 'हे उत्पादन निष्क्रिय करायचे आहे का?' : 'Are you sure you want to deactivate this product?')) return;
             try {
                 const { error } = await supabaseClient
                     .from('p2_products')
                     .update({ is_active: false })
                     .eq('id', id)
                     .eq('tenant_id', currentTenantId);
-
                 if (error) throw error;
-
                 await loadProducts();
             } catch (error) {
-                console.error('Error deactivating product entry:', error);
+                console.error('Error deactivating product:', error);
                 alert('Action failed.');
             }
         }
+
+        // Language
+        function applyLang(lang) {
+            document.querySelectorAll('[data-en]').forEach(el => {
+                if (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA') {
+                    el.placeholder = lang === 'mr' ? el.dataset.mr : el.dataset.en;
+                } else {
+                    el.textContent = lang === 'mr' ? el.dataset.mr : el.dataset.en;
+                }
+            });
+            localStorage.setItem('nexflow_lang', lang);
+        }
+        window.applyLang = applyLang;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const saved = localStorage.getItem('nexflow_lang') || 'en';
+            applyLang(saved);
+        });
     </script>
 </body>
 </html>

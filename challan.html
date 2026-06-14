@@ -4,199 +4,252 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Delivery Challan | Nexflow P2</title>
-    <link rel="icon" href="/public/assets/favicon.ico" type="image/x-icon">
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%230c0e14'/><text y='.9em' font-size='80' x='10' fill='%23ff5c1a'>N</text></svg>">
+    <link rel="stylesheet" href="css/nexflow-design.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="js/supabase-client.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/utils.js"></script>
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    colors: {
-                        'nexflow-dark-bg': '#1A1F2E',
-                        'nexflow-text': '#E0E0E0',
-                        'nexflow-teal': '#00BCD4',
-                        'nexflow-green': '#00E676',
-                        'nexflow-muted': '#94A3B8'
-                    }
-                }
-            }
-        }
-    </script>
-    <style>
-        @media print {
-            /* Hide everything not in challan-content */
-            body * {
-                visibility: hidden;
-            }
-            #challan-content, #challan-content * {
-                visibility: visible;
-            }
 
-            /* Position challan content for print */
+    <style>
+        /* ── SCREEN CONTROLS (no-print) ── */
+        .challan-controls {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            padding: 16px 20px;
+            flex-wrap: wrap;
+        }
+        .challan-controls .nx-btn { min-width: 140px; }
+
+        #mobilePrintMsg {
+            display: none;
+            background: var(--yellow-dim);
+            border: 1px solid var(--yellow);
+            border-radius: var(--radius);
+            padding: 12px 16px;
+            font-size: 13px;
+            text-align: center;
+            max-width: 460px;
+            margin: 0 auto 16px;
+        }
+        #mobilePrintMsg p:first-child { color: var(--text); margin-bottom: 4px; }
+        #mobilePrintMsg p:last-child  { color: var(--yellow); font-size: 11px; }
+
+        /* ── CHALLAN DOCUMENT (white paper) ── */
+        #challan-content {
+            max-width: 800px;
+            margin: 0 auto 48px;
+            background: #fff;
+            color: #000;
+            padding: 28px 32px;
+            box-shadow: 0 4px 40px rgba(0,0,0,0.5);
+            border-radius: 4px;
+            font-size: 13px;
+            font-family: 'Arial', sans-serif;
+        }
+
+        /* Inside challan everything is black on white */
+        #challan-content * { color: #000; background: transparent; }
+
+        .ch-header-box {
+            border: 1px solid #000;
+            padding: 14px;
+            text-align: center;
+            margin-bottom: 0;
+        }
+        .ch-title {
+            text-align: center;
+            font-size: 18px;
+            font-weight: 800;
+            letter-spacing: 2px;
+            margin: 14px 0;
+            text-transform: uppercase;
+        }
+        .ch-meta-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        .ch-meta-table td {
+            border: 1px solid #000;
+            padding: 10px 12px;
+            vertical-align: top;
+            width: 50%;
+            font-size: 12px;
+        }
+        .ch-meta-label { font-weight: 700; font-size: 11px; margin-bottom: 4px; }
+        .ch-items-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        .ch-items-table th,
+        .ch-items-table td {
+            border: 1px solid #000;
+            padding: 8px 10px;
+        }
+        .ch-items-table thead tr { background-color: #e5e7eb !important; }
+        .ch-items-table th { font-size: 11px; font-weight: 700; text-transform: uppercase; }
+        .ch-items-table tfoot tr { font-weight: 700; }
+
+        .ch-signature {
+            margin-top: 48px;
+            text-align: right;
+        }
+        .ch-sig-for { margin-bottom: 48px; font-size: 12px; }
+        .ch-sig-company { font-weight: 700; font-size: 14px; }
+        .ch-sig-line {
+            display: inline-block;
+            border-top: 1px solid #000;
+            padding: 6px 24px 0;
+            font-size: 11px;
+            margin-top: 4px;
+        }
+        .ch-footer {
+            text-align: center;
+            font-size: 10px;
+            color: #666;
+            margin-top: 24px;
+            border-top: 1px solid #ccc;
+            padding-top: 10px;
+        }
+
+        /* ── PRINT ── */
+        @media print {
+            body > *:not(#challan-content) { display: none !important; }
+            .no-print { display: none !important; }
+
             #challan-content {
                 position: absolute;
-                left: 0;
-                top: 0;
+                left: 0; top: 0;
                 width: 100%;
-                background: white !important;
-                color: black !important;
+                max-width: 100%;
+                background: #fff !important;
+                color: #000 !important;
+                box-shadow: none;
+                border-radius: 0;
+                margin: 0;
+                padding: 8mm 10mm;
                 font-size: 11px;
             }
-
-            /* Force all text to black on white */
             #challan-content * {
-                background: white !important;
-                color: black !important;
+                background: #fff !important;
+                color: #000 !important;
             }
-
-            /* Prevent table row breaks across pages */
-            #challan-content tr {
-                page-break-inside: avoid;
-            }
-
-            /* Force borders to show on print */
-            #challan-content table {
-                border-collapse: collapse !important;
-                width: 100% !important;
-            }
-            #challan-content table, 
-            #challan-content th, 
-            #challan-content td {
-                border: 1px solid black !important;
-                -webkit-print-color-adjust: exact !important;
-                print-color-adjust: exact !important;
-            }
-            #challan-content thead tr {
-                background-color: #e5e7eb !important;
-            }
-
-            /* Hide navbar, buttons, status messages */
-            .no-print, nav, button, .bg-nexflow-green, .bg-nexflow-teal, .bg-red-600, .bg-yellow-900 {
-                display: none !important;
-            }
-
-            /* Set page margins */
-            @page {
-                margin: 10mm;
-            }
-
-            /* Hide "Powered by Nexflow" footer on print */
-            footer, .footer, [class*="powered"], [class*="footer"] {
-                display: none !important;
-            }
+            .ch-items-table thead tr { background-color: #e5e7eb !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .ch-items-table th, .ch-items-table td,
+            .ch-items-table, .ch-meta-table, .ch-meta-table td,
+            .ch-header-box { border-color: #000 !important; }
+            tr { page-break-inside: avoid; }
+            @page { margin: 10mm; }
         }
     </style>
 </head>
-<body class="bg-nexflow-dark-bg text-nexflow-text">
-    <!-- Language Toggle Button -->
-    <div class="text-right p-2 no-print">
-        <button id="lang-toggle" class="bg-nexflow-teal text-white px-4 py-2 rounded" data-en="मराठी" data-mr="English">मराठी</button>
-    </div>
+<body>
 
-    <!-- Print Button -->
-    <div class="text-center p-4 no-print">
-        <!-- GUARD 9: Desktop Print Button -->
-        <button id="printBtn" onclick="handlePrint()" class="bg-nexflow-green text-white px-6 py-3 rounded-lg hover:bg-green-600 transition font-medium" data-en="Print Challan" data-mr="चलान प्रिंट करा">
-            Print Challan
-        </button>
+    <!-- SCREEN CONTROLS (hidden on print) -->
+    <div class="no-print" style="background: var(--bg); padding-top: 18px;">
+        <!-- Lang toggle -->
+        <div style="text-align:right; padding: 0 20px 10px;">
+            <button id="lang-toggle" class="nx-btn nx-btn-ghost nx-btn-sm" data-en="मराठी" data-mr="English">मराठी</button>
+        </div>
 
-        <!-- GUARD 9: Mobile Print Message (hidden by default) -->
-        <div id="mobilePrintMsg" class="hidden bg-yellow-900 border border-yellow-700 rounded-lg p-4 mb-4">
-            <p class="text-white mb-2" data-en="On mobile: use your browser's Share button → Print" data-mr="मोबाइलवर: तुमच्या ब्राउझरचे शेअर बटण वापरा → प्रिंट">
+        <!-- Action buttons -->
+        <div class="challan-controls">
+            <button id="printBtn" onclick="handlePrint()" class="nx-btn nx-btn-green"
+                    data-en="Print Challan" data-mr="चलान प्रिंट करा">
+                🖨️ Print Challan
+            </button>
+            <a href="dispatch.html" class="nx-btn nx-btn-ghost"
+               data-en="← Back to Dispatch" data-mr="← डिस्पॅचवर परत जा">
+                ← Back to Dispatch
+            </a>
+        </div>
+
+        <!-- Mobile print message -->
+        <div id="mobilePrintMsg">
+            <p data-en="On mobile: use your browser's Share button → Print"
+               data-mr="मोबाइलवर: तुमच्या ब्राउझरचे शेअर बटण वापरा → प्रिंट">
                 On mobile: use your browser's Share button → Print
             </p>
-            <p class="text-sm text-yellow-300" data-en="Tap the menu (⋮) in your browser and select Share or Print" data-mr="तुमच्या ब्राउझरमधील मेनू (⋮) वर टॅप करा आणि शेअर किंवा प्रिंट निवडा">
+            <p data-en="Tap the menu (⋮) in your browser and select Share or Print"
+               data-mr="तुमच्या ब्राउझरमधील मेनू (⋮) वर टॅप करा आणि शेअर किंवा प्रिंट निवडा">
                 Tap the menu (⋮) in your browser and select Share or Print
             </p>
         </div>
-
-        <a href="dispatch.html" class="ml-4 bg-nexflow-teal text-white px-6 py-3 rounded-lg hover:bg-cyan-600 transition font-medium inline-block" data-en="Back to Dispatch" data-mr="डिस्पॅचवर परत जा">
-            Back to Dispatch
-        </a>
     </div>
 
-    <!-- Challan Content -->
-    <div id="challan-content" class="max-w-4xl mx-auto bg-white text-black p-8 my-4 shadow-lg">
-        <!-- Header with Logo/Company Name - Bordered -->
-        <div class="text-center mb-0 border border-black p-4">
-            <div id="company-header" class="mb-2">
-                <!-- Logo or company name will be inserted here -->
-            </div>
-            <div id="company-details" class="text-sm">
-                <!-- Address, mobile, GSTIN will be inserted here -->
-            </div>
+    <!-- CHALLAN DOCUMENT -->
+    <div id="challan-content">
+
+        <!-- Company Header -->
+        <div class="ch-header-box">
+            <div id="company-header"></div>
+            <div id="company-details" style="font-size:12px; margin-top:4px;"></div>
         </div>
 
-        <!-- Challan Title -->
-        <h1 class="text-2xl font-bold text-center my-4" data-en="DELIVERY CHALLAN" data-mr="डिलिव्हरी चलान">DELIVERY CHALLAN</h1>
+        <!-- Title -->
+        <div class="ch-title" data-en="DELIVERY CHALLAN" data-mr="डिलिव्हरी चलान">DELIVERY CHALLAN</div>
 
-        <!-- Two Column Meta Block - Left bordered, Right plain -->
-        <table class="w-full border-collapse border border-black mb-6" style="table-layout:fixed;">
+        <!-- Meta: TO + Challan info -->
+        <table class="ch-meta-table">
             <tr>
-                <!-- Left: TO address -->
-                <td class="border border-black p-3 w-1/2 align-top">
-                    <div class="font-bold text-sm mb-1" data-en="TO:" data-mr="प्रति:">TO:</div>
-                    <div id="client-details" class="text-sm">
-                        <!-- Client name and address -->
-                    </div>
+                <td>
+                    <div class="ch-meta-label" data-en="TO:" data-mr="प्रति:">TO:</div>
+                    <div id="client-details"></div>
                 </td>
-                <!-- Right: Challan meta - plain text, no inner grid -->
-                <td class="border border-black p-3 w-1/2 align-top text-sm">
-                    <div class="mb-1"><strong data-en="Challan No:" data-mr="चलान क्रमांक:">Challan No:</strong> <span id="challan-no"></span></div>
-                    <div class="mb-1"><strong data-en="Date:" data-mr="तारीख:">Date:</strong> <span id="challan-date"></span></div>
-                    <div class="mb-1"><strong data-en="PO No:" data-mr="PO क्रमांक:">PO No:</strong> <span id="po-no"></span></div>
-                    <div class="mb-1"><strong data-en="Your Challan Ref:" data-mr="तुमचा चलान संदर्भ:">Your Challan Ref:</strong> <span id="client-challan-ref"></span></div>
-                    <div id="vehicle-number-row" class="mb-1 hidden"><strong data-en="Vehicle No:" data-mr="वाहन क्र:">Vehicle No:</strong> <span id="vehicle-no"></span></div>
+                <td style="font-size:12px;">
+                    <div style="margin-bottom:4px;"><strong data-en="Challan No:"       data-mr="चलान क्रमांक:">Challan No:</strong> <span id="challan-no"></span></div>
+                    <div style="margin-bottom:4px;"><strong data-en="Date:"             data-mr="तारीख:">Date:</strong> <span id="challan-date"></span></div>
+                    <div style="margin-bottom:4px;"><strong data-en="PO No:"            data-mr="PO क्रमांक:">PO No:</strong> <span id="po-no"></span></div>
+                    <div style="margin-bottom:4px;"><strong data-en="Your Challan Ref:" data-mr="तुमचा चलान संदर्भ:">Your Challan Ref:</strong> <span id="client-challan-ref"></span></div>
+                    <div id="vehicle-number-row" style="display:none; margin-bottom:4px;"><strong data-en="Vehicle No:" data-mr="वाहन क्र:">Vehicle No:</strong> <span id="vehicle-no"></span></div>
                 </td>
             </tr>
         </table>
 
         <!-- Items Table -->
-        <table class="w-full border-collapse border border-black mb-6">
+        <table class="ch-items-table">
             <thead>
-                <tr class="bg-gray-200">
-                    <th class="border border-black p-2 text-left w-16" data-en="Sr No" data-mr="क्र.">Sr No</th>
-                    <th class="border border-black p-2 text-left" data-en="Description" data-mr="वर्णन">Description</th>
-                    <th class="border border-black p-2 text-right w-24" data-en="Quantity" data-mr="प्रमाण">Quantity</th>
-                    <th class="border border-black p-2 text-center w-20" data-en="Unit" data-mr="एकक">Unit</th>
+                <tr>
+                    <th style="text-align:left; width:48px;"  data-en="Sr No"      data-mr="क्र.">Sr No</th>
+                    <th style="text-align:left;"               data-en="Description" data-mr="वर्णन">Description</th>
+                    <th style="text-align:right; width:90px;"  data-en="Quantity"   data-mr="प्रमाण">Quantity</th>
+                    <th style="text-align:center; width:72px;" data-en="Unit"       data-mr="एकक">Unit</th>
                 </tr>
             </thead>
-            <tbody id="items-body">
-                <!-- Items will be inserted here -->
-            </tbody>
+            <tbody id="items-body"></tbody>
             <tfoot>
-                <tr class="font-bold">
-                    <td colspan="2" class="border border-black p-2 text-right" data-en="TOTAL" data-mr="एकूण">TOTAL</td>
-                    <td id="total-quantity" class="border border-black p-2 text-right"></td>
-                    <td class="border border-black p-2"></td>
+                <tr>
+                    <td colspan="2" style="text-align:right;" data-en="TOTAL" data-mr="एकूण">TOTAL</td>
+                    <td id="total-quantity" style="text-align:right;"></td>
+                    <td></td>
                 </tr>
             </tfoot>
         </table>
 
-        <!-- Signature Block -->
-        <div class="mt-12 text-right">
-            <div class="mb-16">
-                <div data-en="For" data-mr="यासाठी">For</div>
-                <div id="signature-company" class="font-bold"></div>
+        <!-- Signature -->
+        <div class="ch-signature">
+            <div class="ch-sig-for">
+                <span data-en="For" data-mr="यासाठी">For</span>
+                <div id="signature-company" class="ch-sig-company"></div>
             </div>
-            <div class="border-t border-black inline-block px-8 pt-2" data-en="Authorized Signatory" data-mr="अधिकृत स्वाक्षरी">
+            <div class="ch-sig-line" data-en="Authorized Signatory" data-mr="अधिकृत स्वाक्षरी">
                 Authorized Signatory
             </div>
         </div>
 
         <!-- Footer -->
-        <div class="text-center text-xs text-gray-600 mt-8 border-t pt-4">
+        <div class="ch-footer">
             <span data-en="Powered by Nexflow Automations" data-mr="नेक्सफ्लो ऑटोमेशन्स द्वारा संचालित">Powered by Nexflow Automations</span>
         </div>
     </div>
 
     <script>
-        // Get dispatch order ID from URL
-        const urlParams = new URLSearchParams(window.location.search);
+        // ── URL PARAM ────────────────────────────────────────────────────────
+        const urlParams       = new URLSearchParams(window.location.search);
         const dispatchOrderId = urlParams.get('id');
 
         if (!dispatchOrderId) {
@@ -204,49 +257,36 @@
             window.location.href = 'dispatch.html';
         }
 
-        // Load challan data
+        // ── LOAD CHALLAN ─────────────────────────────────────────────────────
         async function loadChallan() {
             try {
                 const { data: { user } } = await window.supabase.auth.getUser();
-                if (!user) {
-                    window.location.href = 'login.html';
-                    return;
-                }
+                if (!user) { window.location.href = 'login.html'; return; }
 
                 const tenantId = user.id;
 
-                // Fetch dispatch order
                 const { data: dispatchOrder, error: orderError } = await window.supabase
                     .from('p2_dispatch_orders')
                     .select('*')
                     .eq('id', dispatchOrderId)
                     .eq('tenant_id', tenantId)
                     .single();
-
                 if (orderError) throw orderError;
 
-                // Fetch dispatch items with product details
                 const { data: dispatchItems, error: itemsError } = await window.supabase
                     .from('p2_dispatch_items')
-                    .select(`
-                        *,
-                        p2_products (name, unit)
-                    `)
+                    .select(`*, p2_products (name, unit)`)
                     .eq('dispatch_order_id', dispatchOrderId)
                     .order('id');
-
                 if (itemsError) throw itemsError;
 
-                // Fetch tenant settings
                 const { data: tenantSettings, error: settingsError } = await window.supabase
                     .from('p2_tenant_settings')
                     .select('*')
                     .eq('tenant_id', tenantId)
                     .single();
-
                 if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
 
-                // Populate challan
                 populateChallan(dispatchOrder, dispatchItems, tenantSettings);
 
             } catch (error) {
@@ -255,55 +295,50 @@
             }
         }
 
+        // ── POPULATE ─────────────────────────────────────────────────────────
         function populateChallan(order, items, settings) {
-            // Store settings globally for fallback in logo error handler
             window.currentSettings = settings;
 
-            // GUARD 4: Company Header with fallback logic
+            // Company header
             const companyHeader = document.getElementById('company-header');
             if (settings && settings.logo_url) {
-                // Show logo with onerror handler
-                companyHeader.innerHTML = `<img id="company-logo" src="${settings.logo_url}" alt="Company Logo" style="height: 36px; display: inline-block;" onerror="handleLogoError()">`;
+                companyHeader.innerHTML = `<img id="company-logo" src="${settings.logo_url}" alt="Company Logo" style="height:36px; display:inline-block;" onerror="handleLogoError()">`;
             } else if (settings && settings.company_name) {
-                companyHeader.innerHTML = `<div class="text-2xl font-bold">${settings.company_name}</div>`;
+                companyHeader.innerHTML = `<div style="font-size:20px; font-weight:800;">${settings.company_name}</div>`;
             } else {
-                // Fallback: No settings or company name
-                companyHeader.innerHTML = `<div class="text-2xl font-bold text-red-600" data-en="Company Name Not Set — Please update Settings" data-mr="कंपनीचे नाव सेट केलेले नाही — कृपया सेटिंग्ज अपडेट करा">Company Name Not Set — Please update Settings</div>`;
+                companyHeader.innerHTML = `<div style="font-size:18px; font-weight:800; color:#dc2626;" data-en="Company Name Not Set — Please update Settings" data-mr="कंपनीचे नाव सेट केलेले नाही — कृपया सेटिंग्ज अपडेट करा">Company Name Not Set — Please update Settings</div>`;
             }
 
-            // Company Details
+            // Company details
             const companyDetails = document.getElementById('company-details');
             let detailsHtml = '';
             if (settings) {
                 if (settings.address_line1) detailsHtml += `${settings.address_line1}<br>`;
                 if (settings.address_line2) detailsHtml += `${settings.address_line2}<br>`;
                 if (settings.mobile) detailsHtml += `Mobile: ${settings.mobile}<br>`;
-                if (settings.gstin) detailsHtml += `GSTIN: ${settings.gstin}`;
+                if (settings.gstin)  detailsHtml += `GSTIN: ${settings.gstin}`;
             }
             companyDetails.innerHTML = detailsHtml;
 
-            // Client Details
-            const clientDetails = document.getElementById('client-details');
-            clientDetails.innerHTML = `
-                <div class="font-bold">${order.client_name || 'N/A'}</div>
+            // Client details
+            document.getElementById('client-details').innerHTML = `
+                <div style="font-weight:700;">${order.client_name || 'N/A'}</div>
                 <div>${order.client_address || ''}</div>
             `;
 
-            // Challan Meta
-            // GUARD 4: Default challan_sequence to 1000 if null
+            // Challan meta
             const challanNumber = order.challan_number || (settings?.challan_sequence || 1000);
-            document.getElementById('challan-no').textContent = challanNumber;
-            document.getElementById('challan-date').textContent = formatDate(order.dispatch_date);
-            document.getElementById('po-no').textContent = order.po_number || 'N/A';
-            document.getElementById('client-challan-ref').textContent = order.your_challan_ref || '-';
+            document.getElementById('challan-no').textContent          = challanNumber;
+            document.getElementById('challan-date').textContent        = formatDate(order.dispatch_date);
+            document.getElementById('po-no').textContent               = order.po_number || 'N/A';
+            document.getElementById('client-challan-ref').textContent  = order.your_challan_ref || '-';
 
-            // Vehicle Number (show only if exists)
             if (order.vehicle_number) {
                 document.getElementById('vehicle-no').textContent = order.vehicle_number;
-                document.getElementById('vehicle-number-row').classList.remove('hidden');
+                document.getElementById('vehicle-number-row').style.display = 'block';
             }
 
-            // Items Table
+            // Items
             const itemsBody = document.getElementById('items-body');
             itemsBody.innerHTML = '';
             let totalQuantity = 0;
@@ -311,66 +346,47 @@
             items.forEach((item, index) => {
                 const row = document.createElement('tr');
                 row.innerHTML = `
-                    <td class="border border-black p-2 text-center">${index + 1}</td>
-                    <td class="border border-black p-2">${item.p2_products?.name || 'Unknown Product'}</td>
-                    <td class="border border-black p-2 text-right">${formatNumber(item.qty_dispatched)}</td>
-                    <td class="border border-black p-2 text-center">${item.unit || item.p2_products?.unit || ''}</td>
+                    <td style="text-align:center;">${index + 1}</td>
+                    <td>${item.p2_products?.name || 'Unknown Product'}</td>
+                    <td style="text-align:right;">${formatNumber(item.qty_dispatched)}</td>
+                    <td style="text-align:center;">${item.unit || item.p2_products?.unit || ''}</td>
                 `;
                 itemsBody.appendChild(row);
                 totalQuantity += parseFloat(item.qty_dispatched) || 0;
             });
 
-            // Total
             document.getElementById('total-quantity').textContent = totalQuantity.toFixed(2);
-
-            // Signature Company
             document.getElementById('signature-company').textContent = settings?.company_name || 'Company Name';
         }
 
-        // GUARD 4: Logo error handler
+        // ── LOGO ERROR ───────────────────────────────────────────────────────
         function handleLogoError() {
             const companyHeader = document.getElementById('company-header');
-            const settings = window.currentSettings; // Store settings globally for fallback
-            if (settings && settings.company_name) {
-                companyHeader.innerHTML = `<div class="text-2xl font-bold">${settings.company_name}</div>`;
-            } else {
-                companyHeader.innerHTML = `<div class="text-2xl font-bold">Company Name</div>`;
-            }
+            const settings = window.currentSettings;
+            companyHeader.innerHTML = settings?.company_name
+                ? `<div style="font-size:20px; font-weight:800;">${settings.company_name}</div>`
+                : `<div style="font-size:20px; font-weight:800;">Company Name</div>`;
         }
 
-        // GUARD 9: Handle print for mobile and desktop
+        // ── PRINT ────────────────────────────────────────────────────────────
         function handlePrint() {
             if (/Mobi|Android/i.test(navigator.userAgent)) {
-                // On mobile: hide print button and show message
-                document.getElementById('printBtn').classList.add('hidden');
-                document.getElementById('mobilePrintMsg').classList.remove('hidden');
+                document.getElementById('printBtn').style.display = 'none';
+                document.getElementById('mobilePrintMsg').style.display = 'block';
             } else {
-                // On desktop: use normal print
                 window.print();
             }
         }
 
-        // GUARD 9: Check if mobile on page load and adjust UI
         function checkMobileDevice() {
             if (/Mobi|Android/i.test(navigator.userAgent)) {
-                // Change button text to indicate share/print
                 const printBtn = document.getElementById('printBtn');
                 const lang = localStorage.getItem('nexflow_lang') || 'en';
                 printBtn.textContent = lang === 'mr' ? 'प्रिंट पर्याय दाखवा' : 'Show Print Options';
             }
         }
 
-        // Initialize on page load
-        document.addEventListener('DOMContentLoaded', async () => {
-    const authed = await checkAuth();
-    if (!authed) return;
-    checkMobileDevice();
-    loadChallan();
-});
-    </script>
-
-    <!-- Language Toggle Script -->
-    <script>
+        // ── LANG ─────────────────────────────────────────────────────────────
         function applyLang(lang) {
             document.querySelectorAll('[data-en]').forEach(el => {
                 if (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA') {
@@ -384,13 +400,21 @@
             localStorage.setItem('nexflow_lang', lang);
         }
 
-        document.addEventListener('DOMContentLoaded', () => {
+        // ── INIT ─────────────────────────────────────────────────────────────
+        document.addEventListener('DOMContentLoaded', async () => {
+            const authed = await checkAuth();
+            if (!authed) return;
+
             const saved = localStorage.getItem('nexflow_lang') || 'en';
             applyLang(saved);
+
             const btn = document.getElementById('lang-toggle');
             if (btn) btn.addEventListener('click', () => {
                 applyLang(localStorage.getItem('nexflow_lang') === 'mr' ? 'en' : 'mr');
             });
+
+            checkMobileDevice();
+            loadChallan();
         });
     </script>
 </body>

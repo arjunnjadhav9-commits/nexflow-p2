@@ -3,205 +3,239 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Receive Materials | Nexflow P2</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%231A1F2E'/><text y='.9em' font-size='80' x='10' fill='%2300BCD4'>N</text></svg>">
+    <title>GRN | Nexflow P2</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%230c0e14'/><text y='.9em' font-size='80' x='10' fill='%23ff5c1a'>N</text></svg>">
+    <link rel="stylesheet" href="css/nexflow-design.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
     <script src="js/supabase-client.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/utils.js"></script>
     <script src="js/navbar.js"></script>
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    colors: {
-                        'nexflow-dark-bg': '#1A1F2E',
-                        'nexflow-text': '#E0E0E0',
-                        'nexflow-teal': '#00BCD4',
-                        'nexflow-green': '#00E676',
-                        'nexflow-muted': '#94A3B8'
-                    }
-                }
-            }
+
+    <style>
+        /* GRN row inputs — compact inside table cells */
+        .grn-row-input {
+            width: 100%;
+            min-width: 70px;
+            background: var(--surface3);
+            border: 1px solid var(--border2);
+            border-radius: var(--radius-sm);
+            color: var(--text);
+            font-family: var(--font);
+            font-size: 13px;
+            padding: 7px 10px;
+            outline: none;
+            transition: border-color 0.15s;
         }
-    </script>
+        @media (max-width: 900px) {
+            .grn-row-input { font-size: 16px; min-height: 44px; min-width: 80px; }
+            /* GRN on mobile: stack form+table vertically (nx-grid-2 already does this via CSS) */
+            /* Table scrolls horizontally — no further changes needed */
+        }
+        .grn-row-input:focus { border-color: var(--orange); }
+        .grn-row-input[readonly] { background: var(--surface2); color: var(--mid); cursor: not-allowed; }
+        .grn-row-input::placeholder { color: var(--mid); opacity: 0.6; }
+        .grn-row-select {
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath fill='%238892a8' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 8px center;
+            background-size: 8px;
+            padding-right: 26px;
+            -webkit-appearance: none;
+            appearance: none;
+            cursor: pointer;
+        }
+
+        /* Supplier modal */
+        .nx-modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.65);
+            z-index: 500;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .nx-modal {
+            background: var(--surface);
+            border: 1px solid var(--border2);
+            border-radius: var(--radius-lg);
+            padding: 28px;
+            width: 100%;
+            max-width: 420px;
+            box-shadow: var(--shadow-md);
+        }
+        .nx-modal-title {
+            font-family: var(--condensed);
+            font-weight: 800;
+            font-size: 16px;
+            color: var(--white);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 20px;
+        }
+
+        /* Recent GRN table row hover */
+        #grnEntriesBody tr { transition: background 0.12s; }
+        #grnEntriesBody tr:hover { background: var(--surface2); }
+
+        /* Loading / error states */
+        #loadingSpinner { display: flex; align-items: center; justify-content: center; padding: 60px 20px; }
+        #errorState { display: none; }
+    </style>
 </head>
-<body class="bg-nexflow-dark-bg text-nexflow-text min-h-screen">
+<body>
     <div id="navbar-container"></div>
-    <main class="container mx-auto px-4 py-6 max-w-md">
-        <h1 id="pageTitle" data-en="Goods Received Note" data-mr="माल प्राप्ती नोंद" class="text-2xl font-bold mb-6 text-center">
-            Goods Received Note
-        </h1>
 
-        <!-- GUARD 5: Loading Spinner -->
-        <div id="loadingSpinner" class="flex justify-center items-center py-12">
-            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-nexflow-teal"></div>
-        </div>
+    <div class="nx-main">
+        <div class="nx-page">
 
-        <!-- GUARD 5: Error State -->
-        <div id="errorState" class="hidden bg-red-900 border border-red-700 rounded p-4 mb-6">
-            <p class="font-bold" data-en="Could not load data" data-mr="डेटा लोड करू शकला नाही">Could not load data</p>
-            <p class="text-sm" data-en="Check your connection and refresh the page." data-mr="तुमचे कनेक्शन तपासा आणि पृष्ठ रीफ्रेश करा.">Check your connection and refresh the page.</p>
-        </div>
-
-        <form id="grnForm" class="space-y-4 hidden">
-            <!-- Supplier Dropdown -->
-            <div>
-                <label id="supplierLabel" data-en="Supplier" data-mr="पुरवठादार" class="block mb-2 text-sm font-medium">
-                    Supplier
-                </label>
-                <div class="flex items-center space-x-2">
-                    <select id="supplierSelect" class="w-full p-2 rounded bg-[#2C3440] text-white">
-                        <option id="supplierDefaultOption" data-en="Select Supplier" data-mr="पुरवठादार निवडा" value="">
-                            Select Supplier
-                        </option>
-                    </select>
-                    <button type="button" id="addSupplierBtn"
-                            data-en="+"
-                            data-mr="+"
-                            class="bg-nexflow-teal text-white p-2 rounded">
-                        +
-                    </button>
+            <!-- PAGE HEADER -->
+            <div class="nx-page-header">
+                <div>
+                    <div class="nx-eyebrow">Stock In</div>
+                    <div class="nx-page-title" id="pageTitle" data-en="Goods Received Note" data-mr="माल प्राप्ती नोंद">
+                        Goods <span>Received</span> Note
+                    </div>
+                    <div class="nx-page-sub">Log incoming raw materials from suppliers</div>
                 </div>
             </div>
 
-            <!-- Supplier Quick Add Modal (Hidden by default) -->
-            <div id="supplierModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center">
-                <div class="bg-[#2C3440] p-6 rounded-lg w-96">
-                    <h2 id="addSupplierTitle"
-                        data-en="Add New Supplier"
-                        data-mr="नवीन पुरवठादार जोडा"
-                        class="text-xl mb-4">
-                        Add New Supplier
-                    </h2>
-                    <div class="space-y-4">
-                        <input type="text" id="newSupplierName"
-                        name="newSupplierName"
-                        name="newSupplierMobile"
-                               data-en="Supplier Name"
-                               data-mr="पुरवठादार नाव"
-                               placeholder="Supplier Name"
-                               class="w-full p-2 rounded bg-[#3A4553] text-white">
-                        <input type="tel" id="newSupplierMobile"
-                               data-en="Mobile Number"
-                               data-mr="मोबाइल क्रमांक"
-                               placeholder="Mobile Number"
-                               class="w-full p-2 rounded bg-[#3A4553] text-white">
-                        <div class="flex space-x-2">
-                            <button type="button" id="saveSupplierBtn"
-                                    data-en="Save"
-                                    data-mr="साठवा"
-                                    class="bg-nexflow-teal text-white p-2 rounded w-full">
-                                Save
-                            </button>
-                            <button type="button" id="cancelSupplierBtn"
-                                    data-en="Cancel"
-                                    data-mr="रद्द करा"
-                                    class="bg-gray-500 text-white p-2 rounded w-full">
-                                Cancel
-                            </button>
+            <!-- LOADING STATE -->
+            <div id="loadingSpinner">
+                <div class="nx-loading">
+                    <div class="nx-spinner"></div>
+                    <span>Loading...</span>
+                </div>
+            </div>
+
+            <!-- ERROR STATE -->
+            <div id="errorState" class="nx-alert nx-alert-red nx-mb-24">
+                <span class="nx-alert-icon">⚠</span>
+                <div>
+                    <div class="nx-bold" data-en="Could not load data" data-mr="डेटा लोड करू शकला नाही">Could not load data</div>
+                    <div data-en="Check your connection and refresh the page." data-mr="तुमचे कनेक्शन तपासा आणि पृष्ठ रीफ्रेश करा.">Check your connection and refresh the page.</div>
+                </div>
+            </div>
+
+            <!-- MAIN CONTENT (hidden until loaded) -->
+            <form id="grnForm" class="nx-grid-2" style="display:none; align-items:start;">
+
+                <!-- LEFT: New GRN entry -->
+                <div class="nx-card">
+                    <div class="nx-card-header">
+                        <div class="nx-card-title">New GRN Entry</div>
+                    </div>
+
+                    <!-- Supplier -->
+                    <div class="nx-form-group">
+                        <label id="supplierLabel" data-en="Supplier" data-mr="पुरवठादार">Supplier</label>
+                        <div style="display:flex; gap:8px;">
+                            <select id="supplierSelect" class="nx-input" style="flex:1;">
+                                <option id="supplierDefaultOption" data-en="Select Supplier" data-mr="पुरवठादार निवडा" value="">Select Supplier</option>
+                            </select>
+                            <button type="button" id="addSupplierBtn" class="nx-btn nx-btn-ghost" style="padding:0 14px; flex-shrink:0;" title="Add new supplier">+</button>
                         </div>
                     </div>
-                </div>
-            </div>
 
-            <!-- Date -->
-            <div>
-                <label id="dateLabel"
-                       data-en="Date"
-                       data-mr="तारीख"
-                       class="block mb-2 text-sm font-medium">
-                    Date
-                </label>
-                <input type="date" id="grnDate" class="w-full p-2 rounded bg-[#2C3440] text-white">
-            </div>
+                    <!-- Date -->
+                    <div class="nx-form-group">
+                        <label id="dateLabel" data-en="Date" data-mr="तारीख">Date</label>
+                        <input type="date" id="grnDate" class="nx-input">
+                    </div>
 
-            <!-- Multi-line Material Entry Table -->
-            <div>
-                <label class="block mb-2 text-sm font-medium" data-en="Materials" data-mr="सामग्री">
-                    Materials
-                </label>
-                <div class="overflow-x-auto bg-[#2C3440] rounded p-3">
-                    <table class="w-full text-sm">
-                        <thead>
-                            <tr class="border-b border-gray-600">
-                                <th class="p-2 text-left" data-en="Material" data-mr="सामग्री">Material</th>
-                                <th class="p-2 text-left w-24" data-en="Quantity" data-mr="परिमाण">Quantity</th>
-                                <th class="p-2 text-left w-20" data-en="Unit" data-mr="एकक">Unit</th>
-                                <th class="p-2 text-left w-28" data-en="Rate (₹)" data-mr="दर (₹)">Rate (₹)</th>
-                                <th class="p-2 text-left w-32" data-en="Invoice No" data-mr="चलान क्र">Invoice No</th>
-                                <th class="p-2 text-center w-20" data-en="Action" data-mr="कृती">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody id="grnRowsBody">
-                            <!-- Rows will be added here -->
-                        </tbody>
-                    </table>
-                    <button type="button" id="addRowBtn"
-                            data-en="+ Add Row"
-                            data-mr="+ ओळ जोडा"
-                            class="mt-3 w-full p-2 bg-nexflow-green text-white rounded hover:bg-green-600 transition">
-                        + Add Row
+                    <!-- Materials table -->
+                    <div class="nx-form-group">
+                        <label data-en="Materials" data-mr="सामग्री">Materials</label>
+                        <div class="nx-table-wrap" style="margin-bottom:10px;">
+                            <table class="nx-table">
+                                <thead>
+                                    <tr>
+                                        <th data-en="Material"   data-mr="सामग्री">Material</th>
+                                        <th data-en="Quantity"   data-mr="परिमाण">Qty</th>
+                                        <th data-en="Unit"       data-mr="एकक">Unit</th>
+                                        <th data-en="Rate (₹)"   data-mr="दर (₹)">Rate (₹)</th>
+                                        <th data-en="Invoice No" data-mr="चलान क्र">Invoice No</th>
+                                        <th data-en="Action"     data-mr="कृती" style="text-align:center;">Del</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="grnRowsBody">
+                                    <!-- JS renders rows here -->
+                                </tbody>
+                            </table>
+                        </div>
+                        <button type="button" id="addRowBtn"
+                                data-en="+ Add Row" data-mr="+ ओळ जोडा"
+                                class="nx-btn nx-btn-ghost nx-btn-full">
+                            + Add Row
+                        </button>
+                    </div>
+
+                    <!-- Submit -->
+                    <button type="submit" id="submitButton"
+                            data-en="Submit All Materials" data-mr="सर्व सामग्री सबमिट करा"
+                            class="nx-btn nx-btn-primary nx-btn-full nx-mt-8">
+                        Submit All Materials
                     </button>
                 </div>
+
+                <!-- RIGHT: Recent entries -->
+                <div class="nx-card">
+                    <div class="nx-card-header">
+                        <div class="nx-card-title" id="recentEntriesTitle" data-en="Recent GRN Entries" data-mr="अलीकडील GRN नोंदी">
+                            Recent GRN Entries
+                        </div>
+                    </div>
+                    <div class="nx-table-wrap">
+                        <table id="grnEntriesTable" class="nx-table">
+                            <thead>
+                                <tr>
+                                    <th id="dateHeader"     data-en="Date"     data-mr="तारीख">Date</th>
+                                    <th id="supplierHeader" data-en="Supplier" data-mr="पुरवठादार">Supplier</th>
+                                    <th id="materialHeader" data-en="Material" data-mr="सामग्री">Material</th>
+                                    <th id="quantityHeader" data-en="Quantity" data-mr="परिमाण" style="text-align:right;">Qty</th>
+                                </tr>
+                            </thead>
+                            <tbody id="grnEntriesBody">
+                                <!-- JS populates here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </form><!-- end #grnForm -->
+
+        </div><!-- end nx-page -->
+    </div><!-- end nx-main -->
+
+    <!-- SUPPLIER QUICK-ADD MODAL -->
+    <div id="supplierModal" class="nx-modal-overlay" style="display:none;">
+        <div class="nx-modal">
+            <div class="nx-modal-title" id="addSupplierTitle" data-en="Add New Supplier" data-mr="नवीन पुरवठादार जोडा">
+                Add New Supplier
             </div>
-
-            <!-- Submit Button -->
-            <button type="submit" id="submitButton"
-                    data-en="Submit All Materials"
-                    data-mr="सर्व सामग्री सबमिट करा"
-                    class="w-full p-3 bg-nexflow-teal text-white rounded hover:bg-blue-600 transition">
-                Submit All Materials
-            </button>
-        </form>
-
-        <!-- GRN Entries Table -->
-        <div class="mt-8">
-            <h2 id="recentEntriesTitle"
-                data-en="Recent GRN Entries"
-                data-mr="अलीकडील GRN नोंदी"
-                class="text-xl font-bold mb-4">
-                Recent GRN Entries
-            </h2>
-            <div class="overflow-x-auto">
-                <table id="grnEntriesTable" class="w-full text-sm">
-                    <thead>
-                        <tr class="bg-[#2C3440]">
-                            <th id="dateHeader"
-                                data-en="Date"
-                                data-mr="तारीख"
-                                class="p-2 text-left">
-                                Date
-                            </th>
-                            <th id="supplierHeader"
-                                data-en="Supplier"
-                                data-mr="पुरवठादार"
-                                class="p-2 text-left">
-                                Supplier
-                            </th>
-                            <th id="materialHeader"
-                                data-en="Material"
-                                data-mr="सामग्री"
-                                class="p-2 text-left">
-                                Material
-                            </th>
-                            <th id="quantityHeader"
-                                data-en="Quantity"
-                                data-mr="परिमाण"
-                                class="p-2 text-right">
-                                Quantity
-                            </th>
-                        </tr>
-                    </thead>
-                    <tbody id="grnEntriesBody">
-                        <!-- Entries will be dynamically populated -->
-                    </tbody>
-                </table>
+            <div class="nx-form-group">
+                <label data-en="Supplier Name" data-mr="पुरवठादार नाव">Supplier Name</label>
+                <input type="text" id="newSupplierName" name="newSupplierName"
+                       data-en="Supplier Name" data-mr="पुरवठादार नाव"
+                       placeholder="Supplier Name" class="nx-input">
+            </div>
+            <div class="nx-form-group">
+                <label data-en="Mobile Number" data-mr="मोबाइल क्रमांक">Mobile Number</label>
+                <input type="tel" id="newSupplierMobile" name="newSupplierMobile"
+                       data-en="Mobile Number" data-mr="मोबाइल क्रमांक"
+                       placeholder="Mobile Number" class="nx-input">
+            </div>
+            <div style="display:flex; gap:10px; margin-top:4px;">
+                <button type="button" id="saveSupplierBtn"   class="nx-btn nx-btn-primary nx-btn-full" data-en="Save"   data-mr="साठवा">Save</button>
+                <button type="button" id="cancelSupplierBtn" class="nx-btn nx-btn-ghost nx-btn-full"   data-en="Cancel" data-mr="रद्द करा">Cancel</button>
             </div>
         </div>
-    </main>
+    </div>
+
+    <!-- TOAST CONTAINER -->
+    <div class="nx-toast-wrap" id="toastWrap"></div>
 
     <script>
         let materials = [];
@@ -275,22 +309,17 @@
 
                 addGRNRow();
 
-                // Hide loading, show form
-                loadingSpinner.classList.add('hidden');
-                grnForm.classList.remove('hidden');
+                loadingSpinner.style.display = 'none';
+                grnForm.style.display = 'grid';
             } catch (error) {
                 console.error('Error initializing GRN:', error);
-                // GUARD 5: Show error state
-                loadingSpinner.classList.add('hidden');
-                errorState.classList.remove('hidden');
+                loadingSpinner.style.display = 'none';
+                errorState.style.display = 'flex';
             }
         }
 
         async function loadSuppliers() {
-            if (!tenantId) {
-                console.error('Tenant ID not available');
-                return;
-            }
+            if (!tenantId) { console.error('Tenant ID not available'); return; }
 
             const { data, error } = await window.supabase
                 .from('p2_suppliers')
@@ -299,10 +328,7 @@
                 .eq('is_active', true)
                 .order('name');
 
-            if (error) {
-                console.error('Error loading suppliers:', error);
-                return;
-            }
+            if (error) { console.error('Error loading suppliers:', error); return; }
 
             suppliers = data || [];
             const select = document.getElementById('supplierSelect');
@@ -317,10 +343,7 @@
         }
 
         async function loadMaterials() {
-            if (!tenantId) {
-                console.error('Tenant ID not available');
-                return;
-            }
+            if (!tenantId) { console.error('Tenant ID not available'); return; }
 
             const { data, error } = await window.supabase
                 .from('p2_raw_materials')
@@ -329,24 +352,14 @@
                 .eq('is_active', true)
                 .order('name');
 
-            if (error) {
-                console.error('Error loading materials:', error);
-                return;
-            }
+            if (error) { console.error('Error loading materials:', error); return; }
 
             materials = data || [];
         }
 
         function addGRNRow() {
             const rowId = Date.now();
-            const row = {
-                id: rowId,
-                material_id: '',
-                quantity: '',
-                unit: '',
-                rate: '',
-                invoice_no: ''
-            };
+            const row = { id: rowId, material_id: '', quantity: '', unit: '', rate: '', invoice_no: '' };
             grnRows.push(row);
             renderGRNRows();
         }
@@ -364,12 +377,12 @@
             const tbody = document.getElementById('grnRowsBody');
             tbody.innerHTML = '';
 
-            grnRows.forEach((row, index) => {
+            grnRows.forEach((row) => {
                 const tr = document.createElement('tr');
-                tr.className = 'border-b border-gray-600';
 
+                // Material select
                 const materialSelect = document.createElement('select');
-                materialSelect.className = 'w-full p-1 bg-[#3A4553] text-white text-sm rounded';
+                materialSelect.className = 'grn-row-input grn-row-select';
                 materialSelect.innerHTML = '<option value="">Select...</option>';
                 materials.forEach(mat => {
                     const opt = document.createElement('option');
@@ -386,79 +399,57 @@
                     renderGRNRows();
                 });
 
+                // Quantity
                 const quantityInput = document.createElement('input');
                 quantityInput.type = 'number';
                 quantityInput.step = '0.01';
                 quantityInput.min = '0';
                 quantityInput.value = row.quantity;
-                quantityInput.className = 'w-full p-1 bg-[#3A4553] text-white text-sm rounded';
-                quantityInput.addEventListener('input', (e) => {
-                    row.quantity = e.target.value;
-                });
+                quantityInput.className = 'grn-row-input';
+                quantityInput.addEventListener('input', (e) => { row.quantity = e.target.value; });
 
+                // Unit (readonly)
                 const unitInput = document.createElement('input');
                 unitInput.type = 'text';
                 unitInput.value = row.unit;
                 unitInput.readOnly = true;
-                unitInput.className = 'w-full p-1 bg-[#3A4553] text-gray-400 text-sm rounded';
+                unitInput.className = 'grn-row-input';
 
-                const invoiceInput = document.createElement('input');
-                invoiceInput.type = 'text';
-                invoiceInput.value = row.invoice_no;
-                invoiceInput.className = 'w-full p-1 bg-[#3A4553] text-white text-sm rounded';
-                invoiceInput.placeholder = 'Optional';
-                invoiceInput.addEventListener('input', (e) => {
-                    row.invoice_no = e.target.value;
-                });
-
+                // Rate
                 const rateInput = document.createElement('input');
                 rateInput.type = 'number';
                 rateInput.step = '0.01';
                 rateInput.min = '0';
                 rateInput.value = row.rate;
-                rateInput.className = 'w-full p-1 bg-[#3A4553] text-white text-sm rounded';
                 rateInput.placeholder = '0.00';
-                rateInput.addEventListener('input', (e) => {
-                    row.rate = e.target.value;
-                });
+                rateInput.className = 'grn-row-input';
+                rateInput.addEventListener('input', (e) => { row.rate = e.target.value; });
 
+                // Invoice
+                const invoiceInput = document.createElement('input');
+                invoiceInput.type = 'text';
+                invoiceInput.value = row.invoice_no;
+                invoiceInput.placeholder = 'Optional';
+                invoiceInput.className = 'grn-row-input';
+                invoiceInput.addEventListener('input', (e) => { row.invoice_no = e.target.value; });
+
+                // Remove button
                 const removeBtn = document.createElement('button');
                 removeBtn.type = 'button';
-                removeBtn.textContent = 'X';
-                removeBtn.className = 'bg-red-600 text-white px-2 py-1 rounded text-sm hover:bg-red-700';
+                removeBtn.textContent = '✕';
+                removeBtn.className = 'nx-btn nx-btn-danger nx-btn-sm';
+                removeBtn.style.cssText = 'width:28px;height:28px;padding:0;font-size:11px;';
                 removeBtn.addEventListener('click', () => removeGRNRow(row.id));
 
-                const td1 = document.createElement('td');
-                td1.className = 'p-2';
-                td1.appendChild(materialSelect);
+                const td1 = document.createElement('td'); td1.className = 'p-2'; td1.style.padding = '8px 12px'; td1.appendChild(materialSelect);
+                const td2 = document.createElement('td'); td2.style.padding = '8px 8px'; td2.appendChild(quantityInput);
+                const td3 = document.createElement('td'); td3.style.padding = '8px 8px'; td3.appendChild(unitInput);
+                const td4 = document.createElement('td'); td4.style.padding = '8px 8px'; td4.appendChild(rateInput);
+                const td5 = document.createElement('td'); td5.style.padding = '8px 8px'; td5.appendChild(invoiceInput);
+                const td6 = document.createElement('td'); td6.style.padding = '8px 12px'; td6.style.textAlign = 'center'; td6.appendChild(removeBtn);
 
-                const td2 = document.createElement('td');
-                td2.className = 'p-2';
-                td2.appendChild(quantityInput);
-
-                const td3 = document.createElement('td');
-                td3.className = 'p-2';
-                td3.appendChild(unitInput);
-
-                const td4 = document.createElement('td');
-                td4.className = 'p-2';
-                td4.appendChild(rateInput);
-
-                const td5 = document.createElement('td');
-                td5.className = 'p-2';
-                td5.appendChild(invoiceInput);
-
-                const td6 = document.createElement('td');
-                td6.className = 'p-2 text-center';
-                td6.appendChild(removeBtn);
-
-                tr.appendChild(td1);
-                tr.appendChild(td2);
-                tr.appendChild(td3);
-                tr.appendChild(td4);
-                tr.appendChild(td5);
-                tr.appendChild(td6);
-
+                tr.appendChild(td1); tr.appendChild(td2); tr.appendChild(td3);
+                tr.appendChild(td4); tr.appendChild(td5); tr.appendChild(td6);
                 tbody.appendChild(tr);
             });
 
@@ -473,7 +464,6 @@
             const supplierId = document.getElementById('supplierSelect').value;
             const grnDate = document.getElementById('grnDate').value;
 
-            // Validation: Supplier must be selected
             if (!supplierId) {
                 const lang = localStorage.getItem('nexflow_lang') || 'en';
                 alert(lang === 'mr' ? 'कृपया पुरवठादार निवडा' : 'Please select a supplier');
@@ -481,14 +471,12 @@
                 return;
             }
 
-            // Validation: At least one row must exist
             if (grnRows.length === 0) {
                 const lang = localStorage.getItem('nexflow_lang') || 'en';
                 alert(lang === 'mr' ? 'कृपया किमान एक ओळ जोडा' : 'Please add at least one row');
                 return;
             }
 
-            // Validation: Check each row for completeness
             let hasError = false;
             for (let i = 0; i < grnRows.length; i++) {
                 const row = grnRows[i];
@@ -496,39 +484,32 @@
 
                 if (!row.material_id) {
                     alert(lang === 'mr' ? `ओळ ${i + 1}: कृपया सामग्री निवडा` : `Row ${i + 1}: Please select a material`);
-                    hasError = true;
-                    break;
+                    hasError = true; break;
                 }
-
                 if (!row.quantity || row.quantity === '') {
                     alert(lang === 'mr' ? `ओळ ${i + 1}: कृपया परिमाण प्रविष्ट करा` : `Row ${i + 1}: Please enter quantity`);
-                    hasError = true;
-                    break;
+                    hasError = true; break;
                 }
-
                 const qty = parseFloat(row.quantity);
                 if (isNaN(qty) || qty <= 0) {
                     alert(lang === 'mr' ? `ओळ ${i + 1}: परिमाण ० पेक्षा जास्त असणे आवश्यक आहे` : `Row ${i + 1}: Quantity must be greater than 0`);
-                    hasError = true;
-                    break;
+                    hasError = true; break;
                 }
             }
 
-            if (hasError) {
-                return;
-            }
+            if (hasError) return;
 
             const validRows = grnRows.filter(row => row.material_id && row.quantity && parseFloat(row.quantity) > 0);
 
-           const { data: { user } } = await window.supabase.auth.getUser();
-const tenantId = user.id;
+            const { data: { user } } = await window.supabase.auth.getUser();
+            const tenantId = user.id;
+
             if (validRows.length === 0) {
                 const lang = localStorage.getItem('nexflow_lang') || 'en';
                 alert(lang === 'mr' ? 'कृपया किमान एक वैध ओळ जोडा' : 'Please add at least one valid material with quantity');
                 return;
             }
 
-            // Resolve supplier name from loaded suppliers array for denormalization
             const selectedSupplier = suppliers.find(s => s.id === supplierId);
             const supplierName = selectedSupplier ? selectedSupplier.name : null;
 
@@ -570,17 +551,17 @@ const tenantId = user.id;
         });
 
         document.getElementById('addSupplierBtn').addEventListener('click', () => {
-            document.getElementById('supplierModal').classList.remove('hidden');
+            document.getElementById('supplierModal').style.display = 'flex';
         });
 
         document.getElementById('cancelSupplierBtn').addEventListener('click', () => {
-            document.getElementById('supplierModal').classList.add('hidden');
+            document.getElementById('supplierModal').style.display = 'none';
             document.getElementById('newSupplierName').value = '';
             document.getElementById('newSupplierMobile').value = '';
         });
 
         document.getElementById('saveSupplierBtn').addEventListener('click', async () => {
-            const name = document.getElementById('newSupplierName').value.trim();
+            const name   = document.getElementById('newSupplierName').value.trim();
             const mobile = document.getElementById('newSupplierMobile').value.trim();
 
             if (!name || !mobile) {
@@ -589,21 +570,19 @@ const tenantId = user.id;
             }
 
             try {
+                const { data: { user } } = await window.supabase.auth.getUser();
+                const tid = user.id;
+
                 const { data, error } = await window.supabase
                     .from('p2_suppliers')
-                    .insert({
-                        tenant_id: tenantId,
-                        name: name,
-                        mobile: mobile,
-                        is_active: true
-                    })
+                    .insert({ tenant_id: tid, name, mobile, is_active: true })
                     .select()
                     .single();
 
                 if (error) throw error;
 
                 alert('Supplier added successfully');
-                document.getElementById('supplierModal').classList.add('hidden');
+                document.getElementById('supplierModal').style.display = 'none';
                 document.getElementById('newSupplierName').value = '';
                 document.getElementById('newSupplierMobile').value = '';
                 await loadSuppliers();
@@ -630,22 +609,20 @@ const tenantId = user.id;
                 .order('created_at', { ascending: false })
                 .limit(10);
 
-            if (error) {
-                console.error('Error loading recent GRN:', error);
-                return;
-            }
+            if (error) { console.error('Error loading recent GRN:', error); return; }
 
             const tbody = document.getElementById('grnEntriesBody');
             tbody.innerHTML = '';
 
             data.forEach(entry => {
                 const row = document.createElement('tr');
-                row.className = 'border-b border-gray-700';
                 row.innerHTML = `
-                    <td class="p-2">${formatDate(entry.transaction_date)}</td>
-                    <td class="p-2">${entry.p2_suppliers?.name || 'N/A'}</td>
-                    <td class="p-2">${entry.p2_raw_materials?.name || 'N/A'}</td>
-                    <td class="p-2 text-right">${formatNumber(entry.quantity)} ${entry.p2_raw_materials?.unit || ''}</td>
+                    <td class="nx-td-mono">${formatDate(entry.transaction_date)}</td>
+                    <td>${entry.p2_suppliers?.name || 'N/A'}</td>
+                    <td class="nx-td-bold">${entry.p2_raw_materials?.name || 'N/A'}</td>
+                    <td style="text-align:right;">
+                        <span class="nx-badge nx-badge-green">${formatNumber(entry.quantity)} ${entry.p2_raw_materials?.unit || ''}</span>
+                    </td>
                 `;
                 tbody.appendChild(row);
             });
@@ -654,7 +631,6 @@ const tenantId = user.id;
         document.addEventListener('DOMContentLoaded', () => {
             const saved = localStorage.getItem('nexflow_lang') || 'en';
             applyLang(saved);
-
             init();
         });
     </script>

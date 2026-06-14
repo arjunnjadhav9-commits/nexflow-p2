@@ -4,167 +4,207 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard | Nexflow P2</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%231A1F2E'/><text y='.9em' font-size='80' x='10' fill='%2300BCD4'>N</text></svg>">
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%230c0e14'/><text y='.9em' font-size='80' x='10' fill='%23ff5c1a'>N</text></svg>">
+    <link rel="stylesheet" href="css/nexflow-design.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="js/supabase-client.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/utils.js"></script>
     <script src="js/navbar.js"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    colors: {
-                        'nexflow-dark-bg': '#1A1F2E',
-                        'nexflow-text': '#E0E0E0',
-                        'nexflow-teal': '#00BCD4',
-                        'nexflow-green': '#00E676',
-                        'nexflow-muted': '#94A3B8',
-                        'low-stock-red': '#EF4444'
-                    }
-                }
-            }
-        }
-    </script>
 </head>
-<body class="bg-nexflow-dark-bg text-nexflow-text min-h-screen flex flex-col">
+<body>
     <div id="navbar-container"></div>
-    <!-- Dashboard Content -->
-    <main class="container mx-auto px-4 py-6 flex-grow">
-        <!-- GUARD 6: First login welcome banner -->
-        <div id="welcomeBanner" class="hidden bg-nexflow-teal border-2 border-nexflow-green rounded-lg p-6 mb-6">
-            <div class="flex items-center justify-between">
+
+    <div class="nx-main">
+        <div class="nx-page">
+
+            <!-- PAGE HEADER -->
+            <div class="nx-page-header">
                 <div>
-                    <h2 class="text-xl font-bold text-white mb-2" data-en="Welcome to Nexflow!" data-mr="नेक्सफ्लोमध्ये आपले स्वागत आहे!">Welcome to Nexflow!</h2>
-                    <p class="text-white" data-en="Complete your setup to get started" data-mr="सुरू करण्यासाठी तुमचे सेटअप पूर्ण करा">Complete your setup to get started</p>
+                    <div class="nx-eyebrow" id="companyEyebrow">Live</div>
+                    <div class="nx-page-title">Stock <span>Dashboard</span></div>
+                    <div class="nx-page-sub" id="dashboardSub">Loading...</div>
                 </div>
-                <a href="settings.html" class="bg-white text-nexflow-teal px-6 py-3 rounded-lg font-bold hover:bg-gray-100 transition" data-en="Go to Settings →" data-mr="सेटिंग्जवर जा →">
-                    Go to Settings →
-                </a>
+                <div style="display:flex; gap:10px;">
+                    <a href="export.html" class="nx-btn nx-btn-secondary"
+                       data-en="↓ Export for CA" data-mr="↓ CA साठी निर्यात">↓ Export for CA</a>
+                    <a href="grn.html" class="nx-btn nx-btn-primary"
+                       data-en="+ GRN Entry" data-mr="+ GRN नोंद">+ GRN Entry</a>
+                </div>
             </div>
-        </div>
 
-        <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
-            <h1 class="text-2xl font-bold" data-en="Stock Levels" data-mr="साठा पातळी">Stock Levels</h1>
-            <a href="export.html"
-               class="flex items-center gap-2 px-4 py-2 bg-gray-700 border border-nexflow-teal text-nexflow-teal rounded text-sm font-medium hover:bg-gray-600 transition"
-               data-en="⬇ Export for CA" data-mr="⬇ CA साठी निर्यात">
-                ⬇ Export for CA
-            </a>
-        </div>
+            <!-- WELCOME BANNER (first login) -->
+            <div id="welcomeBanner" style="display:none;"
+                 class="nx-alert nx-alert-orange nx-mb-24">
+                <span class="nx-alert-icon">👋</span>
+                <div style="flex:1;">
+                    <div class="nx-bold" data-en="Welcome to Nexflow!" data-mr="नेक्सफ्लोमध्ये आपले स्वागत आहे!">
+                        Welcome to Nexflow!
+                    </div>
+                    <div style="font-size:13px; margin-top:2px;"
+                         data-en="Complete your setup to get started." data-mr="सुरू करण्यासाठी तुमचे सेटअप पूर्ण करा.">
+                        Complete your setup to get started.
+                    </div>
+                </div>
+                <a href="settings.html" class="nx-btn nx-btn-primary nx-btn-sm"
+                   data-en="Go to Settings →" data-mr="सेटिंग्जवर जा →">Go to Settings →</a>
+            </div>
 
-        <!-- GUARD 5: Loading Spinner -->
-        <div id="loadingSpinner" class="flex justify-center items-center py-12">
-            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-nexflow-teal"></div>
-        </div>
+            <!-- LOADING -->
+            <div id="loadingSpinner">
+                <div class="nx-loading"><div class="nx-spinner"></div><span>Loading...</span></div>
+            </div>
 
-        <!-- GUARD 5: Error State -->
-        <div id="errorState" class="hidden bg-red-900 border border-red-700 rounded p-4 mb-6">
-            <p class="font-bold" data-en="Could not load data" data-mr="डेटा लोड करू शकला नाही">Could not load data</p>
-            <p class="text-sm" data-en="Check your connection and refresh the page." data-mr="तुमचे कनेक्शन तपासा आणि पृष्ठ रीफ्रेश करा.">Check your connection and refresh the page.</p>
-        </div>
+            <!-- ERROR STATE -->
+            <div id="errorState" style="display:none;" class="nx-alert nx-alert-red nx-mb-24">
+                <span class="nx-alert-icon">⚠</span>
+                <div>
+                    <div class="nx-bold" data-en="Could not load data" data-mr="डेटा लोड करू शकला नाही">Could not load data</div>
+                    <div data-en="Check your connection and refresh the page." data-mr="तुमचे कनेक्शन तपासा आणि पृष्ठ रीफ्रेश करा.">
+                        Check your connection and refresh the page.
+                    </div>
+                </div>
+            </div>
 
-        <!-- Search Input -->
-        <div class="mb-4 relative max-w-md hidden" id="searchContainer">
-            <input type="text" id="materialSearch"
-                   class="w-full p-3 pr-10 rounded bg-gray-800 text-white border border-gray-600 focus:border-nexflow-teal outline-none"
-                   placeholder="Search materials... / साहित्य शोधा..."
-                   data-en="Search materials..."
-                   data-mr="साहित्य शोधा...">
-            <button id="clearSearch" class="hidden absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white text-xl">
-                ×
-            </button>
-        </div>
+            <!-- KPI STAT CARDS -->
+            <div id="statsRow" style="display:none;">
+                <div class="nx-stat-grid nx-mb-24">
+                    <div class="nx-stat">
+                        <div class="nx-stat-label" data-en="Total Materials" data-mr="एकूण साहित्य">Total Materials</div>
+                        <div class="nx-stat-value" id="statTotal">—</div>
+                        <div class="nx-stat-unit" data-en="tracked in system" data-mr="प्रणालीत ट्रॅक">tracked in system</div>
+                    </div>
+                    <div class="nx-stat nx-stat-red">
+                        <div class="nx-stat-label" data-en="Low Stock Alerts" data-mr="कमी साठा इशारे">Low Stock Alerts</div>
+                        <div class="nx-stat-value nx-text-red" id="statLow">—</div>
+                        <div class="nx-stat-unit" data-en="below min level" data-mr="किमान पातळीखाली">below min level</div>
+                    </div>
+                    <div class="nx-stat nx-stat-green">
+                        <div class="nx-stat-label" data-en="OK Stock" data-mr="ठीक साठा">OK Stock</div>
+                        <div class="nx-stat-value nx-text-green" id="statOk">—</div>
+                        <div class="nx-stat-unit" data-en="above min level" data-mr="किमान पातळीवर">above min level</div>
+                    </div>
+                    <div class="nx-stat">
+                        <div class="nx-stat-label" data-en="Last Updated" data-mr="शेवटचे अपडेट">Last Updated</div>
+                        <div class="nx-stat-value" id="statTime" style="font-size:18px; line-height:1.3;">—</div>
+                        <div class="nx-stat-unit" id="statDate">—</div>
+                    </div>
+                </div>
+            </div>
 
-        <!-- Stock Levels Grid -->
-        <div class="overflow-x-auto">
-            <table class="w-full border-collapse text-sm" id="stockLevelsGrid">
-                <thead>
-                    <tr class="bg-gray-700 text-left">
-                        <th class="p-3 border border-gray-600" data-en="Code" data-mr="कोड">Code</th>
-                        <th class="p-3 border border-gray-600" data-en="Material Name" data-mr="साहित्याचे नाव">Material Name</th>
-                        <th class="p-3 border border-gray-600 text-right" data-en="Current Stock" data-mr="सध्याचा साठा">Current Stock</th>
-                        <th class="p-3 border border-gray-600 text-right" data-en="Min Stock" data-mr="किमान साठा">Min Stock</th>
-                        <th class="p-3 border border-gray-600" data-en="Unit" data-mr="एकक">Unit</th>
-                        <th class="p-3 border border-gray-600" data-en="Status" data-mr="स्थिती">Status</th>
-                    </tr>
-                </thead>
-                <tbody id="stockLevelsBody">
-                    <!-- Rows inserted here -->
-                </tbody>
-            </table>
-        </div>
+            <!-- MAIN STOCK TABLE CARD -->
+            <div id="stockTableCard" style="display:none;" class="nx-card">
+                <div class="nx-card-header">
+                    <div class="nx-card-title" data-en="Stock Levels" data-mr="साठा पातळी">Stock Levels</div>
+                    <!-- SEARCH -->
+                    <div style="position:relative; width:220px;">
+                        <input type="text" id="materialSearch" class="nx-input"
+                               style="padding-right:32px; font-size:13px;"
+                               data-en="Search materials..." data-mr="साहित्य शोधा..."
+                               placeholder="Search materials...">
+                        <button id="clearSearch" style="display:none; position:absolute; right:10px; top:50%; transform:translateY(-50%);
+                                background:none; border:none; color:var(--mid); cursor:pointer; font-size:16px; line-height:1;">×</button>
+                    </div>
+                </div>
 
-        <!-- No Match State -->
-        <div id="noMatchState" class="hidden text-center mt-8">
-            <p class="text-nexflow-muted" data-en="No materials match your search." data-mr="तुमच्या शोधाशी कोणतेही साहित्य जुळत नाही.">No materials match your search.</p>
-        </div>
+                <div class="nx-table-wrap">
+                    <table class="nx-table" id="stockLevelsGrid">
+                        <thead>
+                            <tr>
+                                <th data-en="Code"          data-mr="कोड">Code</th>
+                                <th data-en="Material Name" data-mr="साहित्याचे नाव">Material Name</th>
+                                <th style="text-align:right;" data-en="Current Stock" data-mr="सध्याचा साठा">Current Stock</th>
+                                <th style="text-align:right;" data-en="Min Stock"     data-mr="किमान साठा">Min Stock</th>
+                                <th data-en="Unit"   data-mr="एकक">Unit</th>
+                                <th data-en="Status" data-mr="स्थिती">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="stockLevelsBody"></tbody>
+                    </table>
+                </div>
 
-        <!-- Empty State -->
-        <div id="emptyState" class="hidden text-center mt-8">
-            <p class="text-nexflow-muted">No materials added yet. Go to Settings to add materials.</p>
-        </div>
+                <!-- No match / empty states -->
+                <div id="noMatchState" style="display:none;" class="nx-empty-state">
+                    <div class="nx-empty-icon">🔍</div>
+                    <div data-en="No materials match your search." data-mr="तुमच्या शोधाशी कोणतेही साहित्य जुळत नाही.">
+                        No materials match your search.
+                    </div>
+                </div>
+                <div id="emptyState" style="display:none;" class="nx-empty-state">
+                    <div class="nx-empty-icon">📦</div>
+                    <div data-en="No materials added yet. Go to Settings to add materials."
+                         data-mr="अद्याप कोणतेही साहित्य जोडलेले नाही. साहित्य जोडण्यासाठी सेटिंग्जवर जा.">
+                        No materials added yet. Go to Settings to add materials.
+                    </div>
+                    <a href="settings.html" class="nx-btn nx-btn-primary" style="margin-top:16px;"
+                       data-en="Go to Settings →" data-mr="सेटिंग्जवर जा →">Go to Settings →</a>
+                </div>
+            </div>
 
-        <!-- Last Updated Timestamp -->
-        <div id="lastUpdated" class="text-center text-sm text-nexflow-muted mt-4">
-            Last Updated: <span id="timestampText">-</span>
         </div>
-    </main>
+    </div>
 
     <script>
         let allStockLevels = [];
 
-        // Function to render stock level table
+        // ── RENDER TABLE ──────────────────────────────────────────
         function renderStockLevels(stockLevels, isFiltered = false) {
-            const tbody = document.getElementById('stockLevelsBody');
-            const emptyState = document.getElementById('emptyState');
-            const noMatchState = document.getElementById('noMatchState');
-            const timestampText = document.getElementById('timestampText');
+            const tbody          = document.getElementById('stockLevelsBody');
+            const emptyState     = document.getElementById('emptyState');
+            const noMatchState   = document.getElementById('noMatchState');
 
             tbody.innerHTML = '';
-            emptyState.classList.add('hidden');
-            noMatchState.classList.add('hidden');
+            emptyState.style.display   = 'none';
+            noMatchState.style.display = 'none';
 
             if (stockLevels.length === 0) {
                 if (isFiltered) {
-                    noMatchState.classList.remove('hidden');
+                    noMatchState.style.display = 'block';
                 } else {
-                    emptyState.classList.remove('hidden');
+                    emptyState.style.display = 'block';
                 }
                 return;
             }
 
-            stockLevels.forEach((item, index) => {
-                const isLowStock = item.current_stock < item.min_stock_level;
-                const row = document.createElement('tr');
-                row.className = `${index % 2 === 0 ? 'bg-gray-800' : 'bg-gray-850'} hover:bg-gray-700`;
+            stockLevels.forEach(item => {
+                const isLow = item.current_stock < item.min_stock_level;
+                const row   = document.createElement('tr');
                 row.dataset.materialName = item.material_name.toLowerCase();
                 row.dataset.materialCode = (item.material_code || '').toLowerCase();
                 row.innerHTML = `
-                    <td class="p-3 border border-gray-600 text-xs font-mono text-nexflow-muted whitespace-nowrap">${item.material_code || '-'}</td>
-                    <td class="p-3 border border-gray-600 font-medium ${isLowStock ? 'text-red-400' : ''}">${item.material_name}</td>
-                    <td class="p-3 border border-gray-600 text-right font-bold ${isLowStock ? 'text-red-400' : 'text-green-400'}">${formatNumber(item.current_stock)}</td>
-                    <td class="p-3 border border-gray-600 text-right text-gray-400">${formatNumber(item.min_stock_level)}</td>
-                    <td class="p-3 border border-gray-600 text-gray-400">${item.unit}</td>
-                    <td class="p-3 border border-gray-600">
-                        ${isLowStock
-                            ? '<span class="text-xs bg-red-900 text-red-300 px-2 py-1 rounded">⚠ Low Stock</span>'
-                            : '<span class="text-xs bg-green-900 text-green-300 px-2 py-1 rounded">✓ OK</span>'
+                    <td class="nx-td-mono">${item.material_code || '—'}</td>
+                    <td class="nx-td-bold" style="${isLow ? 'color:var(--red);' : ''}">${item.material_name}</td>
+                    <td style="text-align:right; font-weight:700; color:${isLow ? 'var(--red)' : 'var(--green)'};">
+                        ${formatNumber(item.current_stock)}
+                    </td>
+                    <td style="text-align:right; color:var(--mid);">${formatNumber(item.min_stock_level)}</td>
+                    <td style="color:var(--mid);">${item.unit}</td>
+                    <td>
+                        ${isLow
+                            ? '<span class="nx-badge nx-badge-red">⚠ Low Stock</span>'
+                            : '<span class="nx-badge nx-badge-green">✓ OK</span>'
                         }
                     </td>
                 `;
                 tbody.appendChild(row);
             });
-
-            if (timestampText) {
-                timestampText.textContent = formatDate(new Date().toISOString()) + ' ' + new Date().toLocaleTimeString('en-IN');
-            }
         }
 
-        // Function to filter materials
+        // ── UPDATE KPI CARDS ──────────────────────────────────────
+        function updateStats(stockLevels) {
+            const total = stockLevels.length;
+            const low   = stockLevels.filter(i => i.current_stock < i.min_stock_level).length;
+            const ok    = total - low;
+            const now   = new Date();
+
+            document.getElementById('statTotal').textContent = total;
+            document.getElementById('statLow').textContent   = low;
+            document.getElementById('statOk').textContent    = ok;
+            document.getElementById('statTime').textContent  = now.toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit' });
+            document.getElementById('statDate').textContent  = now.toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' });
+        }
+
+        // ── SEARCH / FILTER ───────────────────────────────────────
         function filterMaterials(searchTerm) {
             const filtered = allStockLevels.filter(item =>
                 item.material_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -173,52 +213,35 @@
             renderStockLevels(filtered, searchTerm.length > 0);
         }
 
-        // GUARD 6: Check for first login and show welcome banner
-        async function checkFirstLogin() {
-            try {
-                const { data: { user } } = await window.supabase.auth.getUser();
-                if (!user) return;
-
-                const tenantId = user.id || localStorage.getItem('nexflow_tenant_id');
-                if (!tenantId) return;
-
-                const { data: settings, error } = await window.supabase
-                    .from('p2_tenant_settings')
-                    .select('company_name')
-                    .eq('tenant_id', tenantId)
-                    .single();
-
-                // GUARD 6: If settings exist but company_name is empty, show welcome banner
-                if (settings && (!settings.company_name || settings.company_name.trim() === '')) {
-                    document.getElementById('welcomeBanner').classList.remove('hidden');
-                }
-            } catch (error) {
-                console.error('Error checking first login:', error);
-            }
-        }
-
-        // GUARD 5: Function to fetch stock levels with timeout
+        // ── FETCH STOCK ───────────────────────────────────────────
         async function fetchStockLevels() {
-            const loadingSpinner = document.getElementById('loadingSpinner');
-            const errorState = document.getElementById('errorState');
-            const searchContainer = document.getElementById('searchContainer');
+            const loadingSpinner  = document.getElementById('loadingSpinner');
+            const errorState      = document.getElementById('errorState');
+            const statsRow        = document.getElementById('statsRow');
+            const stockTableCard  = document.getElementById('stockTableCard');
 
-            // Show loading
-            loadingSpinner.classList.remove('hidden');
-            errorState.classList.add('hidden');
+            loadingSpinner.style.display = 'flex';
+            errorState.style.display     = 'none';
 
             try {
                 const { data: { user } } = await window.supabase.auth.getUser();
-                if (!user) {
-                    throw new Error('User not authenticated');
-                }
+                if (!user) throw new Error('User not authenticated');
 
                 const tenantId = user.id || localStorage.getItem('nexflow_tenant_id');
-                if (!tenantId) {
-                    throw new Error('Tenant ID not found');
-                }
+                if (!tenantId) throw new Error('Tenant ID not found');
 
-                // Fetch raw materials
+                // Update eyebrow with company name if available
+                try {
+                    const { data: settings } = await window.supabase
+                        .from('p2_tenant_settings')
+                        .select('company_name')
+                        .eq('tenant_id', tenantId)
+                        .single();
+                    if (settings?.company_name) {
+                        document.getElementById('companyEyebrow').textContent = `Live · ${settings.company_name}`;
+                    }
+                } catch (_) {}
+
                 const { data: materials, error: matError } = await window.supabase
                     .from('p2_raw_materials')
                     .select('id, name, unit, min_stock_level, material_code')
@@ -227,7 +250,6 @@
 
                 if (matError) throw matError;
 
-                // Fetch all stock transactions
                 const { data: transactions, error: txError } = await window.supabase
                     .from('p2_stock_transactions')
                     .select('raw_material_id, quantity')
@@ -235,7 +257,6 @@
 
                 if (txError) throw txError;
 
-                // Calculate current stock for each material
                 const stockMap = {};
                 transactions.forEach(tx => {
                     if (!stockMap[tx.raw_material_id]) stockMap[tx.raw_material_id] = 0;
@@ -243,44 +264,55 @@
                 });
 
                 allStockLevels = materials.map(mat => ({
-                    material_name: mat.name,
-                    material_code: mat.material_code,
-                    unit: mat.unit,
+                    material_name:  mat.name,
+                    material_code:  mat.material_code,
+                    unit:           mat.unit,
                     min_stock_level: mat.min_stock_level,
-                    current_stock: stockMap[mat.id] || 0
+                    current_stock:  stockMap[mat.id] || 0
                 }));
 
                 renderStockLevels(allStockLevels);
+                updateStats(allStockLevels);
 
-                // Hide loading, show search
-                loadingSpinner.classList.add('hidden');
-                searchContainer.classList.remove('hidden');
+                const total = allStockLevels.length;
+                const low   = allStockLevels.filter(i => i.current_stock < i.min_stock_level).length;
+                document.getElementById('dashboardSub').textContent =
+                    `${total} materials tracked · ${low > 0 ? low + ' low stock alerts' : 'All stock OK'}`;
+
+                loadingSpinner.style.display = 'none';
+                statsRow.style.display       = 'block';
+                stockTableCard.style.display = 'block';
+
             } catch (error) {
                 console.error('Error fetching stock levels:', error);
-                // GUARD 5: Show error state
-                loadingSpinner.classList.add('hidden');
-                errorState.classList.remove('hidden');
-
+                loadingSpinner.style.display = 'none';
+                errorState.style.display     = 'flex';
                 const lang = localStorage.getItem('nexflow_lang') || 'en';
                 applyLang(lang);
             }
         }
 
-        // Initialize page
-        async function initPage() {
-            const authed = await checkAuth();
-            if (!authed) return;
-            await checkFirstLogin();
-            await fetchStockLevels();
+        // ── FIRST LOGIN CHECK ─────────────────────────────────────
+        async function checkFirstLogin() {
+            try {
+                const { data: { user } } = await window.supabase.auth.getUser();
+                if (!user) return;
+                const tenantId = user.id || localStorage.getItem('nexflow_tenant_id');
+                if (!tenantId) return;
+                const { data: settings } = await window.supabase
+                    .from('p2_tenant_settings')
+                    .select('company_name')
+                    .eq('tenant_id', tenantId)
+                    .single();
+                if (settings && (!settings.company_name || settings.company_name.trim() === '')) {
+                    document.getElementById('welcomeBanner').style.display = 'flex';
+                }
+            } catch (error) {
+                console.error('Error checking first login:', error);
+            }
         }
 
-        // Run initialization when page loads
-        window.onload = initPage;
-
-        // Optional: Refresh stock levels every 5 minutes
-        setInterval(fetchStockLevels, 5 * 60 * 1000);
-
-        // Language toggle
+        // ── LANGUAGE ──────────────────────────────────────────────
         function applyLang(lang) {
             document.querySelectorAll('[data-en]').forEach(el => {
                 if (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA') {
@@ -291,32 +323,38 @@
             });
             localStorage.setItem('nexflow_lang', lang);
         }
-
         window.applyLang = applyLang;
 
-        // Single DOMContentLoaded listener for both search and language
+        // ── INIT ──────────────────────────────────────────────────
+        async function initPage() {
+            const authed = await checkAuth();
+            if (!authed) return;
+            await checkFirstLogin();
+            await fetchStockLevels();
+        }
+
+        window.onload = initPage;
+
+        // Auto-refresh every 5 minutes
+        setInterval(fetchStockLevels, 5 * 60 * 1000);
+
+        // ── DOM READY (search + lang) ─────────────────────────────
         document.addEventListener('DOMContentLoaded', () => {
-            // Language setup
             const saved = localStorage.getItem('nexflow_lang') || 'en';
             applyLang(saved);
 
-            // Search functionality
             const searchInput = document.getElementById('materialSearch');
-            const clearBtn = document.getElementById('clearSearch');
+            const clearBtn    = document.getElementById('clearSearch');
 
             searchInput.addEventListener('input', (e) => {
-                const searchTerm = e.target.value;
-                if (searchTerm.length > 0) {
-                    clearBtn.classList.remove('hidden');
-                } else {
-                    clearBtn.classList.add('hidden');
-                }
-                filterMaterials(searchTerm);
+                const term = e.target.value;
+                clearBtn.style.display = term.length > 0 ? 'block' : 'none';
+                filterMaterials(term);
             });
 
             clearBtn.addEventListener('click', () => {
-                searchInput.value = '';
-                clearBtn.classList.add('hidden');
+                searchInput.value      = '';
+                clearBtn.style.display = 'none';
                 filterMaterials('');
             });
         });

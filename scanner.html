@@ -4,191 +4,326 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Scanner | Nexflow P2</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%231A1F2E'/><text y='.9em' font-size='80' x='10' fill='%2300BCD4'>N</text></svg>">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%230c0e14'/><text y='.9em' font-size='80' x='10' fill='%23ff5c1a'>N</text></svg>">
+    <link rel="stylesheet" href="css/nexflow-design.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script src="js/supabase-client.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/utils.js"></script>
     <script src="js/navbar.js"></script>
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    colors: {
-                        'nexflow-dark-bg': '#1A1F2E',
-                        'nexflow-text': '#E0E0E0',
-                        'nexflow-teal': '#00BCD4',
-                        'nexflow-green': '#00E676',
-                        'nexflow-muted': '#94A3B8'
-                    }
-                }
-            }
+
+    <style>
+        /* Scanner is a narrow mobile-first page */
+        .scan-wrap {
+            max-width: 440px;
+            margin: 0 auto;
+            padding: 28px 16px 60px;
         }
-    </script>
+
+        /* Mode toggle */
+        .mode-toggle {
+            display: flex;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 4px;
+            gap: 4px;
+            margin-bottom: 16px;
+        }
+        .mode-btn {
+            flex: 1;
+            padding: 9px 12px;
+            border: none;
+            border-radius: var(--radius-sm);
+            font-family: var(--font);
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            cursor: pointer;
+            transition: all 0.15s;
+            background: transparent;
+            color: var(--mid);
+        }
+        .mode-btn.active {
+            background: var(--orange);
+            color: #fff;
+        }
+
+        /* Camera viewfinder */
+        #cameraViewfinder {
+            position: relative;
+            background: #000;
+            border-radius: var(--radius-lg);
+            overflow: hidden;
+            aspect-ratio: 1/1;
+            margin-bottom: 14px;
+            border: 1px solid var(--border2);
+        }
+        #cameraFeed {
+            width: 100%; height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+        .scan-frame {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
+        }
+        .scan-box {
+            width: 200px; height: 200px;
+            border: 2px solid var(--orange);
+            border-radius: 8px;
+            position: relative;
+        }
+        .scan-corner {
+            position: absolute;
+            width: 22px; height: 22px;
+            border-color: var(--orange);
+            border-style: solid;
+        }
+        .scan-corner.tl { top:-2px; left:-2px;  border-width: 3px 0 0 3px; border-radius: 6px 0 0 0; }
+        .scan-corner.tr { top:-2px; right:-2px; border-width: 3px 3px 0 0; border-radius: 0 6px 0 0; }
+        .scan-corner.bl { bottom:-2px; left:-2px;  border-width: 0 0 3px 3px; border-radius: 0 0 0 6px; }
+        .scan-corner.br { bottom:-2px; right:-2px; border-width: 0 3px 3px 0; border-radius: 0 0 6px 0; }
+
+        /* Scan status overlay */
+        #scanStatus {
+            position: absolute;
+            bottom: 10px; left: 0; right: 0;
+            display: flex;
+            justify-content: center;
+        }
+        .scan-status-pill {
+            background: rgba(0,0,0,0.75);
+            font-size: 11px;
+            font-weight: 600;
+            padding: 4px 14px;
+            border-radius: 20px;
+            color: var(--mid);
+        }
+        .scan-status-pill.success { color: var(--green); }
+        .scan-status-pill.error   { color: var(--red); }
+
+        /* Desktop fallback */
+        #desktopFallback {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 28px 20px;
+            text-align: center;
+            margin-bottom: 14px;
+        }
+
+        /* Scanned card */
+        #scannedCard {
+            background: var(--surface);
+            border: 1px solid var(--orange);
+            border-radius: var(--radius-lg);
+            padding: 18px;
+            margin-bottom: 14px;
+        }
+        .scanned-card-top {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+        .stock-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--surface2);
+            border-radius: var(--radius-sm);
+            padding: 8px 12px;
+            margin-bottom: 14px;
+            font-size: 13px;
+        }
+
+        /* Recent entries list */
+        .entry-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 9px 0;
+            border-bottom: 1px solid var(--border);
+            font-size: 13px;
+        }
+        .entry-row:last-child { border-bottom: none; }
+        .entry-type-grn   { color: var(--green); font-weight: 700; font-size: 10px; text-transform: uppercase; margin-right: 8px; }
+        .entry-type-issue { color: var(--yellow); font-weight: 700; font-size: 10px; text-transform: uppercase; margin-right: 8px; }
+        .entry-qty-grn    { color: var(--green);  font-weight: 700; }
+        .entry-qty-issue  { color: var(--red);    font-weight: 700; }
+
+        /* Pro gate */
+        #proGateError {
+            background: var(--yellow-dim);
+            border: 1px solid var(--yellow);
+            border-radius: var(--radius-lg);
+            padding: 28px 20px;
+            text-align: center;
+        }
+
+        /* Camera error */
+        #cameraError {
+            background: var(--red-dim);
+            border: 1px solid var(--red);
+            border-radius: var(--radius);
+            padding: 14px 16px;
+            text-align: center;
+            font-size: 13px;
+            margin-bottom: 14px;
+        }
+    </style>
 </head>
-<body class="bg-nexflow-dark-bg text-nexflow-text min-h-screen">
+<body>
     <div id="navbar-container"></div>
-    <main class="container mx-auto px-4 py-6 max-w-lg">
 
-        <h1 class="text-2xl font-bold mb-2 text-center">📷 QR Scanner</h1>
-        <p class="text-center text-nexflow-muted text-sm mb-6">Scan material QR code to receive or issue stock</p>
+    <div class="nx-main">
+        <div class="scan-wrap">
 
-        <!-- Loading Spinner -->
-        <div id="loadingSpinner" class="flex justify-center items-center py-12">
-            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-nexflow-teal"></div>
-        </div>
-
-        <!-- Pro Gate Error -->
-        <div id="proGateError" class="hidden bg-yellow-900 border border-yellow-600 rounded-lg p-6 text-center">
-            <p class="text-xl mb-2">🔒 Pro Feature</p>
-            <p class="text-nexflow-muted text-sm">QR Scanner is available on the Pro plan. Contact Nexflow to upgrade.</p>
-        </div>
-
-        <!-- Main Content -->
-        <div id="mainContent" class="hidden space-y-4">
-
-            <!-- Mode Toggle -->
-            <div class="bg-gray-800 rounded-lg p-1 flex">
-                <button id="modeReceive" onclick="setMode('receive')"
-                    class="flex-1 py-2 rounded-md text-sm font-semibold transition bg-nexflow-teal text-white">
-                    📥 Receive (GRN)
-                </button>
-                <button id="modeIssue" onclick="setMode('issue')"
-                    class="flex-1 py-2 rounded-md text-sm font-semibold transition text-nexflow-muted">
-                    📤 Issue (Consumption)
-                </button>
+            <!-- PAGE HEADER -->
+            <div style="text-align:center; margin-bottom:20px;">
+                <div class="nx-eyebrow" style="justify-content:center;">Mobile Scanner</div>
+                <div class="nx-page-title" style="font-size:22px; justify-content:center;">📷 QR <span>Scanner</span></div>
+                <div class="nx-page-sub" style="margin-top:4px;">Scan material QR code to receive or issue stock</div>
             </div>
 
-            <!-- Desktop Fallback (shown when BarcodeDetector not supported) -->
-            <div id="desktopFallback" class="hidden bg-gray-800 rounded-lg p-6 text-center border border-gray-600">
-                <div class="text-4xl mb-3">📱</div>
-                <h2 class="text-lg font-bold text-white mb-2">Scanner is a Mobile Feature</h2>
-                <p class="text-nexflow-muted text-sm mb-5">Open this page on your Android phone using Chrome to scan QR codes. Scan the QR below to open it directly.</p>
-                <div class="flex justify-center mb-4">
-                    <div id="desktopQR" class="bg-white p-3 rounded-lg inline-block"></div>
+            <!-- LOADING -->
+            <div id="loadingSpinner" style="display:flex; justify-content:center; padding:48px 0;">
+                <div class="nx-loading"><div class="nx-spinner"></div><span>Loading...</span></div>
+            </div>
+
+            <!-- PRO GATE -->
+            <div id="proGateError" style="display:none;">
+                <div style="font-size:28px; margin-bottom:10px;">🔒</div>
+                <div class="nx-bold nx-text-white" style="font-size:16px; margin-bottom:6px;">Pro Feature</div>
+                <div class="nx-text-mid" style="font-size:13px;">QR Scanner is available on the Pro plan. Contact Nexflow to upgrade.</div>
+            </div>
+
+            <!-- MAIN CONTENT -->
+            <div id="mainContent" style="display:none;">
+
+                <!-- Mode Toggle -->
+                <div class="mode-toggle" id="modeToggleRow">
+                    <button id="modeReceive" class="mode-btn active" onclick="setMode('receive')">📥 Receive (GRN)</button>
+                    <button id="modeIssue"   class="mode-btn"        onclick="setMode('issue')">📤 Issue (Consumption)</button>
                 </div>
-                <p id="desktopURL" class="text-nexflow-teal text-xs break-all"></p>
-            </div>
 
-            <!-- Camera Viewfinder (mobile only) -->
-            <div id="cameraViewfinder" class="relative bg-black rounded-lg overflow-hidden" style="aspect-ratio: 1/1;">
-                <video id="cameraFeed" class="w-full h-full object-cover" autoplay muted playsinline></video>
-                <!-- Scan overlay -->
-                <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <div class="w-56 h-56 border-2 border-nexflow-teal rounded-lg relative">
-                        <div class="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 border-nexflow-teal rounded-tl"></div>
-                        <div class="absolute top-0 right-0 w-6 h-6 border-t-4 border-r-4 border-nexflow-teal rounded-tr"></div>
-                        <div class="absolute bottom-0 left-0 w-6 h-6 border-b-4 border-l-4 border-nexflow-teal rounded-bl"></div>
-                        <div class="absolute bottom-0 right-0 w-6 h-6 border-b-4 border-r-4 border-nexflow-teal rounded-br"></div>
+                <!-- Desktop Fallback -->
+                <div id="desktopFallback" style="display:none;">
+                    <div style="font-size:36px; margin-bottom:10px;">📱</div>
+                    <div class="nx-bold nx-text-white" style="font-size:15px; margin-bottom:6px;">Scanner is a Mobile Feature</div>
+                    <div class="nx-text-mid" style="font-size:12px; margin-bottom:18px;">Open this page on your Android phone using Chrome to scan QR codes. Scan the QR below to open it directly.</div>
+                    <div style="display:flex; justify-content:center; margin-bottom:12px;">
+                        <div id="desktopQR" style="background:#fff; padding:10px; border-radius:8px; display:inline-block;"></div>
                     </div>
-                </div>
-                <!-- Status overlay -->
-                <div id="scanStatus" class="absolute bottom-3 left-0 right-0 flex justify-center">
-                    <span class="bg-black bg-opacity-70 text-nexflow-muted text-xs px-3 py-1 rounded-full">Point camera at QR code</span>
-                </div>
-            </div>
-
-            <!-- Camera Permission Error (mobile only) -->
-            <div id="cameraError" class="hidden bg-red-900 border border-red-700 rounded-lg p-4 text-center text-sm">
-                <p class="font-bold mb-1">Camera access denied</p>
-                <p class="text-nexflow-muted">Please allow camera access in your browser settings and reload.</p>
-            </div>
-
-            <!-- Scanned Material Card (hidden until scan) -->
-            <div id="scannedCard" class="hidden bg-gray-800 rounded-lg p-4 border border-nexflow-teal">
-                <div class="flex items-start justify-between mb-3">
-                    <div>
-                        <p class="text-xs text-nexflow-muted uppercase tracking-wider mb-1">Scanned Material</p>
-                        <p id="scannedName" class="text-lg font-bold text-white"></p>
-                        <p id="scannedCode" class="text-xs text-nexflow-muted mt-0.5"></p>
-                    </div>
-                    <span id="scannedUnit" class="bg-nexflow-teal text-white text-xs px-2 py-1 rounded font-semibold"></span>
+                    <div id="desktopURL" style="font-size:11px; color:var(--orange); word-break:break-all;"></div>
                 </div>
 
-                <!-- Current Stock -->
-                <div class="bg-gray-700 rounded p-2 mb-3 flex justify-between items-center text-sm">
-                    <span class="text-nexflow-muted">Current Stock</span>
-                    <span id="currentStock" class="font-bold text-nexflow-green"></span>
-                </div>
-
-                <!-- Entry Form -->
-                <div class="space-y-3">
-
-                    <!-- Date -->
-                    <div>
-                        <label class="block text-xs text-nexflow-muted mb-1">Date</label>
-                        <input type="date" id="entryDate"
-                            class="w-full p-2 rounded bg-gray-700 text-white text-sm">
-                    </div>
-
-                    <!-- Quantity -->
-                    <div>
-                        <label class="block text-xs text-nexflow-muted mb-1">Quantity</label>
-                        <div class="flex items-center gap-2">
-                            <input type="number" id="entryQty" min="0.01" step="0.01"
-                                placeholder="0.00"
-                                class="flex-1 p-2 rounded bg-gray-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-nexflow-teal">
-                            <span id="entryUnit" class="text-nexflow-muted text-sm w-12 text-right"></span>
+                <!-- Camera Viewfinder -->
+                <div id="cameraViewfinder">
+                    <video id="cameraFeed" autoplay muted playsinline></video>
+                    <div class="scan-frame">
+                        <div class="scan-box">
+                            <div class="scan-corner tl"></div>
+                            <div class="scan-corner tr"></div>
+                            <div class="scan-corner bl"></div>
+                            <div class="scan-corner br"></div>
                         </div>
                     </div>
+                    <div id="scanStatus">
+                        <span class="scan-status-pill">Point camera at QR code</span>
+                    </div>
+                </div>
 
-                    <!-- GRN-only fields -->
-                    <div id="grnFields" class="space-y-3">
+                <!-- Camera Error -->
+                <div id="cameraError" style="display:none;">
+                    <div class="nx-bold" style="margin-bottom:4px;">Camera access denied</div>
+                    <div class="nx-text-mid">Please allow camera access in your browser settings and reload.</div>
+                </div>
+
+                <!-- Scanned Material Card -->
+                <div id="scannedCard" style="display:none;">
+                    <div class="scanned-card-top">
                         <div>
-                            <label class="block text-xs text-nexflow-muted mb-1">Supplier (optional)</label>
-                            <select id="entrySupplier" class="w-full p-2 rounded bg-gray-700 text-white text-sm">
-                                <option value="">Select Supplier</option>
-                            </select>
+                            <div style="font-size:10px; font-weight:700; color:var(--mid); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Scanned Material</div>
+                            <div id="scannedName" class="nx-bold nx-text-white" style="font-size:16px;"></div>
+                            <div id="scannedCode" class="nx-text-mid" style="font-size:11px; margin-top:2px;"></div>
                         </div>
-                        <div>
-                            <label class="block text-xs text-nexflow-muted mb-1">Rate ₹ (optional)</label>
-                            <input type="number" id="entryRate" min="0" step="0.01" placeholder="0.00"
-                                class="w-full p-2 rounded bg-gray-700 text-white text-sm">
-                        </div>
-                        <div>
-                            <label class="block text-xs text-nexflow-muted mb-1">Invoice No (optional)</label>
-                            <input type="text" id="entryInvoice" placeholder="e.g. INV-001"
-                                class="w-full p-2 rounded bg-gray-700 text-white text-sm">
-                        </div>
+                        <span id="scannedUnit" class="nx-badge nx-badge-orange"></span>
+                    </div>
+                    <div class="stock-row">
+                        <span class="nx-text-mid">Current Stock</span>
+                        <span id="currentStock" class="nx-bold nx-text-green"></span>
                     </div>
 
-                    <!-- Issue-only fields -->
-                    <div id="issueFields" class="hidden space-y-3">
-                        <div>
-                            <label class="block text-xs text-nexflow-muted mb-1">Reference / Work Order (optional)</label>
-                            <input type="text" id="entryRef" placeholder="e.g. WO-045"
-                                class="w-full p-2 rounded bg-gray-700 text-white text-sm">
+                    <!-- Entry Form -->
+                    <div class="nx-form">
+                        <div class="nx-form-group">
+                            <label>Date</label>
+                            <input type="date" id="entryDate" class="nx-input">
                         </div>
-                    </div>
+                        <div class="nx-form-group">
+                            <label>Quantity</label>
+                            <div style="display:flex; align-items:center; gap:10px;">
+                                <input type="number" id="entryQty" min="0.01" step="0.01" placeholder="0.00" class="nx-input" style="flex:1;">
+                                <span id="entryUnit" class="nx-text-mid" style="font-size:13px; font-weight:700; min-width:36px; text-align:right;"></span>
+                            </div>
+                        </div>
 
-                    <!-- Submit -->
-                    <div class="flex gap-2 pt-1">
-                        <button onclick="submitEntry()"
-                            id="submitBtn"
-                            class="flex-1 py-3 bg-nexflow-teal text-white font-semibold rounded-lg hover:bg-cyan-600 transition text-sm">
-                            ✅ Submit GRN Entry
-                        </button>
-                        <button onclick="cancelScan()"
-                            class="px-4 py-3 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition text-sm">
-                            ✖
-                        </button>
+                        <!-- GRN-only fields -->
+                        <div id="grnFields">
+                            <div class="nx-form-group">
+                                <label>Supplier (optional)</label>
+                                <select id="entrySupplier" class="nx-input">
+                                    <option value="">Select Supplier</option>
+                                </select>
+                            </div>
+                            <div class="nx-form-group">
+                                <label>Rate ₹ (optional)</label>
+                                <input type="number" id="entryRate" min="0" step="0.01" placeholder="0.00" class="nx-input">
+                            </div>
+                            <div class="nx-form-group">
+                                <label>Invoice No (optional)</label>
+                                <input type="text" id="entryInvoice" placeholder="e.g. INV-001" class="nx-input">
+                            </div>
+                        </div>
+
+                        <!-- Issue-only fields -->
+                        <div id="issueFields" style="display:none;">
+                            <div class="nx-form-group">
+                                <label>Reference / Work Order (optional)</label>
+                                <input type="text" id="entryRef" placeholder="e.g. WO-045" class="nx-input">
+                            </div>
+                        </div>
+
+                        <div style="display:flex; gap:10px; margin-top:4px;">
+                            <button onclick="submitEntry()" id="submitBtn" class="nx-btn nx-btn-primary" style="flex:1;">
+                                ✅ Submit GRN Entry
+                            </button>
+                            <button onclick="cancelScan()" class="nx-btn nx-btn-ghost" style="width:48px; padding:0;">✖</button>
+                        </div>
                     </div>
                 </div>
-            </div>
 
-            <!-- Recent Entries -->
-            <div class="bg-gray-800 rounded-lg p-4">
-                <p class="text-sm font-semibold text-nexflow-muted mb-3">Recent Scan Entries</p>
-                <div id="recentEntries">
-                    <p class="text-xs text-nexflow-muted text-center py-4">No entries yet this session</p>
+                <!-- Recent Entries -->
+                <div class="nx-card">
+                    <div class="nx-card-header">
+                        <div class="nx-card-title">Recent Scan Entries</div>
+                    </div>
+                    <div id="recentEntries">
+                        <div class="nx-text-mid" style="font-size:12px; text-align:center; padding:20px 0;">No entries yet this session</div>
+                    </div>
                 </div>
-            </div>
 
-        </div>
-    </main>
+            </div><!-- end mainContent -->
+        </div><!-- end scan-wrap -->
+    </div><!-- end nx-main -->
 
     <script>
         // ─── STATE ────────────────────────────────────────────────────────────
@@ -206,8 +341,8 @@
             if (!authed) return;
 
             if (!isPro()) {
-                document.getElementById('loadingSpinner').classList.add('hidden');
-                document.getElementById('proGateError').classList.remove('hidden');
+                document.getElementById('loadingSpinner').style.display = 'none';
+                document.getElementById('proGateError').style.display = 'block';
                 return;
             }
 
@@ -218,8 +353,8 @@
 
             document.getElementById('entryDate').value = new Date().toISOString().split('T')[0];
 
-            document.getElementById('loadingSpinner').classList.add('hidden');
-            document.getElementById('mainContent').classList.remove('hidden');
+            document.getElementById('loadingSpinner').style.display = 'none';
+            document.getElementById('mainContent').style.display = 'block';
 
             startCamera();
         });
@@ -230,23 +365,19 @@
             cancelScan();
 
             const receiveBtn = document.getElementById('modeReceive');
-            const issueBtn = document.getElementById('modeIssue');
+            const issueBtn   = document.getElementById('modeIssue');
 
             if (mode === 'receive') {
-                receiveBtn.classList.add('bg-nexflow-teal', 'text-white');
-                receiveBtn.classList.remove('text-nexflow-muted');
-                issueBtn.classList.remove('bg-nexflow-teal', 'text-white');
-                issueBtn.classList.add('text-nexflow-muted');
-                document.getElementById('grnFields').classList.remove('hidden');
-                document.getElementById('issueFields').classList.add('hidden');
+                receiveBtn.classList.add('active');
+                issueBtn.classList.remove('active');
+                document.getElementById('grnFields').style.display   = 'block';
+                document.getElementById('issueFields').style.display = 'none';
                 document.getElementById('submitBtn').textContent = '✅ Submit GRN Entry';
             } else {
-                issueBtn.classList.add('bg-nexflow-teal', 'text-white');
-                issueBtn.classList.remove('text-nexflow-muted');
-                receiveBtn.classList.remove('bg-nexflow-teal', 'text-white');
-                receiveBtn.classList.add('text-nexflow-muted');
-                document.getElementById('grnFields').classList.add('hidden');
-                document.getElementById('issueFields').classList.remove('hidden');
+                issueBtn.classList.add('active');
+                receiveBtn.classList.remove('active');
+                document.getElementById('grnFields').style.display   = 'none';
+                document.getElementById('issueFields').style.display = 'block';
                 document.getElementById('submitBtn').textContent = '✅ Submit Issue Entry';
             }
         }
@@ -254,23 +385,17 @@
         // ─── CAMERA / SCANNER ─────────────────────────────────────────────────
         async function startCamera() {
             if (!('BarcodeDetector' in window)) {
-                // Desktop or unsupported browser — show mobile handoff screen
-                document.getElementById('cameraViewfinder').classList.add('hidden');
-                document.getElementById('desktopFallback').classList.remove('hidden');
+                document.getElementById('cameraViewfinder').style.display = 'none';
+                document.getElementById('desktopFallback').style.display  = 'block';
+                document.getElementById('modeToggleRow').style.display    = 'none';
 
-                // Hide mode toggle — not useful on desktop
-                document.querySelector('.bg-gray-800.rounded-lg.p-1.flex').classList.add('hidden');
-
-                // Generate QR code pointing to this scanner page
                 const scannerURL = window.location.href;
                 document.getElementById('desktopURL').textContent = scannerURL;
 
                 new QRCode(document.getElementById('desktopQR'), {
                     text: scannerURL,
-                    width: 160,
-                    height: 160,
-                    colorDark: '#000000',
-                    colorLight: '#ffffff',
+                    width: 160, height: 160,
+                    colorDark: '#000000', colorLight: '#ffffff',
                     correctLevel: QRCode.CorrectLevel.M
                 });
                 return;
@@ -290,7 +415,7 @@
                 scanLoop = requestAnimationFrame(detectFrame);
 
             } catch (err) {
-                document.getElementById('cameraError').classList.remove('hidden');
+                document.getElementById('cameraError').style.display = 'block';
                 setScanStatus('Camera access denied', 'error');
                 console.error('Camera error:', err);
             }
@@ -305,7 +430,7 @@
                     if (barcodes.length > 0) {
                         const raw = barcodes[0].rawValue;
                         await handleScan(raw);
-                        return; // stop loop until user dismisses
+                        return;
                     }
                 } catch (err) {
                     // silent — detection errors are expected on some frames
@@ -327,14 +452,12 @@
                 return;
             }
 
-            // Validate tenant
             if (!payload.id || payload.tid !== tenantId) {
                 setScanStatus('QR does not belong to this account', 'error');
                 scanLoop = requestAnimationFrame(detectFrame);
                 return;
             }
 
-            // Fetch current stock
             const { data: txData, error: txErr } = await window.supabase
                 .from('p2_stock_transactions')
                 .select('quantity')
@@ -349,44 +472,39 @@
 
             const currentStockQty = txData ? txData.reduce((sum, t) => sum + Number(t.quantity), 0) : 0;
 
-            // Set state
             scannedMaterial = payload;
 
-            // Populate card
             document.getElementById('scannedName').textContent = payload.name;
             document.getElementById('scannedCode').textContent = payload.code ? `Code: ${payload.code}` : '';
             document.getElementById('scannedUnit').textContent = payload.unit;
-            document.getElementById('entryUnit').textContent = payload.unit;
+            document.getElementById('entryUnit').textContent   = payload.unit;
             document.getElementById('currentStock').textContent = `${formatNumber(currentStockQty)} ${payload.unit}`;
             document.getElementById('entryQty').value = '';
             document.getElementById('entryQty').focus();
 
-            document.getElementById('scannedCard').classList.remove('hidden');
+            document.getElementById('scannedCard').style.display = 'block';
             setScanStatus('✅ Material scanned', 'success');
 
-            // Vibrate on mobile
             if (navigator.vibrate) navigator.vibrate(100);
         }
 
         function cancelScan() {
             scannedMaterial = null;
-            document.getElementById('scannedCard').classList.add('hidden');
-            document.getElementById('entryQty').value = '';
-            document.getElementById('entryRate').value = '';
+            document.getElementById('scannedCard').style.display = 'none';
+            document.getElementById('entryQty').value     = '';
+            document.getElementById('entryRate').value    = '';
             document.getElementById('entryInvoice').value = '';
-            document.getElementById('entryRef').value = '';
+            document.getElementById('entryRef').value     = '';
             setScanStatus('Point camera at QR code', 'idle');
             if (!scanLoop) scanLoop = requestAnimationFrame(detectFrame);
         }
 
         function setScanStatus(msg, type) {
             const el = document.getElementById('scanStatus');
-            const colorMap = {
-                idle: 'text-nexflow-muted',
-                success: 'text-nexflow-green',
-                error: 'text-red-400'
-            };
-            el.innerHTML = `<span class="bg-black bg-opacity-70 ${colorMap[type] || 'text-nexflow-muted'} text-xs px-3 py-1 rounded-full">${msg}</span>`;
+            const cls = type === 'success' ? 'scan-status-pill success'
+                      : type === 'error'   ? 'scan-status-pill error'
+                      : 'scan-status-pill';
+            el.innerHTML = `<span class="${cls}">${msg}</span>`;
         }
 
         // ─── SUPPLIERS ────────────────────────────────────────────────────────
@@ -415,7 +533,7 @@
         async function submitEntry() {
             if (!scannedMaterial) return;
 
-            const qty = parseFloat(document.getElementById('entryQty').value);
+            const qty  = parseFloat(document.getElementById('entryQty').value);
             const date = document.getElementById('entryDate').value;
 
             if (!qty || qty <= 0) {
@@ -433,10 +551,9 @@
 
             try {
                 if (currentMode === 'receive') {
-                    // ── GRN Insert ──────────────────────────────────────────
                     const supplierId = document.getElementById('entrySupplier').value || null;
-                    const rate = document.getElementById('entryRate').value;
-                    const invoiceNo = document.getElementById('entryInvoice').value.trim() || null;
+                    const rate       = document.getElementById('entryRate').value;
+                    const invoiceNo  = document.getElementById('entryInvoice').value.trim() || null;
 
                     const selectedSupplier = suppliers.find(s => s.id === supplierId);
                     const supplierName = selectedSupplier ? selectedSupplier.name : null;
@@ -461,8 +578,6 @@
                     alert(`✅ GRN saved: ${qty} ${scannedMaterial.unit} of ${scannedMaterial.name}`);
 
                 } else {
-                    // ── Consumption Insert ──────────────────────────────────
-                    // Stock check first
                     const { data: txData } = await window.supabase
                         .from('p2_stock_transactions')
                         .select('quantity')
@@ -486,7 +601,7 @@
                             tenant_id: tenantId,
                             raw_material_id: scannedMaterial.id,
                             transaction_type: 'consumption',
-                            quantity: -qty,   // negative = deduction
+                            quantity: -qty,
                             transaction_date: date,
                             invoice_no: ref
                         });
@@ -517,18 +632,18 @@
         function renderRecentEntries() {
             const container = document.getElementById('recentEntries');
             if (sessionEntries.length === 0) {
-                container.innerHTML = '<p class="text-xs text-nexflow-muted text-center py-4">No entries yet this session</p>';
+                container.innerHTML = '<div class="nx-text-mid" style="font-size:12px; text-align:center; padding:20px 0;">No entries yet this session</div>';
                 return;
             }
 
             container.innerHTML = sessionEntries.slice(0, 10).map(e => `
-                <div class="flex items-center justify-between py-2 border-b border-gray-700 last:border-0">
+                <div class="entry-row">
                     <div>
-                        <span class="text-xs font-semibold ${e.type === 'GRN' ? 'text-nexflow-green' : 'text-yellow-400'} mr-2">${e.type}</span>
-                        <span class="text-sm text-white">${e.name}</span>
-                        ${e.ref && e.ref !== '—' ? `<span class="text-xs text-nexflow-muted ml-1">(${e.ref})</span>` : ''}
+                        <span class="${e.type === 'GRN' ? 'entry-type-grn' : 'entry-type-issue'}">${e.type}</span>
+                        <span style="color:var(--white);">${e.name}</span>
+                        ${e.ref && e.ref !== '—' ? `<span class="nx-text-mid" style="font-size:11px; margin-left:4px;">(${e.ref})</span>` : ''}
                     </div>
-                    <span class="text-sm font-semibold ${e.type === 'GRN' ? 'text-nexflow-green' : 'text-red-400'}">
+                    <span class="${e.type === 'GRN' ? 'entry-qty-grn' : 'entry-qty-issue'}">
                         ${e.type === 'GRN' ? '+' : '-'}${formatNumber(e.qty)} ${e.unit}
                     </span>
                 </div>
