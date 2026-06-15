@@ -1561,9 +1561,7 @@
 
         ['single-price-material','price-history-material'].forEach(id => {
             const sel = document.getElementById(id);
-            const first = sel.options[0];
-            sel.innerHTML = '';
-            sel.appendChild(first);
+            sel.innerHTML = '<option value="">Select material</option>';
             allMaterialsForPrices.forEach(m => {
                 const opt = document.createElement('option');
                 opt.value = m.id;
