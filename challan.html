@@ -91,6 +91,7 @@
         .ch-items-table td {
             border: 1px solid #000;
             padding: 8px 10px;
+            vertical-align: middle;
         }
         .ch-items-table thead tr { background-color: #e5e7eb !important; }
         .ch-items-table th { font-size: 11px; font-weight: 700; text-transform: uppercase; }
@@ -321,11 +322,11 @@
                 row.innerHTML = `
                     <td style="text-align:center; vertical-align:middle; padding:10px;">${i + 1}</td>
                     <td style="vertical-align:middle; padding:10px;">${item.p2_products?.name || 'Unknown Product'}</td>
-                    <td style="text-align:right; vertical-align:middle; padding:10px;">${formatNumber(item.qty_dispatched)}</td>`;
+                    <td style="text-align:right; vertical-align:middle; padding:10px;">${formatNumber(item.qty_dispatched)} ${item.p2_products?.unit || ""}</td>`;
                 itemsBody.appendChild(row);
                 totalQty += parseFloat(item.qty_dispatched) || 0;
             });
-            document.getElementById('total-quantity').textContent = totalQty.toFixed(2);
+            document.getElementById('total-quantity').textContent = Number.isInteger(totalQty) ? totalQty : totalQty.toFixed(2);
             document.getElementById('signature-company').textContent = settings?.company_name || 'Company Name';
         }
 
