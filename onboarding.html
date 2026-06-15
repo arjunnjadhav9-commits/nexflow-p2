@@ -1236,25 +1236,12 @@
         const authed = await checkAuth();
         if (!authed) return;
 
-        // Server-side owner check — query p2_user_roles directly
+        // Owner check — hardcoded to Arjun's user ID (only owner of this tool)
         const { data: { user } } = await window.supabase.auth.getUser();
         if (!user) { window.location.href = 'login.html'; return; }
 
-        const { data: roleRows, error } = await window.supabase
-            .from('p2_user_roles')
-            .select('role')
-            .eq('user_id', user.id);
-
-        // Also check by tenant_id = user_id (how SS Engineering owner row is stored)
-        const { data: roleRowsByTenant } = await window.supabase
-            .from('p2_user_roles')
-            .select('role')
-            .eq('tenant_id', user.id);
-
-        const allRoles = [...(roleRows || []), ...(roleRowsByTenant || [])];
-        const isOwner = allRoles.some(r => r.role === 'owner');
-
-        if (!isOwner) {
+        const OWNER_ID = 'fe2b94fb-9668-405f-9c62-5f54b32f8c7a';
+        if (user.id !== OWNER_ID) {
             window.location.href = 'dashboard.html?unauthorized=true';
             return;
         }
