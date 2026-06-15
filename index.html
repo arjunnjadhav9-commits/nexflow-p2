@@ -50,6 +50,29 @@
                    data-en="Go to Settings →" data-mr="सेटिंग्जवर जा →">Go to Settings →</a>
             </div>
 
+
+            <!-- UPGRADE BANNER (Lite users at 120+ materials) -->
+            <div id="upgradeBanner" style="display:none;"
+                 class="nx-alert nx-mb-24"
+                 style="background:linear-gradient(135deg,#1a1200,#2a1f00); border:1px solid var(--orange);">
+                <span class="nx-alert-icon">🚀</span>
+                <div style="flex:1;">
+                    <div class="nx-bold" id="upgradeBannerTitle">You're approaching your material limit</div>
+                    <div style="font-size:13px; margin-top:4px;" id="upgradeBannerSub">
+                        Upgrade to Pro for unlimited materials, multi-user access, and QR scanner.
+                    </div>
+                    <!-- Progress bar -->
+                    <div style="margin-top:10px; background:rgba(255,255,255,0.08); border-radius:4px; height:6px; width:100%; max-width:320px;">
+                        <div id="upgradeProgressBar" style="height:6px; border-radius:4px; background:var(--orange); transition:width 0.4s ease; width:0%;"></div>
+                    </div>
+                    <div id="upgradeProgressLabel" style="font-size:11px; color:var(--mid); margin-top:4px;"></div>
+                </div>
+                <a href="mailto:arjunjadhav29052006@gmail.com?subject=Upgrade to Pro — Nexflow P2&body=Hi Arjun, I'd like to upgrade my Nexflow P2 plan to Pro."
+                   class="nx-btn nx-btn-primary nx-btn-sm" style="white-space:nowrap;">
+                    Upgrade to Pro →
+                </a>
+            </div>
+
             <!-- LOADING -->
             <div id="loadingSpinner">
                 <div class="nx-loading"><div class="nx-spinner"></div><span>Loading...</span></div>
@@ -259,6 +282,7 @@
 
                 renderStockLevels(allStockLevels);
                 updateStats(allStockLevels);
+                checkUpgradeBanner(allStockLevels.length);
 
                 const total = allStockLevels.length;
                 const low   = allStockLevels.filter(i => i.current_stock < i.min_stock_level).length;
@@ -310,6 +334,48 @@
             localStorage.setItem('nexflow_lang', lang);
         }
         window.applyLang = applyLang;
+
+        // ── UPGRADE BANNER ────────────────────────────────────
+        function checkUpgradeBanner(materialCount) {
+            const plan = (localStorage.getItem('nexflow_plan') || 'lite').toLowerCase();
+            // Only show for lite plan
+            if (plan === 'pro' || plan === 'founder') return;
+
+            const LIMIT = 250;
+            const WARN_AT = 200; // show banner at 200+
+            const banner = document.getElementById('upgradeBanner');
+
+            if (materialCount < WARN_AT) return;
+
+            const pct = Math.min(100, Math.round((materialCount / LIMIT) * 100));
+            const remaining = LIMIT - materialCount;
+
+            const bar   = document.getElementById('upgradeProgressBar');
+            const label = document.getElementById('upgradeProgressLabel');
+            const title = document.getElementById('upgradeBannerTitle');
+            const sub   = document.getElementById('upgradeBannerSub');
+
+            bar.style.width = pct + '%';
+            // Color shifts red as they get closer
+            bar.style.background = pct >= 95 ? 'var(--red)' : pct >= 85 ? '#f59e0b' : 'var(--orange)';
+
+            if (remaining <= 0) {
+                title.textContent = '⚠ Material limit reached (250/250)';
+                sub.textContent   = 'You cannot add more materials. Upgrade to Pro for unlimited materials, multi-user access, and QR scanner.';
+                label.textContent = '250 / 250 materials used — limit reached';
+                banner.style.border = '1px solid var(--red)';
+            } else if (remaining <= 10) {
+                title.textContent = `Only ${remaining} material slot${remaining === 1 ? '' : 's'} remaining`;
+                sub.textContent   = 'Upgrade to Pro before you run out. Unlimited materials + multi-user + QR scanner.';
+                label.textContent = `${materialCount} / ${LIMIT} materials used`;
+            } else {
+                title.textContent = `You're using ${materialCount} of ${LIMIT} materials`;
+                sub.textContent   = 'Upgrade to Pro for unlimited materials, multi-user access, and QR scanner.';
+                label.textContent = `${materialCount} / ${LIMIT} materials used`;
+            }
+
+            banner.style.display = 'flex';
+        }
 
         // ── INIT ──────────────────────────────────────────────────
         async function initPage() {
