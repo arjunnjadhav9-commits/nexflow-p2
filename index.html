@@ -244,14 +244,14 @@
 
                 const { data: stockData, error: stockError } = await window.supabase
                     .from('v_p2_stock_balance')
-                    .select('raw_material_id, name, material_code, unit, min_stock_level, current_stock')
+                    .select('raw_material_id, name, unit, min_stock_level, current_stock')
                     .eq('tenant_id', tenantId);
 
                 if (stockError) throw stockError;
 
                 allStockLevels = stockData.map(row => ({
                     material_name:   row.name,
-                    material_code:   row.material_code,
+                    material_code:   null,
                     unit:            row.unit,
                     min_stock_level: row.min_stock_level,
                     current_stock:   row.current_stock || 0
