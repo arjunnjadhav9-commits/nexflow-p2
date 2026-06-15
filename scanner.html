@@ -496,7 +496,15 @@
             document.getElementById('entryInvoice').value = '';
             document.getElementById('entryRef').value     = '';
             setScanStatus('Point camera at QR code', 'idle');
-            if (!scanLoop) scanLoop = requestAnimationFrame(detectFrame);
+            if (scanLoop) cancelAnimationFrame(scanLoop);
+            scanLoop = requestAnimationFrame(detectFrame);
+        }
+
+        function showToast(msg) {
+            setScanStatus(msg, 'success');
+            setTimeout(() => {
+                setScanStatus('Point camera at QR code', 'idle');
+            }, 2500);
         }
 
         function setScanStatus(msg, type) {
@@ -575,7 +583,7 @@
                     if (error) throw error;
 
                     addSessionEntry('GRN', scannedMaterial.name, qty, scannedMaterial.unit, supplierName);
-                    alert(`✅ GRN saved: ${qty} ${scannedMaterial.unit} of ${scannedMaterial.name}`);
+                    showToast(`✅ GRN saved: ${qty} ${scannedMaterial.unit} of ${scannedMaterial.name}`);
 
                 } else {
                     const { data: txData } = await window.supabase
@@ -609,7 +617,7 @@
                     if (error) throw error;
 
                     addSessionEntry('Issue', scannedMaterial.name, qty, scannedMaterial.unit, ref || '—');
-                    alert(`✅ Stock issued: ${qty} ${scannedMaterial.unit} of ${scannedMaterial.name}`);
+                    showToast(`✅ Stock issued: ${qty} ${scannedMaterial.unit} of ${scannedMaterial.name}`);
                 }
 
                 cancelScan();
