@@ -13,6 +13,7 @@ async function checkAuth() {
 
     const tenantId = user.id;
     localStorage.setItem('nexflow_tenant_id', tenantId);
+    localStorage.setItem('supabase_tenant_id', tenantId); //
 
     // Fetch role and plan from DB
     const { data: roleData, error: roleError } = await window.supabase
