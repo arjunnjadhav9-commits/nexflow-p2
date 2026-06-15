@@ -242,33 +242,19 @@
                     }
                 } catch (_) {}
 
-                const { data: materials, error: matError } = await window.supabase
-                    .from('p2_raw_materials')
-                    .select('id, name, unit, min_stock_level, material_code')
-                    .eq('tenant_id', tenantId)
-                    .eq('is_active', true);
-
-                if (matError) throw matError;
-
-                const { data: transactions, error: txError } = await window.supabase
-                    .from('p2_stock_transactions')
-                    .select('raw_material_id, quantity')
+                const { data: stockData, error: stockError } = await window.supabase
+                    .from('v_p2_stock_balance')
+                    .select('raw_material_id, name, material_code, unit, min_stock_level, current_stock')
                     .eq('tenant_id', tenantId);
 
-                if (txError) throw txError;
+                if (stockError) throw stockError;
 
-                const stockMap = {};
-                transactions.forEach(tx => {
-                    if (!stockMap[tx.raw_material_id]) stockMap[tx.raw_material_id] = 0;
-                    stockMap[tx.raw_material_id] += Number(tx.quantity);
-                });
-
-                allStockLevels = materials.map(mat => ({
-                    material_name:  mat.name,
-                    material_code:  mat.material_code,
-                    unit:           mat.unit,
-                    min_stock_level: mat.min_stock_level,
-                    current_stock:  stockMap[mat.id] || 0
+                allStockLevels = stockData.map(row => ({
+                    material_name:   row.name,
+                    material_code:   row.material_code,
+                    unit:            row.unit,
+                    min_stock_level: row.min_stock_level,
+                    current_stock:   row.current_stock || 0
                 }));
 
                 renderStockLevels(allStockLevels);
