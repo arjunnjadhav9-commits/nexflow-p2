@@ -1347,6 +1347,13 @@
     // ── BULK IMPORT ───────────────────────────────────────────────────────────
     let bulkRows = [];
     const VALID_UNITS = ['KG', 'NOS', 'L', 'MTR', 'PCS'];
+    const UNIT_NORMALIZER = {
+        'PC': 'PCS', 'PCS': 'PCS', 'PIECE': 'PCS', 'PIECES': 'PCS', 'PCS.': 'PCS', 'PC.': 'PCS',
+        'KG': 'KG', 'KGS': 'KG', 'KILOGRAM': 'KG', 'KILOGRAMS': 'KG', 'KG.': 'KG',
+        'NOS': 'NOS', 'NO': 'NOS', 'NOS.': 'NOS', 'NUMBER': 'NOS', 'NUMBERS': 'NOS', 'NUM': 'NOS',
+        'L': 'L', 'LTR': 'L', 'LITRE': 'L', 'LITRES': 'L', 'LITER': 'L', 'LITERS': 'L', 'LT': 'L',
+        'MTR': 'MTR', 'MT': 'MTR', 'METER': 'MTR', 'METERS': 'MTR', 'METRE': 'MTR', 'METRES': 'MTR', 'MTR.': 'MTR'
+    };
 
     function handleBulkFile(input) {
         const file = input.files[0];
@@ -1390,7 +1397,8 @@
         rows.forEach(row => {
             const code      = String(row['material_code'] || '').trim();
             const name      = String(row['name'] || '').trim();
-            const unit      = String(row['unit'] || '').trim().toUpperCase();
+            const rawUnit   = String(row['unit'] || '').trim().toUpperCase();
+            const unit      = UNIT_NORMALIZER[rawUnit] || rawUnit;
             const minStock  = parseFloat(row['min_stock_level']);
             const rawStock  = row['current_stock'];
             const currentStock = (rawStock === '' || rawStock === undefined || rawStock === null) ? null : parseFloat(rawStock);
