@@ -1564,7 +1564,7 @@
         const tenantId = user.id;
 
         const { data: materials } = await window.supabase.from('p2_raw_materials')
-            .select('id, name, unit').eq('tenant_id', tenantId).eq('is_active', true).order('name');
+            .select('id, name, unit, material_code').eq('tenant_id', tenantId).eq('is_active', true).order('name');
         allMaterialsForPrices = materials || [];
 
         ['single-price-material','price-history-material'].forEach(id => {
@@ -1728,7 +1728,37 @@
         tbody.innerHTML = '';
         let validCount = 0, errorCount = 0;
         const nameMap = {};
-        allMaterialsForPrices.forEach(m => { nameMap[m.name.toLowerCase()] = m.id; });
+        const codeMap = {};
+        allMaterialsForPrices.forEach(m => {
+            nameMap[m.name.toLowerCase().trim()] = m.id;
+            if (m.material_code) codeMap[m.material_code.toLowerCase().trim()] = m.id;
+        });
+
+        // Fuzzy match: find best material by checking if DB name contains search term or vice versa
+        function fuzzyFindMaterial(searchName) {
+            const s = searchName.toLowerCase().trim();
+            // 1. Exact match
+            if (nameMap[s]) return nameMap[s];
+            // 2. Code match
+            if (codeMap[s]) return codeMap[s];
+            // 3. DB name contains search term
+            for (const [dbName, id] of Object.entries(nameMap)) {
+                if (dbName.includes(s)) return id;
+            }
+            // 4. Search term contains DB name
+            for (const [dbName, id] of Object.entries(nameMap)) {
+                if (s.includes(dbName)) return id;
+            }
+            // 5. Word overlap — at least 3 consecutive words match
+            const sWords = s.split(/\s+/);
+            for (const [dbName, id] of Object.entries(nameMap)) {
+                const dbWords = dbName.split(/\s+/);
+                let matchCount = 0;
+                sWords.forEach(w => { if (w.length > 2 && dbWords.includes(w)) matchCount++; });
+                if (matchCount >= Math.min(3, Math.ceil(sWords.length * 0.6))) return id;
+            }
+            return null;
+        }
 
         rows.forEach(row => {
             const name     = String(row['name']||'').trim();
@@ -1746,7 +1776,7 @@
             }
 
             const errors = [];
-            const matId  = nameMap[name.toLowerCase()];
+            const matId  = fuzzyFindMaterial(name);
             if (!matId) errors.push('material not found');
             if (isNaN(price)||price<0) errors.push('price_per_unit invalid');
             if (!dateStr||!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) errors.push('effective_date must be YYYY-MM-DD');
