@@ -298,11 +298,15 @@
                         </div>
                         <div class="ob-step">
                             <div class="ob-step-num" id="step-num-4">4</div>
-                            <div class="ob-step-label" id="step-label-4">Import opening stock</div>
+                            <div class="ob-step-label" id="step-label-4">Import BOM</div>
                         </div>
                         <div class="ob-step">
                             <div class="ob-step-num" id="step-num-5">5</div>
-                            <div class="ob-step-label" id="step-label-5">Done ✓</div>
+                            <div class="ob-step-label" id="step-label-5">Import opening stock</div>
+                        </div>
+                        <div class="ob-step">
+                            <div class="ob-step-num" id="step-num-6">6</div>
+                            <div class="ob-step-label" id="step-label-6">Done ✓</div>
                         </div>
                     </div>
 
@@ -445,10 +449,59 @@
                         <div id="step3Log" class="ob-log"></div>
                     </div>
 
-                    <!-- STEP 4: OPENING STOCK (hidden until step 3 done) -->
+                    <!-- STEP 4: BOM IMPORT (hidden until step 3 done) -->
                     <div id="step4Section" class="ob-section" style="display:none;">
                         <div class="ob-section-title">
                             <span>Step 4</span>
+                            <span class="ob-badge">BOM Import</span>
+                        </div>
+                        <div style="font-size:13px; color:var(--mid); margin-bottom:14px;">
+                            Upload the SAP BOM export. Columns needed: <code style="color:var(--orange);">product_code, component_code, qty, unit</code>. Products are auto-created from unique product codes.
+                        </div>
+
+                        <div class="ob-label">Upload BOM Excel</div>
+                        <div class="ob-drop" id="bomDrop">
+                            <input type="file" id="bomFile" accept=".xlsx,.xls,.csv" onchange="handleBomFile(this)">
+                            <div class="ob-drop-icon">🔩</div>
+                            <div>Drop file here or click to browse</div>
+                            <div style="font-size:11px; margin-top:4px; color:var(--mid);">.xlsx · .xls · .csv — SAP export format</div>
+                        </div>
+
+                        <div id="bomPreview" style="display:none;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:16px;">
+                                <div id="bomStatus" style="font-size:13px;"></div>
+                                <button onclick="clearBomFile()" style="background:none; border:none; color:var(--mid); font-size:12px; cursor:pointer;">✕ Clear</button>
+                            </div>
+                            <div style="overflow-x:auto; max-height:280px; overflow-y:auto;">
+                                <table class="ob-preview-table" id="bomTable">
+                                    <thead>
+                                        <tr>
+                                            <th>Status</th>
+                                            <th>Product Code</th>
+                                            <th>Component Code</th>
+                                            <th style="text-align:right;">Qty</th>
+                                            <th>Unit</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="bomTableBody"></tbody>
+                                </table>
+                            </div>
+                            <button class="ob-action-btn" id="importBomBtn" onclick="importBom()">
+                                Import BOM →
+                            </button>
+                        </div>
+                        <div id="step4Log" class="ob-log"></div>
+
+                        <hr class="ob-divider">
+                        <button class="ob-action-btn" style="background:transparent; border:1px solid var(--border); color:var(--mid); margin-top:0;" onclick="skipBom()">
+                            Skip BOM (no BOM for this client) →
+                        </button>
+                    </div>
+
+                    <!-- STEP 5: OPENING STOCK (hidden until step 4 done) -->
+                    <div id="step5Section" class="ob-section" style="display:none;">
+                        <div class="ob-section-title">
+                            <span>Step 5</span>
                             <span class="ob-badge">Opening Stock</span>
                         </div>
                         <div style="font-size:13px; color:var(--mid); margin-bottom:14px;">
@@ -497,7 +550,7 @@
                                 Import Opening Stock →
                             </button>
                         </div>
-                        <div id="step4Log" class="ob-log"></div>
+                        <div id="step5Log" class="ob-log"></div>
 
                         <hr class="ob-divider">
                         <button class="ob-action-btn" style="background:var(--green); margin-top:0;" onclick="markDone()">
@@ -505,8 +558,8 @@
                         </button>
                     </div>
 
-                    <!-- STEP 5: DONE -->
-                    <div id="step5Section" class="ob-section" style="display:none; text-align:center; padding:40px 24px;">
+                    <!-- STEP 6: DONE -->
+                    <div id="step6Section" class="ob-section" style="display:none; text-align:center; padding:40px 24px;">
                         <div style="font-size:48px; margin-bottom:16px;">🎉</div>
                         <div style="font-size:20px; font-weight:700; color:var(--fg); margin-bottom:8px;" id="doneTitle">Client onboarded successfully</div>
                         <div style="font-size:13px; color:var(--mid); margin-bottom:28px;" id="doneSub">All steps completed.</div>
@@ -566,9 +619,10 @@
     // ── STEP TRACKER ──────────────────────────────────────────────
     function setStep(n) {
         currentStep = n;
-        for (let i = 1; i <= 5; i++) {
+        for (let i = 1; i <= 6; i++) {
             const num   = document.getElementById(`step-num-${i}`);
             const label = document.getElementById(`step-label-${i}`);
+            if (!num) continue;
             if (i < n)       { num.className = 'ob-step-num done';   label.className = 'ob-step-label done'; }
             else if (i === n){ num.className = 'ob-step-num active';  label.className = 'ob-step-label active'; }
             else             { num.className = 'ob-step-num';         label.className = 'ob-step-label'; }
@@ -583,60 +637,33 @@
         document.getElementById('lookupResult').classList.remove('visible');
         document.getElementById('lookupError').style.display = 'none';
 
-        // Search p2_tenant_settings by matching email in company details
-        // We query all tenants visible to us and match by email stored in settings
-        // Primary: look up auth users via p2_user_roles matching email pattern
-        const { data: roles, error } = await window.supabase
-            .from('p2_user_roles')
-            .select('tenant_id, user_id')
-            .limit(200);
+        // Query p2_tenant_settings for email field directly
+        const { data: byEmail, error: e1 } = await window.supabase
+            .from('p2_tenant_settings')
+            .select('tenant_id, company_name, plan, email')
+            .ilike('email', email)
+            .limit(1);
 
-        if (error) { toast('Lookup failed: ' + error.message, 'error'); return; }
-
-        // Then get tenant settings for all tenants
-        const tenantIds = [...new Set((roles || []).map(r => r.tenant_id))];
-        if (!tenantIds.length) {
-            document.getElementById('lookupError').style.display = 'block';
-            document.getElementById('lookupError').textContent = 'No tenants found in system.';
+        if (!e1 && byEmail && byEmail.length > 0) {
+            const s = byEmail[0];
+            showLookupResult(s.tenant_id, s.company_name || '(No name)', s.plan || 'lite', email);
             return;
         }
 
-        const { data: settings } = await window.supabase
-            .from('p2_tenant_settings')
-            .select('tenant_id, company_name, plan')
-            .in('tenant_id', tenantIds);
+        // Fallback: match by p2_user_roles — get user_id from auth via RPC
+        const { data: rpcData, error: e2 } = await window.supabase
+            .rpc('get_tenant_by_email', { p_email: email });
 
-        // Match by tenant_id (UUID) — if user typed UUID directly
-        const isUUID = /^[0-9a-f-]{36}$/.test(email);
-        let match = null;
-
-        if (isUUID) {
-            match = (settings || []).find(s => s.tenant_id === email);
-            if (match) {
-                showLookupResult(match.tenant_id, match.company_name || 'Unknown', match.plan || 'lite', email);
-                return;
-            }
+        if (!e2 && rpcData && rpcData.length > 0) {
+            const r = rpcData[0];
+            showLookupResult(r.tenant_id, r.company_name || '(No name)', r.plan || 'lite', email);
+            return;
         }
 
-        // Try to find by email stored as company name hint or direct tenant_id match
-        // Since RLS blocks auth.users, we check if tenant_id itself matches a known client
-        // Fallback: show all tenants and let user pick
-        const allSettings = settings || [];
-        const byEmail = allSettings.find(s =>
-            s.company_name && s.company_name.toLowerCase().includes(email.split('@')[0].toLowerCase())
-        );
-
-        if (byEmail) {
-            showLookupResult(byEmail.tenant_id, byEmail.company_name, byEmail.plan || 'lite', email);
-        } else if (allSettings.length > 0) {
-            // Show first unmatched result with guidance
-            document.getElementById('lookupError').style.display = 'block';
-            document.getElementById('lookupError').innerHTML =
-                `No exact match for <strong>${email}</strong>. Use the manual Tenant ID field below, or check Supabase Auth for their UUID.`;
-        } else {
-            document.getElementById('lookupError').style.display = 'block';
-            document.getElementById('lookupError').textContent = 'Client not found. They must sign up first via login.html.';
-        }
+        // Nothing found
+        document.getElementById('lookupError').style.display = 'block';
+        document.getElementById('lookupError').innerHTML =
+            `No client found for <strong>${email}</strong>. They must sign up first, or use the manual Tenant ID field below.`;
     }
 
     function showLookupResult(tenantId, companyName, plan, email) {
@@ -690,11 +717,12 @@
         document.getElementById('activeClientPlan').innerHTML = '';
         document.getElementById('activeClientPlan').appendChild(planBadge);
 
-        // Show steps 2–4, hide step 1
+        // Show steps 2–5, hide step 1
         document.getElementById('step1Section').style.display = 'none';
         document.getElementById('step2Section').style.display = 'block';
         document.getElementById('step3Section').style.display = 'block';
-        document.getElementById('step4Section').style.display = 'block';
+        document.getElementById('step4Section').style.display = 'none'; // shown after step 3
+        document.getElementById('step5Section').style.display = 'none'; // shown after step 4
 
         // Set today's date for stock
         document.getElementById('stockDate').value = new Date().toISOString().split('T')[0];
@@ -871,6 +899,7 @@
 
         btn.textContent = '✓ Imported';
         await loadDbMaterials();
+        document.getElementById('step4Section').style.display = 'block';
         setStep(4);
     }
 
@@ -935,28 +964,10 @@
         dbMaterials = data || [];
     }
 
-    // ── STEP 4: OPENING STOCK (separate file) ─────────────────────
-    function fuzzyMatch(search) {
-        const s = search.toLowerCase().trim();
-        // 1. Code exact
-        const byCode = dbMaterials.find(m => m.material_code && m.material_code.toLowerCase() === s);
-        if (byCode) return byCode;
-        // 2. Name exact
-        const byName = dbMaterials.find(m => m.name.toLowerCase() === s);
-        if (byName) return byName;
-        // 3. Name contains
-        const byContains = dbMaterials.find(m => m.name.toLowerCase().includes(s));
-        if (byContains) return byContains;
-        // 4. Word overlap
-        const sWords = s.split(/\s+/);
-        return dbMaterials.find(m => {
-            const dbWords = m.name.toLowerCase().split(/\s+/);
-            const matches = sWords.filter(w => w.length > 2 && dbWords.includes(w)).length;
-            return matches >= Math.min(3, Math.ceil(sWords.length * 0.6));
-        }) || null;
-    }
+    // ── STEP 4: BOM IMPORT ────────────────────────────────────────
+    let bomRows = [];
 
-    function handleStockFile(input) {
+    function handleBomFile(input) {
         const file = input.files[0];
         if (!file) return;
         const reader = new FileReader();
@@ -971,55 +982,146 @@
                     Object.keys(row).forEach(k => { out[k.toLowerCase().trim()] = row[k]; });
                     return out;
                 });
-                previewStock(norm);
-            } catch(err) { toast('Failed to parse file', 'error'); }
+                previewBom(norm);
+            } catch(err) { toast('Failed to parse BOM file', 'error'); }
         };
         reader.readAsArrayBuffer(file);
     }
 
-    function previewStock(rows) {
-        stockRows = [];
-        const tbody = document.getElementById('stockTableBody');
+    function previewBom(rows) {
+        bomRows = [];
+        const tbody = document.getElementById('bomTableBody');
         tbody.innerHTML = '';
         let valid = 0, errors = 0;
 
-        rows.forEach(row => {
-            const searchKey = String(row['material_code'] || row['name'] || '').trim();
-            const qty       = parseFloat(row['current_stock'] ?? row['quantity'] ?? row['stock'] ?? '');
-            const matched   = searchKey ? fuzzyMatch(searchKey) : null;
-            const errs      = [];
+        const UNIT_MAP = {'PC':'PC','PCS':'PC','KG':'KG','M':'MTR','MTR':'MTR','ST':'PC','LTR':'LTR','NOS':'PC'};
 
-            if (!searchKey)    errs.push('no code/name');
-            if (!matched)      errs.push('material not found in DB');
-            if (isNaN(qty)||qty<0) errs.push('qty invalid');
+        rows.forEach(row => {
+            // Support SAP export column names
+            const productCode   = String(row['product_code'] || row['finished_good'] || row['fg_code'] || '').trim();
+            const componentCode = String(row['component_code'] || row['material_code'] || row['comp_code'] || '').trim();
+            const qty           = parseFloat(row['qty'] || row['quantity'] || row['qty_per_unit'] || '');
+            const unitRaw       = String(row['unit'] || row['uom'] || 'PC').trim().toUpperCase();
+            const unit          = UNIT_MAP[unitRaw] || unitRaw;
+
+            const errs = [];
+            if (!productCode)   errs.push('product_code missing');
+            if (!componentCode) errs.push('component_code missing');
+            if (isNaN(qty)||qty<=0) errs.push('qty invalid');
+
+            // Check component exists in DB materials
+            const matMatch = dbMaterials.find(m =>
+                m.material_code === componentCode ||
+                m.material_code?.toLowerCase() === componentCode.toLowerCase()
+            );
+            if (!matMatch) errs.push('component not in DB');
 
             const ok = errs.length === 0;
-            if (ok) { valid++; stockRows.push({ matId: matched.id, qty }); }
-            else errors++;
+            if (ok) {
+                valid++;
+                bomRows.push({ productCode, componentCode, matId: matMatch.id, qty, unit });
+            } else { errors++; }
 
             const tr = document.createElement('tr');
             tr.className = ok ? 'ok-row' : 'error-row';
             tr.innerHTML = `
                 <td>${ok ? '✓' : '✗ ' + errs.join(', ')}</td>
-                <td style="font-family:monospace; font-size:11px;">${searchKey||'—'}</td>
-                <td style="font-size:11px;">${matched ? matched.name : '—'}</td>
+                <td style="font-family:monospace; font-size:11px;">${productCode||'—'}</td>
+                <td style="font-family:monospace; font-size:11px;">${componentCode||'—'}</td>
                 <td style="text-align:right;">${isNaN(qty)?'—':qty}</td>
+                <td>${unit}</td>
             `;
             tbody.appendChild(tr);
         });
 
-        document.getElementById('stockStatus').innerHTML =
-            `<span style="color:var(--green);">${valid} matched</span>${errors?' · <span style="color:var(--red);">'+errors+' not matched</span>':''}`;
-        document.getElementById('stockPreview').style.display = 'block';
-        document.getElementById('importStockBtn').disabled = valid === 0;
+        document.getElementById('bomStatus').innerHTML =
+            `<span style="color:var(--green);">${valid} valid</span>${errors?' · <span style="color:var(--red);">'+errors+' errors</span>':''}`;
+        document.getElementById('bomPreview').style.display = 'block';
+        document.getElementById('importBomBtn').disabled = valid === 0;
     }
 
-    function clearStockFile() {
-        document.getElementById('stockFile').value = '';
-        document.getElementById('stockPreview').style.display = 'none';
-        stockRows = [];
+    function clearBomFile() {
+        document.getElementById('bomFile').value = '';
+        document.getElementById('bomPreview').style.display = 'none';
+        bomRows = [];
     }
 
+    async function importBom() {
+        if (!activeTenantId || !bomRows.length) return;
+        const btn = document.getElementById('importBomBtn');
+        btn.disabled = true;
+        btn.textContent = 'Importing…';
+
+        log('step4Log', `Starting BOM import…`, 'info');
+
+        // Get unique product codes
+        const uniqueProducts = [...new Set(bomRows.map(r => r.productCode))];
+        log('step4Log', `Creating ${uniqueProducts.length} products…`, 'info');
+
+        // Upsert products (name = product_code, product_code column)
+        const productPayload = uniqueProducts.map(code => ({
+            tenant_id:    activeTenantId,
+            name:         code,
+            product_code: code,
+            is_active:    true
+        }));
+
+        const { error: prodErr } = await window.supabase
+            .from('p2_products')
+            .upsert(productPayload, { onConflict: 'tenant_id,product_code', ignoreDuplicates: false });
+
+        if (prodErr) {
+            log('step4Log', 'Product insert error: ' + prodErr.message, 'err');
+            toast('BOM import failed at products step', 'error');
+            btn.disabled = false; btn.textContent = 'Import BOM →';
+            return;
+        }
+        log('step4Log', `✓ ${uniqueProducts.length} products upserted`, 'ok');
+
+        // Fetch product IDs
+        const { data: dbProducts } = await window.supabase
+            .from('p2_products')
+            .select('id, product_code')
+            .eq('tenant_id', activeTenantId);
+
+        const productMap = {};
+        (dbProducts || []).forEach(p => { if (p.product_code) productMap[p.product_code] = p.id; });
+
+        // Build BOM payload
+        const bomPayload = bomRows.map(r => ({
+            tenant_id:       activeTenantId,
+            product_id:      productMap[r.productCode],
+            raw_material_id: r.matId,
+            qty_per_unit:    r.qty,
+            unit:            r.unit
+        })).filter(r => r.product_id);
+
+        // Clear old BOM for this tenant first
+        await window.supabase.from('p2_product_bom').delete().eq('tenant_id', activeTenantId);
+
+        // Insert in batches of 50
+        let imported = 0;
+        for (let i = 0; i < bomPayload.length; i += 50) {
+            const batch = bomPayload.slice(i, i + 50);
+            const { error } = await window.supabase.from('p2_product_bom').insert(batch);
+            if (error) { log('step4Log', 'BOM batch error: ' + error.message, 'err'); }
+            else { imported += batch.length; }
+        }
+
+        log('step4Log', `✓ ${imported} BOM lines imported`, 'ok');
+        toast(`BOM imported: ${uniqueProducts.length} products, ${imported} lines`, 'success');
+        btn.textContent = '✓ Imported';
+        document.getElementById('step5Section').style.display = 'block';
+        setStep(5);
+    }
+
+    function skipBom() {
+        document.getElementById('step5Section').style.display = 'block';
+        setStep(5);
+        toast('BOM skipped', 'info');
+    }
+
+    // ── STEP 5: OPENING STOCK ─────────────────────────────────────
     async function importStock() {
         if (!activeTenantId || !stockRows.length) return;
         const btn = document.getElementById('importStockBtn');
@@ -1029,7 +1131,7 @@
         const dateVal = document.getElementById('stockDate').value;
         if (!dateVal) { toast('Set a stock date first', 'error'); btn.disabled = false; btn.textContent = 'Import Opening Stock →'; return; }
 
-        log('step4Log', `Clearing old opening stock for this tenant…`, 'info');
+        log('step5Log', `Clearing old opening stock for this tenant…`, 'info');
         await window.supabase
             .from('p2_stock_transactions')
             .delete()
@@ -1037,7 +1139,7 @@
             .eq('transaction_type', 'adjustment')
             .eq('notes', 'Opening Stock');
 
-        log('step4Log', `Inserting ${stockRows.length} opening stock entries…`, 'info');
+        log('step5Log', `Inserting ${stockRows.length} opening stock entries…`, 'info');
         const txns = stockRows.map(r => ({
             tenant_id:        activeTenantId,
             raw_material_id:  r.matId,
@@ -1052,36 +1154,36 @@
             .insert(txns);
 
         if (error) {
-            log('step4Log', 'Error: ' + error.message, 'err');
+            log('step5Log', 'Error: ' + error.message, 'err');
             toast('Import failed: ' + error.message, 'error');
             btn.disabled = false;
             btn.textContent = 'Import Opening Stock →';
             return;
         }
 
-        log('step4Log', `✓ ${txns.length} opening stock entries inserted for ${dateVal}`, 'ok');
+        log('step5Log', `✓ ${txns.length} opening stock entries inserted for ${dateVal}`, 'ok');
         toast(`Opening stock imported for ${txns.length} materials`, 'success');
         btn.textContent = '✓ Done';
-        setStep(5);
+        setStep(6);
     }
 
-    // ── STEP 5: DONE ──────────────────────────────────────────────
+    // ── STEP 6: DONE ──────────────────────────────────────────────
     function markDone() {
         document.getElementById('doneTitle').textContent = `${activeCompany || 'Client'} is live on Nexflow P2`;
         document.getElementById('doneSub').textContent   =
             `Plan: ${selectedPlan.toUpperCase()} · Tenant: ${activeTenantId}`;
-        ['step1Section','step2Section','step3Section','step4Section'].forEach(id => {
+        ['step1Section','step2Section','step3Section','step4Section','step5Section'].forEach(id => {
             document.getElementById(id).style.display = 'none';
         });
-        document.getElementById('step5Section').style.display = 'block';
-        setStep(5);
+        document.getElementById('step6Section').style.display = 'block';
+        setStep(6);
         toast(`${activeCompany || 'Client'} onboarded successfully 🎉`, 'success');
     }
 
     // ── RESET ─────────────────────────────────────────────────────
     function resetOnboarding() {
         activeTenantId = null; activeEmail = null; activeCompany = null;
-        selectedPlan = 'founder'; materialsRows = []; stockRows = []; dbMaterials = [];
+        selectedPlan = 'founder'; materialsRows = []; stockRows = []; bomRows = []; dbMaterials = [];
 
         document.getElementById('clientEmail').value      = '';
         document.getElementById('manualTenantId').value   = '';
@@ -1090,12 +1192,13 @@
         document.getElementById('lookupError').style.display = 'none';
         document.getElementById('activeClientCard').style.display = 'none';
 
-        ['step2Log','step3Log','step4Log'].forEach(id => {
+        ['step2Log','step3Log','step4Log','step5Log'].forEach(id => {
             const el = document.getElementById(id);
-            el.innerHTML = ''; el.classList.remove('visible');
+            if (el) { el.innerHTML = ''; el.classList.remove('visible'); }
         });
 
         clearMaterialsFile();
+        clearBomFile();
         clearStockFile();
 
         document.getElementById('step1Section').style.display = 'block';
@@ -1103,25 +1206,28 @@
         document.getElementById('step3Section').style.display = 'none';
         document.getElementById('step4Section').style.display = 'none';
         document.getElementById('step5Section').style.display = 'none';
+        document.getElementById('step6Section').style.display = 'none';
 
         setStep(1);
     }
 
     // ── DRAG AND DROP ─────────────────────────────────────────────
-    ['materialsDrop','stockDrop'].forEach(id => {
+    ['materialsDrop','bomDrop','stockDrop'].forEach(id => {
         const el = document.getElementById(id);
+        if (!el) return;
         el.addEventListener('dragover', e => { e.preventDefault(); el.classList.add('dragover'); });
         el.addEventListener('dragleave', () => el.classList.remove('dragover'));
         el.addEventListener('drop', e => {
             e.preventDefault(); el.classList.remove('dragover');
             const file = e.dataTransfer.files[0];
             if (!file) return;
-            const inputId = id === 'materialsDrop' ? 'materialsFile' : 'stockFile';
+            const inputId = id === 'materialsDrop' ? 'materialsFile' : id === 'bomDrop' ? 'bomFile' : 'stockFile';
             const dt = new DataTransfer();
             dt.items.add(file);
             document.getElementById(inputId).files = dt.files;
-            id === 'materialsDrop' ? handleMaterialsFile(document.getElementById(inputId))
-                                   : handleStockFile(document.getElementById(inputId));
+            if (id === 'materialsDrop') handleMaterialsFile(document.getElementById(inputId));
+            else if (id === 'bomDrop')  handleBomFile(document.getElementById(inputId));
+            else                        handleStockFile(document.getElementById(inputId));
         });
     });
 
@@ -1129,13 +1235,22 @@
     async function initPage() {
         const authed = await checkAuth();
         if (!authed) return;
-        // Only Arjun (owner of demo account) should access this
-        // If not owner, redirect
-        const role = localStorage.getItem('user_role');
-        if (role !== 'owner') {
+
+        // Server-side owner check — query p2_user_roles directly
+        const { data: { user } } = await window.supabase.auth.getUser();
+        if (!user) { window.location.href = 'login.html'; return; }
+
+        const { data: roleRow, error } = await window.supabase
+            .from('p2_user_roles')
+            .select('role')
+            .eq('user_id', user.id)
+            .single();
+
+        if (error || !roleRow || roleRow.role !== 'owner') {
             window.location.href = 'dashboard.html?unauthorized=true';
             return;
         }
+
         setStep(1);
     }
 
