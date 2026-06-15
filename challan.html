@@ -208,6 +208,7 @@
                         <th style="text-align:center; width:48px;" data-en="Sr No" data-mr="क्र.">Sr No</th>
                         <th style="text-align:left;" data-en="Description" data-mr="वर्णन">Description</th>
                         <th style="text-align:right; width:100px;" data-en="Quantity" data-mr="प्रमाण">Quantity</th>
+                        <th style="text-align:center; width:72px;" data-en="Unit" data-mr="एकक">Unit</th>
                     </tr>
                 </thead>
                 <tbody id="items-body" style="min-height:36px;"></tbody>
@@ -215,6 +216,7 @@
                     <tr>
                         <td colspan="2" style="text-align:right;" data-en="TOTAL" data-mr="एकूण">TOTAL</td>
                         <td id="total-quantity" style="text-align:right;"></td>
+                        <td></td>
                     </tr>
                 </tfoot>
             </table>
@@ -322,7 +324,8 @@
                 row.innerHTML = `
                     <td style="text-align:center; vertical-align:middle; padding:10px;">${i + 1}</td>
                     <td style="vertical-align:middle; padding:10px;">${item.p2_products?.name || 'Unknown Product'}</td>
-                    <td style="text-align:right; vertical-align:middle; padding:10px;">${formatNumber(item.qty_dispatched)} ${item.p2_products?.unit || ""}</td>`;
+                    <td style="text-align:right; vertical-align:middle; padding:10px;">${formatNumber(item.qty_dispatched)}</td>
+                    <td style="text-align:center; vertical-align:middle; padding:10px;">${item.p2_products?.unit || item.unit || ""}</td>`;
                 itemsBody.appendChild(row);
                 totalQty += parseFloat(item.qty_dispatched) || 0;
             });
