@@ -241,6 +241,140 @@
         </div>
     </div>
 
-    
+    <script>
+        const urlParams       = new URLSearchParams(window.location.search);
+        const dispatchOrderId = urlParams.get('id');
+
+        if (!dispatchOrderId) {
+            alert('No dispatch order ID provided');
+            window.location.href = 'dispatch.html';
+        }
+
+        async function loadChallan() {
+            try {
+                const { data: { user } } = await window.supabase.auth.getUser();
+                if (!user) { window.location.href = 'login.html'; return; }
+                const tenantId = user.id;
+
+                const { data: dispatchOrder, error: orderError } = await window.supabase
+                    .from('p2_dispatch_orders').select('*')
+                    .eq('id', dispatchOrderId).eq('tenant_id', tenantId).single();
+                if (orderError) throw orderError;
+
+                const { data: dispatchItems, error: itemsError } = await window.supabase
+                    .from('p2_dispatch_items').select('*, p2_products (name, unit)')
+                    .eq('dispatch_order_id', dispatchOrderId).order('id');
+                if (itemsError) throw itemsError;
+
+                const { data: tenantSettings, error: settingsError } = await window.supabase
+                    .from('p2_tenant_settings').select('*').eq('tenant_id', tenantId).single();
+                if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
+
+                populateChallan(dispatchOrder, dispatchItems, tenantSettings);
+            } catch (error) {
+                console.error('Error loading challan:', error);
+                alert('Failed to load challan data');
+            }
+        }
+
+        function populateChallan(order, items, settings) {
+            window.currentSettings = settings;
+
+            const companyHeader = document.getElementById('company-header');
+            if (settings && settings.logo_url) {
+                companyHeader.innerHTML = `<img src="${settings.logo_url}" alt="Logo" style="height:36px;" onerror="handleLogoError()">`;
+            } else if (settings && settings.company_name) {
+                companyHeader.innerHTML = `<div style="font-size:20px;font-weight:800;">${settings.company_name}</div>`;
+            } else {
+                companyHeader.innerHTML = `<div style="font-size:18px;font-weight:800;color:#dc2626;">Company Name Not Set</div>`;
+            }
+
+            let detailsHtml = '';
+            if (settings) {
+                if (settings.address_line1) detailsHtml += `${settings.address_line1}<br>`;
+                if (settings.address_line2) detailsHtml += `${settings.address_line2}<br>`;
+                if (settings.mobile) detailsHtml += `Mobile: ${settings.mobile}<br>`;
+                if (settings.gstin)  detailsHtml += `GSTIN: ${settings.gstin}`;
+            }
+            document.getElementById('company-details').innerHTML = detailsHtml;
+
+            document.getElementById('client-details').innerHTML =
+                `<div style="font-weight:700;">${order.client_name || 'N/A'}</div><div>${order.client_address || ''}</div>`;
+
+            const challanNumber = order.challan_number || (settings?.challan_sequence || 1000);
+            document.getElementById('challan-no').textContent         = challanNumber;
+            document.getElementById('challan-date').textContent       = formatDate(order.dispatch_date);
+            document.getElementById('po-no').textContent              = order.po_number || 'N/A';
+            document.getElementById('client-challan-ref').textContent = order.your_challan_ref || '-';
+
+            if (order.vehicle_number) {
+                document.getElementById('vehicle-no').textContent = order.vehicle_number;
+                document.getElementById('vehicle-number-row').style.display = 'block';
+            }
+
+            const itemsBody = document.getElementById('items-body');
+            itemsBody.innerHTML = '';
+            let totalQty = 0;
+            items.forEach((item, i) => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td style="text-align:center;">${i + 1}</td>
+                    <td>${item.p2_products?.name || 'Unknown Product'}</td>
+                    <td style="text-align:right;">${formatNumber(item.qty_dispatched)}</td>`;
+                itemsBody.appendChild(row);
+                totalQty += parseFloat(item.qty_dispatched) || 0;
+            });
+            document.getElementById('total-quantity').textContent = totalQty.toFixed(2);
+            document.getElementById('signature-company').textContent = settings?.company_name || 'Company Name';
+        }
+
+        function handleLogoError() {
+            const s = window.currentSettings;
+            document.getElementById('company-header').innerHTML =
+                `<div style="font-size:20px;font-weight:800;">${s?.company_name || 'Company Name'}</div>`;
+        }
+
+        function handlePrint() {
+            if (/Mobi|Android/i.test(navigator.userAgent)) {
+                document.getElementById('printBtn').style.display = 'none';
+                document.getElementById('mobilePrintMsg').style.display = 'block';
+            } else {
+                window.print();
+            }
+        }
+
+        function checkMobileDevice() {
+            if (/Mobi|Android/i.test(navigator.userAgent)) {
+                const lang = localStorage.getItem('nexflow_lang') || 'en';
+                document.getElementById('printBtn').textContent = lang === 'mr' ? 'प्रिंट पर्याय दाखवा' : 'Show Print Options';
+            }
+        }
+
+        function applyLang(lang) {
+            document.querySelectorAll('[data-en]').forEach(el => {
+                if (['INPUT','SELECT','TEXTAREA'].includes(el.tagName)) {
+                    el.placeholder = lang === 'mr' ? el.dataset.mr : el.dataset.en;
+                } else {
+                    el.textContent = lang === 'mr' ? el.dataset.mr : el.dataset.en;
+                }
+            });
+            const btn = document.getElementById('lang-toggle');
+            if (btn) btn.textContent = lang === 'mr' ? 'English' : 'मराठी';
+            localStorage.setItem('nexflow_lang', lang);
+        }
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            const authed = await checkAuth();
+            if (!authed) return;
+            const saved = localStorage.getItem('nexflow_lang') || 'en';
+            applyLang(saved);
+            const btn = document.getElementById('lang-toggle');
+            if (btn) btn.addEventListener('click', () => {
+                applyLang(localStorage.getItem('nexflow_lang') === 'mr' ? 'en' : 'mr');
+            });
+            checkMobileDevice();
+            loadChallan();
+        });
+    </script>
 </body>
 </html>
