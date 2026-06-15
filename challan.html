@@ -209,7 +209,7 @@
                         <th style="text-align:right; width:100px;" data-en="Quantity" data-mr="प्रमाण">Quantity</th>
                     </tr>
                 </thead>
-                <tbody id="items-body"></tbody>
+                <tbody id="items-body" style="min-height:36px;"></tbody>
                 <tfoot>
                     <tr>
                         <td colspan="2" style="text-align:right;" data-en="TOTAL" data-mr="एकूण">TOTAL</td>
@@ -221,14 +221,14 @@
 
         <!-- 6. Signature -->
         <div class="ch-section" style="margin-top:0; padding:20px 20px 36px;">
-            <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-top:48px;">
+            <div style="display:flex; justify-content:space-between; align-items:flex-end; min-height:100px;">
                 <div style="text-align:left;">
-                    <div style="margin-top:56px; border-top:1px solid #000; padding-top:6px; font-size:11px;" data-en="Receivers Signature" data-mr="प्राप्तकर्त्याची स्वाक्षरी">Receivers Signature</div>
+                    <div style="border-top:1px solid #000; padding-top:6px; font-size:11px;" data-en="Receivers Signature" data-mr="प्राप्तकर्त्याची स्वाक्षरी">Receivers Signature</div>
                 </div>
                 <div style="text-align:right;">
-                    <div style="font-size:12px;" data-en="For" data-mr="यासाठी">For</div>
+                    <div style="font-size:12px;">For</div>
                     <div id="signature-company" style="font-weight:700; font-size:14px;"></div>
-                    <div style="margin-top:56px; border-top:1px solid #000; padding-top:6px; font-size:11px;" data-en="Authorized Signatory" data-mr="अधिकृत स्वाक्षरी">Authorized Signatory</div>
+                    <div style="margin-top:40px; border-top:1px solid #000; padding-top:6px; font-size:11px;" data-en="Authorized Signatory" data-mr="अधिकृत स्वाक्षरी">Authorized Signatory</div>
                 </div>
             </div>
         </div>
@@ -319,9 +319,9 @@
             items.forEach((item, i) => {
                 const row = document.createElement('tr');
                 row.innerHTML = `
-                    <td style="text-align:center; vertical-align:middle;">${i + 1}</td>
-                    <td style="vertical-align:middle;">${item.p2_products?.name || 'Unknown Product'}</td>
-                    <td style="text-align:right; vertical-align:middle;">${formatNumber(item.qty_dispatched)}</td>`;
+                    <td style="text-align:center; vertical-align:middle; padding:10px;">${i + 1}</td>
+                    <td style="vertical-align:middle; padding:10px;">${item.p2_products?.name || 'Unknown Product'}</td>
+                    <td style="text-align:right; vertical-align:middle; padding:10px;">${formatNumber(item.qty_dispatched)}</td>`;
                 itemsBody.appendChild(row);
                 totalQty += parseFloat(item.qty_dispatched) || 0;
             });
