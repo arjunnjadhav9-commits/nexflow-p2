@@ -204,7 +204,7 @@
                     <div style="margin-bottom:4px;"><strong data-en="Challan No:"       data-mr="चलान क्रमांक:">Challan No:</strong> <span id="challan-no"></span></div>
                     <div style="margin-bottom:4px;"><strong data-en="Date:"             data-mr="तारीख:">Date:</strong> <span id="challan-date"></span></div>
                     <div style="margin-bottom:4px;"><strong data-en="PO No:"            data-mr="PO क्रमांक:">PO No:</strong> <span id="po-no"></span></div>
-                    <div style="margin-bottom:4px;"><strong data-en="Your Challan Ref:" data-mr="तुमचा चलान संदर्भ:">Your Challan Ref:</strong> <span id="client-challan-ref"></span></div>
+                    <div style="margin-bottom:4px;"><strong data-en="Your Challan No:" data-mr="तुमचा चलान क्रमांक:">Your Challan No:</strong> <span id="client-challan-ref"></span></div>
                     <div id="vehicle-number-row" style="display:none; margin-bottom:4px;"><strong data-en="Vehicle No:" data-mr="वाहन क्र:">Vehicle No:</strong> <span id="vehicle-no"></span></div>
                 </td>
             </tr>
@@ -217,7 +217,6 @@
                     <th style="text-align:left; width:48px;"  data-en="Sr No"      data-mr="क्र.">Sr No</th>
                     <th style="text-align:left;"               data-en="Description" data-mr="वर्णन">Description</th>
                     <th style="text-align:right; width:90px;"  data-en="Quantity"   data-mr="प्रमाण">Quantity</th>
-                    <th style="text-align:center; width:72px;" data-en="Unit"       data-mr="एकक">Unit</th>
                 </tr>
             </thead>
             <tbody id="items-body"></tbody>
@@ -225,19 +224,21 @@
                 <tr>
                     <td colspan="2" style="text-align:right;" data-en="TOTAL" data-mr="एकूण">TOTAL</td>
                     <td id="total-quantity" style="text-align:right;"></td>
-                    <td></td>
                 </tr>
             </tfoot>
         </table>
 
         <!-- Signature -->
-        <div class="ch-signature">
-            <div class="ch-sig-for">
-                <span data-en="For" data-mr="यासाठी">For</span>
-                <div id="signature-company" class="ch-sig-company"></div>
+        <div class="ch-signature" style="display:flex; justify-content:space-between; align-items:flex-end; margin-top:48px;">
+            <div style="text-align:left;">
+                <div style="border-top:1px solid #000; padding-top:6px; font-size:11px; margin-top:48px;" data-en="Receiver's Signature" data-mr="प्राप्तकर्त्याची स्वाक्षरी">Receiver's Signature</div>
             </div>
-            <div class="ch-sig-line" data-en="Authorized Signatory" data-mr="अधिकृत स्वाक्षरी">
-                Authorized Signatory
+            <div style="text-align:right;">
+                <div class="ch-sig-for">
+                    <span data-en="For" data-mr="यासाठी">For</span>
+                    <div id="signature-company" class="ch-sig-company"></div>
+                </div>
+                <div class="ch-sig-line" data-en="Authorized Signatory" data-mr="अधिकृत स्वाक्षरी">Authorized Signatory</div>
             </div>
         </div>
 
@@ -349,7 +350,6 @@
                     <td style="text-align:center;">${index + 1}</td>
                     <td>${item.p2_products?.name || 'Unknown Product'}</td>
                     <td style="text-align:right;">${formatNumber(item.qty_dispatched)}</td>
-                    <td style="text-align:center;">${item.unit || item.p2_products?.unit || ''}</td>
                 `;
                 itemsBody.appendChild(row);
                 totalQuantity += parseFloat(item.qty_dispatched) || 0;

@@ -1,0 +1,1145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Client Onboarding | Nexflow Internal</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%230c0e14'/><text y='.9em' font-size='80' x='10' fill='%23ff5c1a'>N</text></svg>">
+    <link rel="stylesheet" href="css/nexflow-design.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="js/supabase-client.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/navbar.js"></script>
+    <style>
+        .ob-grid {
+            display: grid;
+            grid-template-columns: 340px 1fr;
+            gap: 24px;
+            align-items: start;
+        }
+        @media (max-width: 900px) {
+            .ob-grid { grid-template-columns: 1fr; }
+        }
+        .ob-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 0;
+        }
+        .ob-card-title {
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--mid);
+            margin-bottom: 18px;
+        }
+        .ob-step {
+            display: flex;
+            align-items: flex-start;
+            gap: 14px;
+            padding: 14px 0;
+            border-bottom: 1px solid var(--border);
+        }
+        .ob-step:last-child { border-bottom: none; }
+        .ob-step-num {
+            width: 26px; height: 26px;
+            border-radius: 50%;
+            background: var(--border);
+            color: var(--mid);
+            font-size: 12px;
+            font-weight: 700;
+            display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0;
+            transition: background 0.2s, color 0.2s;
+        }
+        .ob-step-num.active  { background: var(--orange); color: #fff; }
+        .ob-step-num.done    { background: var(--green);  color: #fff; }
+        .ob-step-label { font-size: 13px; color: var(--mid); line-height: 1.4; padding-top: 4px; }
+        .ob-step-label.active { color: var(--fg); font-weight: 600; }
+        .ob-step-label.done   { color: var(--green); }
+
+        .ob-section {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 20px;
+        }
+        .ob-section-title {
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--orange);
+            margin-bottom: 18px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .ob-badge {
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 20px;
+            background: rgba(255,92,26,0.12);
+            color: var(--orange);
+            font-weight: 600;
+            letter-spacing: 0.04em;
+        }
+        .ob-badge.green { background: rgba(34,197,94,0.12); color: var(--green); }
+        .ob-badge.red   { background: rgba(239,68,68,0.12);  color: var(--red);   }
+
+        .ob-tenant-result {
+            margin-top: 12px;
+            padding: 14px 16px;
+            background: rgba(255,92,26,0.06);
+            border: 1px solid rgba(255,92,26,0.2);
+            border-radius: 8px;
+            display: none;
+        }
+        .ob-tenant-result.visible { display: block; }
+        .ob-tenant-name { font-size: 16px; font-weight: 700; color: var(--fg); }
+        .ob-tenant-meta { font-size: 12px; color: var(--mid); margin-top: 3px; font-family: monospace; }
+
+        .ob-plan-select {
+            display: flex;
+            gap: 10px;
+            margin-top: 6px;
+        }
+        .ob-plan-btn {
+            flex: 1;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--mid);
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s;
+            text-align: center;
+        }
+        .ob-plan-btn:hover { border-color: var(--orange); color: var(--fg); }
+        .ob-plan-btn.selected { border-color: var(--orange); background: rgba(255,92,26,0.1); color: var(--orange); }
+
+        .ob-drop {
+            border: 2px dashed var(--border);
+            border-radius: 10px;
+            padding: 28px 20px;
+            text-align: center;
+            color: var(--mid);
+            font-size: 13px;
+            cursor: pointer;
+            transition: border-color 0.2s, background 0.2s;
+            margin-top: 8px;
+            position: relative;
+        }
+        .ob-drop:hover, .ob-drop.dragover {
+            border-color: var(--orange);
+            background: rgba(255,92,26,0.04);
+        }
+        .ob-drop input[type=file] {
+            position: absolute; inset: 0;
+            opacity: 0; cursor: pointer; width: 100%; height: 100%;
+        }
+        .ob-drop-icon { font-size: 28px; margin-bottom: 8px; }
+
+        .ob-preview-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 14px; }
+        .ob-preview-table th {
+            text-align: left; padding: 7px 10px;
+            background: var(--bg); color: var(--mid);
+            font-weight: 600; letter-spacing: 0.04em;
+            border-bottom: 1px solid var(--border);
+        }
+        .ob-preview-table td {
+            padding: 7px 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+            color: var(--fg);
+        }
+        .ob-preview-table tr:last-child td { border-bottom: none; }
+        .ob-preview-table tr.error-row td { color: var(--red); background: rgba(239,68,68,0.05); }
+        .ob-preview-table tr.ok-row td:first-child { color: var(--green); }
+
+        .ob-log {
+            background: #0a0c12;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 14px 16px;
+            font-family: monospace;
+            font-size: 12px;
+            color: var(--mid);
+            max-height: 220px;
+            overflow-y: auto;
+            margin-top: 14px;
+            display: none;
+        }
+        .ob-log.visible { display: block; }
+        .ob-log-line { padding: 2px 0; }
+        .ob-log-line.ok    { color: var(--green); }
+        .ob-log-line.err   { color: var(--red); }
+        .ob-log-line.info  { color: var(--orange); }
+
+        .ob-action-btn {
+            width: 100%;
+            padding: 13px;
+            border-radius: 9px;
+            border: none;
+            background: var(--orange);
+            color: #fff;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            margin-top: 16px;
+            transition: opacity 0.15s;
+        }
+        .ob-action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .ob-action-btn:not(:disabled):hover { opacity: 0.88; }
+        .ob-action-btn.green { background: var(--green); }
+
+        .ob-divider {
+            border: none;
+            border-top: 1px solid var(--border);
+            margin: 20px 0;
+        }
+
+        .ob-field-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 14px;
+            margin-bottom: 14px;
+        }
+        @media (max-width: 600px) { .ob-field-row { grid-template-columns: 1fr; } }
+
+        .ob-label {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.07em;
+            text-transform: uppercase;
+            color: var(--mid);
+            margin-bottom: 6px;
+        }
+
+        /* Toast */
+        #ob-toast-container {
+            position: fixed; bottom: 24px; right: 24px;
+            z-index: 9999; display: flex; flex-direction: column; gap: 10px; pointer-events: none;
+        }
+        .ob-toast {
+            display: flex; align-items: center; gap: 10px;
+            padding: 12px 18px; border-radius: 10px;
+            font-size: 14px; font-weight: 500;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+            pointer-events: auto; min-width: 260px; max-width: 380px;
+            animation: obToastIn 0.25s ease;
+        }
+        .ob-toast.success { background: #1a2e1a; border: 1px solid var(--green); color: var(--green); }
+        .ob-toast.error   { background: #2e1a1a; border: 1px solid var(--red);   color: var(--red);   }
+        .ob-toast.info    { background: #1a1f2e; border: 1px solid var(--orange); color: var(--orange);}
+        .ob-toast.fadeOut { animation: obToastOut 0.3s ease forwards; }
+        @keyframes obToastIn  { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
+        @keyframes obToastOut { from { opacity:1; } to { opacity:0; transform:translateY(12px); } }
+
+        .ob-internal-warning {
+            background: rgba(239,68,68,0.08);
+            border: 1px solid rgba(239,68,68,0.25);
+            border-radius: 8px;
+            padding: 10px 14px;
+            font-size: 12px;
+            color: var(--red);
+            margin-bottom: 24px;
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+    </style>
+</head>
+<body>
+    <div id="navbar-container"></div>
+    <div id="ob-toast-container"></div>
+
+    <div class="nx-main">
+        <div class="nx-page">
+
+            <!-- HEADER -->
+            <div class="nx-page-header">
+                <div>
+                    <div class="nx-eyebrow">Internal Tool</div>
+                    <div class="nx-page-title">Client <span>Onboarding</span></div>
+                    <div class="nx-page-sub">Set up a new Nexflow P2 client in under 5 minutes</div>
+                </div>
+            </div>
+
+            <!-- INTERNAL WARNING -->
+            <div class="ob-internal-warning">
+                <span>🔒</span>
+                <span>This page is for Arjun only. Do not share this URL with clients. All changes write directly to the production database.</span>
+            </div>
+
+            <div class="ob-grid">
+
+                <!-- LEFT: STEP TRACKER -->
+                <div>
+                    <div class="ob-card">
+                        <div class="ob-card-title">Onboarding Steps</div>
+                        <div class="ob-step">
+                            <div class="ob-step-num active" id="step-num-1">1</div>
+                            <div class="ob-step-label active" id="step-label-1">Find client by email</div>
+                        </div>
+                        <div class="ob-step">
+                            <div class="ob-step-num" id="step-num-2">2</div>
+                            <div class="ob-step-label" id="step-label-2">Set company name &amp; plan</div>
+                        </div>
+                        <div class="ob-step">
+                            <div class="ob-step-num" id="step-num-3">3</div>
+                            <div class="ob-step-label" id="step-label-3">Import raw materials</div>
+                        </div>
+                        <div class="ob-step">
+                            <div class="ob-step-num" id="step-num-4">4</div>
+                            <div class="ob-step-label" id="step-label-4">Import opening stock</div>
+                        </div>
+                        <div class="ob-step">
+                            <div class="ob-step-num" id="step-num-5">5</div>
+                            <div class="ob-step-label" id="step-label-5">Done ✓</div>
+                        </div>
+                    </div>
+
+                    <!-- Active Client Card -->
+                    <div id="activeClientCard" style="display:none;" class="ob-card" style="margin-top:16px;">
+                        <div class="ob-card-title">Active Client</div>
+                        <div id="activeClientName" style="font-size:16px; font-weight:700; color:var(--fg);"></div>
+                        <div id="activeClientEmail" style="font-size:12px; color:var(--mid); margin-top:2px;"></div>
+                        <div id="activeClientPlan" style="margin-top:10px;"></div>
+                        <div id="activeClientTenantId" style="font-size:11px; color:var(--mid); font-family:monospace; margin-top:6px; word-break:break-all;"></div>
+                        <button onclick="resetOnboarding()" style="margin-top:14px; width:100%; padding:9px; border-radius:7px; border:1px solid var(--border); background:transparent; color:var(--mid); font-size:12px; cursor:pointer;">
+                            ← Switch Client
+                        </button>
+                    </div>
+                </div>
+
+                <!-- RIGHT: MAIN CONTENT -->
+                <div id="mainContent">
+
+                    <!-- STEP 1: FIND CLIENT -->
+                    <div id="step1Section" class="ob-section">
+                        <div class="ob-section-title">
+                            <span>Step 1</span>
+                            <span class="ob-badge">Find Client</span>
+                        </div>
+
+                        <div class="ob-label">Client Email Address</div>
+                        <input type="email" id="clientEmail" class="nx-input"
+                               placeholder="e.g. ssengg.karad@gmail.com"
+                               style="margin-bottom:10px;">
+
+                        <button class="ob-action-btn" onclick="lookupClient()">
+                            Look Up Client →
+                        </button>
+
+                        <div id="lookupResult" class="ob-tenant-result">
+                            <div class="ob-tenant-name" id="lookupName">—</div>
+                            <div class="ob-tenant-meta" id="lookupTenantId">—</div>
+                            <div style="margin-top:8px; font-size:12px; color:var(--mid);" id="lookupPlan">—</div>
+                            <button class="ob-action-btn green" style="margin-top:12px;" onclick="confirmClient()">
+                                ✓ Confirm — Start Onboarding
+                            </button>
+                        </div>
+
+                        <div id="lookupError" style="display:none; margin-top:12px; font-size:13px; color:var(--red);"></div>
+
+                        <hr class="ob-divider">
+                        <div class="ob-label" style="margin-bottom:8px;">Or enter Tenant ID manually</div>
+                        <input type="text" id="manualTenantId" class="nx-input"
+                               placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                               style="margin-bottom:10px; font-family:monospace; font-size:12px;">
+                        <input type="text" id="manualCompanyName" class="nx-input"
+                               placeholder="Company name"
+                               style="margin-bottom:10px;">
+                        <button class="ob-action-btn" style="background:var(--card); border:1px solid var(--border); color:var(--fg); margin-top:0;"
+                                onclick="confirmManual()">
+                            Use This Tenant ID →
+                        </button>
+                    </div>
+
+                    <!-- STEP 2: COMPANY + PLAN (hidden until client found) -->
+                    <div id="step2Section" class="ob-section" style="display:none;">
+                        <div class="ob-section-title">
+                            <span>Step 2</span>
+                            <span class="ob-badge">Company &amp; Plan</span>
+                        </div>
+
+                        <div class="ob-field-row">
+                            <div>
+                                <div class="ob-label">Company Name</div>
+                                <input type="text" id="companyNameInput" class="nx-input" placeholder="e.g. SS Engineering">
+                            </div>
+                            <div>
+                                <div class="ob-label">GSTIN (optional)</div>
+                                <input type="text" id="gstinInput" class="nx-input" placeholder="27XXXXX...">
+                            </div>
+                        </div>
+
+                        <div class="ob-label">Plan</div>
+                        <div class="ob-plan-select">
+                            <button class="ob-plan-btn" id="plan-lite" onclick="selectPlan('lite')">
+                                Lite<br><span style="font-size:11px; font-weight:400;">₹64K · 250 materials</span>
+                            </button>
+                            <button class="ob-plan-btn selected" id="plan-founder" onclick="selectPlan('founder')">
+                                Founder<br><span style="font-size:11px; font-weight:400;">Pro access · Lite price</span>
+                            </button>
+                            <button class="ob-plan-btn" id="plan-pro" onclick="selectPlan('pro')">
+                                Pro<br><span style="font-size:11px; font-weight:400;">₹1.05L · Unlimited</span>
+                            </button>
+                        </div>
+
+                        <button class="ob-action-btn" onclick="saveCompanyAndPlan()">
+                            Save Company &amp; Plan →
+                        </button>
+                        <div id="step2Log" class="ob-log"></div>
+                    </div>
+
+                    <!-- STEP 3: IMPORT MATERIALS (hidden until step 2 done) -->
+                    <div id="step3Section" class="ob-section" style="display:none;">
+                        <div class="ob-section-title">
+                            <span>Step 3</span>
+                            <span class="ob-badge">Raw Materials</span>
+                        </div>
+                        <div style="font-size:13px; color:var(--mid); margin-bottom:14px;">
+                            Upload their Excel. Columns needed: <code style="color:var(--orange);">name, unit, min_stock_level</code>. Optional: <code style="color:var(--orange);">material_code, current_stock, hsn_sac, gst_rate</code>
+                        </div>
+
+                        <div class="ob-label">Upload Materials Excel / CSV</div>
+                        <div class="ob-drop" id="materialsDrop">
+                            <input type="file" id="materialsFile" accept=".xlsx,.xls,.csv" onchange="handleMaterialsFile(this)">
+                            <div class="ob-drop-icon">📋</div>
+                            <div>Drop file here or click to browse</div>
+                            <div style="font-size:11px; margin-top:4px; color:var(--mid);">.xlsx · .xls · .csv</div>
+                        </div>
+
+                        <div id="materialsPreview" style="display:none;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:16px;">
+                                <div id="materialsStatus" style="font-size:13px;"></div>
+                                <button onclick="clearMaterialsFile()" style="background:none; border:none; color:var(--mid); font-size:12px; cursor:pointer;">✕ Clear</button>
+                            </div>
+                            <div style="overflow-x:auto; max-height:280px; overflow-y:auto;">
+                                <table class="ob-preview-table" id="materialsTable">
+                                    <thead>
+                                        <tr>
+                                            <th>Status</th>
+                                            <th>Code</th>
+                                            <th>Name</th>
+                                            <th>Unit</th>
+                                            <th>Min Stock</th>
+                                            <th>Opening Stock</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="materialsTableBody"></tbody>
+                                </table>
+                            </div>
+                            <button class="ob-action-btn" id="importMaterialsBtn" onclick="importMaterials()">
+                                Import Materials →
+                            </button>
+                        </div>
+                        <div id="step3Log" class="ob-log"></div>
+                    </div>
+
+                    <!-- STEP 4: OPENING STOCK (hidden until step 3 done) -->
+                    <div id="step4Section" class="ob-section" style="display:none;">
+                        <div class="ob-section-title">
+                            <span>Step 4</span>
+                            <span class="ob-badge">Opening Stock</span>
+                        </div>
+                        <div style="font-size:13px; color:var(--mid); margin-bottom:14px;">
+                            If opening stock was in the materials file, it was already imported in Step 3. Use this only if you have a separate stock file or need to re-run stock only.
+                        </div>
+
+                        <div class="ob-field-row">
+                            <div>
+                                <div class="ob-label">Stock Date</div>
+                                <input type="date" id="stockDate" class="nx-input">
+                            </div>
+                            <div style="display:flex; align-items:flex-end;">
+                                <div style="font-size:12px; color:var(--mid); padding-bottom:10px;">
+                                    Opening stock will be tagged to this date in reports.
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="ob-label">Upload Stock Excel / CSV</div>
+                        <div class="ob-drop" id="stockDrop">
+                            <input type="file" id="stockFile" accept=".xlsx,.xls,.csv" onchange="handleStockFile(this)">
+                            <div class="ob-drop-icon">📦</div>
+                            <div>Drop file here or click to browse</div>
+                            <div style="font-size:11px; margin-top:4px; color:var(--mid);">Needs: <code>material_code</code> or <code>name</code> + <code>current_stock</code></div>
+                        </div>
+
+                        <div id="stockPreview" style="display:none;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:16px;">
+                                <div id="stockStatus" style="font-size:13px;"></div>
+                                <button onclick="clearStockFile()" style="background:none; border:none; color:var(--mid); font-size:12px; cursor:pointer;">✕ Clear</button>
+                            </div>
+                            <div style="overflow-x:auto; max-height:240px; overflow-y:auto;">
+                                <table class="ob-preview-table" id="stockTable">
+                                    <thead>
+                                        <tr>
+                                            <th>Status</th>
+                                            <th>Code / Name</th>
+                                            <th>Matched Material</th>
+                                            <th style="text-align:right;">Qty</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="stockTableBody"></tbody>
+                                </table>
+                            </div>
+                            <button class="ob-action-btn" id="importStockBtn" onclick="importStock()">
+                                Import Opening Stock →
+                            </button>
+                        </div>
+                        <div id="step4Log" class="ob-log"></div>
+
+                        <hr class="ob-divider">
+                        <button class="ob-action-btn" style="background:var(--green); margin-top:0;" onclick="markDone()">
+                            ✓ Mark Onboarding Complete
+                        </button>
+                    </div>
+
+                    <!-- STEP 5: DONE -->
+                    <div id="step5Section" class="ob-section" style="display:none; text-align:center; padding:40px 24px;">
+                        <div style="font-size:48px; margin-bottom:16px;">🎉</div>
+                        <div style="font-size:20px; font-weight:700; color:var(--fg); margin-bottom:8px;" id="doneTitle">Client onboarded successfully</div>
+                        <div style="font-size:13px; color:var(--mid); margin-bottom:28px;" id="doneSub">All steps completed.</div>
+                        <div style="display:flex; gap:12px; justify-content:center; flex-wrap:wrap;">
+                            <button onclick="resetOnboarding()" class="ob-action-btn" style="width:auto; padding:11px 24px; margin-top:0;">
+                                + Onboard Another Client
+                            </button>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+<script>
+    // ── STATE ─────────────────────────────────────────────────────
+    let activeTenantId   = null;
+    let activeEmail      = null;
+    let activeCompany    = null;
+    let selectedPlan     = 'founder';
+    let materialsRows    = []; // valid rows ready to import
+    let stockRows        = []; // valid stock rows ready to import
+    let dbMaterials      = []; // fetched after materials import for stock matching
+    let currentStep      = 1;
+
+    const UNIT_NORMALIZER = {
+        'PC':'PCS','PCS':'PCS','PIECE':'PCS','PIECES':'PCS','PCS.':'PCS','PC.':'PCS',
+        'KG':'KG','KGS':'KG','KILOGRAM':'KG','KILOGRAMS':'KG','KG.':'KG',
+        'NOS':'NOS','NO':'NOS','NOS.':'NOS','NUMBER':'NOS','NUMBERS':'NOS','NUM':'NOS',
+        'L':'L','LTR':'L','LITRE':'L','LITRES':'L','LITER':'L','LITERS':'L','LT':'L',
+        'MTR':'MTR','MT':'MTR','METER':'MTR','METERS':'MTR','METRE':'MTR','METRES':'MTR','MTR.':'MTR'
+    };
+    const VALID_UNITS = ['KG','NOS','L','MTR','PCS'];
+
+    // ── TOAST ─────────────────────────────────────────────────────
+    function toast(msg, type = 'success') {
+        const c = document.getElementById('ob-toast-container');
+        const el = document.createElement('div');
+        el.className = `ob-toast ${type}`;
+        el.innerHTML = `<span>${type==='success'?'✓':type==='error'?'✗':'ℹ'}</span><span>${msg}</span>`;
+        c.appendChild(el);
+        setTimeout(() => { el.classList.add('fadeOut'); setTimeout(() => el.remove(), 300); }, 3500);
+    }
+
+    // ── LOG ───────────────────────────────────────────────────────
+    function log(elId, msg, type = 'info') {
+        const el = document.getElementById(elId);
+        el.classList.add('visible');
+        const line = document.createElement('div');
+        line.className = `ob-log-line ${type}`;
+        line.textContent = `[${new Date().toLocaleTimeString('en-IN')}] ${msg}`;
+        el.appendChild(line);
+        el.scrollTop = el.scrollHeight;
+    }
+
+    // ── STEP TRACKER ──────────────────────────────────────────────
+    function setStep(n) {
+        currentStep = n;
+        for (let i = 1; i <= 5; i++) {
+            const num   = document.getElementById(`step-num-${i}`);
+            const label = document.getElementById(`step-label-${i}`);
+            if (i < n)       { num.className = 'ob-step-num done';   label.className = 'ob-step-label done'; }
+            else if (i === n){ num.className = 'ob-step-num active';  label.className = 'ob-step-label active'; }
+            else             { num.className = 'ob-step-num';         label.className = 'ob-step-label'; }
+        }
+    }
+
+    // ── STEP 1: LOOKUP ────────────────────────────────────────────
+    async function lookupClient() {
+        const email = document.getElementById('clientEmail').value.trim().toLowerCase();
+        if (!email) { toast('Enter a client email first', 'error'); return; }
+
+        document.getElementById('lookupResult').classList.remove('visible');
+        document.getElementById('lookupError').style.display = 'none';
+
+        // Search p2_tenant_settings by matching email in company details
+        // We query all tenants visible to us and match by email stored in settings
+        // Primary: look up auth users via p2_user_roles matching email pattern
+        const { data: roles, error } = await window.supabase
+            .from('p2_user_roles')
+            .select('tenant_id, user_id')
+            .limit(200);
+
+        if (error) { toast('Lookup failed: ' + error.message, 'error'); return; }
+
+        // Then get tenant settings for all tenants
+        const tenantIds = [...new Set((roles || []).map(r => r.tenant_id))];
+        if (!tenantIds.length) {
+            document.getElementById('lookupError').style.display = 'block';
+            document.getElementById('lookupError').textContent = 'No tenants found in system.';
+            return;
+        }
+
+        const { data: settings } = await window.supabase
+            .from('p2_tenant_settings')
+            .select('tenant_id, company_name, plan')
+            .in('tenant_id', tenantIds);
+
+        // Match by tenant_id (UUID) — if user typed UUID directly
+        const isUUID = /^[0-9a-f-]{36}$/.test(email);
+        let match = null;
+
+        if (isUUID) {
+            match = (settings || []).find(s => s.tenant_id === email);
+            if (match) {
+                showLookupResult(match.tenant_id, match.company_name || 'Unknown', match.plan || 'lite', email);
+                return;
+            }
+        }
+
+        // Try to find by email stored as company name hint or direct tenant_id match
+        // Since RLS blocks auth.users, we check if tenant_id itself matches a known client
+        // Fallback: show all tenants and let user pick
+        const allSettings = settings || [];
+        const byEmail = allSettings.find(s =>
+            s.company_name && s.company_name.toLowerCase().includes(email.split('@')[0].toLowerCase())
+        );
+
+        if (byEmail) {
+            showLookupResult(byEmail.tenant_id, byEmail.company_name, byEmail.plan || 'lite', email);
+        } else if (allSettings.length > 0) {
+            // Show first unmatched result with guidance
+            document.getElementById('lookupError').style.display = 'block';
+            document.getElementById('lookupError').innerHTML =
+                `No exact match for <strong>${email}</strong>. Use the manual Tenant ID field below, or check Supabase Auth for their UUID.`;
+        } else {
+            document.getElementById('lookupError').style.display = 'block';
+            document.getElementById('lookupError').textContent = 'Client not found. They must sign up first via login.html.';
+        }
+    }
+
+    function showLookupResult(tenantId, companyName, plan, email) {
+        document.getElementById('lookupName').textContent    = companyName || '(No company name set)';
+        document.getElementById('lookupTenantId').textContent = tenantId;
+        document.getElementById('lookupPlan').textContent    = `Current plan: ${plan.toUpperCase()}`;
+        document.getElementById('lookupResult').classList.add('visible');
+        // Pre-fill manual fields too
+        document.getElementById('manualTenantId').value    = tenantId;
+        document.getElementById('manualCompanyName').value = companyName || '';
+        activeTenantId = tenantId;
+        activeEmail    = email;
+        activeCompany  = companyName;
+    }
+
+    function confirmClient() {
+        if (!activeTenantId) { toast('No client selected', 'error'); return; }
+        activateClient(activeTenantId, activeEmail, activeCompany);
+    }
+
+    function confirmManual() {
+        const tid  = document.getElementById('manualTenantId').value.trim();
+        const name = document.getElementById('manualCompanyName').value.trim();
+        if (!tid)  { toast('Enter a Tenant ID', 'error'); return; }
+        if (!/^[0-9a-f-]{36}$/.test(tid)) { toast('Tenant ID format invalid — must be a UUID', 'error'); return; }
+        activeTenantId = tid;
+        activeCompany  = name;
+        activeEmail    = '(manual entry)';
+        activateClient(tid, activeEmail, name);
+    }
+
+    async function activateClient(tenantId, email, company) {
+        // Fetch existing settings to pre-fill step 2
+        const { data: s } = await window.supabase
+            .from('p2_tenant_settings')
+            .select('company_name, plan')
+            .eq('tenant_id', tenantId)
+            .single();
+
+        document.getElementById('companyNameInput').value = s?.company_name || company || '';
+        selectPlan(s?.plan || 'founder');
+
+        // Show active client card
+        document.getElementById('activeClientCard').style.display  = 'block';
+        document.getElementById('activeClientName').textContent    = s?.company_name || company || '(No name)';
+        document.getElementById('activeClientEmail').textContent   = email;
+        document.getElementById('activeClientTenantId').textContent = tenantId;
+        const planBadge = document.createElement('span');
+        planBadge.className = `ob-badge ${(s?.plan==='pro'||s?.plan==='founder')?'green':''}`;
+        planBadge.textContent = (s?.plan || 'lite').toUpperCase();
+        document.getElementById('activeClientPlan').innerHTML = '';
+        document.getElementById('activeClientPlan').appendChild(planBadge);
+
+        // Show steps 2–4, hide step 1
+        document.getElementById('step1Section').style.display = 'none';
+        document.getElementById('step2Section').style.display = 'block';
+        document.getElementById('step3Section').style.display = 'block';
+        document.getElementById('step4Section').style.display = 'block';
+
+        // Set today's date for stock
+        document.getElementById('stockDate').value = new Date().toISOString().split('T')[0];
+
+        // Load existing materials for stock matching
+        await loadDbMaterials();
+
+        setStep(2);
+        toast(`Client loaded: ${s?.company_name || company || tenantId}`, 'success');
+    }
+
+    // ── STEP 2: COMPANY + PLAN ────────────────────────────────────
+    function selectPlan(plan) {
+        selectedPlan = plan;
+        ['lite','founder','pro'].forEach(p => {
+            document.getElementById(`plan-${p}`).classList.toggle('selected', p === plan);
+        });
+    }
+
+    async function saveCompanyAndPlan() {
+        if (!activeTenantId) { toast('No client selected', 'error'); return; }
+        const company = document.getElementById('companyNameInput').value.trim();
+        const gstin   = document.getElementById('gstinInput').value.trim();
+
+        if (!company) { toast('Enter a company name', 'error'); return; }
+
+        log('step2Log', `Saving: ${company} · Plan: ${selectedPlan.toUpperCase()}`, 'info');
+
+        const { error } = await window.supabase
+            .from('p2_tenant_settings')
+            .upsert({
+                tenant_id:    activeTenantId,
+                company_name: company,
+                plan:         selectedPlan,
+                ...(gstin ? { gstin } : {})
+            }, { onConflict: 'tenant_id' });
+
+        if (error) {
+            log('step2Log', 'Error: ' + error.message, 'err');
+            toast('Failed to save settings', 'error');
+            return;
+        }
+
+        activeCompany = company;
+        document.getElementById('activeClientName').textContent = company;
+
+        log('step2Log', `✓ Saved. Company: ${company} | Plan: ${selectedPlan.toUpperCase()}`, 'ok');
+        toast('Company & plan saved', 'success');
+        setStep(3);
+    }
+
+    // ── STEP 3: MATERIALS ─────────────────────────────────────────
+    const VALID_COLS = ['name','unit','min_stock_level'];
+
+    function handleMaterialsFile(input) {
+        const file = input.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = e => {
+            try {
+                const wb    = XLSX.read(new Uint8Array(e.target.result), { type:'array' });
+                const sheet = wb.Sheets[wb.SheetNames[0]];
+                const rows  = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+                if (!rows.length) { toast('File is empty', 'error'); return; }
+
+                const norm = rows.map(row => {
+                    const out = {};
+                    Object.keys(row).forEach(k => { out[k.toLowerCase().trim()] = row[k]; });
+                    return out;
+                });
+
+                if (!VALID_COLS.every(c => c in norm[0])) {
+                    toast('Missing columns: name, unit, min_stock_level are required', 'error');
+                    return;
+                }
+                previewMaterials(norm);
+            } catch(err) {
+                toast('Failed to parse file', 'error');
+            }
+        };
+        reader.readAsArrayBuffer(file);
+    }
+
+    function previewMaterials(rows) {
+        materialsRows = [];
+        const tbody = document.getElementById('materialsTableBody');
+        tbody.innerHTML = '';
+        let valid = 0, errors = 0;
+
+        rows.forEach(row => {
+            const code       = String(row['material_code'] || '').trim();
+            const name       = String(row['name'] || '').trim();
+            const rawUnit    = String(row['unit'] || '').trim().toUpperCase();
+            const unit       = UNIT_NORMALIZER[rawUnit] || rawUnit;
+            const minStock   = parseFloat(row['min_stock_level']);
+            const rawStock   = row['current_stock'];
+            const curStock   = (rawStock===''||rawStock==null) ? null : parseFloat(rawStock);
+            const hsn        = String(row['hsn_sac'] || '').trim() || null;
+            const gst        = (row['gst_rate']===''||row['gst_rate']==null) ? 0 : parseFloat(row['gst_rate']);
+
+            const errs = [];
+            if (!name)                          errs.push('name missing');
+            if (!VALID_UNITS.includes(unit))    errs.push(`unit "${rawUnit}" invalid`);
+            if (isNaN(minStock)||minStock<0)    errs.push('min_stock invalid');
+
+            const ok = errs.length === 0;
+            if (ok) {
+                valid++;
+                materialsRows.push({ material_code:code||null, name, unit, min_stock_level:minStock,
+                    current_stock:(curStock!==null&&!isNaN(curStock)&&curStock>0)?curStock:null,
+                    hsn_sac:hsn, gst_rate:isNaN(gst)?0:gst });
+            } else { errors++; }
+
+            const tr = document.createElement('tr');
+            tr.className = ok ? 'ok-row' : 'error-row';
+            tr.innerHTML = `
+                <td>${ok ? '✓' : '✗ ' + errs.join(', ')}</td>
+                <td style="font-family:monospace;">${code||'—'}</td>
+                <td>${name||'—'}</td>
+                <td>${unit}</td>
+                <td style="text-align:right;">${isNaN(minStock)?'—':minStock}</td>
+                <td style="text-align:right;">${curStock!==null&&!isNaN(curStock)?curStock:'—'}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        document.getElementById('materialsStatus').innerHTML =
+            `<span style="color:var(--green);">${valid} valid</span>${errors?' · <span style="color:var(--red);">'+errors+' errors (skipped)</span>':''}`;
+        document.getElementById('materialsPreview').style.display = 'block';
+        document.getElementById('importMaterialsBtn').disabled = valid === 0;
+    }
+
+    function clearMaterialsFile() {
+        document.getElementById('materialsFile').value = '';
+        document.getElementById('materialsPreview').style.display = 'none';
+        materialsRows = [];
+    }
+
+    async function importMaterials() {
+        if (!activeTenantId || !materialsRows.length) return;
+        const btn = document.getElementById('importMaterialsBtn');
+        btn.disabled = true;
+        btn.textContent = 'Importing…';
+
+        log('step3Log', `Starting import of ${materialsRows.length} materials…`, 'info');
+
+        const payload = materialsRows.map(r => ({ ...r, tenant_id: activeTenantId, is_active: true }));
+
+        // Upsert in batches of 50
+        let imported = 0, failed = 0;
+        for (let i = 0; i < payload.length; i += 50) {
+            const batch = payload.slice(i, i + 50);
+            const { error } = await window.supabase
+                .from('p2_raw_materials')
+                .upsert(batch, { onConflict: 'material_code,tenant_id', ignoreDuplicates: false });
+            if (error) {
+                log('step3Log', `Batch ${Math.floor(i/50)+1} error: ${error.message}`, 'err');
+                failed += batch.length;
+            } else {
+                imported += batch.length;
+                log('step3Log', `Batch ${Math.floor(i/50)+1}: ${batch.length} materials saved`, 'ok');
+            }
+        }
+
+        // Now insert opening stock for rows that had current_stock
+        const stockRows = materialsRows.filter(r => r.current_stock !== null);
+        if (stockRows.length > 0) {
+            log('step3Log', `Inserting opening stock for ${stockRows.length} materials…`, 'info');
+            await insertOpeningStockFromMaterials(stockRows);
+        }
+
+        log('step3Log', `✓ Done. ${imported} imported · ${failed} failed`, imported > 0 ? 'ok' : 'err');
+        toast(`${imported} materials imported`, imported > 0 ? 'success' : 'error');
+
+        btn.textContent = '✓ Imported';
+        await loadDbMaterials();
+        setStep(4);
+    }
+
+    async function insertOpeningStockFromMaterials(rows) {
+        // Fetch material IDs for the rows we just inserted
+        const { data: dbMats } = await window.supabase
+            .from('p2_raw_materials')
+            .select('id, material_code, name')
+            .eq('tenant_id', activeTenantId)
+            .eq('is_active', true);
+
+        if (!dbMats) return;
+
+        const codeMap = {};
+        const nameMap = {};
+        dbMats.forEach(m => {
+            if (m.material_code) codeMap[m.material_code.toLowerCase()] = m.id;
+            nameMap[m.name.toLowerCase()] = m.id;
+        });
+
+        const today = new Date().toISOString().split('T')[0];
+        const txns = rows.map(r => {
+            const matId = (r.material_code && codeMap[r.material_code.toLowerCase()])
+                || nameMap[r.name.toLowerCase()];
+            if (!matId) return null;
+            return {
+                tenant_id: activeTenantId,
+                raw_material_id: matId,
+                transaction_type: 'adjustment',
+                quantity: r.current_stock,
+                notes: 'Opening Stock',
+                transaction_date: today
+            };
+        }).filter(Boolean);
+
+        if (!txns.length) return;
+
+        // Delete old opening stock first
+        await window.supabase
+            .from('p2_stock_transactions')
+            .delete()
+            .eq('tenant_id', activeTenantId)
+            .eq('transaction_type', 'adjustment')
+            .eq('notes', 'Opening Stock');
+
+        const { error } = await window.supabase
+            .from('p2_stock_transactions')
+            .insert(txns);
+
+        if (error) log('step3Log', 'Opening stock error: ' + error.message, 'err');
+        else log('step3Log', `✓ Opening stock inserted for ${txns.length} materials`, 'ok');
+    }
+
+    // ── LOAD DB MATERIALS (for stock matching) ────────────────────
+    async function loadDbMaterials() {
+        if (!activeTenantId) return;
+        const { data } = await window.supabase
+            .from('p2_raw_materials')
+            .select('id, name, material_code, unit')
+            .eq('tenant_id', activeTenantId)
+            .eq('is_active', true);
+        dbMaterials = data || [];
+    }
+
+    // ── STEP 4: OPENING STOCK (separate file) ─────────────────────
+    function fuzzyMatch(search) {
+        const s = search.toLowerCase().trim();
+        // 1. Code exact
+        const byCode = dbMaterials.find(m => m.material_code && m.material_code.toLowerCase() === s);
+        if (byCode) return byCode;
+        // 2. Name exact
+        const byName = dbMaterials.find(m => m.name.toLowerCase() === s);
+        if (byName) return byName;
+        // 3. Name contains
+        const byContains = dbMaterials.find(m => m.name.toLowerCase().includes(s));
+        if (byContains) return byContains;
+        // 4. Word overlap
+        const sWords = s.split(/\s+/);
+        return dbMaterials.find(m => {
+            const dbWords = m.name.toLowerCase().split(/\s+/);
+            const matches = sWords.filter(w => w.length > 2 && dbWords.includes(w)).length;
+            return matches >= Math.min(3, Math.ceil(sWords.length * 0.6));
+        }) || null;
+    }
+
+    function handleStockFile(input) {
+        const file = input.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = e => {
+            try {
+                const wb    = XLSX.read(new Uint8Array(e.target.result), { type:'array' });
+                const sheet = wb.Sheets[wb.SheetNames[0]];
+                const rows  = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+                if (!rows.length) { toast('File is empty', 'error'); return; }
+                const norm = rows.map(row => {
+                    const out = {};
+                    Object.keys(row).forEach(k => { out[k.toLowerCase().trim()] = row[k]; });
+                    return out;
+                });
+                previewStock(norm);
+            } catch(err) { toast('Failed to parse file', 'error'); }
+        };
+        reader.readAsArrayBuffer(file);
+    }
+
+    function previewStock(rows) {
+        stockRows = [];
+        const tbody = document.getElementById('stockTableBody');
+        tbody.innerHTML = '';
+        let valid = 0, errors = 0;
+
+        rows.forEach(row => {
+            const searchKey = String(row['material_code'] || row['name'] || '').trim();
+            const qty       = parseFloat(row['current_stock'] ?? row['quantity'] ?? row['stock'] ?? '');
+            const matched   = searchKey ? fuzzyMatch(searchKey) : null;
+            const errs      = [];
+
+            if (!searchKey)    errs.push('no code/name');
+            if (!matched)      errs.push('material not found in DB');
+            if (isNaN(qty)||qty<0) errs.push('qty invalid');
+
+            const ok = errs.length === 0;
+            if (ok) { valid++; stockRows.push({ matId: matched.id, qty }); }
+            else errors++;
+
+            const tr = document.createElement('tr');
+            tr.className = ok ? 'ok-row' : 'error-row';
+            tr.innerHTML = `
+                <td>${ok ? '✓' : '✗ ' + errs.join(', ')}</td>
+                <td style="font-family:monospace; font-size:11px;">${searchKey||'—'}</td>
+                <td style="font-size:11px;">${matched ? matched.name : '—'}</td>
+                <td style="text-align:right;">${isNaN(qty)?'—':qty}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        document.getElementById('stockStatus').innerHTML =
+            `<span style="color:var(--green);">${valid} matched</span>${errors?' · <span style="color:var(--red);">'+errors+' not matched</span>':''}`;
+        document.getElementById('stockPreview').style.display = 'block';
+        document.getElementById('importStockBtn').disabled = valid === 0;
+    }
+
+    function clearStockFile() {
+        document.getElementById('stockFile').value = '';
+        document.getElementById('stockPreview').style.display = 'none';
+        stockRows = [];
+    }
+
+    async function importStock() {
+        if (!activeTenantId || !stockRows.length) return;
+        const btn = document.getElementById('importStockBtn');
+        btn.disabled = true;
+        btn.textContent = 'Importing…';
+
+        const dateVal = document.getElementById('stockDate').value;
+        if (!dateVal) { toast('Set a stock date first', 'error'); btn.disabled = false; btn.textContent = 'Import Opening Stock →'; return; }
+
+        log('step4Log', `Clearing old opening stock for this tenant…`, 'info');
+        await window.supabase
+            .from('p2_stock_transactions')
+            .delete()
+            .eq('tenant_id', activeTenantId)
+            .eq('transaction_type', 'adjustment')
+            .eq('notes', 'Opening Stock');
+
+        log('step4Log', `Inserting ${stockRows.length} opening stock entries…`, 'info');
+        const txns = stockRows.map(r => ({
+            tenant_id:        activeTenantId,
+            raw_material_id:  r.matId,
+            transaction_type: 'adjustment',
+            quantity:         r.qty,
+            notes:            'Opening Stock',
+            transaction_date: dateVal
+        }));
+
+        const { error } = await window.supabase
+            .from('p2_stock_transactions')
+            .insert(txns);
+
+        if (error) {
+            log('step4Log', 'Error: ' + error.message, 'err');
+            toast('Import failed: ' + error.message, 'error');
+            btn.disabled = false;
+            btn.textContent = 'Import Opening Stock →';
+            return;
+        }
+
+        log('step4Log', `✓ ${txns.length} opening stock entries inserted for ${dateVal}`, 'ok');
+        toast(`Opening stock imported for ${txns.length} materials`, 'success');
+        btn.textContent = '✓ Done';
+        setStep(5);
+    }
+
+    // ── STEP 5: DONE ──────────────────────────────────────────────
+    function markDone() {
+        document.getElementById('doneTitle').textContent = `${activeCompany || 'Client'} is live on Nexflow P2`;
+        document.getElementById('doneSub').textContent   =
+            `Plan: ${selectedPlan.toUpperCase()} · Tenant: ${activeTenantId}`;
+        ['step1Section','step2Section','step3Section','step4Section'].forEach(id => {
+            document.getElementById(id).style.display = 'none';
+        });
+        document.getElementById('step5Section').style.display = 'block';
+        setStep(5);
+        toast(`${activeCompany || 'Client'} onboarded successfully 🎉`, 'success');
+    }
+
+    // ── RESET ─────────────────────────────────────────────────────
+    function resetOnboarding() {
+        activeTenantId = null; activeEmail = null; activeCompany = null;
+        selectedPlan = 'founder'; materialsRows = []; stockRows = []; dbMaterials = [];
+
+        document.getElementById('clientEmail').value      = '';
+        document.getElementById('manualTenantId').value   = '';
+        document.getElementById('manualCompanyName').value = '';
+        document.getElementById('lookupResult').classList.remove('visible');
+        document.getElementById('lookupError').style.display = 'none';
+        document.getElementById('activeClientCard').style.display = 'none';
+
+        ['step2Log','step3Log','step4Log'].forEach(id => {
+            const el = document.getElementById(id);
+            el.innerHTML = ''; el.classList.remove('visible');
+        });
+
+        clearMaterialsFile();
+        clearStockFile();
+
+        document.getElementById('step1Section').style.display = 'block';
+        document.getElementById('step2Section').style.display = 'none';
+        document.getElementById('step3Section').style.display = 'none';
+        document.getElementById('step4Section').style.display = 'none';
+        document.getElementById('step5Section').style.display = 'none';
+
+        setStep(1);
+    }
+
+    // ── DRAG AND DROP ─────────────────────────────────────────────
+    ['materialsDrop','stockDrop'].forEach(id => {
+        const el = document.getElementById(id);
+        el.addEventListener('dragover', e => { e.preventDefault(); el.classList.add('dragover'); });
+        el.addEventListener('dragleave', () => el.classList.remove('dragover'));
+        el.addEventListener('drop', e => {
+            e.preventDefault(); el.classList.remove('dragover');
+            const file = e.dataTransfer.files[0];
+            if (!file) return;
+            const inputId = id === 'materialsDrop' ? 'materialsFile' : 'stockFile';
+            const dt = new DataTransfer();
+            dt.items.add(file);
+            document.getElementById(inputId).files = dt.files;
+            id === 'materialsDrop' ? handleMaterialsFile(document.getElementById(inputId))
+                                   : handleStockFile(document.getElementById(inputId));
+        });
+    });
+
+    // ── INIT ──────────────────────────────────────────────────────
+    async function initPage() {
+        const authed = await checkAuth();
+        if (!authed) return;
+        // Only Arjun (owner of demo account) should access this
+        // If not owner, redirect
+        const role = localStorage.getItem('user_role');
+        if (role !== 'owner') {
+            window.location.href = 'dashboard.html?unauthorized=true';
+            return;
+        }
+        setStep(1);
+    }
+
+    window.onload = initPage;
+</script>
+</body>
+</html>
