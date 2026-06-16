@@ -518,8 +518,7 @@
                 const list = document.getElementById('confirmItemsList');
                 list.innerHTML = '';
                 dispatchItems.forEach(item => {
-                    const li = document.createElement('line');
-                    li.className = 'block';
+                    const li = document.createElement('li');
                     li.textContent = `${item.name} - ${item.quantity} ${item.unit}`;
                     list.appendChild(li);
                 });
@@ -751,6 +750,7 @@
                     successMsg.style.display = 'flex';
                     document.getElementById('printChallanBtn').onclick = () => viewChallan(orderId);
                     window.scrollTo({ top: 0, behavior: 'smooth' });
+                    setTimeout(() => { successMsg.style.display = 'none'; }, 5000);
                 }
 
             } catch (err) {
@@ -826,6 +826,7 @@
             };
             document.getElementById('consumptionCloseBtn').onclick = () => {
                 document.getElementById('consumptionModal').style.display = 'none';
+                window.scrollTo({ top: 0, behavior: 'smooth' });
             };
 
             document.getElementById('consumptionModal').style.display = 'flex';
