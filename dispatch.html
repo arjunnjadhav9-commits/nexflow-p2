@@ -518,7 +518,8 @@
                 const list = document.getElementById('confirmItemsList');
                 list.innerHTML = '';
                 dispatchItems.forEach(item => {
-                    const li = document.createElement('li');
+                    const li = document.createElement('line');
+                    li.className = 'block';
                     li.textContent = `${item.name} - ${item.quantity} ${item.unit}`;
                     list.appendChild(li);
                 });
@@ -582,6 +583,8 @@
 
         async function handleSaveWorkflow(targetStatus) {
             if (targetStatus === 'confirmed' && !validateForm()) return;
+
+            let consumptionArray = [];
 
             try {
                 clearMessages();
@@ -700,7 +703,7 @@
                 let confirmResult = null;
 
                 if (targetStatus === 'confirmed') {
-                    const consumptionArray = [];
+                    consumptionArray = [];
 
                     for (const item of dispatchItems) {
                         const numericQty = parseInt(item.quantity || item.qty || item.qty_dispatched || 0, 10);
@@ -750,7 +753,6 @@
                     successMsg.style.display = 'flex';
                     document.getElementById('printChallanBtn').onclick = () => viewChallan(orderId);
                     window.scrollTo({ top: 0, behavior: 'smooth' });
-                    setTimeout(() => { successMsg.style.display = 'none'; }, 5000);
                 }
 
             } catch (err) {
@@ -826,7 +828,6 @@
             };
             document.getElementById('consumptionCloseBtn').onclick = () => {
                 document.getElementById('consumptionModal').style.display = 'none';
-                window.scrollTo({ top: 0, behavior: 'smooth' });
             };
 
             document.getElementById('consumptionModal').style.display = 'flex';
