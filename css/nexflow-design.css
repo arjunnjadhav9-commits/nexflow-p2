@@ -2,6 +2,20 @@
    NEXFLOW P2 — PRODUCT DESIGN SYSTEM v2.0
    Drop this file into every page: <link rel="stylesheet" href="css/nexflow-design.css">
    Remove any existing Tailwind CDN link when this is active.
+
+   FONT LOADING: Do NOT rely on the @import below for production pages.
+   @import in CSS blocks rendering until the font request resolves —
+   on a slow factory WiFi/4G connection this delays first paint noticeably.
+   Instead, add these two tags in <head>, BEFORE the nexflow-design.css
+   <link> tag, on every page:
+
+     <link rel="preconnect" href="https://fonts.googleapis.com">
+     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800;900&family=Barlow+Condensed:wght@500;600;700;800;900&display=swap">
+
+   The @import below is kept ONLY as a fallback for any page that hasn't
+   been updated with the <link> tags yet. Once all pages have the
+   preconnect+link tags, delete the @import line entirely.
    ============================================================ */
 
 @import url('https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800;900&family=Barlow+Condensed:wght@500;600;700;800;900&display=swap');
@@ -41,6 +55,15 @@
 /* ── RESET ── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html { scroll-behavior: smooth; }
+
+/* Respect reduced-motion preference */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
 
 body {
   background: var(--bg);
@@ -289,7 +312,28 @@ body {
 }
 @keyframes nx-blink { 0%,100%{opacity:1}50%{opacity:0.2} }
 
-/* ── CARDS ── */
+/* ── CONTENT FADE-IN ── */
+/* Apply to any section that gets display:block/flex after a data fetch.
+   Add class="nx-fade-in" alongside the existing display toggle in JS —
+   no JS logic changes needed, just add the class to the element. */
+.nx-fade-in {
+  animation: nx-fade-up 0.35s ease both;
+}
+@keyframes nx-fade-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── CARD ENTRANCE (staggered, for stat grids) ── */
+.nx-stat-grid.nx-fade-in .nx-stat {
+  animation: nx-fade-up 0.35s ease both;
+}
+.nx-stat-grid.nx-fade-in .nx-stat:nth-child(1) { animation-delay: 0s; }
+.nx-stat-grid.nx-fade-in .nx-stat:nth-child(2) { animation-delay: 0.05s; }
+.nx-stat-grid.nx-fade-in .nx-stat:nth-child(3) { animation-delay: 0.1s; }
+.nx-stat-grid.nx-fade-in .nx-stat:nth-child(4) { animation-delay: 0.15s; }
+
+
 .nx-card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -661,6 +705,26 @@ body {
   to   { opacity: 1; transform: translateX(0); }
 }
 
+/* ── MODAL ENTRANCE ── */
+/* Add class="nx-modal-overlay" to your existing overlay div — it already
+   likely has display:flex/none toggled by JS. This just animates the
+   overlay fade and the modal scale/rise when it becomes visible. */
+.nx-modal-overlay {
+  animation: nx-modal-bg-in 0.18s ease both;
+}
+.nx-modal-overlay > .nx-modal,
+.nx-modal-overlay > div:not(.nx-modal-overlay) {
+  animation: nx-modal-in 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes nx-modal-bg-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes nx-modal-in {
+  from { opacity: 0; transform: scale(0.96) translateY(8px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
 /* ── DIVIDER WITH LABEL ── */
 .nx-divider {
   display: flex;
@@ -890,6 +954,51 @@ body {
   flex-shrink: 0;
 }
 @keyframes nx-spin { to { transform: rotate(360deg); } }
+
+/* ── BRANDED LOGO LOADER ── */
+/* Use for full-page initial load states instead of the plain spinner.
+   Markup:
+   <div class="nx-logo-loader">
+     <div class="nx-logo-loader-mark"></div>
+     <div class="nx-logo-loader-text">NEXFLOW</div>
+   </div>
+   The mark uses assets/nexflow-mark.png (white line-art on transparent)
+   as a CSS mask, so it renders in the brand teal-to-green gradient
+   instead of being stuck as a flat color.
+*/
+.nx-logo-loader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 60px 20px;
+}
+.nx-logo-loader-mark {
+  width: 64px; height: 64px;
+  background: linear-gradient(135deg, #00BCD4, #00E676);
+  -webkit-mask-image: url('../assets/nexflow-mark.png');
+  mask-image: url('../assets/nexflow-mark.png');
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  animation: nx-pulse 1.4s ease-in-out infinite;
+}
+.nx-logo-loader-text {
+  font-family: var(--condensed);
+  font-weight: 800;
+  font-size: 12px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--mid);
+}
+@keyframes nx-pulse {
+  0%, 100% { transform: scale(1);    opacity: 1;   }
+  50%      { transform: scale(1.08); opacity: 0.75; }
+}
 
 /* ── STEP INDICATOR (Export page) ── */
 .nx-step-label {

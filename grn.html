@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GRN | Nexflow P2</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%230c0e14'/><text y='.9em' font-size='80' x='10' fill='%23ff5c1a'>N</text></svg>">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800;900&family=Barlow+Condensed:wght@500;600;700;800;900&display=swap">
     <link rel="stylesheet" href="css/nexflow-design.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="js/supabase-client.js"></script>
@@ -104,9 +107,9 @@
 
             <!-- LOADING STATE -->
             <div id="loadingSpinner">
-                <div class="nx-loading">
-                    <div class="nx-spinner"></div>
-                    <span>Loading...</span>
+                <div class="nx-logo-loader">
+                    <div class="nx-logo-loader-mark"></div>
+                    <div class="nx-logo-loader-text">Loading...</div>
                 </div>
             </div>
 
@@ -311,6 +314,7 @@
 
                 loadingSpinner.style.display = 'none';
                 grnForm.style.display = 'grid';
+                grnForm.classList.add('nx-fade-in');
             } catch (error) {
                 console.error('Error initializing GRN:', error);
                 loadingSpinner.style.display = 'none';
@@ -366,7 +370,7 @@
 
         function removeGRNRow(rowId) {
             if (grnRows.length === 1) {
-                alert('At least one row is required');
+                toast('At least one row is required', 'warn');
                 return;
             }
             grnRows = grnRows.filter(r => r.id !== rowId);
@@ -466,14 +470,14 @@
 
             if (!supplierId) {
                 const lang = localStorage.getItem('nexflow_lang') || 'en';
-                alert(lang === 'mr' ? 'कृपया पुरवठादार निवडा' : 'Please select a supplier');
+                toast(lang === 'mr' ? 'कृपया पुरवठादार निवडा' : 'Please select a supplier', 'error');
                 document.getElementById('supplierSelect').focus();
                 return;
             }
 
             if (grnRows.length === 0) {
                 const lang = localStorage.getItem('nexflow_lang') || 'en';
-                alert(lang === 'mr' ? 'कृपया किमान एक ओळ जोडा' : 'Please add at least one row');
+                toast(lang === 'mr' ? 'कृपया किमान एक ओळ जोडा' : 'Please add at least one row', 'error');
                 return;
             }
 
@@ -483,16 +487,16 @@
                 const lang = localStorage.getItem('nexflow_lang') || 'en';
 
                 if (!row.material_id) {
-                    alert(lang === 'mr' ? `ओळ ${i + 1}: कृपया सामग्री निवडा` : `Row ${i + 1}: Please select a material`);
+                    toast(lang === 'mr' ? `ओळ ${i + 1}: कृपया सामग्री निवडा` : `Row ${i + 1}: Please select a material`, 'error');
                     hasError = true; break;
                 }
                 if (!row.quantity || row.quantity === '') {
-                    alert(lang === 'mr' ? `ओळ ${i + 1}: कृपया परिमाण प्रविष्ट करा` : `Row ${i + 1}: Please enter quantity`);
+                    toast(lang === 'mr' ? `ओळ ${i + 1}: कृपया परिमाण प्रविष्ट करा` : `Row ${i + 1}: Please enter quantity`, 'error');
                     hasError = true; break;
                 }
                 const qty = parseFloat(row.quantity);
                 if (isNaN(qty) || qty <= 0) {
-                    alert(lang === 'mr' ? `ओळ ${i + 1}: परिमाण ० पेक्षा जास्त असणे आवश्यक आहे` : `Row ${i + 1}: Quantity must be greater than 0`);
+                    toast(lang === 'mr' ? `ओळ ${i + 1}: परिमाण ० पेक्षा जास्त असणे आवश्यक आहे` : `Row ${i + 1}: Quantity must be greater than 0`, 'error');
                     hasError = true; break;
                 }
             }
@@ -506,7 +510,7 @@
 
             if (validRows.length === 0) {
                 const lang = localStorage.getItem('nexflow_lang') || 'en';
-                alert(lang === 'mr' ? 'कृपया किमान एक वैध ओळ जोडा' : 'Please add at least one valid material with quantity');
+                toast(lang === 'mr' ? 'कृपया किमान एक वैध ओळ जोडा' : 'Please add at least one valid material with quantity', 'error');
                 return;
             }
 
@@ -533,9 +537,9 @@
                 if (error) throw error;
 
                 const lang = localStorage.getItem('nexflow_lang') || 'en';
-                alert(lang === 'mr'
+                toast(lang === 'mr'
                     ? `${validRows.length} सामग्री यशस्वीरित्या प्राप्त झाली.`
-                    : `${validRows.length} materials received successfully.`);
+                    : `${validRows.length} materials received successfully.`, 'ok');
 
                 // GUARD 10: Clear navigate-away warning after successful submission
                 document.getElementById('grnForm').reset();
@@ -546,7 +550,7 @@
                 await loadRecentGRN();
             } catch (error) {
                 console.error('Error submitting GRN:', error);
-                alert('Failed to submit GRN: ' + error.message);
+                toast('Failed to submit GRN: ' + error.message, 'error');
             }
         });
 
@@ -565,7 +569,7 @@
             const mobile = document.getElementById('newSupplierMobile').value.trim();
 
             if (!name || !mobile) {
-                alert('Please enter supplier name and mobile');
+                toast('Please enter supplier name and mobile', 'error');
                 return;
             }
 
@@ -581,7 +585,7 @@
 
                 if (error) throw error;
 
-                alert('Supplier added successfully');
+                toast('Supplier added successfully', 'ok');
                 document.getElementById('supplierModal').style.display = 'none';
                 document.getElementById('newSupplierName').value = '';
                 document.getElementById('newSupplierMobile').value = '';
@@ -589,7 +593,7 @@
                 document.getElementById('supplierSelect').value = data.id;
             } catch (error) {
                 console.error('Error adding supplier:', error);
-                alert('Failed to add supplier: ' + error.message);
+                toast('Failed to add supplier: ' + error.message, 'error');
             }
         });
 

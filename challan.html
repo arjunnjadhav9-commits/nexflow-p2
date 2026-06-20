@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Delivery Challan | Nexflow P2</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%230c0e14'/><text y='.9em' font-size='80' x='10' fill='%23ff5c1a'>N</text></svg>">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800;900&family=Barlow+Condensed:wght@500;600;700;800;900&display=swap">
     <link rel="stylesheet" href="css/nexflow-design.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="js/supabase-client.js"></script>
@@ -249,8 +252,17 @@
         const dispatchOrderId = urlParams.get('id');
 
         if (!dispatchOrderId) {
-            alert('No dispatch order ID provided');
-            window.location.href = 'dispatch.html';
+            document.body.innerHTML = `
+                <div style="display:flex; align-items:center; justify-content:center; min-height:100vh; padding:20px;">
+                    <div class="nx-alert nx-alert-red" style="max-width:400px;">
+                        <span class="nx-alert-icon">⚠</span>
+                        <div>
+                            <div class="nx-bold">No dispatch order specified</div>
+                            <div>Redirecting back to Dispatch...</div>
+                        </div>
+                    </div>
+                </div>`;
+            setTimeout(() => { window.location.href = 'dispatch.html'; }, 1500);
         }
 
         async function loadChallan() {
@@ -276,7 +288,14 @@
                 populateChallan(dispatchOrder, dispatchItems, tenantSettings);
             } catch (error) {
                 console.error('Error loading challan:', error);
-                alert('Failed to load challan data');
+                document.getElementById('challan-content').innerHTML = `
+                    <div class="nx-alert nx-alert-red" style="margin:40px auto; max-width:420px;">
+                        <span class="nx-alert-icon">⚠</span>
+                        <div>
+                            <div class="nx-bold">Could not load challan</div>
+                            <div>Check your connection and refresh the page.</div>
+                        </div>
+                    </div>`;
             }
         }
 

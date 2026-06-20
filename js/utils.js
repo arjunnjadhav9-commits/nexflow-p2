@@ -30,6 +30,44 @@ function formatNumber(value) {
 }
 
 /**
+ * Show a toast notification (auto-dismissing, non-blocking).
+ * Uses the .nx-toast / .nx-toast-wrap classes already defined in
+ * nexflow-design.css. Creates the wrap container if the page doesn't
+ * already have one, so this works on any page without extra markup.
+ *
+ * @param {string} message - Message to display
+ * @param {string} type - 'ok' | 'error' | 'warn' (default 'ok')
+ * @param {number} duration - Auto-dismiss time in ms (default 3500)
+ */
+function toast(message, type = 'ok', duration = 3500) {
+    let wrap = document.getElementById('toastWrap') || document.querySelector('.nx-toast-wrap');
+    if (!wrap) {
+        wrap = document.createElement('div');
+        wrap.className = 'nx-toast-wrap';
+        wrap.id = 'toastWrap';
+        document.body.appendChild(wrap);
+    }
+
+    // Accept both naming conventions used across the codebase:
+    // 'ok'/'error'/'warn' (utils.js convention) and
+    // 'success'/'error'/'info' (settings.html's original convention).
+    const isError = type === 'error';
+    const isWarn  = type === 'warn' || type === 'info';
+    const typeClass = isError ? 'error' : isWarn ? 'warn' : '';
+
+    const el = document.createElement('div');
+    el.className = `nx-toast${typeClass ? ' ' + typeClass : ''}`;
+    el.textContent = message;
+    wrap.appendChild(el);
+
+    setTimeout(() => {
+        el.style.transition = 'opacity 0.2s ease';
+        el.style.opacity = '0';
+        setTimeout(() => el.remove(), 200);
+    }, duration);
+}
+
+/**
  * Show a status message with auto-hide and close button
  * @param {string} elementId - ID of the status message container
  * @param {string} message - Message to display
@@ -109,9 +147,9 @@ function initNumberInputSanitization() {
                             e.preventDefault();
                             const lang = localStorage.getItem('nexflow_lang') || 'en';
                             const fieldName = inp.getAttribute('data-en') || inp.getAttribute('placeholder') || 'This field';
-                            alert(lang === 'mr'
+                            toast(lang === 'mr'
                                 ? `कृपया ${fieldName} साठी वैध क्रमांक प्रविष्ट करा`
-                                : `Please enter a valid number for ${fieldName}`);
+                                : `Please enter a valid number for ${fieldName}`, 'error');
                             inp.focus();
                             return false;
                         }
@@ -128,6 +166,7 @@ if (typeof window !== 'undefined') {
     window.formatNumber = formatNumber;
     window.showStatusMessage = showStatusMessage;
     window.initNumberInputSanitization = initNumberInputSanitization;
+    window.toast = toast;
 
     // ── DEMO MODE ──────────────────────────────────────────────
     // True when the logged-in user is the read-only demo account.
@@ -167,7 +206,7 @@ if (typeof window !== 'undefined') {
             form.addEventListener('submit', e => {
                 e.preventDefault();
                 e.stopImmediatePropagation();
-                alert('Demo mode — read only.\nContact Arjun to get started: arjunjadhav29052006@gmail.com');
+                toast('Demo mode — read only. Contact Arjun to get started: arjunjadhav29052006@gmail.com', 'warn', 5000);
             }, true); // capture phase — fires before any other submit handler
         });
         // Dim all submit/save/add/delete buttons

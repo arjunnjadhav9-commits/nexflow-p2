@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Settings | Nexflow P2</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%230c0e14'/><text y='.9em' font-size='80' x='10' fill='%23ff5c1a'>N</text></svg>">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800;900&family=Barlow+Condensed:wght@500;600;700;800;900&display=swap">
     <link rel="stylesheet" href="css/nexflow-design.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
@@ -151,30 +154,12 @@
             .qr-label-card p { color: #000 !important; }
             .no-print { display: none !important; }
         }
-        /* ── TOAST NOTIFICATIONS ─────────────────────────────── */
-        #nx-toast-container {
-            position: fixed; bottom: 24px; right: 24px;
-            z-index: 9999; display: flex; flex-direction: column;
-            gap: 10px; pointer-events: none;
-        }
-        .nx-toast {
-            display: flex; align-items: center; gap: 10px;
-            padding: 12px 18px; border-radius: 10px;
-            font-size: 14px; font-weight: 500;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.4);
-            pointer-events: auto; min-width: 260px; max-width: 380px;
-            animation: toastIn 0.25s ease;
-        }
-        .nx-toast.success { background: #1a2e1a; border: 1px solid var(--green); color: var(--green); }
-        .nx-toast.error   { background: #2e1a1a; border: 1px solid var(--red);   color: var(--red);   }
-        .nx-toast.info    { background: #1a1f2e; border: 1px solid var(--orange); color: var(--orange);}
-        .nx-toast.fadeOut { animation: toastOut 0.3s ease forwards; }
-        @keyframes toastIn  { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
-        @keyframes toastOut { from { opacity:1; transform:translateY(0); } to { opacity:0; transform:translateY(12px); } }
+        /* Toast notifications now use the shared .nx-toast / .nx-toast-wrap
+           classes from nexflow-design.css via the global toast() function
+           in utils.js — no page-local toast CSS needed. */
     </style>
 </head>
 <body>
-    <div id="nx-toast-container"></div>
 <div id="navbar-container"></div>
 
 <div class="nx-main">
@@ -774,18 +759,6 @@
 
 <script>
     // ── TOAST ─────────────────────────────────────────────────────────────────
-    function showToast(msg, type = 'success', duration = 3500) {
-        const container = document.getElementById('nx-toast-container');
-        const el = document.createElement('div');
-        el.className = `nx-toast ${type}`;
-        const icon = type === 'success' ? '✓' : type === 'error' ? '✗' : 'ℹ';
-        el.innerHTML = `<span style="font-size:16px;">${icon}</span><span>${msg}</span>`;
-        container.appendChild(el);
-        setTimeout(() => {
-            el.classList.add('fadeOut');
-            setTimeout(() => el.remove(), 300);
-        }, duration);
-    }
 
     // ── LANGUAGE ──────────────────────────────────────────────────────────────
     function applyLang(lang) {
@@ -1058,16 +1031,16 @@
         const gstRate        = parseFloat(formData.get('gst_rate')) || 0;
         const lang           = localStorage.getItem('nexflow_lang') || 'en';
 
-        if (!name)          { showToast(lang==='mr'?'कृपया सामग्रीचे नाव प्रविष्ट करा':'Please enter material name','error'); return; }
-        if (!unit)          { showToast(lang==='mr'?'कृपया एकक निवडा':'Please select unit','error'); return; }
-        if (!minStockLevel) { showToast(lang==='mr'?'कृपया किमान साठा पातळी प्रविष्ट करा':'Please enter minimum stock level','error'); return; }
+        if (!name)          { toast(lang==='mr'?'कृपया सामग्रीचे नाव प्रविष्ट करा':'Please enter material name','error'); return; }
+        if (!unit)          { toast(lang==='mr'?'कृपया एकक निवडा':'Please select unit','error'); return; }
+        if (!minStockLevel) { toast(lang==='mr'?'कृपया किमान साठा पातळी प्रविष्ट करा':'Please enter minimum stock level','error'); return; }
 
         const minStock = parseFloat(minStockLevel);
-        if (isNaN(minStock) || minStock < 0) { showToast(lang==='mr'?'किमान साठा पातळी ० किंवा त्यापेक्षा जास्त असणे आवश्यक आहे':'Minimum stock level must be 0 or greater','error'); return; }
+        if (isNaN(minStock) || minStock < 0) { toast(lang==='mr'?'किमान साठा पातळी ० किंवा त्यापेक्षा जास्त असणे आवश्यक आहे':'Minimum stock level must be 0 or greater','error'); return; }
 
         try {
             const { data: { user } } = await window.supabase.auth.getUser();
-            if (!user) { showToast('Not authenticated','error'); return; }
+            if (!user) { toast('Not authenticated','error'); return; }
             const tenantId = user.id;
 
             const { data: existingMaterials, error: checkError } = await window.supabase
@@ -1076,7 +1049,7 @@
 
             const duplicateFound = existingMaterials?.some(m => m.name.toLowerCase()===name.toLowerCase() && m.id!==editMaterialId);
             if (duplicateFound) {
-                showToast(lang==='mr'?`सामग्री '${name}' आधीच अस्तित्वात आहे.`:`Material '${name}' already exists. Use a different name or edit the existing one.`,'error');
+                toast(lang==='mr'?`सामग्री '${name}' आधीच अस्तित्वात आहे.`:`Material '${name}' already exists. Use a different name or edit the existing one.`,'error');
                 return;
             }
 
@@ -1085,17 +1058,17 @@
                     .update({ name, unit, min_stock_level: minStock, material_code: materialCode, hsn_sac: hsnSac, gst_rate: gstRate })
                     .eq('id', editMaterialId);
                 if (error) throw error;
-                showToast(lang==='mr'?'साहित्य यशस्वीरित्या अपडेट केले':'Material updated successfully','success');
+                toast(lang==='mr'?'साहित्य यशस्वीरित्या अपडेट केले':'Material updated successfully','success');
             } else {
                 if (!isPro()) {
                     const { count } = await window.supabase.from('p2_raw_materials')
                         .select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('is_active', true);
-                    if (count >= 250) { showToast('Material limit reached (250 materials). Upgrade to Pro for unlimited materials.','info'); return; }
+                    if (count >= 250) { toast('Material limit reached (250 materials). Upgrade to Pro for unlimited materials.','info'); return; }
                 }
                 const { error } = await window.supabase.from('p2_raw_materials')
                     .insert({ name, unit, min_stock_level: minStock, material_code: materialCode, hsn_sac: hsnSac, gst_rate: gstRate, tenant_id: tenantId, is_active: true });
                 if (error) throw error;
-                showToast(lang==='mr'?'साहित्य यशस्वीरित्या जोडले':'Material added successfully','success');
+                toast(lang==='mr'?'साहित्य यशस्वीरित्या जोडले':'Material added successfully','success');
             }
 
             e.target.reset();
@@ -1107,7 +1080,7 @@
         } catch (error) {
             console.error('Error saving material:', error);
             const lang = localStorage.getItem('nexflow_lang') || 'en';
-            showToast(lang==='mr'?'साहित्य साठवण्यात अयशस्वी':'Failed to save material','error');
+            toast(lang==='mr'?'साहित्य साठवण्यात अयशस्वी':'Failed to save material','error');
         }
     });
 
@@ -1121,7 +1094,7 @@
         } catch (error) {
             console.error('Error deactivating material:', error);
             const lang = localStorage.getItem('nexflow_lang') || 'en';
-            showToast(lang==='mr'?'साहित्य निष्क्रिय करण्यात अयशस्वी':'Failed to deactivate material','error');
+            toast(lang==='mr'?'साहित्य निष्क्रिय करण्यात अयशस्वी':'Failed to deactivate material','error');
         }
     }
 
@@ -1164,21 +1137,21 @@
         const address  = formData.get('address')?.trim();
         const lang     = localStorage.getItem('nexflow_lang') || 'en';
 
-        if (!name)   { showToast(lang==='mr'?'कृपया पुरवठादाराचे नाव प्रविष्ट करा':'Please enter supplier name','error'); return; }
-        if (!mobile) { showToast(lang==='mr'?'कृपया मोबाईल नंबर प्रविष्ट करा':'Please enter mobile number','error'); return; }
+        if (!name)   { toast(lang==='mr'?'कृपया पुरवठादाराचे नाव प्रविष्ट करा':'Please enter supplier name','error'); return; }
+        if (!mobile) { toast(lang==='mr'?'कृपया मोबाईल नंबर प्रविष्ट करा':'Please enter mobile number','error'); return; }
 
         try {
             const { data: { user } } = await window.supabase.auth.getUser();
-            if (!user) { showToast('Not authenticated','error'); return; }
+            if (!user) { toast('Not authenticated','error'); return; }
             const { error } = await window.supabase.from('p2_suppliers')
                 .insert({ name, mobile, address, tenant_id: user.id, is_active: true });
             if (error) throw error;
-            showToast(lang==='mr'?'पुरवठादार यशस्वीरित्या जोडला':'Supplier added successfully','success');
+            toast(lang==='mr'?'पुरवठादार यशस्वीरित्या जोडला':'Supplier added successfully','success');
             e.target.reset();
             loadSuppliers();
         } catch (error) {
             console.error('Error adding supplier:', error);
-            showToast(lang==='mr'?'पुरवठादार जोडण्यात अयशस्वी':'Failed to add supplier','error');
+            toast(lang==='mr'?'पुरवठादार जोडण्यात अयशस्वी':'Failed to add supplier','error');
         }
     });
 
@@ -1191,7 +1164,7 @@
             loadSuppliers();
         } catch (error) {
             console.error('Error deactivating supplier:', error);
-            showToast(localStorage.getItem('nexflow_lang')==='mr'?'पुरवठादार निष्क्रिय करण्यात अयशस्वी':'Failed to deactivate supplier','error');
+            toast(localStorage.getItem('nexflow_lang')==='mr'?'पुरवठादार निष्क्रिय करण्यात अयशस्वी':'Failed to deactivate supplier','error');
         }
     }
 
@@ -1274,7 +1247,7 @@
             loadStaffList();
         } catch (error) {
             console.error('Error removing staff:', error);
-            showToast(localStorage.getItem('nexflow_lang')==='mr'?'कर्मचारी काढण्यात अयशस्वी':'Failed to remove staff','error');
+            toast(localStorage.getItem('nexflow_lang')==='mr'?'कर्मचारी काढण्यात अयशस्वी':'Failed to remove staff','error');
         }
     }
 
@@ -1400,7 +1373,7 @@
                 const workbook = XLSX.read(data, { type: 'array' });
                 const sheet    = workbook.Sheets[workbook.SheetNames[0]];
                 const rows     = XLSX.utils.sheet_to_json(sheet, { defval: '' });
-                if (!rows.length) { showToast('File is empty or could not be parsed.','error'); input.value = ''; return; }
+                if (!rows.length) { toast('File is empty or could not be parsed.','error'); input.value = ''; return; }
 
                 const normalised = rows.map(row => {
                     const out = {};
@@ -1409,13 +1382,13 @@
                 });
                 const sample = normalised[0];
                 if (!('name' in sample) || !('unit' in sample) || !('min_stock_level' in sample)) {
-                    showToast('Missing required columns: name, unit, min_stock_level','error');
+                    toast('Missing required columns: name, unit, min_stock_level','error');
                     input.value = ''; return;
                 }
                 previewBulkData(normalised);
             } catch (err) {
                 console.error('Parse error:', err);
-                showToast('Failed to parse file. Use .xlsx, .xls, or .csv','error');
+                toast('Failed to parse file. Use .xlsx, .xls, or .csv','error');
                 input.value = '';
             }
         };
@@ -1742,16 +1715,16 @@
                 const wb   = XLSX.read(data, { type: 'array' });
                 const sheet = wb.Sheets[wb.SheetNames[0]];
                 const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
-                if (!rows.length) { showToast('File is empty.','error'); input.value = ''; return; }
+                if (!rows.length) { toast('File is empty.','error'); input.value = ''; return; }
                 const normalised = rows.map(row => { const out={}; Object.keys(row).forEach(k=>{out[k.toLowerCase().trim()]=row[k];}); return out; });
                 const sample = normalised[0];
                 if (!('name' in sample)||!('price_per_unit' in sample)||!('effective_date' in sample)) {
-                    showToast('Missing required columns: name, price_per_unit, effective_date','error');
+                    toast('Missing required columns: name, price_per_unit, effective_date','error');
                     input.value = ''; return;
                 }
                 previewPriceData(normalised);
             } catch (err) {
-                showToast('Failed to parse file.','error'); input.value = '';
+                toast('Failed to parse file.','error'); input.value = '';
             }
         };
         reader.readAsArrayBuffer(file);
@@ -1897,7 +1870,7 @@
 
     // ── QR LABELS ─────────────────────────────────────────────────────────────
     async function openQRModal() {
-        if (!isPro()) { showToast('QR Labels is a Pro feature. Upgrade to unlock.','info'); return; }
+        if (!isPro()) { toast('QR Labels is a Pro feature. Upgrade to unlock.','info'); return; }
         const grid = document.getElementById('qr-labels-grid');
         grid.innerHTML = '<p style="grid-column:1/-1; text-align:center; padding:40px; color:var(--mid);">Generating QR codes...</p>';
         document.getElementById('qr-modal').style.display = 'flex';
@@ -1970,11 +1943,11 @@
                     btn.removeAttribute('onclick');
                 }
             });
-            window.submitBulkImport  = () => showToast('Demo mode — read only. Contact Arjun to get access.','info');
-            window.submitSinglePrice = () => showToast('Demo mode — read only. Contact Arjun to get access.','info');
-            window.submitProductPrice = () => showToast('Demo mode — read only. Contact Arjun to get access.','info');
-            window.submitPriceImport = () => showToast('Demo mode — read only. Contact Arjun to get access.','info');
-            window.openQRModal = () => showToast('Demo mode — read only. Contact Arjun to get access.','info');
+            window.submitBulkImport  = () => toast('Demo mode — read only. Contact Arjun to get access.','info');
+            window.submitSinglePrice = () => toast('Demo mode — read only. Contact Arjun to get access.','info');
+            window.submitProductPrice = () => toast('Demo mode — read only. Contact Arjun to get access.','info');
+            window.submitPriceImport = () => toast('Demo mode — read only. Contact Arjun to get access.','info');
+            window.openQRModal = () => toast('Demo mode — read only. Contact Arjun to get access.','info');
         }
 
         const saved = localStorage.getItem('nexflow_lang') || 'en';
