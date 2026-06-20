@@ -976,7 +976,7 @@ body {
 }
 .nx-logo-loader-mark {
   width: 64px; height: 64px;
-  background: linear-gradient(135deg, #00BCD4, #00E676);
+  background: linear-gradient(135deg, #ff5c1a, #ff8c42);
   -webkit-mask-image: url('../assets/nexflow-mark.png');
   mask-image: url('../assets/nexflow-mark.png');
   -webkit-mask-size: contain;
