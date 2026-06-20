@@ -34,6 +34,86 @@
             box-shadow: var(--shadow-md);
         }
 
+        /* ── SPLASH SCREEN ── */
+        .nx-splash {
+            position: fixed;
+            inset: 0;
+            z-index: 999;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 18px;
+            background: var(--bg);
+            animation: nx-splash-out 0.5s ease forwards;
+            animation-delay: 2.4s;
+        }
+        .nx-splash-mark {
+            width: 72px; height: 72px;
+            background: linear-gradient(135deg, #ff5c1a, #ff8c42);
+            -webkit-mask-image: url('assets/nexflow-mark.png');
+            mask-image: url('assets/nexflow-mark.png');
+            -webkit-mask-size: contain;
+            mask-size: contain;
+            -webkit-mask-repeat: no-repeat;
+            mask-repeat: no-repeat;
+            -webkit-mask-position: center;
+            mask-position: center;
+            opacity: 0;
+            animation: nx-splash-mark-in 0.6s ease forwards;
+            animation-delay: 0.1s;
+        }
+        .nx-splash-wordmark {
+            font-family: var(--condensed);
+            font-weight: 800;
+            font-size: 22px;
+            letter-spacing: 3px;
+            color: var(--white);
+            text-align: center;
+        }
+        .nx-splash-sub-letter { color: var(--mid); font-size: 12px; letter-spacing: 2px; }
+        .nx-splash-letter {
+            display: inline-block;
+            opacity: 0;
+            transform: translateY(6px);
+            animation: nx-splash-letter-in 0.35s ease forwards;
+        }
+        /* Stagger each letter — NEXFLOW (7 letters) then AUTOMATIONS (12 chars incl. space) */
+        .nx-splash-letter:nth-child(1)  { animation-delay: 0.45s; }
+        .nx-splash-letter:nth-child(2)  { animation-delay: 0.50s; }
+        .nx-splash-letter:nth-child(3)  { animation-delay: 0.55s; }
+        .nx-splash-letter:nth-child(4)  { animation-delay: 0.60s; }
+        .nx-splash-letter:nth-child(5)  { animation-delay: 0.65s; }
+        .nx-splash-letter:nth-child(6)  { animation-delay: 0.70s; }
+        .nx-splash-letter:nth-child(7)  { animation-delay: 0.75s; }
+        .nx-splash-letter:nth-child(n+8) { animation-delay: 0.95s; }
+        .nx-splash-quote {
+            max-width: 320px;
+            text-align: center;
+            font-size: 13px;
+            font-style: italic;
+            color: var(--mid);
+            padding: 0 24px;
+            opacity: 0;
+            animation: nx-fade-up 0.5s ease forwards;
+            animation-delay: 1.3s;
+        }
+        @keyframes nx-splash-mark-in {
+            from { opacity: 0; transform: scale(0.7); }
+            to   { opacity: 1; transform: scale(1); }
+        }
+        @keyframes nx-splash-letter-in {
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes nx-splash-out {
+            from { opacity: 1; visibility: visible; }
+            to   { opacity: 0; visibility: hidden; pointer-events: none; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .nx-splash { animation-duration: 0.01ms; animation-delay: 0s; }
+            .nx-splash-mark, .nx-splash-letter, .nx-splash-quote { animation: none; opacity: 1; transform: none; }
+        }
+
         .login-icon-mark {
             width: 44px; height: 44px;
             margin: 0 auto 16px;
@@ -95,6 +175,16 @@
 </head>
 <body>
 
+    <!-- SPLASH SCREEN — plays once per session, then fades to reveal login -->
+    <div id="splashScreen" class="nx-splash">
+        <div class="nx-splash-mark"></div>
+        <div class="nx-splash-wordmark">
+            <span class="nx-splash-letter">N</span><span class="nx-splash-letter">E</span><span class="nx-splash-letter">X</span><span class="nx-splash-letter">F</span><span class="nx-splash-letter">L</span><span class="nx-splash-letter">O</span><span class="nx-splash-letter">W</span>
+            <span class="nx-splash-letter nx-splash-sub-letter"> </span><span class="nx-splash-letter nx-splash-sub-letter">A</span><span class="nx-splash-letter nx-splash-sub-letter">U</span><span class="nx-splash-letter nx-splash-sub-letter">T</span><span class="nx-splash-letter nx-splash-sub-letter">O</span><span class="nx-splash-letter nx-splash-sub-letter">M</span><span class="nx-splash-letter nx-splash-sub-letter">A</span><span class="nx-splash-letter nx-splash-sub-letter">T</span><span class="nx-splash-letter nx-splash-sub-letter">I</span><span class="nx-splash-letter nx-splash-sub-letter">O</span><span class="nx-splash-letter nx-splash-sub-letter">N</span><span class="nx-splash-letter nx-splash-sub-letter">S</span>
+        </div>
+        <div id="splashQuote" class="nx-splash-quote"></div>
+    </div>
+
     <div class="login-wrap nx-fade-in">
 
         <!-- Logo above card -->
@@ -141,6 +231,31 @@
     </div>
 
     <script>
+        // ── SPLASH SCREEN: plays once per browser session ──
+        (function initSplash() {
+            const splash = document.getElementById('splashScreen');
+            if (sessionStorage.getItem('nx_splash_seen')) {
+                splash.style.display = 'none';
+                return;
+            }
+            sessionStorage.setItem('nx_splash_seen', '1');
+
+            const quotes = [
+                'Small businesses run on momentum, not luck.',
+                'Every great system started with someone tired of spreadsheets.',
+                'Discipline compounds faster than capital.',
+                'The work you do when no one is watching builds the company.',
+                'Simple tools, used daily, beat perfect tools used rarely.'
+            ];
+            const quoteEl = document.getElementById('splashQuote');
+            quoteEl.textContent = quotes[Math.floor(Math.random() * quotes.length)];
+
+            // Remove splash from DOM entirely after its fade-out animation
+            // finishes (2.4s delay + 0.5s transition = 2.9s), so it never
+            // sits invisibly on top of the page blocking clicks.
+            setTimeout(() => { splash.remove(); }, 2900);
+        })();
+
         // Toggle password visibility
         document.getElementById('togglePassword').addEventListener('click', () => {
             const pwd = document.getElementById('password');
