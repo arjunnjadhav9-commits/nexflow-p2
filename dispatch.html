@@ -112,9 +112,10 @@
 
                         <div class="nx-form-group">
                             <label id="clientNameLabel" data-en="Client Name" data-mr="ग्राहक नाव">Client Name</label>
-                            <input type="text" id="clientName" class="nx-input"
+                            <input type="text" id="clientName" class="nx-input" list="clientNameSuggestions"
                                    data-en="Enter client name" data-mr="ग्राहक नाव प्रविष्ट करा"
-                                   placeholder="Enter client name" required>
+                                   placeholder="Enter client name" required autocomplete="off">
+                            <datalist id="clientNameSuggestions"></datalist>
                         </div>
 
                         <div class="nx-form-group">
@@ -315,7 +316,8 @@
 
                 const loadPromise = Promise.all([
                     loadProducts(),
-                    loadRecentDispatches()
+                    loadRecentDispatches(),
+                    loadClients()
                 ]);
 
                 const timeoutPromise = new Promise((_, reject) =>
@@ -491,6 +493,8 @@
         }
 
         function setupEventHandlers() {
+            setupClientAutofill();
+
             document.getElementById('addProductBtn').addEventListener('click', () => {
                 const productId = document.getElementById('productSelect').value;
                 const qty = parseInt(document.getElementById('productQty').value);
@@ -746,6 +750,11 @@
                     ? confirmResult.challan_number
                     : payload.challan_number;
 
+                // Save/update this client's Name + Address for next-time
+                // autofill. Uses payload (captured before form reset below)
+                // rather than re-reading the now-cleared input fields.
+                await upsertClient(payload.client_name, payload.client_address);
+
                 resetWorkspaceForm();
                 await loadRecentDispatches();
                 await checkDraftOrders();
@@ -838,6 +847,84 @@
             };
 
             document.getElementById('consumptionModal').style.display = 'flex';
+        }
+
+        // ── CLIENT AUTOFILL ──
+        // Map of lowercased client name -> { name, address } for instant
+        // lookup as the user types, without a network call per keystroke.
+        let clientsMap = {};
+
+        async function loadClients() {
+            const { data, error } = await window.supabase
+                .from('p2_clients')
+                .select('name, address')
+                .eq('tenant_id', tenantId)
+                .order('name', { ascending: true });
+
+            if (error) {
+                console.error('Error loading clients:', error);
+                return;
+            }
+
+            clientsMap = {};
+            const datalist = document.getElementById('clientNameSuggestions');
+            datalist.innerHTML = '';
+
+            (data || []).forEach(c => {
+                clientsMap[c.name.trim().toLowerCase()] = c;
+                const opt = document.createElement('option');
+                opt.value = c.name;
+                datalist.appendChild(opt);
+            });
+        }
+
+        function setupClientAutofill() {
+            const nameInput = document.getElementById('clientName');
+            const addressInput = document.getElementById('clientAddress');
+            let userEditedAddress = false;
+
+            // Track manual edits to address so we don't overwrite something
+            // the user just typed themselves for a brand-new client.
+            addressInput.addEventListener('input', () => { userEditedAddress = true; });
+
+            nameInput.addEventListener('input', () => {
+                const match = clientsMap[nameInput.value.trim().toLowerCase()];
+                if (match && !userEditedAddress) {
+                    addressInput.value = match.address || '';
+                } else if (!match) {
+                    userEditedAddress = false;
+                }
+            });
+
+            // Selecting directly from the datalist dropdown fires 'change' too —
+            // ensure autofill applies even if 'input' timing is inconsistent
+            // across browsers (notably older Chrome on factory desktops).
+            nameInput.addEventListener('change', () => {
+                const match = clientsMap[nameInput.value.trim().toLowerCase()];
+                if (match) {
+                    addressInput.value = match.address || '';
+                    userEditedAddress = false;
+                }
+            });
+        }
+
+        // Save/update this client's info so next time their name is typed,
+        // address auto-fills. Called after a successful dispatch confirm.
+        async function upsertClient(name, address) {
+            if (!name) return;
+            try {
+                await window.supabase
+                    .from('p2_clients')
+                    .upsert(
+                        { tenant_id: tenantId, name: name.trim(), address: address ? address.trim() : null },
+                        { onConflict: 'tenant_id,name' }
+                    );
+                await loadClients();
+            } catch (err) {
+                // Non-critical — dispatch itself already succeeded, so we
+                // only log this rather than interrupting the user's flow.
+                console.error('Error saving client info:', err);
+            }
         }
 
         function resetWorkspaceForm() {
