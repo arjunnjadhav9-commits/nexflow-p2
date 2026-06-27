@@ -143,6 +143,11 @@
             <button id="lang-toggle" class="nx-btn nx-btn-ghost nx-btn-sm" data-en="मराठी" data-mr="English">मराठी</button>
         </div>
         <div class="challan-controls">
+            <button id="editTextBtn" onclick="toggleEditMode()"
+                    class="nx-btn nx-btn-secondary"
+                    data-en="✏️ Edit Text" data-mr="✏️ मजकूर बदला">
+                ✏️ Edit Text
+            </button>
             <button id="printBtn" onclick="handlePrint()" class="nx-btn nx-btn-green"
                     data-en="Print Challan" data-mr="चलान प्रिंट करा">
                 🖨️ Print Challan
@@ -198,9 +203,14 @@
             </table>
         </div>
 
-        <!-- 4. Note -->
-        <div class="ch-section" style="font-size:12px; font-style:italic;">
-            Please receive the following material in good condition
+        <!-- 4. Note — editable on screen, plain on print -->
+        <div class="ch-section" style="font-size:12px; font-style:italic; position:relative;">
+            <span id="note-display">Please receive the following material in good condition</span>
+            <textarea id="note-edit"
+                style="display:none; width:100%; border:1px dashed #aaa; border-radius:3px;
+                       font-size:12px; font-style:italic; font-family:Arial,sans-serif;
+                       padding:4px 6px; resize:vertical; min-height:36px; box-sizing:border-box;"
+                rows="2"></textarea>
         </div>
 
         <!-- 5. Items Table -->
@@ -223,6 +233,17 @@
                     </tr>
                 </tfoot>
             </table>
+        </div>
+
+        <!-- 6a. Footer Note — editable on screen, plain on print -->
+        <div id="footer-note-section" class="ch-section"
+             style="font-size:11px; color:#555; padding:10px 20px; min-height:28px; display:none;">
+            <span id="footer-note-display"></span>
+            <textarea id="footer-note-edit"
+                style="display:none; width:100%; border:1px dashed #aaa; border-radius:3px;
+                       font-size:11px; font-family:Arial,sans-serif; color:#555;
+                       padding:4px 6px; resize:vertical; min-height:28px; box-sizing:border-box;"
+                rows="2" placeholder="Footer note (e.g. E&amp;OE, bank details, terms...)"></textarea>
         </div>
 
         <!-- 6. Signature -->
@@ -272,7 +293,7 @@
                 const tenantId = user.id;
 
                 const { data: dispatchOrder, error: orderError } = await window.supabase
-                    .from('p2_dispatch_orders').select('*')
+                    .from('p2_dispatch_orders').select('*, challan_note, challan_footer')
                     .eq('id', dispatchOrderId).eq('tenant_id', tenantId).single();
                 if (orderError) throw orderError;
 
@@ -286,6 +307,18 @@
                 if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
 
                 populateChallan(dispatchOrder, dispatchItems, tenantSettings);
+
+                // Restore saved note and footer if they exist in DB
+                if (dispatchOrder.challan_note) {
+                    document.getElementById('note-display').textContent = dispatchOrder.challan_note;
+                }
+                if (dispatchOrder.challan_footer) {
+                    const footerSection = document.getElementById('footer-note-section');
+                    const footerDisplay = document.getElementById('footer-note-display');
+                    footerDisplay.textContent   = dispatchOrder.challan_footer;
+                    footerDisplay.style.display = 'inline';
+                    footerSection.style.display = 'block';
+                }
             } catch (error) {
                 console.error('Error loading challan:', error);
                 document.getElementById('challan-content').innerHTML = `
@@ -338,18 +371,33 @@
             const itemsBody = document.getElementById('items-body');
             itemsBody.innerHTML = '';
             let totalQty = 0;
+            const isRawMaterial = order.dispatch_type === 'raw_material';
             items.forEach((item, i) => {
+                const name = isRawMaterial
+                    ? (item.material_name || 'Unknown Material')
+                    : (item.p2_products?.name || 'Unknown Product');
+                const unit = isRawMaterial
+                    ? (item.unit || '')
+                    : (item.p2_products?.unit || item.unit || '');
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td style="text-align:center; vertical-align:middle; padding:10px;">${i + 1}</td>
-                    <td style="vertical-align:middle; padding:10px;">${item.p2_products?.name || 'Unknown Product'}</td>
+                    <td style="vertical-align:middle; padding:10px;">${name}</td>
                     <td style="text-align:right; vertical-align:middle; padding:10px;">${formatNumber(item.qty_dispatched)}</td>
-                    <td style="text-align:center; vertical-align:middle; padding:10px;">${item.p2_products?.unit || item.unit || ""}</td>`;
+                    <td style="text-align:center; vertical-align:middle; padding:10px;">${unit}</td>`;
                 itemsBody.appendChild(row);
                 totalQty += parseFloat(item.qty_dispatched) || 0;
             });
             document.getElementById('total-quantity').textContent = Number.isInteger(totalQty) ? totalQty : totalQty.toFixed(2);
             document.getElementById('signature-company').textContent = settings?.company_name || 'Company Name';
+
+            // Fix back button: if raw material dispatch, go to rm-dispatch.html
+            const backBtn = document.querySelector('a[href="dispatch.html"]');
+            if (backBtn && isRawMaterial) {
+                backBtn.href = 'rm-dispatch.html';
+                backBtn.setAttribute('data-en', '← Back to RM Dispatch');
+                backBtn.textContent = '← Back to RM Dispatch';
+            }
         }
 
         function handleLogoError() {
@@ -358,7 +406,72 @@
                 `<div style="font-size:20px;font-weight:800;">${s?.company_name || 'Company Name'}</div>`;
         }
 
+        let editModeActive = false;
+
+        function toggleEditMode() {
+            editModeActive = !editModeActive;
+            const btn = document.getElementById('editTextBtn');
+
+            // Note line
+            const noteDisplay = document.getElementById('note-display');
+            const noteEdit    = document.getElementById('note-edit');
+
+            // Footer note
+            const footerSection = document.getElementById('footer-note-section');
+            const footerDisplay = document.getElementById('footer-note-display');
+            const footerEdit    = document.getElementById('footer-note-edit');
+
+            if (editModeActive) {
+                // Enter edit mode
+                noteEdit.value = noteDisplay.textContent;
+                noteDisplay.style.display = 'none';
+                noteEdit.style.display    = 'block';
+
+                footerSection.style.display = 'block';
+                footerEdit.value = footerDisplay.textContent;
+                footerDisplay.style.display = 'none';
+                footerEdit.style.display    = 'block';
+
+                btn.textContent = '✅ Done Editing';
+                btn.classList.replace('nx-btn-secondary', 'nx-btn-green');
+            } else {
+                // Save + exit edit mode
+                const noteVal   = noteEdit.value.trim();
+                const footerVal = footerEdit.value.trim();
+
+                noteDisplay.textContent  = noteVal || 'Please receive the following material in good condition';
+                noteDisplay.style.display = 'inline';
+                noteEdit.style.display    = 'none';
+
+                if (footerVal) {
+                    footerDisplay.textContent   = footerVal;
+                    footerDisplay.style.display = 'inline';
+                    footerEdit.style.display    = 'none';
+                    footerSection.style.display = 'block';
+                } else {
+                    footerSection.style.display = 'none';
+                }
+
+                btn.textContent = '✏️ Edit Text';
+                btn.classList.replace('nx-btn-green', 'nx-btn-secondary');
+
+                // Persist to DB silently — don't block UI
+                window.supabase
+                    .from('p2_dispatch_orders')
+                    .update({
+                        challan_note:   noteVal || null,
+                        challan_footer: footerVal || null
+                    })
+                    .eq('id', dispatchOrderId)
+                    .then(({ error }) => {
+                        if (error) console.error('Failed to save challan note:', error);
+                    });
+            }
+        }
+
         function handlePrint() {
+            // If user forgot to click Done — commit edits silently before print
+            if (editModeActive) toggleEditMode();
             if (/Mobi|Android/i.test(navigator.userAgent)) {
                 document.getElementById('printBtn').style.display = 'none';
                 document.getElementById('mobilePrintMsg').style.display = 'block';

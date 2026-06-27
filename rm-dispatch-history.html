@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RM Dispatch History | Nexflow P2</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%230c0e14'/><text y='.9em' font-size='80' x='10' fill='%23ff5c1a'>N</text></svg>">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800;900&family=Barlow+Condensed:wght@500;600;700;800;900&display=swap">
+    <link rel="stylesheet" href="css/nexflow-design.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/supabase-client.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/navbar.js"></script>
+
+    <style>
+        /* Modal — not in shared stylesheet, mirrors grn.html / dispatch.html / index.html pattern */
+        .nx-modal-overlay {
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.65);
+            z-index: 500;
+            display: flex; align-items: center; justify-content: center;
+            padding: 20px;
+        }
+        .nx-modal {
+            background: var(--surface);
+            border: 1px solid var(--border2);
+            border-radius: var(--radius-lg);
+            padding: 28px; width: 100%; max-width: 520px;
+            box-shadow: var(--shadow-md);
+        }
+        .nx-modal-title {
+            font-family: var(--condensed); font-weight: 800; font-size: 16px;
+            color: var(--white); text-transform: uppercase; letter-spacing: 0.5px;
+            margin-bottom: 20px;
+        }
+
+        /* Filter bar */
+        .dh-filters {
+            display: flex;
+            gap: 12px;
+            align-items: flex-end;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+        .dh-filters .nx-form-group {
+            margin: 0;
+            min-width: 140px;
+        }
+        .dh-filters label {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--mid);
+            display: block;
+            margin-bottom: 6px;
+        }
+        .dh-filters .nx-input {
+            height: 38px;
+            font-size: 13px;
+        }
+        .dh-filter-search {
+            flex: 1;
+            min-width: 200px;
+        }
+
+        /* Summary bar */
+        .dh-summary {
+            font-size: 12px;
+            color: var(--mid);
+            margin-bottom: 12px;
+        }
+        .dh-summary strong {
+            color: var(--white);
+        }
+
+        /* Product pill list inside table cell */
+        .dh-products {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+        }
+        .dh-product-pill {
+            background: rgba(255,255,255,0.06);
+            border: 1px solid var(--border2);
+            border-radius: 4px;
+            font-size: 11px;
+            padding: 2px 7px;
+            color: var(--light);
+            white-space: nowrap;
+        }
+
+        /* Print styles */
+        @media print {
+            #navbar-container,
+            .dh-filters,
+            .dh-no-print {
+                display: none !important;
+            }
+            body, .nx-main {
+                background: #fff !important;
+                color: #000 !important;
+            }
+            .nx-card {
+                box-shadow: none !important;
+                border: 1px solid #ddd !important;
+            }
+            .nx-table th,
+            .nx-table td {
+                color: #000 !important;
+                border-color: #ddd !important;
+            }
+            .nx-page-header { margin-bottom: 16px; }
+            .dh-print-header {
+                display: block !important;
+                font-size: 11px;
+                color: #555;
+                margin-bottom: 8px;
+            }
+        }
+        .dh-print-header { display: none; }
+    </style>
+</head>
+<body>
+    <div id="navbar-container"></div>
+
+    <div class="nx-main">
+        <div class="nx-page">
+
+            <!-- PAGE HEADER -->
+            <div class="nx-page-header">
+                <div>
+                    <div class="nx-eyebrow">Dispatch</div>
+                    <div class="nx-page-title">RM Dispatch <span>History</span></div>
+                    <div class="nx-page-sub" id="pageSub">All confirmed and draft raw material dispatches</div>
+                </div>
+                <div style="display:flex; gap:10px;" class="dh-no-print">
+                    <a href="rm-dispatch.html" class="nx-btn nx-btn-ghost">← Back to RM Dispatch</a>
+                    <a href="dispatch-history.html" class="nx-btn nx-btn-secondary">🏭 Product History</a>
+                    <button id="exportCsvBtn" class="nx-btn nx-btn-secondary">↓ Export CSV</button>
+                    <button id="printBtn" class="nx-btn nx-btn-secondary" onclick="window.print()">⎙ Print</button>
+                </div>
+            </div>
+
+            <!-- PRINT HEADER (only shows in print) -->
+            <div class="dh-print-header" id="printHeader"></div>
+
+            <!-- LOADING -->
+            <div id="loadingSpinner">
+                <div class="nx-logo-loader">
+                    <div class="nx-logo-loader-mark"></div>
+                    <div class="nx-logo-loader-text">Loading...</div>
+                </div>
+            </div>
+
+            <!-- ERROR STATE -->
+            <div id="errorState" style="display:none;" class="nx-alert nx-alert-red nx-mb-24">
+                <span class="nx-alert-icon">⚠</span>
+                <div>
+                    <div class="nx-bold">Could not load dispatch history</div>
+                    <div>Check your connection and refresh the page.</div>
+                </div>
+            </div>
+
+            <!-- MAIN CONTENT -->
+            <div id="mainContent" style="display:none;">
+
+                <!-- FILTERS -->
+                <div class="dh-filters dh-no-print">
+                    <div class="nx-form-group">
+                        <label>From</label>
+                        <input type="date" id="filterFrom" class="nx-input">
+                    </div>
+                    <div class="nx-form-group">
+                        <label>To</label>
+                        <input type="date" id="filterTo" class="nx-input">
+                    </div>
+                    <div class="nx-form-group">
+                        <label>Status</label>
+                        <select id="filterStatus" class="nx-input" style="height:38px; font-size:13px;">
+                            <option value="">All</option>
+                            <option value="confirmed">Confirmed</option>
+                            <option value="draft">Draft</option>
+                        </select>
+                    </div>
+                    <div class="nx-form-group dh-filter-search">
+                        <label>Client Search</label>
+                        <input type="text" id="filterClient" class="nx-input" placeholder="Search client name...">
+                    </div>
+                    <button id="applyFiltersBtn" class="nx-btn nx-btn-primary" style="height:38px; white-space:nowrap;">Apply</button>
+                    <button id="resetFiltersBtn" class="nx-btn nx-btn-ghost" style="height:38px; white-space:nowrap;">Reset</button>
+                </div>
+
+                <!-- SUMMARY -->
+                <div class="dh-summary" id="summaryBar"></div>
+
+                <!-- HISTORY TABLE -->
+                <div class="nx-card">
+                    <div class="nx-table-wrap">
+                        <table class="nx-table" id="historyTable">
+                            <thead>
+                                <tr>
+                                    <th>Challan No</th>
+                                    <th>Date</th>
+                                    <th>Client</th>
+                                    <th>PO / Ref</th>
+                                    <th>Products / Materials</th>
+                                    <th>Status</th>
+                                    <th class="dh-no-print" style="text-align:center;">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="historyBody"></tbody>
+                        </table>
+                    </div>
+
+                    <div id="emptyState" style="display:none;" class="nx-empty-state">
+                        <div class="nx-empty-icon">📋</div>
+                        <div>No dispatches found for the selected filters.</div>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+    </div>
+
+    <!-- PRODUCT DETAIL MODAL -->
+    <div id="detailModal" class="nx-modal-overlay" style="display:none;">
+        <div class="nx-modal" style="max-width:520px;">
+            <div class="nx-modal-title" id="detailModalTitle" style="color:var(--orange);">Dispatch Detail</div>
+            <div id="detailModalMeta" style="font-size:13px; color:var(--mid); margin-bottom:16px; line-height:1.7;"></div>
+
+            <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--mid); margin-bottom:8px;">Products Dispatched</div>
+            <div class="nx-table-wrap" style="max-height:260px; overflow-y:auto; margin-bottom:16px;">
+                <table class="nx-table" style="font-size:13px;">
+                    <thead>
+                        <tr>
+                            <th>Product</th>
+                            <th style="text-align:right;">Qty</th>
+                            <th>Unit</th>
+                        </tr>
+                    </thead>
+                    <tbody id="detailModalBody"></tbody>
+                </table>
+            </div>
+
+            <div style="display:flex; gap:10px;">
+                <button id="detailPrintBtn" class="nx-btn nx-btn-green" style="flex:1;">View Challan</button>
+                <button id="detailCloseBtn" class="nx-btn nx-btn-ghost" style="flex:1;">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ── STATE ─────────────────────────────────────────────────────
+        let tenantId    = null;
+        let allOrders   = [];   // raw from DB — includes .items[] array
+        let filtered    = [];   // currently displayed after filters applied
+
+        // ── INIT ──────────────────────────────────────────────────────
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                const authed = await checkAuth();
+                if (!authed) return;
+
+                const { data: { user } } = await window.supabase.auth.getUser();
+                tenantId = user.id;
+
+                setDefaultDates();
+                await loadHistory();
+                setupEventHandlers();
+
+                document.getElementById('loadingSpinner').style.display = 'none';
+                document.getElementById('mainContent').style.display    = 'block';
+                document.getElementById('mainContent').classList.add('nx-fade-in');
+            } catch (err) {
+                console.error('Dispatch history init error:', err);
+                document.getElementById('loadingSpinner').style.display = 'none';
+                document.getElementById('errorState').style.display     = 'flex';
+            }
+        });
+
+        // ── DEFAULT DATE RANGE — last 3 months ───────────────────────
+        function setDefaultDates() {
+            const to   = new Date();
+            const from = new Date();
+            from.setMonth(from.getMonth() - 3);
+
+            document.getElementById('filterTo').value   = to.toISOString().split('T')[0];
+            document.getElementById('filterFrom').value = from.toISOString().split('T')[0];
+        }
+
+        // ── LOAD — orders + items in two queries, then join client-side ──
+        // We join client-side rather than relying on PostgREST nested select
+        // because the FK is dispatch_order_id on p2_dispatch_items, and
+        // fetching items as a nested array via PostgREST requires the FK to be
+        // named in the schema. Safer to do two flat queries and join in JS.
+        async function loadHistory() {
+            const from   = document.getElementById('filterFrom').value;
+            const to     = document.getElementById('filterTo').value;
+            const status = document.getElementById('filterStatus').value;
+            const client = document.getElementById('filterClient').value.trim().toLowerCase();
+
+            // Build order query
+            let orderQuery = window.supabase
+                .from('p2_dispatch_orders')
+                .select('id, challan_number, dispatch_date, created_at, client_name, client_address, po_number, your_challan_ref, vehicle_number, status, dispatch_type')
+                .eq('tenant_id', tenantId)
+                .eq('dispatch_type', 'raw_material')
+                .order('created_at', { ascending: false });
+
+            if (from) orderQuery = orderQuery.gte('dispatch_date', from);
+            if (to)   orderQuery = orderQuery.lte('dispatch_date', to);
+            if (status) orderQuery = orderQuery.eq('status', status);
+
+            const { data: orders, error: ordersErr } = await orderQuery;
+            if (ordersErr) throw ordersErr;
+
+            if (!orders || orders.length === 0) {
+                allOrders = [];
+                applyClientFilter(client);
+                return;
+            }
+
+            // Fetch all items for these orders in ONE query (not N queries)
+            const orderIds = orders.map(o => o.id);
+
+            const { data: items, error: itemsErr } = await window.supabase
+                .from('p2_dispatch_items')
+                .select('dispatch_order_id, qty_dispatched, unit, product_id, material_name, p2_products(name)')
+                .in('dispatch_order_id', orderIds);
+
+            if (itemsErr) throw itemsErr;
+
+            // Build a map: order_id → items[]
+            const itemMap = {};
+            (items || []).forEach(item => {
+                if (!itemMap[item.dispatch_order_id]) itemMap[item.dispatch_order_id] = [];
+                // For raw material dispatches product_id is null — use material_name
+                const name = item.product_id
+                    ? (item.p2_products?.name || 'Unknown Product')
+                    : (item.material_name || 'Unknown Material');
+                itemMap[item.dispatch_order_id].push({
+                    product_name: name,
+                    qty: item.qty_dispatched,
+                    unit: item.unit
+                });
+            });
+
+            // Attach items to orders
+            allOrders = orders.map(o => ({
+                ...o,
+                items: itemMap[o.id] || []
+            }));
+
+            applyClientFilter(client);
+        }
+
+        // ── CLIENT FILTER (client-side, no extra query) ───────────────
+        function applyClientFilter(clientSearch) {
+            if (clientSearch) {
+                filtered = allOrders.filter(o =>
+                    o.client_name.toLowerCase().includes(clientSearch)
+                );
+            } else {
+                filtered = [...allOrders];
+            }
+            renderTable();
+        }
+
+        // ── RENDER ────────────────────────────────────────────────────
+        function renderTable() {
+            const tbody = document.getElementById('historyBody');
+            const empty = document.getElementById('emptyState');
+            tbody.innerHTML = '';
+
+            // Update print header
+            const from = document.getElementById('filterFrom').value;
+            const to   = document.getElementById('filterTo').value;
+            document.getElementById('printHeader').textContent =
+                `Nexflow P2 — Dispatch History · ${formatDate(from)} to ${formatDate(to)} · Printed ${new Date().toLocaleDateString('en-IN')}`;
+
+            // Summary bar
+            const confirmed = filtered.filter(o => o.status === 'confirmed').length;
+            const drafts    = filtered.filter(o => o.status === 'draft').length;
+            document.getElementById('summaryBar').innerHTML =
+                `Showing <strong>${filtered.length}</strong> dispatch${filtered.length !== 1 ? 'es' : ''} · ` +
+                `<strong>${confirmed}</strong> confirmed · <strong>${drafts}</strong> draft`;
+
+            if (filtered.length === 0) {
+                empty.style.display = 'block';
+                return;
+            }
+            empty.style.display = 'none';
+
+            filtered.forEach(order => {
+                const isDraft   = order.status === 'draft';
+                const dateStr   = order.dispatch_date
+                    ? formatDate(order.dispatch_date)
+                    : formatDate(order.created_at?.split('T')[0]);
+
+                // Product pills — show max 3, then "+N more"
+                const productPills = buildProductPills(order.items);
+                const poRef = [order.po_number, order.your_challan_ref].filter(Boolean).join(' / ') || '—';
+
+                const cleanChallanNo = (order.challan_number || '—').replace(/^CHAL-\d{8}-/, '');
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="nx-td-mono">${cleanChallanNo}</td>
+                    <td>${dateStr}</td>
+                    <td class="nx-td-bold">${escapeHtml(order.client_name)}</td>
+                    <td style="color:var(--mid); font-size:12px;">${escapeHtml(poRef)}</td>
+                    <td><div class="dh-products">${productPills}</div></td>
+                    <td>
+                        <span class="nx-badge ${isDraft ? 'nx-badge-yellow' : 'nx-badge-green'}">
+                            ${isDraft ? 'Draft' : 'Confirmed'}
+                        </span>
+                    </td>
+                    <td style="text-align:center;" class="dh-no-print">
+                        <div style="display:flex; gap:6px; justify-content:center;">
+                            <button
+                                class="nx-btn nx-btn-ghost nx-btn-sm detail-btn"
+                                data-order-id="${order.id}"
+                                title="View detail">
+                                Detail
+                            </button>
+                            ${!isDraft ? `
+                            <button
+                                onclick="window.open('/challan.html?id=${order.id}','_blank')"
+                                class="nx-btn nx-btn-ghost nx-btn-sm"
+                                title="Print challan">
+                                Challan
+                            </button>` : ''}
+                        </div>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        function buildProductPills(items) {
+            if (!items || items.length === 0) return '<span style="color:var(--mid); font-size:12px;">—</span>';
+            const MAX_SHOW = 3;
+            let html = '';
+            items.slice(0, MAX_SHOW).forEach(item => {
+                html += `<span class="dh-product-pill">${escapeHtml(item.product_name)} · ${item.qty} ${item.unit}</span>`;
+            });
+            if (items.length > MAX_SHOW) {
+                html += `<span class="dh-product-pill" style="color:var(--mid);">+${items.length - MAX_SHOW} more</span>`;
+            }
+            return html;
+        }
+
+        // ── DETAIL MODAL ──────────────────────────────────────────────
+        function openDetail(orderId) {
+            const order = allOrders.find(o => o.id === orderId);
+            if (!order) return;
+
+            const isDraft = order.status === 'draft';
+            const dateStr = order.dispatch_date
+                ? formatDate(order.dispatch_date)
+                : formatDate(order.created_at?.split('T')[0]);
+
+            const rawChallan = order.challan_number || '—';
+            const cleanChallan = rawChallan.replace(/^CHAL-\d{8}-/, '');
+
+            document.getElementById('detailModalTitle').textContent =
+                `Challan ${cleanChallan}`;
+
+            const isRM = order.dispatch_type === 'raw_material';
+            document.getElementById('detailModalMeta').innerHTML = `
+                <span style="color:var(--white); font-weight:700;">${escapeHtml(order.client_name)}</span><br>
+                ${order.client_address ? escapeHtml(order.client_address) + '<br>' : ''}
+                Date: ${dateStr} &nbsp;·&nbsp;
+                Status: <span class="nx-badge ${isDraft ? 'nx-badge-yellow' : 'nx-badge-green'}" style="font-size:11px;">${isDraft ? 'Draft' : 'Confirmed'}</span>
+                &nbsp;·&nbsp;<span style="font-size:11px; color:var(--mid);">${isRM ? '📦 Raw Material Dispatch' : '🏭 Product Dispatch'}</span>
+                ${order.po_number        ? '<br>PO: '      + escapeHtml(order.po_number)        : ''}
+                ${order.your_challan_ref ? '<br>Ref: '     + escapeHtml(order.your_challan_ref) : ''}
+                ${order.vehicle_number   ? '<br>Vehicle: ' + escapeHtml(order.vehicle_number)   : ''}
+            `;
+
+            const tbody = document.getElementById('detailModalBody');
+            tbody.innerHTML = '';
+            if (order.items.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; color:var(--mid); padding:16px;">No items recorded.</td></tr>';
+            } else {
+                order.items.forEach(item => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td class="nx-td-bold">${escapeHtml(item.product_name)}</td>
+                        <td style="text-align:right; font-family:monospace;">${item.qty}</td>
+                        <td style="color:var(--mid);">${item.unit}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            }
+
+            // Print button — disabled for drafts (no challan to show)
+            const printBtn = document.getElementById('detailPrintBtn');
+            if (isDraft) {
+                printBtn.disabled = true;
+                printBtn.style.opacity = '0.4';
+                printBtn.title = 'Challan only available after confirming dispatch';
+            } else {
+                printBtn.disabled = false;
+                printBtn.style.opacity = '1';
+                printBtn.title = '';
+                printBtn.onclick = () => window.open(`/challan.html?id=${orderId}`, '_blank');
+            }
+
+            document.getElementById('detailModal').style.display = 'flex';
+        }
+
+        document.getElementById('detailCloseBtn').addEventListener('click', () => {
+            document.getElementById('detailModal').style.display = 'none';
+        });
+        document.getElementById('detailModal').addEventListener('click', e => {
+            if (e.target.id === 'detailModal') e.target.style.display = 'none';
+        });
+
+        // Delegated click on history table — catches detail-btn
+        document.getElementById('historyBody').addEventListener('click', e => {
+            const btn = e.target.closest('.detail-btn');
+            if (!btn) return;
+            openDetail(btn.dataset.orderId);
+        });
+
+        // ── CSV EXPORT ────────────────────────────────────────────────
+        // Flat format: one row per dispatch-item (not per order).
+        // This is the most useful format for CA review or pivot tables.
+        // Order-level fields (challan, date, client) repeat per item row.
+        document.getElementById('exportCsvBtn').addEventListener('click', exportCSV);
+
+        async function exportCSV() {
+            if (filtered.length === 0) {
+                toast('No records to export.', 'warn');
+                return;
+            }
+
+            const btn = document.getElementById('exportCsvBtn');
+            btn.disabled    = true;
+            btn.textContent = 'Exporting...';
+
+            try {
+                const headers = ['Challan No', 'Date', 'Client Name', 'Client Address', 'PO Number', 'Challan Ref', 'Vehicle', 'Status', 'Product', 'Qty', 'Unit'];
+                const rows = [];
+
+                filtered.forEach(order => {
+                    const dateStr = order.dispatch_date || order.created_at?.split('T')[0] || '';
+                    if (order.items.length === 0) {
+                        // Order with no items — still export one row, products blank
+                        rows.push([
+                            order.challan_number || '',
+                            dateStr,
+                            order.client_name,
+                            order.client_address || '',
+                            order.po_number || '',
+                            order.your_challan_ref || '',
+                            order.vehicle_number || '',
+                            order.status,
+                            '', '', ''
+                        ]);
+                    } else {
+                        order.items.forEach(item => {
+                            rows.push([
+                                order.challan_number || '',
+                                dateStr,
+                                order.client_name,
+                                order.client_address || '',
+                                order.po_number || '',
+                                order.your_challan_ref || '',
+                                order.vehicle_number || '',
+                                order.status,
+                                item.product_name,
+                                item.qty,
+                                item.unit
+                            ]);
+                        });
+                    }
+                });
+
+                const csvContent = [headers, ...rows]
+                    .map(row => row.map(f => escapeCSVField(String(f))).join(','))
+                    .join('\r\n');
+
+                // BOM prefix so Excel renders correctly
+                const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+                const url  = URL.createObjectURL(blob);
+
+                // Fetch company name for filename
+                let companySlug = 'company';
+                try {
+                    const { data: settings } = await window.supabase
+                        .from('p2_tenant_settings')
+                        .select('company_name')
+                        .eq('tenant_id', tenantId)
+                        .single();
+                    if (settings?.company_name) {
+                        companySlug = settings.company_name
+                            .toLowerCase()
+                            .replace(/[^a-z0-9]+/g, '_')
+                            .replace(/^_|_$/g, '');
+                    }
+                } catch (_) {}
+
+                const from = document.getElementById('filterFrom').value;
+                const to   = document.getElementById('filterTo').value;
+                const link = document.createElement('a');
+                link.href     = url;
+                link.download = `${companySlug}_dispatch_history_${from}_to_${to}.csv`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+
+                toast(`Exported ${rows.length} row${rows.length !== 1 ? 's' : ''}.`, 'ok');
+
+            } catch (err) {
+                console.error('Export error:', err);
+                toast('Export failed. Please try again.', 'error');
+            } finally {
+                btn.disabled    = false;
+                btn.textContent = '↓ Export CSV';
+            }
+        }
+
+        // ── FILTERS & EVENT HANDLERS ──────────────────────────────────
+        function setupEventHandlers() {
+            document.getElementById('applyFiltersBtn').addEventListener('click', async () => {
+                document.getElementById('loadingSpinner').style.display = 'flex';
+                document.getElementById('mainContent').style.display   = 'none';
+                try {
+                    await loadHistory();
+                } finally {
+                    document.getElementById('loadingSpinner').style.display = 'none';
+                    document.getElementById('mainContent').style.display   = 'block';
+                }
+            });
+
+            document.getElementById('resetFiltersBtn').addEventListener('click', async () => {
+                setDefaultDates();
+                document.getElementById('filterStatus').value = '';
+                document.getElementById('filterClient').value = '';
+                document.getElementById('loadingSpinner').style.display = 'flex';
+                document.getElementById('mainContent').style.display   = 'none';
+                try {
+                    await loadHistory();
+                } finally {
+                    document.getElementById('loadingSpinner').style.display = 'none';
+                    document.getElementById('mainContent').style.display   = 'block';
+                }
+            });
+
+            // Live client search — no network call, filters already-loaded data
+            document.getElementById('filterClient').addEventListener('input', e => {
+                applyClientFilter(e.target.value.trim().toLowerCase());
+            });
+
+            // Enter key on any filter input triggers apply
+            ['filterFrom', 'filterTo', 'filterStatus'].forEach(id => {
+                document.getElementById(id).addEventListener('keydown', e => {
+                    if (e.key === 'Enter') document.getElementById('applyFiltersBtn').click();
+                });
+            });
+        }
+
+        // ── HELPERS ───────────────────────────────────────────────────
+        function formatDate(dateStr) {
+            if (!dateStr) return '—';
+            try {
+                const d = new Date(dateStr);
+                return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+            } catch (_) {
+                return dateStr;
+            }
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
+        function escapeCSVField(field) {
+            const str = String(field);
+            if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+                return '"' + str.replace(/"/g, '""') + '"';
+            }
+            return str;
+        }
+    </script>
+</body>
+</html>

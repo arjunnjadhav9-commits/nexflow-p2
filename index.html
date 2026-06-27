@@ -14,6 +14,41 @@
     <script src="js/auth.js"></script>
     <script src="js/utils.js"></script>
     <script src="js/navbar.js"></script>
+
+    <style>
+        /* Material history modal — positioning/backdrop not in the shared
+           stylesheet (nexflow-design.css only carries the entrance animation
+           for .nx-modal-overlay). Mirrors the same local-block pattern used
+           in grn.html and dispatch.html for their modals. */
+        .nx-modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.65);
+            z-index: 500;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .nx-modal {
+            background: var(--surface);
+            border: 1px solid var(--border2);
+            border-radius: var(--radius-lg);
+            padding: 28px;
+            width: 100%;
+            max-width: 420px;
+            box-shadow: var(--shadow-md);
+        }
+        .nx-modal-title {
+            font-family: var(--condensed);
+            font-weight: 800;
+            font-size: 16px;
+            color: var(--white);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 20px;
+        }
+    </style>
 </head>
 <body>
     <div id="navbar-container"></div>
@@ -29,6 +64,8 @@
                     <div class="nx-page-sub" id="dashboardSub">Loading...</div>
                 </div>
                 <div style="display:flex; gap:10px;">
+                    <button id="exportMaterialsBtn" class="nx-btn nx-btn-secondary" onclick="exportRawMaterialsCSV()"
+                       data-en="↓ Export List" data-mr="↓ यादी निर्यात करा">↓ Export List</button>
                     <a href="export.html" class="nx-btn nx-btn-secondary"
                        data-en="↓ Export for CA" data-mr="↓ CA साठी निर्यात">↓ Export for CA</a>
                     <a href="grn.html" class="nx-btn nx-btn-primary"
@@ -146,6 +183,7 @@
                                 <th style="text-align:right;" data-en="Min Stock"     data-mr="किमान साठा">Min Stock</th>
                                 <th data-en="Unit"   data-mr="एकक">Unit</th>
                                 <th data-en="Status" data-mr="स्थिती">Status</th>
+                                <th style="text-align:center;" data-en="History" data-mr="इतिहास">History</th>
                             </tr>
                         </thead>
                         <tbody id="stockLevelsBody"></tbody>
@@ -170,6 +208,43 @@
                 </div>
             </div>
 
+        </div>
+    </div>
+
+    <!-- MATERIAL HISTORY MODAL -->
+    <div id="historyModal" class="nx-modal-overlay" style="display:none;">
+        <div class="nx-modal" style="max-width:560px;">
+            <div class="nx-modal-title" id="historyModalTitle" style="color:var(--orange);">Material History</div>
+            <div style="font-size:13px; color:var(--mid); margin-bottom:16px;" id="historyModalSub">Last 2 months</div>
+
+            <div id="historyLoading" style="display:flex; align-items:center; justify-content:center; padding:30px;">
+                <div class="nx-logo-loader">
+                    <div class="nx-logo-loader-mark"></div>
+                    <div class="nx-logo-loader-text">Loading...</div>
+                </div>
+            </div>
+
+            <div id="historyEmpty" style="display:none; text-align:center; padding:30px; color:var(--mid); font-size:13px;">
+                No transactions in the last 2 months.
+            </div>
+
+            <div id="historyTableWrap" class="nx-table-wrap" style="display:none; max-height:380px; overflow-y:auto; margin-bottom:16px;">
+                <table class="nx-table" style="font-size:13px;">
+                    <thead>
+                        <tr>
+                            <th data-en="Date" data-mr="तारीख">Date</th>
+                            <th data-en="Type" data-mr="प्रकार">Type</th>
+                            <th style="text-align:right;" data-en="Qty" data-mr="परिमाण">Qty</th>
+                            <th data-en="Reference" data-mr="संदर्भ">Reference</th>
+                        </tr>
+                    </thead>
+                    <tbody id="historyTableBody"></tbody>
+                </table>
+            </div>
+
+            <div style="display:flex; justify-content:flex-end;">
+                <button id="historyCloseBtn" class="nx-btn nx-btn-ghost" type="button">Close</button>
+            </div>
         </div>
     </div>
 
@@ -213,6 +288,16 @@
                             ? '<span class="nx-badge nx-badge-red">⚠ Low Stock</span>'
                             : '<span class="nx-badge nx-badge-green">✓ OK</span>'
                         }
+                    </td>
+                    <td style="text-align:center;">
+                        <button class="nx-btn nx-btn-ghost nx-btn-sm history-btn" type="button"
+                                data-material-id="${item.raw_material_id}"
+                                data-material-name="${item.material_name.replace(/"/g, '&quot;')}"
+                                data-unit="${item.unit}"
+                                title="View history" aria-label="View history for ${item.material_name}"
+                                style="padding:6px 10px;">
+                            🕒
+                        </button>
                     </td>
                 `;
                 tbody.appendChild(row);
@@ -279,6 +364,7 @@
                 if (stockError) throw stockError;
 
                 allStockLevels = stockData.map(row => ({
+                    raw_material_id: row.raw_material_id,
                     material_name:   row.name,
                     material_code:   row.material_code || '—',
                     unit:            row.unit,
@@ -309,6 +395,198 @@
                 applyLang(lang);
             }
         }
+
+        // ── EXPORT RAW MATERIAL LIST (CSV) ─────────────────────────
+        // Reuses allStockLevels (already fetched by fetchStockLevels())
+        // instead of firing a second query — same data shown on screen,
+        // same low-stock logic, no risk of drift between table and export.
+        async function exportRawMaterialsCSV() {
+            const btn = document.getElementById('exportMaterialsBtn');
+            const originalText = btn.textContent;
+
+            if (!allStockLevels || allStockLevels.length === 0) {
+                toast('No materials to export.', 'warn');
+                return;
+            }
+
+            btn.disabled = true;
+            btn.textContent = 'Exporting...';
+
+            try {
+                const tenantId = (await window.supabase.auth.getUser()).data.user?.id
+                    || localStorage.getItem('nexflow_tenant_id');
+
+                let companyName = 'company';
+                try {
+                    const { data: settings } = await window.supabase
+                        .from('p2_tenant_settings')
+                        .select('company_name')
+                        .eq('tenant_id', tenantId)
+                        .single();
+                    if (settings?.company_name) {
+                        companyName = settings.company_name
+                            .toLowerCase()
+                            .replace(/[^a-z0-9]+/g, '_')
+                            .replace(/^_|_$/g, '');
+                    }
+                } catch (_) {}
+
+                const headers = ['Code', 'Material Name', 'Current Stock', 'Min Stock', 'Unit', 'Status'];
+                const rows = allStockLevels.map(item => {
+                    const isLow = item.current_stock < item.min_stock_level;
+                    return [
+                        item.material_code || '—',
+                        item.material_name,
+                        formatNumber(item.current_stock),
+                        formatNumber(item.min_stock_level),
+                        item.unit,
+                        isLow ? 'Low Stock' : 'OK'
+                    ];
+                });
+
+                const csvContent = [headers, ...rows]
+                    .map(row => row.map(escapeCSVField).join(','))
+                    .join('\r\n');
+
+                // BOM prefix so Excel renders Marathi/Devanagari names correctly
+                const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+                const url  = URL.createObjectURL(blob);
+
+                const dateStr  = new Date().toISOString().slice(0, 10);
+                const filename = `${companyName}_raw_materials_${dateStr}.csv`;
+
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = filename;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+
+                toast(`Exported ${allStockLevels.length} materials.`, 'ok');
+
+            } catch (error) {
+                console.error('Export failed:', error);
+                toast('Export failed. Please try again.', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = originalText;
+            }
+        }
+
+        // Escapes a field for safe CSV output — handles commas, quotes, newlines
+        function escapeCSVField(field) {
+            const str = String(field);
+            if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+                return '"' + str.replace(/"/g, '""') + '"';
+            }
+            return str;
+        }
+
+        // ── MATERIAL HISTORY MODAL ─────────────────────────────────
+        // Shows last 2 months of p2_stock_transactions for one material:
+        // grn (stock in), consumption (stock out), adjustment (correction).
+        function transactionBadge(type, quantity) {
+            if (type === 'grn') return '<span class="nx-badge nx-badge-green">GRN</span>';
+            if (type === 'consumption') return '<span class="nx-badge nx-badge-red">Consumption</span>';
+            if (type === 'adjustment') return '<span class="nx-badge nx-badge-grey">Adjustment</span>';
+            return `<span class="nx-badge nx-badge-grey">${type}</span>`;
+        }
+
+        async function openMaterialHistory(materialId, materialName, unit) {
+            const modal      = document.getElementById('historyModal');
+            const loading    = document.getElementById('historyLoading');
+            const empty      = document.getElementById('historyEmpty');
+            const tableWrap  = document.getElementById('historyTableWrap');
+            const tbody      = document.getElementById('historyTableBody');
+
+            document.getElementById('historyModalTitle').textContent = materialName;
+            document.getElementById('historyModalSub').textContent   = 'Last 2 months';
+
+            loading.style.display    = 'flex';
+            empty.style.display      = 'none';
+            tableWrap.style.display  = 'none';
+            tbody.innerHTML = '';
+
+            modal.style.display = 'flex';
+
+            try {
+                const twoMonthsAgo = new Date();
+                twoMonthsAgo.setMonth(twoMonthsAgo.getMonth() - 2);
+                const fromDate = twoMonthsAgo.toISOString().split('T')[0];
+
+                const { data, error } = await window.supabase
+                    .from('p2_stock_transactions')
+                    .select('id, transaction_type, quantity, transaction_date, notes, invoice_no, supplier_name')
+                    .eq('raw_material_id', materialId)
+                    .gte('transaction_date', fromDate)
+                    .order('transaction_date', { ascending: false })
+                    .order('created_at', { ascending: false });
+
+                if (error) throw error;
+
+                loading.style.display = 'none';
+
+                if (!data || data.length === 0) {
+                    empty.style.display = 'block';
+                    return;
+                }
+
+                data.forEach(t => {
+                    const isOpeningStock = t.transaction_type === 'adjustment' && t.notes === 'Opening Stock';
+                    const qtyDisplay = `${formatNumber(Math.abs(t.quantity))} ${unit}`;
+                    const qtySign = t.quantity < 0 ? '−' : t.quantity > 0 && t.transaction_type !== 'grn' ? '+' : '';
+
+                    let reference = '—';
+                    if (isOpeningStock) {
+                        reference = 'Opening Stock';
+                    } else if (t.transaction_type === 'grn') {
+                        reference = [t.supplier_name, t.invoice_no].filter(Boolean).join(' · ') || '—';
+                    } else if (t.notes) {
+                        reference = t.notes;
+                    }
+
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td class="nx-td-mono">${formatDate(t.transaction_date)}</td>
+                        <td>${isOpeningStock
+                                ? '<span class="nx-badge nx-badge-orange">Opening Stock</span>'
+                                : transactionBadge(t.transaction_type, t.quantity)}</td>
+                        <td style="text-align:right; font-weight:700; color:${t.quantity < 0 ? 'var(--red)' : 'var(--green)'};">
+                            ${qtySign}${qtyDisplay}
+                        </td>
+                        <td style="color:var(--mid); font-size:12px;">${reference}</td>
+                    `;
+                    tbody.appendChild(row);
+                });
+
+                tableWrap.style.display = 'block';
+
+            } catch (err) {
+                console.error('Error loading material history:', err);
+                loading.style.display = 'none';
+                empty.textContent = 'Could not load history. Please try again.';
+                empty.style.display = 'block';
+            }
+        }
+
+        document.getElementById('historyCloseBtn').addEventListener('click', () => {
+            document.getElementById('historyModal').style.display = 'none';
+        });
+        document.getElementById('historyModal').addEventListener('click', (e) => {
+            if (e.target.id === 'historyModal') e.target.style.display = 'none';
+        });
+
+        // Delegated listener — table rows (and their history buttons) are
+        // rebuilt via innerHTML on every render/search, so we bind once on
+        // the static tbody parent instead of per-button (avoids duplicate
+        // listeners stacking up on each re-render).
+        document.getElementById('stockLevelsBody').addEventListener('click', (e) => {
+            const btn = e.target.closest('.history-btn');
+            if (!btn) return;
+            const { materialId, materialName, unit } = btn.dataset;
+            openMaterialHistory(materialId, materialName, unit);
+        });
 
         // ── FIRST LOGIN CHECK ─────────────────────────────────────
         async function checkFirstLogin() {

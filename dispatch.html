@@ -59,6 +59,7 @@
                     </div>
                     <div class="nx-page-sub">Create challan, deduct stock, log dispatch</div>
                 </div>
+                <a href="rm-dispatch.html" class="nx-btn nx-btn-ghost">Raw Material Dispatch →</a>
             </div>
 
             <!-- LOADING -->
@@ -209,6 +210,23 @@
             <div class="nx-card nx-mt-24">
                 <div class="nx-card-header">
                     <div class="nx-card-title" id="pastDispatchesTitle" data-en="Past Dispatches" data-mr="मागील डिस्पॅच">Past Dispatches</div>
+                    <a href="dispatch-history.html"
+                       title="View full dispatch history"
+                       style="display:inline-flex; align-items:center; gap:6px;
+                              font-size:12px; font-weight:700; text-transform:uppercase;
+                              letter-spacing:0.5px; color:var(--mid); text-decoration:none;
+                              padding:6px 10px; border:1px solid var(--border2);
+                              border-radius:var(--radius-sm); transition:color 0.15s, border-color 0.15s;"
+                       onmouseover="this.style.color='var(--orange)';this.style.borderColor='var(--orange)';"
+                       onmouseout="this.style.color='var(--mid)';this.style.borderColor='var(--border2)';">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
+                             fill="none" stroke="currentColor" stroke-width="2.5"
+                             stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"/>
+                            <polyline points="12 6 12 12 16 14"/>
+                        </svg>
+                        Full History
+                    </a>
                 </div>
                 <div class="nx-table-wrap">
                     <table class="nx-table">
@@ -366,7 +384,8 @@
                     .from('p2_dispatch_orders')
                     .select('id')
                     .eq('tenant_id', tenantId)
-                    .eq('status', 'draft');
+                    .eq('status', 'draft')
+                    .eq('dispatch_type', 'product');
 
                 if (error) throw error;
 
@@ -393,6 +412,7 @@
                 .from('p2_dispatch_orders')
                 .select('id, client_name, status, challan_number, dispatch_date, created_at')
                 .eq('tenant_id', tenantId)
+                .eq('dispatch_type', 'product')
                 .order('created_at', { ascending: false })
                 .limit(20);
 
@@ -481,15 +501,18 @@
                 .from('p2_dispatch_orders')
                 .select('challan_number')
                 .eq('tenant_id', tenantId)
+                .eq('dispatch_type', 'product')
                 .not('challan_number', 'is', null)
                 .order('created_at', { ascending: false })
-                .limit(1);
+                .limit(50);
 
-            if (error) return 1001;
-            if (!data || data.length === 0) return 1001;
+            if (error || !data || data.length === 0) return 1001;
 
-            const lastNum = parseInt(data[0].challan_number, 10);
-            return isNaN(lastNum) ? 1001 : lastNum + 1;
+            // Parse only numeric challans (ignore RM- prefixed ones that may exist)
+            const nums = data
+                .map(r => parseInt(r.challan_number, 10))
+                .filter(n => !isNaN(n));
+            return nums.length === 0 ? 1001 : Math.max(...nums) + 1;
         }
 
         function setupEventHandlers() {
@@ -666,7 +689,8 @@
                     vehicle_number: document.getElementById('vehicleNumber')?.value || '',
                     status: String(targetStatus),
                     challan_number: String(rawChallan || '1001'),
-                    dispatch_date: new Date().toISOString().split('T')[0]
+                    dispatch_date: new Date().toISOString().split('T')[0],
+                    dispatch_type: 'product'
                 };
 
                 let orderId = currentDispatchId;

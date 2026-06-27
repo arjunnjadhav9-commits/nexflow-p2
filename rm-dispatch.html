@@ -1,0 +1,858 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Raw Material Dispatch | Nexflow P2</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%230c0e14'/><text y='.9em' font-size='80' x='10' fill='%23ff5c1a'>N</text></svg>">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800;900&family=Barlow+Condensed:wght@500;600;700;800;900&display=swap">
+    <link rel="stylesheet" href="css/nexflow-design.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/supabase-client.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/navbar.js"></script>
+
+    <style>
+        .nx-modal-overlay {
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.65);
+            z-index: 500;
+            display: flex; align-items: center; justify-content: center;
+            padding: 20px;
+        }
+        .nx-modal {
+            background: var(--surface);
+            border: 1px solid var(--border2);
+            border-radius: var(--radius-lg);
+            padding: 28px; width: 100%; max-width: 480px;
+            box-shadow: var(--shadow-md);
+        }
+        .nx-modal-title {
+            font-family: var(--condensed); font-weight: 800; font-size: 16px;
+            color: var(--white); text-transform: uppercase; letter-spacing: 0.5px;
+            margin-bottom: 20px;
+        }
+
+        #rmTableContainer { display: none; margin-top: 18px; }
+        #loadingSpinner { display: flex; align-items: center; justify-content: center; padding: 60px 20px; }
+        #errorState    { display: none; }
+        #successMessage { display: none; }
+        #errorMessage  { display: none; }
+        #dispatchForm  { display: none; }
+
+        /* Stock badge inline */
+        .rm-stock-ok   { color: var(--green,  #00E676); font-size: 11px; font-weight: 700; }
+        .rm-stock-low  { color: var(--yellow, #FFD600); font-size: 11px; font-weight: 700; }
+        .rm-stock-zero { color: var(--red,   #FF1744); font-size: 11px; font-weight: 700; }
+
+        /* Material select row */
+        .rm-add-row {
+            display: grid;
+            grid-template-columns: 1fr 90px 80px auto;
+            gap: 10px;
+            align-items: end;
+            margin-bottom: 14px;
+        }
+        @media (max-width: 600px) {
+            .rm-add-row { grid-template-columns: 1fr 1fr; }
+            .rm-add-row .rm-unit-cell,
+            .rm-add-row .rm-btn-cell { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <div id="navbar-container"></div>
+
+    <div class="nx-main">
+        <div class="nx-page">
+
+            <!-- PAGE HEADER -->
+            <div class="nx-page-header">
+                <div>
+                    <div class="nx-eyebrow">Stock Out</div>
+                    <div class="nx-page-title">Raw Material <span>Dispatch</span></div>
+                    <div class="nx-page-sub">Dispatch raw materials directly — no BOM lookup</div>
+                </div>
+                <a href="dispatch.html" class="nx-btn nx-btn-ghost">← Product Dispatch</a>
+            </div>
+
+            <!-- LOADING -->
+            <div id="loadingSpinner">
+                <div class="nx-logo-loader">
+                    <div class="nx-logo-loader-mark"></div>
+                    <div class="nx-logo-loader-text">Loading...</div>
+                </div>
+            </div>
+
+            <!-- ERROR STATE -->
+            <div id="errorState" class="nx-alert nx-alert-red nx-mb-24">
+                <span class="nx-alert-icon">⚠</span>
+                <div>
+                    <div class="nx-bold">Could not load data</div>
+                    <div>Check your connection and refresh the page.</div>
+                </div>
+            </div>
+
+            <!-- SUCCESS MESSAGE -->
+            <div id="successMessage" class="nx-alert nx-alert-green nx-mb-24">
+                <span class="nx-alert-icon">✅</span>
+                <div>
+                    <div id="successText" class="nx-bold"></div>
+                    <button id="printChallanBtn" class="nx-btn nx-btn-ghost nx-btn-sm nx-mt-8">Print Challan</button>
+                </div>
+            </div>
+
+            <!-- ERROR MESSAGE -->
+            <div id="errorMessage" class="nx-alert nx-alert-red nx-mb-24">
+                <span class="nx-alert-icon">⚠</span>
+                <div id="errorText"></div>
+            </div>
+
+            <!-- DISPATCH FORM -->
+            <form id="dispatchForm">
+                <div class="nx-grid-2" style="align-items: start; margin-bottom: 18px;">
+
+                    <!-- LEFT: Client Info -->
+                    <div class="nx-card">
+                        <div class="nx-card-header">
+                            <div class="nx-card-title">Client Information</div>
+                        </div>
+
+                        <div class="nx-form-group">
+                            <label>Client Name</label>
+                            <input type="text" id="clientName" class="nx-input" list="clientNameSuggestions"
+                                   placeholder="Enter client name" required autocomplete="off">
+                            <datalist id="clientNameSuggestions"></datalist>
+                        </div>
+
+                        <div class="nx-form-group">
+                            <label>Client Address</label>
+                            <textarea id="clientAddress" rows="3" class="nx-input"
+                                      placeholder="Enter client address" style="resize:vertical;"></textarea>
+                        </div>
+
+                        <div class="nx-form-row">
+                            <div class="nx-form-group">
+                                <label>PO Number</label>
+                                <input type="text" id="poNumber" class="nx-input" placeholder="Optional">
+                            </div>
+                            <div class="nx-form-group">
+                                <label>Your Challan Ref</label>
+                                <input type="text" id="challanRef" class="nx-input" placeholder="Optional">
+                            </div>
+                        </div>
+
+                        <div class="nx-form-group">
+                            <label>Vehicle Number</label>
+                            <input type="text" id="vehicleNumber" class="nx-input" placeholder="Optional">
+                        </div>
+                    </div>
+
+                    <!-- RIGHT: Materials -->
+                    <div class="nx-card">
+                        <div class="nx-card-header">
+                            <div class="nx-card-title">Materials to Dispatch</div>
+                        </div>
+
+                        <!-- Add material row -->
+                        <div class="rm-add-row">
+                            <div class="nx-form-group" style="margin:0;">
+                                <label>Select Material</label>
+                                <select id="materialSelect" class="nx-input">
+                                    <option value="">Choose a material</option>
+                                </select>
+                            </div>
+                            <div class="nx-form-group" style="margin:0;">
+                                <label>Qty</label>
+                                <input type="number" id="materialQty" min="0.001" step="any"
+                                       class="nx-input" placeholder="Qty">
+                            </div>
+                            <div class="nx-form-group rm-unit-cell" style="margin:0;">
+                                <label>Unit</label>
+                                <input type="text" id="materialUnit" class="nx-input" readonly
+                                       placeholder="—" style="background:var(--surface2,rgba(255,255,255,0.04));">
+                            </div>
+                            <div class="rm-btn-cell" style="padding-bottom:1px;">
+                                <button type="button" id="addMaterialBtn"
+                                        class="nx-btn nx-btn-primary" style="white-space:nowrap;">
+                                    + Add
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Stock indicator -->
+                        <div id="stockIndicator" style="font-size:11px; color:var(--mid); margin-bottom:12px; min-height:16px;"></div>
+
+                        <!-- Mobile add button -->
+                        <button type="button" id="addMaterialBtnMobile"
+                                class="nx-btn nx-btn-ghost nx-btn-full"
+                                style="display:none; margin-bottom:14px;">
+                            + Add Material
+                        </button>
+
+                        <!-- Items table -->
+                        <div id="rmTableContainer">
+                            <div class="nx-table-wrap">
+                                <table class="nx-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Material</th>
+                                            <th style="text-align:right;">Qty</th>
+                                            <th style="text-align:center;">Del</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="rmTableBody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Action buttons -->
+                        <div style="display:flex; gap:10px; margin-top:20px;">
+                            <button type="button" id="saveDraftBtn"
+                                    class="nx-btn nx-btn-secondary" style="flex:1;">
+                                Save Draft
+                            </button>
+                            <button type="button" id="confirmDispatchBtn"
+                                    class="nx-btn nx-btn-green" style="flex:1;">
+                                Confirm Dispatch
+                            </button>
+                        </div>
+                    </div>
+
+                </div>
+            </form>
+
+            <!-- PAST RAW MATERIAL DISPATCHES -->
+            <div class="nx-card nx-mt-24">
+                <div class="nx-card-header">
+                    <div class="nx-card-title">Past Raw Material Dispatches</div>
+                    <a href="rm-dispatch-history.html"
+                       title="View full history"
+                       style="display:inline-flex; align-items:center; gap:6px;
+                              font-size:12px; font-weight:700; text-transform:uppercase;
+                              letter-spacing:0.5px; color:var(--mid); text-decoration:none;
+                              padding:6px 10px; border:1px solid var(--border2);
+                              border-radius:var(--radius-sm); transition:color 0.15s, border-color 0.15s;"
+                       onmouseover="this.style.color='var(--orange)';this.style.borderColor='var(--orange)';"
+                       onmouseout="this.style.color='var(--mid)';this.style.borderColor='var(--border2)';">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
+                             fill="none" stroke="currentColor" stroke-width="2.5"
+                             stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                        </svg>
+                        Full History
+                    </a>
+                </div>
+                <div class="nx-table-wrap">
+                    <table class="nx-table">
+                        <thead>
+                            <tr>
+                                <th>Challan No</th>
+                                <th>Date</th>
+                                <th>Client</th>
+                                <th>Status</th>
+                                <th style="text-align:center;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="pastDispatchesBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- CONFIRM MODAL -->
+    <div id="confirmModal" class="nx-modal-overlay" style="display:none;">
+        <div class="nx-modal">
+            <div class="nx-modal-title">Confirm Dispatch?</div>
+            <div style="font-size:13px; margin-bottom:20px;">
+                <div style="margin-bottom:10px;">
+                    <span class="nx-bold">Client:</span>
+                    <span id="confirmClientName" style="margin-left:6px; color:var(--white);"></span>
+                </div>
+                <div style="margin-bottom:10px;">
+                    <span class="nx-bold">Materials:</span>
+                    <ul id="confirmItemsList" style="margin-top:6px; padding-left:16px; list-style:disc;"></ul>
+                </div>
+                <div class="nx-alert nx-alert-yellow" style="margin-bottom:0;">
+                    <span class="nx-alert-icon">⚠</span>
+                    <span>This will deduct these materials from stock. This cannot be undone.</span>
+                </div>
+            </div>
+            <div style="display:flex; gap:10px;">
+                <button id="confirmModalConfirm" class="nx-btn nx-btn-green" style="flex:1;">Confirm</button>
+                <button id="confirmModalCancel"  class="nx-btn nx-btn-ghost" style="flex:1;">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let materials    = [];   // from v_p2_stock_balance
+        let dispatchItems = [];  // { raw_material_id, name, qty, unit }
+        let currentDispatchId = null;
+        let tenantId = null;
+        let clientsMap = {};
+
+        document.addEventListener('DOMContentLoaded', init);
+
+        async function init() {
+            try {
+                const authed = await checkAuth();
+                if (!authed) return;
+                const { data: { user } } = await window.supabase.auth.getUser();
+                tenantId = user.id;
+
+                applyDemoModeToForms();
+
+                await Promise.all([
+                    loadMaterials(),
+                    loadRecentDispatches(),
+                    loadClients()
+                ]);
+
+                document.getElementById('loadingSpinner').style.display = 'none';
+                document.getElementById('dispatchForm').style.display = 'block';
+                document.getElementById('dispatchForm').classList.add('nx-fade-in');
+
+                setupEventHandlers();
+            } catch (err) {
+                console.error('RM dispatch init error:', err);
+                document.getElementById('loadingSpinner').style.display = 'none';
+                document.getElementById('errorState').style.display = 'flex';
+            }
+        }
+
+        // ── LOAD MATERIALS ────────────────────────────────────────────
+        async function loadMaterials() {
+            const { data, error } = await window.supabase
+                .from('v_p2_stock_balance')
+                .select('raw_material_id, name, material_code, unit, current_stock, min_stock_level')
+                .eq('tenant_id', tenantId)
+                .order('name');
+
+            if (error) throw error;
+
+            materials = data || [];
+            const select = document.getElementById('materialSelect');
+            select.innerHTML = '<option value="">Choose a material</option>';
+
+            materials.forEach(m => {
+                const opt = document.createElement('option');
+                opt.value = m.raw_material_id;
+                const code = m.material_code ? `[${m.material_code}] ` : '';
+                opt.textContent = `${code}${m.name} (${m.unit})`;
+                select.appendChild(opt);
+            });
+        }
+
+        // ── LOAD CLIENTS (autofill) ───────────────────────────────────
+        async function loadClients() {
+            const { data, error } = await window.supabase
+                .from('p2_clients')
+                .select('name, address')
+                .eq('tenant_id', tenantId)
+                .order('name');
+
+            if (error) { console.error('loadClients:', error); return; }
+
+            clientsMap = {};
+            const datalist = document.getElementById('clientNameSuggestions');
+            datalist.innerHTML = '';
+            (data || []).forEach(c => {
+                clientsMap[c.name.trim().toLowerCase()] = c;
+                const opt = document.createElement('option');
+                opt.value = c.name;
+                datalist.appendChild(opt);
+            });
+        }
+
+        function setupClientAutofill() {
+            const nameInput    = document.getElementById('clientName');
+            const addressInput = document.getElementById('clientAddress');
+            let userEditedAddress = false;
+
+            addressInput.addEventListener('input', () => { userEditedAddress = true; });
+            nameInput.addEventListener('input', () => {
+                const match = clientsMap[nameInput.value.trim().toLowerCase()];
+                if (match && !userEditedAddress) addressInput.value = match.address || '';
+                else if (!match) userEditedAddress = false;
+            });
+            nameInput.addEventListener('change', () => {
+                const match = clientsMap[nameInput.value.trim().toLowerCase()];
+                if (match) { addressInput.value = match.address || ''; userEditedAddress = false; }
+            });
+        }
+
+        async function upsertClient(name, address) {
+            if (!name) return;
+            try {
+                await window.supabase.from('p2_clients').upsert(
+                    { tenant_id: tenantId, name: name.trim(), address: address ? address.trim() : null },
+                    { onConflict: 'tenant_id,name' }
+                );
+                await loadClients();
+            } catch (err) { console.error('upsertClient:', err); }
+        }
+
+        // ── LOAD PAST DISPATCHES (raw_material type only) ─────────────
+        async function loadRecentDispatches() {
+            const { data, error } = await window.supabase
+                .from('p2_dispatch_orders')
+                .select('id, client_name, status, challan_number, dispatch_date, created_at')
+                .eq('tenant_id', tenantId)
+                .eq('dispatch_type', 'raw_material')
+                .order('created_at', { ascending: false })
+                .limit(20);
+
+            if (error) throw error;
+
+            const tbody = document.getElementById('pastDispatchesBody');
+            tbody.innerHTML = '';
+
+            if (!data || data.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" style="padding:20px; text-align:center; color:var(--mid);">No raw material dispatches yet.</td></tr>`;
+                return;
+            }
+
+            data.forEach(d => {
+                const row = document.createElement('tr');
+                const displayDate = d.dispatch_date
+                    ? new Date(d.dispatch_date).toLocaleDateString('en-IN')
+                    : new Date(d.created_at).toLocaleDateString('en-IN');
+                const isDraft = d.status === 'draft';
+
+                row.innerHTML = `
+                    <td class="nx-td-mono">${d.challan_number || '—'}</td>
+                    <td>${displayDate}</td>
+                    <td class="nx-td-bold">${d.client_name}</td>
+                    <td>
+                        <span class="nx-badge ${isDraft ? 'nx-badge-yellow' : 'nx-badge-green'}">
+                            ${isDraft ? 'Draft' : 'Confirmed'}
+                        </span>
+                    </td>
+                    <td style="text-align:center;">
+                        ${isDraft
+                            ? `<button onclick="loadDraftToForm('${d.id}')" class="nx-btn nx-btn-secondary nx-btn-sm">Resume</button>`
+                            : `<button onclick="window.open('/challan.html?id=${d.id}','_blank')" class="nx-btn nx-btn-ghost nx-btn-sm">Challan</button>`
+                        }
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        // ── RENDER ITEMS TABLE ────────────────────────────────────────
+        function renderItemsTable() {
+            const container = document.getElementById('rmTableContainer');
+            const tbody     = document.getElementById('rmTableBody');
+            tbody.innerHTML = '';
+
+            if (dispatchItems.length === 0) {
+                container.style.display = 'none';
+                return;
+            }
+            container.style.display = 'block';
+
+            dispatchItems.forEach((item, idx) => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="nx-td-bold">${item.name}</td>
+                    <td style="text-align:right; font-family:monospace;">${item.qty} ${item.unit}</td>
+                    <td style="text-align:center;">
+                        <button type="button" onclick="removeItem(${idx})"
+                                class="nx-btn nx-btn-ghost nx-btn-sm"
+                                style="color:var(--red,#FF1744); padding:2px 8px;">✕</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        window.removeItem = (idx) => {
+            dispatchItems.splice(idx, 1);
+            renderItemsTable();
+        };
+
+        // ── MATERIAL SELECT CHANGE — show stock ───────────────────────
+        function onMaterialChange() {
+            const matId = document.getElementById('materialSelect').value;
+            const unitInput = document.getElementById('materialUnit');
+            const indicator = document.getElementById('stockIndicator');
+
+            if (!matId) {
+                unitInput.value = '';
+                indicator.textContent = '';
+                return;
+            }
+
+            const m = materials.find(x => x.raw_material_id === matId);
+            if (!m) return;
+
+            unitInput.value = m.unit;
+
+            const stock = parseFloat(m.current_stock) || 0;
+            const min   = parseFloat(m.min_stock_level) || 0;
+            const stockStr = stock % 1 === 0 ? stock : stock.toFixed(3);
+
+            if (stock <= 0) {
+                indicator.innerHTML = `<span class="rm-stock-zero">⚠ No stock — ${stockStr} ${m.unit}</span>`;
+            } else if (min > 0 && stock <= min) {
+                indicator.innerHTML = `<span class="rm-stock-low">⚠ Low stock — ${stockStr} ${m.unit} (min: ${min})</span>`;
+            } else {
+                indicator.innerHTML = `<span class="rm-stock-ok">✓ Available: ${stockStr} ${m.unit}</span>`;
+            }
+        }
+
+        // ── ADD MATERIAL ──────────────────────────────────────────────
+        function addMaterial() {
+            const matId = document.getElementById('materialSelect').value;
+            const qty   = parseFloat(document.getElementById('materialQty').value);
+
+            if (!matId) { showError('Please select a material.'); return; }
+            if (!qty || qty <= 0) { showError('Please enter a valid quantity.'); return; }
+
+            const m = materials.find(x => x.raw_material_id === matId);
+            if (!m) return;
+
+            // If already in list — add qty instead of duplicating
+            const existing = dispatchItems.find(x => x.raw_material_id === matId);
+            if (existing) {
+                existing.qty = parseFloat((existing.qty + qty).toFixed(4));
+            } else {
+                dispatchItems.push({
+                    raw_material_id: m.raw_material_id,
+                    name: m.name,
+                    qty,
+                    unit: m.unit
+                });
+            }
+
+            // Reset selectors
+            document.getElementById('materialSelect').value = '';
+            document.getElementById('materialQty').value = '';
+            document.getElementById('materialUnit').value = '';
+            document.getElementById('stockIndicator').textContent = '';
+            clearMessages();
+            renderItemsTable();
+        }
+
+        // ── CHALLAN NUMBER ────────────────────────────────────────────
+        async function generateChallanNumber() {
+            const { data, error } = await window.supabase
+                .from('p2_dispatch_orders')
+                .select('challan_number')
+                .eq('tenant_id', tenantId)
+                .eq('dispatch_type', 'raw_material')
+                .not('challan_number', 'is', null)
+                .order('created_at', { ascending: false })
+                .limit(50);
+
+            if (error || !data || data.length === 0) return 'RM-1001';
+
+            // Strip RM- prefix and parse, find max
+            const nums = data
+                .map(r => parseInt(String(r.challan_number).replace(/^RM-/, ''), 10))
+                .filter(n => !isNaN(n));
+            const next = nums.length === 0 ? 1001 : Math.max(...nums) + 1;
+            return `RM-${next}`;
+        }
+
+        // ── SAVE DRAFT ────────────────────────────────────────────────
+        async function saveDraft() {
+            clearMessages();
+            const clientName = document.getElementById('clientName').value.trim();
+            if (!clientName) { showError('Client name is required.'); return; }
+            if (dispatchItems.length === 0) { showError('Add at least one material.'); return; }
+
+            const btn = document.getElementById('saveDraftBtn');
+            btn.disabled = true; btn.textContent = 'Saving...';
+
+            try {
+                const orderData = {
+                    tenant_id:        tenantId,
+                    client_name:      clientName,
+                    client_address:   document.getElementById('clientAddress').value.trim() || null,
+                    po_number:        document.getElementById('poNumber').value.trim() || null,
+                    your_challan_ref: document.getElementById('challanRef').value.trim() || null,
+                    vehicle_number:   document.getElementById('vehicleNumber').value.trim() || null,
+                    status:           'draft',
+                    dispatch_type:    'raw_material',
+                    dispatch_date:    new Date().toISOString().split('T')[0],
+                    created_by:       tenantId
+                };
+
+                let orderId;
+
+                if (currentDispatchId) {
+                    const { error } = await window.supabase
+                        .from('p2_dispatch_orders')
+                        .update(orderData)
+                        .eq('id', currentDispatchId)
+                        .eq('tenant_id', tenantId);
+                    if (error) throw error;
+
+                    await window.supabase
+                        .from('p2_dispatch_items')
+                        .delete()
+                        .eq('dispatch_order_id', currentDispatchId);
+
+                    orderId = currentDispatchId;
+                } else {
+                    const { data, error } = await window.supabase
+                        .from('p2_dispatch_orders')
+                        .insert(orderData)
+                        .select('id')
+                        .single();
+                    if (error) throw error;
+                    orderId = data.id;
+                    currentDispatchId = orderId;
+                }
+
+                // Insert items
+                const itemRows = dispatchItems.map(item => ({
+                    tenant_id:         tenantId,
+                    dispatch_order_id: orderId,
+                    raw_material_id:   item.raw_material_id,
+                    material_name:     item.name,
+                    product_id:        null,
+                    qty_dispatched:    item.qty,
+                    unit:              item.unit
+                }));
+
+                const { error: itemsErr } = await window.supabase
+                    .from('p2_dispatch_items')
+                    .insert(itemRows);
+                if (itemsErr) throw itemsErr;
+
+                const successBox = document.getElementById('successMessage');
+                document.getElementById('successText').textContent = 'Draft saved.';
+                document.getElementById('printChallanBtn').style.display = 'none';
+                successBox.style.display = 'flex';
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                await loadRecentDispatches();
+
+            } catch (err) {
+                console.error('saveDraft error:', err);
+                showError('Could not save draft: ' + (err.message || 'Unknown error'));
+            } finally {
+                btn.disabled = false; btn.textContent = 'Save Draft';
+            }
+        }
+
+        // ── CONFIRM DISPATCH ──────────────────────────────────────────
+        function openConfirmModal() {
+            clearMessages();
+            const clientName = document.getElementById('clientName').value.trim();
+            if (!clientName) { showError('Client name is required.'); return; }
+            if (dispatchItems.length === 0) { showError('Add at least one material.'); return; }
+
+            document.getElementById('confirmClientName').textContent = clientName;
+            const list = document.getElementById('confirmItemsList');
+            list.innerHTML = '';
+            dispatchItems.forEach(item => {
+                const li = document.createElement('li');
+                li.textContent = `${item.name} — ${item.qty} ${item.unit}`;
+                list.appendChild(li);
+            });
+
+            document.getElementById('confirmModal').style.display = 'flex';
+        }
+
+        async function confirmDispatch() {
+            document.getElementById('confirmModal').style.display = 'none';
+            const btn = document.getElementById('confirmDispatchBtn');
+            btn.disabled = true; btn.textContent = 'Confirming...';
+
+            try {
+                const clientName    = document.getElementById('clientName').value.trim();
+                const clientAddress = document.getElementById('clientAddress').value.trim();
+                const challanNumber = await generateChallanNumber();
+
+                const orderData = {
+                    tenant_id:        tenantId,
+                    client_name:      clientName,
+                    client_address:   clientAddress || null,
+                    po_number:        document.getElementById('poNumber').value.trim() || null,
+                    your_challan_ref: document.getElementById('challanRef').value.trim() || null,
+                    vehicle_number:   document.getElementById('vehicleNumber').value.trim() || null,
+                    status:           'confirmed',
+                    dispatch_type:    'raw_material',
+                    challan_number:   String(challanNumber),
+                    dispatch_date:    new Date().toISOString().split('T')[0],
+                    created_by:       tenantId,
+                    confirmed_at:     new Date().toISOString()
+                };
+
+                let orderId;
+
+                if (currentDispatchId) {
+                    const { error } = await window.supabase
+                        .from('p2_dispatch_orders')
+                        .update(orderData)
+                        .eq('id', currentDispatchId)
+                        .eq('tenant_id', tenantId);
+                    if (error) throw error;
+
+                    await window.supabase
+                        .from('p2_dispatch_items')
+                        .delete()
+                        .eq('dispatch_order_id', currentDispatchId);
+
+                    orderId = currentDispatchId;
+                } else {
+                    const { data, error } = await window.supabase
+                        .from('p2_dispatch_orders')
+                        .insert(orderData)
+                        .select('id')
+                        .single();
+                    if (error) throw error;
+                    orderId = data.id;
+                }
+
+                // Insert items
+                const itemRows = dispatchItems.map(item => ({
+                    tenant_id:         tenantId,
+                    dispatch_order_id: orderId,
+                    raw_material_id:   item.raw_material_id,
+                    material_name:     item.name,
+                    product_id:        null,
+                    qty_dispatched:    item.qty,
+                    unit:              item.unit
+                }));
+
+                const { error: itemsErr } = await window.supabase
+                    .from('p2_dispatch_items')
+                    .insert(itemRows);
+                if (itemsErr) throw itemsErr;
+
+                // Deduct stock — one transaction per material
+                for (const item of dispatchItems) {
+                    await window.supabase.from('p2_stock_transactions').insert({
+                        tenant_id:       tenantId,
+                        raw_material_id: item.raw_material_id,
+                        transaction_type:'consumption',
+                        quantity:        -Math.abs(item.qty),
+                        notes:           `RM Dispatch — Challan ${challanNumber} — ${clientName}`,
+                        created_by:      tenantId
+                    });
+                }
+
+                await upsertClient(clientName, clientAddress);
+
+                const successBox = document.getElementById('successMessage');
+                document.getElementById('successText').textContent =
+                    `Dispatch confirmed — Challan No. ${challanNumber}`;
+                const printBtn = document.getElementById('printChallanBtn');
+                printBtn.style.display = 'inline-block';
+                printBtn.onclick = () => window.open(`/challan.html?id=${orderId}`, '_blank');
+                successBox.style.display = 'flex';
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+
+                // Reset form
+                currentDispatchId = null;
+                dispatchItems = [];
+                document.getElementById('dispatchForm').reset();
+                renderItemsTable();
+                await loadRecentDispatches();
+                await loadMaterials(); // refresh stock levels
+
+            } catch (err) {
+                console.error('confirmDispatch error:', err);
+                showError('Dispatch failed: ' + (err.message || 'Unknown error'));
+            } finally {
+                btn.disabled = false; btn.textContent = 'Confirm Dispatch';
+            }
+        }
+
+        // ── LOAD DRAFT TO FORM ────────────────────────────────────────
+        window.loadDraftToForm = async (orderId) => {
+            try {
+                const { data: order, error: orderErr } = await window.supabase
+                    .from('p2_dispatch_orders')
+                    .select('*')
+                    .eq('id', orderId)
+                    .single();
+                if (orderErr) throw orderErr;
+
+                const { data: items, error: itemsErr } = await window.supabase
+                    .from('p2_dispatch_items')
+                    .select('*')
+                    .eq('dispatch_order_id', orderId);
+                if (itemsErr) throw itemsErr;
+
+                currentDispatchId = order.id;
+                document.getElementById('clientName').value    = order.client_name;
+                document.getElementById('clientAddress').value = order.client_address || '';
+                document.getElementById('poNumber').value      = order.po_number || '';
+                document.getElementById('challanRef').value    = order.your_challan_ref || '';
+                document.getElementById('vehicleNumber').value = order.vehicle_number || '';
+
+                dispatchItems = items.map(item => ({
+                    raw_material_id: item.raw_material_id,
+                    name:  item.material_name || 'Unknown Material',
+                    qty:   parseFloat(item.qty_dispatched),
+                    unit:  item.unit
+                }));
+
+                renderItemsTable();
+                document.getElementById('dispatchForm').scrollIntoView({ behavior: 'smooth' });
+            } catch (err) {
+                console.error('loadDraftToForm:', err);
+                showError('Could not restore draft.');
+            }
+        };
+
+        // ── EVENT HANDLERS ────────────────────────────────────────────
+        function setupEventHandlers() {
+            setupClientAutofill();
+
+            document.getElementById('materialSelect')
+                .addEventListener('change', onMaterialChange);
+
+            document.getElementById('addMaterialBtn')
+                .addEventListener('click', addMaterial);
+
+            // Mobile fallback button
+            const mobileBtn = document.getElementById('addMaterialBtnMobile');
+            if (window.innerWidth <= 600) mobileBtn.style.display = 'block';
+            mobileBtn.addEventListener('click', addMaterial);
+
+            // Enter on qty field adds material
+            document.getElementById('materialQty')
+                .addEventListener('keydown', e => {
+                    if (e.key === 'Enter') { e.preventDefault(); addMaterial(); }
+                });
+
+            document.getElementById('saveDraftBtn')
+                .addEventListener('click', saveDraft);
+
+            document.getElementById('confirmDispatchBtn')
+                .addEventListener('click', openConfirmModal);
+
+            document.getElementById('confirmModalConfirm')
+                .addEventListener('click', confirmDispatch);
+
+            document.getElementById('confirmModalCancel')
+                .addEventListener('click', () => {
+                    document.getElementById('confirmModal').style.display = 'none';
+                });
+        }
+
+        // ── HELPERS ───────────────────────────────────────────────────
+        function showError(msg) {
+            document.getElementById('errorText').textContent = msg;
+            document.getElementById('errorMessage').style.display = 'flex';
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function clearMessages() {
+            document.getElementById('errorMessage').style.display  = 'none';
+            document.getElementById('successMessage').style.display = 'none';
+        }
+    </script>
+</body>
+</html>
