@@ -191,24 +191,27 @@
 
             <!-- PAGE HEADER -->
             <div style="text-align:center; margin-bottom:20px;">
-                <div class="nx-eyebrow" style="justify-content:center;">Mobile Scanner</div>
-                <div class="nx-page-title" style="font-size:22px; justify-content:center;">📷 QR <span>Scanner</span></div>
-                <div class="nx-page-sub" style="margin-top:4px;">Scan material QR code to receive or issue stock</div>
+                <div class="nx-eyebrow" style="justify-content:center;" data-en="Mobile Scanner" data-mr="मोबाईल स्कॅनर">Mobile Scanner</div>
+                <div class="nx-page-title" style="font-size:22px; justify-content:center;">
+                    <span data-en="📷 QR " data-mr="📷 QR ">📷 QR </span><span data-en="Scanner" data-mr="स्कॅनर">Scanner</span>
+                </div>
+                <div class="nx-page-sub" style="margin-top:4px;" data-en="Scan material QR code to receive or issue stock" data-mr="साठा प्राप्त किंवा जारी करण्यासाठी साहित्याचा QR कोड स्कॅन करा">Scan material QR code to receive or issue stock</div>
             </div>
 
             <!-- LOADING -->
             <div id="loadingSpinner" style="display:flex; justify-content:center; padding:48px 0;">
                 <div class="nx-logo-loader">
                     <div class="nx-logo-loader-mark"></div>
-                    <div class="nx-logo-loader-text">Loading...</div>
+                    <div class="nx-logo-loader-text" data-en="Loading..." data-mr="लोड होत आहे...">Loading...</div>
                 </div>
             </div>
 
             <!-- PRO GATE -->
             <div id="proGateError" style="display:none;">
                 <div style="font-size:28px; margin-bottom:10px;">🔒</div>
-                <div class="nx-bold nx-text-white" style="font-size:16px; margin-bottom:6px;">Pro Feature</div>
-                <div class="nx-text-mid" style="font-size:13px;">QR Scanner is available on the Pro plan. Contact Nexflow to upgrade.</div>
+                <div class="nx-bold nx-text-white" style="font-size:16px; margin-bottom:6px;" data-en="Pro Feature" data-mr="Pro वैशिष्ट्य">Pro Feature</div>
+                <div class="nx-text-mid" style="font-size:13px;" data-en="QR Scanner is available on the Pro plan. Contact Nexflow to upgrade."
+                     data-mr="QR स्कॅनर Pro प्लॅनवर उपलब्ध आहे. अपग्रेड करण्यासाठी Nexflow शी संपर्क करा.">QR Scanner is available on the Pro plan. Contact Nexflow to upgrade.</div>
             </div>
 
             <!-- MAIN CONTENT -->
@@ -216,15 +219,16 @@
 
                 <!-- Mode Toggle -->
                 <div class="mode-toggle" id="modeToggleRow">
-                    <button id="modeReceive" class="mode-btn active" onclick="setMode('receive')">📥 Receive (GRN)</button>
-                    <button id="modeIssue"   class="mode-btn"        onclick="setMode('issue')">📤 Issue (Consumption)</button>
+                    <button id="modeReceive" class="mode-btn active" onclick="setMode('receive')" data-en="📥 Receive (GRN)" data-mr="📥 प्राप्त (GRN)">📥 Receive (GRN)</button>
+                    <button id="modeIssue"   class="mode-btn"        onclick="setMode('issue')" data-en="📤 Issue (Consumption)" data-mr="📤 जारी (वापर)">📤 Issue (Consumption)</button>
                 </div>
 
                 <!-- Desktop Fallback -->
                 <div id="desktopFallback" style="display:none;">
                     <div style="font-size:36px; margin-bottom:10px;">📱</div>
-                    <div class="nx-bold nx-text-white" style="font-size:15px; margin-bottom:6px;">Scanner is a Mobile Feature</div>
-                    <div class="nx-text-mid" style="font-size:12px; margin-bottom:18px;">Open this page on your Android phone using Chrome to scan QR codes. Scan the QR below to open it directly.</div>
+                    <div class="nx-bold nx-text-white" style="font-size:15px; margin-bottom:6px;" data-en="Scanner is a Mobile Feature" data-mr="स्कॅनर मोबाईल वैशिष्ट्य आहे">Scanner is a Mobile Feature</div>
+                    <div class="nx-text-mid" style="font-size:12px; margin-bottom:18px;" data-en="Open this page on your Android phone using Chrome to scan QR codes. Scan the QR below to open it directly."
+                         data-mr="QR कोड स्कॅन करण्यासाठी हे पृष्ठ तुमच्या Android फोनवर Chrome मध्ये उघडा. थेट उघडण्यासाठी खालील QR स्कॅन करा.">Open this page on your Android phone using Chrome to scan QR codes. Scan the QR below to open it directly.</div>
                     <div style="display:flex; justify-content:center; margin-bottom:12px;">
                         <div id="desktopQR" style="background:#fff; padding:10px; border-radius:8px; display:inline-block;"></div>
                     </div>
@@ -243,39 +247,39 @@
                         </div>
                     </div>
                     <div id="scanStatus">
-                        <span class="scan-status-pill">Point camera at QR code</span>
+                        <span class="scan-status-pill" data-en="Point camera at QR code" data-mr="QR कोडवर कॅमेरा ठेवा">Point camera at QR code</span>
                     </div>
                 </div>
 
                 <!-- Camera Error -->
                 <div id="cameraError" style="display:none;">
-                    <div class="nx-bold" style="margin-bottom:4px;">Camera access denied</div>
-                    <div class="nx-text-mid">Please allow camera access in your browser settings and reload.</div>
+                    <div class="nx-bold" style="margin-bottom:4px;" data-en="Camera access denied" data-mr="कॅमेरा प्रवेश नाकारला">Camera access denied</div>
+                    <div class="nx-text-mid" data-en="Please allow camera access in your browser settings and reload." data-mr="कृपया तुमच्या ब्राउझर सेटिंग्जमध्ये कॅमेरा परवानगी द्या आणि पुन्हा लोड करा.">Please allow camera access in your browser settings and reload.</div>
                 </div>
 
                 <!-- Scanned Material Card -->
                 <div id="scannedCard" style="display:none;">
                     <div class="scanned-card-top">
                         <div>
-                            <div style="font-size:10px; font-weight:700; color:var(--mid); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Scanned Material</div>
+                            <div style="font-size:10px; font-weight:700; color:var(--mid); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;" data-en="Scanned Material" data-mr="स्कॅन केलेले साहित्य">Scanned Material</div>
                             <div id="scannedName" class="nx-bold nx-text-white" style="font-size:16px;"></div>
                             <div id="scannedCode" class="nx-text-mid" style="font-size:11px; margin-top:2px;"></div>
                         </div>
                         <span id="scannedUnit" class="nx-badge nx-badge-orange"></span>
                     </div>
                     <div class="stock-row">
-                        <span class="nx-text-mid">Current Stock</span>
+                        <span class="nx-text-mid" data-en="Current Stock" data-mr="सध्याचा साठा">Current Stock</span>
                         <span id="currentStock" class="nx-bold nx-text-green"></span>
                     </div>
 
                     <!-- Entry Form -->
                     <div class="nx-form">
                         <div class="nx-form-group">
-                            <label>Date</label>
+                            <label data-en="Date" data-mr="तारीख">Date</label>
                             <input type="date" id="entryDate" class="nx-input">
                         </div>
                         <div class="nx-form-group">
-                            <label>Quantity</label>
+                            <label data-en="Quantity" data-mr="परिमाण">Quantity</label>
                             <div style="display:flex; align-items:center; gap:10px;">
                                 <input type="number" id="entryQty" min="0.01" step="0.01" placeholder="0.00" class="nx-input" style="flex:1;">
                                 <span id="entryUnit" class="nx-text-mid" style="font-size:13px; font-weight:700; min-width:36px; text-align:right;"></span>
@@ -285,31 +289,31 @@
                         <!-- GRN-only fields -->
                         <div id="grnFields">
                             <div class="nx-form-group">
-                                <label>Supplier (optional)</label>
+                                <label data-en="Supplier (optional)" data-mr="पुरवठादार (पर्यायी)">Supplier (optional)</label>
                                 <select id="entrySupplier" class="nx-input">
-                                    <option value="">Select Supplier</option>
+                                    <option value="" data-en="Select Supplier" data-mr="पुरवठादार निवडा">Select Supplier</option>
                                 </select>
                             </div>
                             <div class="nx-form-group">
-                                <label>Rate ₹ (optional)</label>
+                                <label data-en="Rate ₹ (optional)" data-mr="दर ₹ (पर्यायी)">Rate ₹ (optional)</label>
                                 <input type="number" id="entryRate" min="0" step="0.01" placeholder="0.00" class="nx-input">
                             </div>
                             <div class="nx-form-group">
-                                <label>Invoice No (optional)</label>
-                                <input type="text" id="entryInvoice" placeholder="e.g. INV-001" class="nx-input">
+                                <label data-en="Invoice No (optional)" data-mr="इनव्हॉइस क्र. (पर्यायी)">Invoice No (optional)</label>
+                                <input type="text" id="entryInvoice" data-en="e.g. INV-001" data-mr="उदा. INV-001" placeholder="e.g. INV-001" class="nx-input">
                             </div>
                         </div>
 
                         <!-- Issue-only fields -->
                         <div id="issueFields" style="display:none;">
                             <div class="nx-form-group">
-                                <label>Reference / Work Order (optional)</label>
-                                <input type="text" id="entryRef" placeholder="e.g. WO-045" class="nx-input">
+                                <label data-en="Reference / Work Order (optional)" data-mr="संदर्भ / कार्य आदेश (पर्यायी)">Reference / Work Order (optional)</label>
+                                <input type="text" id="entryRef" data-en="e.g. WO-045" data-mr="उदा. WO-045" placeholder="e.g. WO-045" class="nx-input">
                             </div>
                         </div>
 
                         <div style="display:flex; gap:10px; margin-top:4px;">
-                            <button onclick="submitEntry()" id="submitBtn" class="nx-btn nx-btn-primary" style="flex:1;">
+                            <button onclick="submitEntry()" id="submitBtn" class="nx-btn nx-btn-primary" style="flex:1;" data-en="✅ Submit GRN Entry" data-mr="✅ GRN नोंद सबमिट करा">
                                 ✅ Submit GRN Entry
                             </button>
                             <button onclick="cancelScan()" class="nx-btn nx-btn-ghost" style="width:48px; padding:0;">✖</button>
@@ -320,10 +324,10 @@
                 <!-- Recent Entries -->
                 <div class="nx-card">
                     <div class="nx-card-header">
-                        <div class="nx-card-title">Recent Scan Entries</div>
+                        <div class="nx-card-title" data-en="Recent Scan Entries" data-mr="अलीकडील स्कॅन नोंदी">Recent Scan Entries</div>
                     </div>
                     <div id="recentEntries">
-                        <div class="nx-text-mid" style="font-size:12px; text-align:center; padding:20px 0;">No entries yet this session</div>
+                        <div class="nx-text-mid" style="font-size:12px; text-align:center; padding:20px 0;" data-en="No entries yet this session" data-mr="या सत्रात अद्याप नोंदी नाहीत">No entries yet this session</div>
                     </div>
                 </div>
 
@@ -341,8 +345,28 @@
         let scanLoop = null;
         let sessionEntries = [];
 
+        // ─── LANGUAGE ─────────────────────────────────────────────────────────
+        function applyLang(lang) {
+            document.querySelectorAll('[data-en]').forEach(el => {
+                if (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA') {
+                    el.placeholder = lang === 'mr' ? el.dataset.mr : el.dataset.en;
+                } else {
+                    el.textContent = lang === 'mr' ? el.dataset.mr : el.dataset.en;
+                }
+            });
+            const btn = document.getElementById('lang-toggle');
+            if (btn) btn.textContent = lang === 'mr' ? 'English' : 'मराठी';
+            localStorage.setItem('nexflow_lang', lang);
+        }
+        window.applyLang = applyLang;
+
+        function t(en, mr) {
+            return (localStorage.getItem('nexflow_lang') || 'en') === 'mr' ? mr : en;
+        }
+
         // ─── INIT ─────────────────────────────────────────────────────────────
         document.addEventListener('DOMContentLoaded', async () => {
+            applyLang(localStorage.getItem('nexflow_lang') || 'en');
             const authed = await checkAuth();
             if (!authed) return;
 
@@ -379,13 +403,13 @@
                 issueBtn.classList.remove('active');
                 document.getElementById('grnFields').style.display   = 'block';
                 document.getElementById('issueFields').style.display = 'none';
-                document.getElementById('submitBtn').textContent = '✅ Submit GRN Entry';
+                document.getElementById('submitBtn').textContent = t('✅ Submit GRN Entry', '✅ GRN नोंद सबमिट करा');
             } else {
                 issueBtn.classList.add('active');
                 receiveBtn.classList.remove('active');
                 document.getElementById('grnFields').style.display   = 'none';
                 document.getElementById('issueFields').style.display = 'block';
-                document.getElementById('submitBtn').textContent = '✅ Submit Issue Entry';
+                document.getElementById('submitBtn').textContent = t('✅ Submit Issue Entry', '✅ जारी नोंद सबमिट करा');
             }
         }
 
@@ -418,12 +442,12 @@
                 await video.play();
 
                 barcodeDetector = new BarcodeDetector({ formats: ['qr_code'] });
-                setScanStatus('Point camera at QR code', 'idle');
+                setScanStatus(t('Point camera at QR code','QR कोडवर कॅमेरा ठेवा'), 'idle');
                 scanLoop = requestAnimationFrame(detectFrame);
 
             } catch (err) {
                 document.getElementById('cameraError').style.display = 'block';
-                setScanStatus('Camera access denied', 'error');
+                setScanStatus(t('Camera access denied','कॅमेरा प्रवेश नाकारला'), 'error');
                 console.error('Camera error:', err);
             }
         }
@@ -448,19 +472,19 @@
         }
 
         async function handleScan(rawValue) {
-            setScanStatus('QR detected — loading...', 'success');
+            setScanStatus(t('QR detected — loading...','QR सापडला — लोड होत आहे...'), 'success');
 
             let payload;
             try {
                 payload = JSON.parse(rawValue);
             } catch {
-                setScanStatus('Invalid QR — not a Nexflow code', 'error');
+                setScanStatus(t('Invalid QR — not a Nexflow code','अवैध QR — Nexflow कोड नाही'), 'error');
                 scanLoop = requestAnimationFrame(detectFrame);
                 return;
             }
 
             if (!payload.id || payload.tid !== tenantId) {
-                setScanStatus('QR does not belong to this account', 'error');
+                setScanStatus(t('QR does not belong to this account','हा QR या खात्याचा नाही'), 'error');
                 scanLoop = requestAnimationFrame(detectFrame);
                 return;
             }
@@ -472,7 +496,7 @@
                 .eq('tenant_id', tenantId);
 
             if (txErr) {
-                setScanStatus('Error loading stock: ' + txErr.message, 'error');
+                setScanStatus(t('Error loading stock: ','साठा लोड करताना त्रुटी: ') + txErr.message, 'error');
                 scanLoop = requestAnimationFrame(detectFrame);
                 return;
             }
@@ -502,7 +526,7 @@
             document.getElementById('entryRate').value    = '';
             document.getElementById('entryInvoice').value = '';
             document.getElementById('entryRef').value     = '';
-            setScanStatus('Point camera at QR code', 'idle');
+            setScanStatus(t('Point camera at QR code','QR कोडवर कॅमेरा ठेवा'), 'idle');
             if (scanLoop) cancelAnimationFrame(scanLoop);
             scanLoop = requestAnimationFrame(detectFrame);
         }
@@ -510,7 +534,7 @@
         function showToast(msg) {
             setScanStatus(msg, 'success');
             setTimeout(() => {
-                setScanStatus('Point camera at QR code', 'idle');
+                setScanStatus(t('Point camera at QR code','QR कोडवर कॅमेरा ठेवा'), 'idle');
             }, 2500);
         }
 
@@ -535,7 +559,7 @@
             suppliers = data || [];
 
             const select = document.getElementById('entrySupplier');
-            select.innerHTML = '<option value="">Select Supplier</option>';
+            select.innerHTML = `<option value="">${t('Select Supplier','पुरवठादार निवडा')}</option>`;
             suppliers.forEach(s => {
                 const opt = document.createElement('option');
                 opt.value = s.id;
@@ -552,17 +576,17 @@
             const date = document.getElementById('entryDate').value;
 
             if (!qty || qty <= 0) {
-                toast('Please enter a valid quantity greater than 0.', 'error');
+                toast(t('Please enter a valid quantity greater than 0.','कृपया 0 पेक्षा जास्त वैध परिमाण टाका.'), 'error');
                 return;
             }
             if (!date) {
-                toast('Please select a date.', 'error');
+                toast(t('Please select a date.','कृपया तारीख निवडा.'), 'error');
                 return;
             }
 
             const btn = document.getElementById('submitBtn');
             btn.disabled = true;
-            btn.textContent = 'Saving...';
+            btn.textContent = t('Saving...','जतन होत आहे...');
 
             try {
                 if (currentMode === 'receive') {
@@ -590,7 +614,7 @@
                     if (error) throw error;
 
                     addSessionEntry('GRN', scannedMaterial.name, qty, scannedMaterial.unit, supplierName);
-                    showToast(`✅ GRN saved: ${qty} ${scannedMaterial.unit} of ${scannedMaterial.name}`);
+                    showToast(`✅ ${t('GRN saved:','GRN जतन झाले:')} ${qty} ${scannedMaterial.unit} ${t('of','चे')} ${scannedMaterial.name}`);
 
                 } else {
                     const { data: txData } = await window.supabase
@@ -602,9 +626,9 @@
                     const currentStockQty = txData ? txData.reduce((sum, t) => sum + Number(t.quantity), 0) : 0;
 
                     if (qty > currentStockQty) {
-                        toast(`Insufficient stock. Available: ${formatNumber(currentStockQty)} ${scannedMaterial.unit}, Requested: ${formatNumber(qty)} ${scannedMaterial.unit}`, 'error');
+                        toast(`${t('Insufficient stock.','अपुरा साठा.')} ${t('Available:','उपलब्ध:')} ${formatNumber(currentStockQty)} ${scannedMaterial.unit}, ${t('Requested:','मागितले:')} ${formatNumber(qty)} ${scannedMaterial.unit}`, 'error');
                         btn.disabled = false;
-                        btn.textContent = '✅ Submit Issue Entry';
+                        btn.textContent = t('✅ Submit Issue Entry','✅ जारी नोंद सबमिट करा');
                         return;
                     }
 
@@ -624,17 +648,17 @@
                     if (error) throw error;
 
                     addSessionEntry('Issue', scannedMaterial.name, qty, scannedMaterial.unit, ref || '—');
-                    showToast(`✅ Stock issued: ${qty} ${scannedMaterial.unit} of ${scannedMaterial.name}`);
+                    showToast(`✅ ${t('Stock issued:','साठा जारी:')} ${qty} ${scannedMaterial.unit} ${t('of','चे')} ${scannedMaterial.name}`);
                 }
 
                 cancelScan();
 
             } catch (err) {
                 console.error('Submit error:', err);
-                toast('Error saving entry: ' + err.message, 'error');
+                toast(t('Error saving entry: ','नोंद जतन करताना त्रुटी: ') + err.message, 'error');
             } finally {
                 btn.disabled = false;
-                btn.textContent = currentMode === 'receive' ? '✅ Submit GRN Entry' : '✅ Submit Issue Entry';
+                btn.textContent = currentMode === 'receive' ? t('✅ Submit GRN Entry','✅ GRN नोंद सबमिट करा') : t('✅ Submit Issue Entry','✅ जारी नोंद सबमिट करा');
             }
         }
 
@@ -647,7 +671,7 @@
         function renderRecentEntries() {
             const container = document.getElementById('recentEntries');
             if (sessionEntries.length === 0) {
-                container.innerHTML = '<div class="nx-text-mid" style="font-size:12px; text-align:center; padding:20px 0;">No entries yet this session</div>';
+                container.innerHTML = `<div class="nx-text-mid" style="font-size:12px; text-align:center; padding:20px 0;">${t('No entries yet this session','या सत्रात अद्याप नोंदी नाहीत')}</div>`;
                 return;
             }
 

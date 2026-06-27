@@ -133,15 +133,18 @@
             <!-- PAGE HEADER -->
             <div class="nx-page-header">
                 <div>
-                    <div class="nx-eyebrow">Dispatch</div>
-                    <div class="nx-page-title">Product Dispatch <span>History</span></div>
-                    <div class="nx-page-sub" id="pageSub">All confirmed and draft product dispatches</div>
+                    <div class="nx-eyebrow" data-en="Dispatch" data-mr="डिस्पॅच">Dispatch</div>
+                    <div class="nx-page-title">
+                        <span data-en="Product Dispatch " data-mr="उत्पादन डिस्पॅच ">Product Dispatch </span>
+                        <span data-en="History" data-mr="इतिहास">History</span>
+                    </div>
+                    <div class="nx-page-sub" id="pageSub" data-en="All confirmed and draft product dispatches" data-mr="सर्व निश्चित आणि ड्राफ्ट उत्पादन डिस्पॅच">All confirmed and draft product dispatches</div>
                 </div>
                 <div style="display:flex; gap:10px;" class="dh-no-print">
-                    <a href="dispatch.html" class="nx-btn nx-btn-ghost">← Back to Dispatch</a>
-                    <a href="rm-dispatch-history.html" class="nx-btn nx-btn-secondary">📦 RM History</a>
-                    <button id="exportCsvBtn" class="nx-btn nx-btn-secondary">↓ Export CSV</button>
-                    <button id="printBtn" class="nx-btn nx-btn-secondary" onclick="window.print()">⎙ Print</button>
+                    <a href="dispatch.html" class="nx-btn nx-btn-ghost" data-en="← Back to Dispatch" data-mr="← डिस्पॅचवर परत">← Back to Dispatch</a>
+                    <a href="rm-dispatch-history.html" class="nx-btn nx-btn-secondary" data-en="📦 RM History" data-mr="📦 RM इतिहास">📦 RM History</a>
+                    <button id="exportCsvBtn" class="nx-btn nx-btn-secondary" data-en="↓ Export CSV" data-mr="↓ CSV निर्यात">↓ Export CSV</button>
+                    <button id="printBtn" class="nx-btn nx-btn-secondary" onclick="window.print()" data-en="⎙ Print" data-mr="⎙ प्रिंट">⎙ Print</button>
                 </div>
             </div>
 
@@ -152,7 +155,7 @@
             <div id="loadingSpinner">
                 <div class="nx-logo-loader">
                     <div class="nx-logo-loader-mark"></div>
-                    <div class="nx-logo-loader-text">Loading...</div>
+                    <div class="nx-logo-loader-text" data-en="Loading..." data-mr="लोड होत आहे...">Loading...</div>
                 </div>
             </div>
 
@@ -160,8 +163,8 @@
             <div id="errorState" style="display:none;" class="nx-alert nx-alert-red nx-mb-24">
                 <span class="nx-alert-icon">⚠</span>
                 <div>
-                    <div class="nx-bold">Could not load dispatch history</div>
-                    <div>Check your connection and refresh the page.</div>
+                    <div class="nx-bold" data-en="Could not load dispatch history" data-mr="डिस्पॅच इतिहास लोड करू शकला नाही">Could not load dispatch history</div>
+                    <div data-en="Check your connection and refresh the page." data-mr="तुमचे कनेक्शन तपासा आणि पृष्ठ रीफ्रेश करा.">Check your connection and refresh the page.</div>
                 </div>
             </div>
 
@@ -171,27 +174,27 @@
                 <!-- FILTERS -->
                 <div class="dh-filters dh-no-print">
                     <div class="nx-form-group">
-                        <label>From</label>
+                        <label data-en="From" data-mr="पासून">From</label>
                         <input type="date" id="filterFrom" class="nx-input">
                     </div>
                     <div class="nx-form-group">
-                        <label>To</label>
+                        <label data-en="To" data-mr="पर्यंत">To</label>
                         <input type="date" id="filterTo" class="nx-input">
                     </div>
                     <div class="nx-form-group">
-                        <label>Status</label>
+                        <label data-en="Status" data-mr="स्थिती">Status</label>
                         <select id="filterStatus" class="nx-input" style="height:38px; font-size:13px;">
-                            <option value="">All</option>
-                            <option value="confirmed">Confirmed</option>
-                            <option value="draft">Draft</option>
+                            <option value="" data-en="All" data-mr="सर्व">All</option>
+                            <option value="confirmed" data-en="Confirmed" data-mr="निश्चित">Confirmed</option>
+                            <option value="draft" data-en="Draft" data-mr="ड्राफ्ट">Draft</option>
                         </select>
                     </div>
                     <div class="nx-form-group dh-filter-search">
-                        <label>Client Search</label>
-                        <input type="text" id="filterClient" class="nx-input" placeholder="Search client name...">
+                        <label data-en="Client Search" data-mr="क्लायंट शोध">Client Search</label>
+                        <input type="text" id="filterClient" class="nx-input" data-en="Search client name..." data-mr="क्लायंटचे नाव शोधा..." placeholder="Search client name...">
                     </div>
-                    <button id="applyFiltersBtn" class="nx-btn nx-btn-primary" style="height:38px; white-space:nowrap;">Apply</button>
-                    <button id="resetFiltersBtn" class="nx-btn nx-btn-ghost" style="height:38px; white-space:nowrap;">Reset</button>
+                    <button id="applyFiltersBtn" class="nx-btn nx-btn-primary" style="height:38px; white-space:nowrap;" data-en="Apply" data-mr="लागू करा">Apply</button>
+                    <button id="resetFiltersBtn" class="nx-btn nx-btn-ghost" style="height:38px; white-space:nowrap;" data-en="Reset" data-mr="रीसेट">Reset</button>
                 </div>
 
                 <!-- SUMMARY -->
@@ -203,13 +206,13 @@
                         <table class="nx-table" id="historyTable">
                             <thead>
                                 <tr>
-                                    <th>Challan No</th>
-                                    <th>Date</th>
-                                    <th>Client</th>
-                                    <th>PO / Ref</th>
-                                    <th>Products</th>
-                                    <th>Status</th>
-                                    <th class="dh-no-print" style="text-align:center;">Actions</th>
+                                    <th data-en="Challan No" data-mr="चालन क्र.">Challan No</th>
+                                    <th data-en="Date" data-mr="तारीख">Date</th>
+                                    <th data-en="Client" data-mr="क्लायंट">Client</th>
+                                    <th data-en="PO / Ref" data-mr="PO / संदर्भ">PO / Ref</th>
+                                    <th data-en="Products" data-mr="उत्पादने">Products</th>
+                                    <th data-en="Status" data-mr="स्थिती">Status</th>
+                                    <th class="dh-no-print" style="text-align:center;" data-en="Actions" data-mr="क्रिया">Actions</th>
                                 </tr>
                             </thead>
                             <tbody id="historyBody"></tbody>
@@ -218,7 +221,7 @@
 
                     <div id="emptyState" style="display:none;" class="nx-empty-state">
                         <div class="nx-empty-icon">📋</div>
-                        <div>No dispatches found for the selected filters.</div>
+                        <div data-en="No dispatches found for the selected filters." data-mr="निवडलेल्या फिल्टरसाठी कोणतेही डिस्पॅच आढळले नाहीत.">No dispatches found for the selected filters.</div>
                     </div>
                 </div>
 
@@ -233,14 +236,14 @@
             <div class="nx-modal-title" id="detailModalTitle" style="color:var(--orange);">Dispatch Detail</div>
             <div id="detailModalMeta" style="font-size:13px; color:var(--mid); margin-bottom:16px; line-height:1.7;"></div>
 
-            <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--mid); margin-bottom:8px;">Products Dispatched</div>
+            <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--mid); margin-bottom:8px;" data-en="Products Dispatched" data-mr="डिस्पॅच केलेली उत्पादने">Products Dispatched</div>
             <div class="nx-table-wrap" style="max-height:260px; overflow-y:auto; margin-bottom:16px;">
                 <table class="nx-table" style="font-size:13px;">
                     <thead>
                         <tr>
-                            <th>Product</th>
-                            <th style="text-align:right;">Qty</th>
-                            <th>Unit</th>
+                            <th data-en="Product" data-mr="उत्पादन">Product</th>
+                            <th style="text-align:right;" data-en="Qty" data-mr="परिमाण">Qty</th>
+                            <th data-en="Unit" data-mr="एकक">Unit</th>
                         </tr>
                     </thead>
                     <tbody id="detailModalBody"></tbody>
@@ -248,8 +251,8 @@
             </div>
 
             <div style="display:flex; gap:10px;">
-                <button id="detailPrintBtn" class="nx-btn nx-btn-green" style="flex:1;">View Challan</button>
-                <button id="detailCloseBtn" class="nx-btn nx-btn-ghost" style="flex:1;">Close</button>
+                <button id="detailPrintBtn" class="nx-btn nx-btn-green" style="flex:1;" data-en="View Challan" data-mr="चालन पहा">View Challan</button>
+                <button id="detailCloseBtn" class="nx-btn nx-btn-ghost" style="flex:1;" data-en="Close" data-mr="बंद करा">Close</button>
             </div>
         </div>
     </div>
@@ -260,9 +263,29 @@
         let allOrders   = [];   // raw from DB — includes .items[] array
         let filtered    = [];   // currently displayed after filters applied
 
+        // ── LANGUAGE ──────────────────────────────────────────────
+        function applyLang(lang) {
+            document.querySelectorAll('[data-en]').forEach(el => {
+                if (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA') {
+                    el.placeholder = lang === 'mr' ? el.dataset.mr : el.dataset.en;
+                } else {
+                    el.textContent = lang === 'mr' ? el.dataset.mr : el.dataset.en;
+                }
+            });
+            const btn = document.getElementById('lang-toggle');
+            if (btn) btn.textContent = lang === 'mr' ? 'English' : 'मराठी';
+            localStorage.setItem('nexflow_lang', lang);
+        }
+        window.applyLang = applyLang;
+
+        function t(en, mr) {
+            return (localStorage.getItem('nexflow_lang') || 'en') === 'mr' ? mr : en;
+        }
+
         // ── INIT ──────────────────────────────────────────────────────
         document.addEventListener('DOMContentLoaded', async () => {
             try {
+                applyLang(localStorage.getItem('nexflow_lang') || 'en');
                 const authed = await checkAuth();
                 if (!authed) return;
 
@@ -386,9 +409,12 @@
             // Summary bar
             const confirmed = filtered.filter(o => o.status === 'confirmed').length;
             const drafts    = filtered.filter(o => o.status === 'draft').length;
+            const dispatchWord = filtered.length === 1
+                ? t('dispatch', 'डिस्पॅच')
+                : t('dispatches', 'डिस्पॅच');
             document.getElementById('summaryBar').innerHTML =
-                `Showing <strong>${filtered.length}</strong> dispatch${filtered.length !== 1 ? 'es' : ''} · ` +
-                `<strong>${confirmed}</strong> confirmed · <strong>${drafts}</strong> draft`;
+                `${t('Showing', 'दाखवत आहे')} <strong>${filtered.length}</strong> ${dispatchWord} · ` +
+                `<strong>${confirmed}</strong> ${t('confirmed', 'निश्चित')} · <strong>${drafts}</strong> ${t('draft', 'ड्राफ्ट')}`;
 
             if (filtered.length === 0) {
                 empty.style.display = 'block';
@@ -416,7 +442,7 @@
                     <td><div class="dh-products">${productPills}</div></td>
                     <td>
                         <span class="nx-badge ${isDraft ? 'nx-badge-yellow' : 'nx-badge-green'}">
-                            ${isDraft ? 'Draft' : 'Confirmed'}
+                            ${isDraft ? t('Draft','ड्राफ्ट') : t('Confirmed','निश्चित')}
                         </span>
                     </td>
                     <td style="text-align:center;" class="dh-no-print">
@@ -425,14 +451,14 @@
                                 class="nx-btn nx-btn-ghost nx-btn-sm detail-btn"
                                 data-order-id="${order.id}"
                                 title="View detail">
-                                Detail
+                                ${t('Detail','तपशील')}
                             </button>
                             ${!isDraft ? `
                             <button
                                 onclick="window.open('/challan.html?id=${order.id}','_blank')"
                                 class="nx-btn nx-btn-ghost nx-btn-sm"
                                 title="Print challan">
-                                Challan
+                                ${t('Challan','चालन')}
                             </button>` : ''}
                         </div>
                     </td>
@@ -449,7 +475,7 @@
                 html += `<span class="dh-product-pill">${escapeHtml(item.product_name)} · ${item.qty} ${item.unit}</span>`;
             });
             if (items.length > MAX_SHOW) {
-                html += `<span class="dh-product-pill" style="color:var(--mid);">+${items.length - MAX_SHOW} more</span>`;
+                html += `<span class="dh-product-pill" style="color:var(--mid);">+${items.length - MAX_SHOW} ${t('more','अधिक')}</span>`;
             }
             return html;
         }
@@ -468,24 +494,24 @@
             const cleanChallan = rawChallan.replace(/^CHAL-\d{8}-/, '');
 
             document.getElementById('detailModalTitle').textContent =
-                `Challan ${cleanChallan}`;
+                `${t('Challan','चालन')} ${cleanChallan}`;
 
             const isRM = order.dispatch_type === 'raw_material';
             document.getElementById('detailModalMeta').innerHTML = `
                 <span style="color:var(--white); font-weight:700;">${escapeHtml(order.client_name)}</span><br>
                 ${order.client_address ? escapeHtml(order.client_address) + '<br>' : ''}
-                Date: ${dateStr} &nbsp;·&nbsp;
-                Status: <span class="nx-badge ${isDraft ? 'nx-badge-yellow' : 'nx-badge-green'}" style="font-size:11px;">${isDraft ? 'Draft' : 'Confirmed'}</span>
-                &nbsp;·&nbsp;<span style="font-size:11px; color:var(--mid);">${isRM ? '📦 Raw Material Dispatch' : '🏭 Product Dispatch'}</span>
-                ${order.po_number        ? '<br>PO: '      + escapeHtml(order.po_number)        : ''}
-                ${order.your_challan_ref ? '<br>Ref: '     + escapeHtml(order.your_challan_ref) : ''}
-                ${order.vehicle_number   ? '<br>Vehicle: ' + escapeHtml(order.vehicle_number)   : ''}
+                ${t('Date','तारीख')}: ${dateStr} &nbsp;·&nbsp;
+                ${t('Status','स्थिती')}: <span class="nx-badge ${isDraft ? 'nx-badge-yellow' : 'nx-badge-green'}" style="font-size:11px;">${isDraft ? t('Draft','ड्राफ्ट') : t('Confirmed','निश्चित')}</span>
+                &nbsp;·&nbsp;<span style="font-size:11px; color:var(--mid);">${isRM ? '📦 ' + t('Raw Material Dispatch','कच्चा माल डिस्पॅच') : '🏭 ' + t('Product Dispatch','उत्पादन डिस्पॅच')}</span>
+                ${order.po_number        ? '<br>' + t('PO','PO') + ': '      + escapeHtml(order.po_number)        : ''}
+                ${order.your_challan_ref ? '<br>' + t('Ref','संदर्भ') + ': '     + escapeHtml(order.your_challan_ref) : ''}
+                ${order.vehicle_number   ? '<br>' + t('Vehicle','वाहन') + ': ' + escapeHtml(order.vehicle_number)   : ''}
             `;
 
             const tbody = document.getElementById('detailModalBody');
             tbody.innerHTML = '';
             if (order.items.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; color:var(--mid); padding:16px;">No items recorded.</td></tr>';
+                tbody.innerHTML = `<tr><td colspan="3" style="text-align:center; color:var(--mid); padding:16px;">${t('No items recorded.','कोणतीही नोंद आढळली नाही.')}</td></tr>`;
             } else {
                 order.items.forEach(item => {
                     const tr = document.createElement('tr');
@@ -503,7 +529,7 @@
             if (isDraft) {
                 printBtn.disabled = true;
                 printBtn.style.opacity = '0.4';
-                printBtn.title = 'Challan only available after confirming dispatch';
+                printBtn.title = t('Challan only available after confirming dispatch','चालन फक्त डिस्पॅच निश्चित केल्यानंतरच उपलब्ध आहे');
             } else {
                 printBtn.disabled = false;
                 printBtn.style.opacity = '1';
@@ -542,7 +568,7 @@
 
             const btn = document.getElementById('exportCsvBtn');
             btn.disabled    = true;
-            btn.textContent = 'Exporting...';
+            btn.textContent = t('Exporting...','निर्यात होत आहे...');
 
             try {
                 const headers = ['Challan No', 'Date', 'Client Name', 'Client Address', 'PO Number', 'Challan Ref', 'Vehicle', 'Status', 'Product', 'Qty', 'Unit'];
@@ -623,7 +649,7 @@
                 toast('Export failed. Please try again.', 'error');
             } finally {
                 btn.disabled    = false;
-                btn.textContent = '↓ Export CSV';
+                btn.textContent = t('↓ Export CSV','↓ CSV निर्यात');
             }
         }
 
@@ -697,4 +723,5 @@
     </script>
 </body>
 </html>
+
 

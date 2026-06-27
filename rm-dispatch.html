@@ -72,18 +72,21 @@
             <!-- PAGE HEADER -->
             <div class="nx-page-header">
                 <div>
-                    <div class="nx-eyebrow">Stock Out</div>
-                    <div class="nx-page-title">Raw Material <span>Dispatch</span></div>
-                    <div class="nx-page-sub">Dispatch raw materials directly — no BOM lookup</div>
+                    <div class="nx-eyebrow" data-en="Stock Out" data-mr="साठा बाहेर">Stock Out</div>
+                    <div class="nx-page-title">
+                        <span data-en="Raw Material " data-mr="कच्चा माल ">Raw Material </span>
+                        <span data-en="Dispatch" data-mr="डिस्पॅच">Dispatch</span>
+                    </div>
+                    <div class="nx-page-sub" data-en="Dispatch raw materials directly — no BOM lookup" data-mr="कच्चा माल थेट डिस्पॅच करा — BOM लागत नाही">Dispatch raw materials directly — no BOM lookup</div>
                 </div>
-                <a href="dispatch.html" class="nx-btn nx-btn-ghost">← Product Dispatch</a>
+                <a href="dispatch.html" class="nx-btn nx-btn-ghost" data-en="← Product Dispatch" data-mr="← उत्पादन डिस्पॅच">← Product Dispatch</a>
             </div>
 
             <!-- LOADING -->
             <div id="loadingSpinner">
                 <div class="nx-logo-loader">
                     <div class="nx-logo-loader-mark"></div>
-                    <div class="nx-logo-loader-text">Loading...</div>
+                    <div class="nx-logo-loader-text" data-en="Loading..." data-mr="लोड होत आहे...">Loading...</div>
                 </div>
             </div>
 
@@ -91,8 +94,8 @@
             <div id="errorState" class="nx-alert nx-alert-red nx-mb-24">
                 <span class="nx-alert-icon">⚠</span>
                 <div>
-                    <div class="nx-bold">Could not load data</div>
-                    <div>Check your connection and refresh the page.</div>
+                    <div class="nx-bold" data-en="Could not load data" data-mr="डेटा लोड करू शकला नाही">Could not load data</div>
+                    <div data-en="Check your connection and refresh the page." data-mr="तुमचे कनेक्शन तपासा आणि पृष्ठ रीफ्रेश करा.">Check your connection and refresh the page.</div>
                 </div>
             </div>
 
@@ -101,7 +104,7 @@
                 <span class="nx-alert-icon">✅</span>
                 <div>
                     <div id="successText" class="nx-bold"></div>
-                    <button id="printChallanBtn" class="nx-btn nx-btn-ghost nx-btn-sm nx-mt-8">Print Challan</button>
+                    <button id="printChallanBtn" class="nx-btn nx-btn-ghost nx-btn-sm nx-mt-8" data-en="Print Challan" data-mr="चालन प्रिंट करा">Print Challan</button>
                 </div>
             </div>
 
@@ -118,66 +121,69 @@
                     <!-- LEFT: Client Info -->
                     <div class="nx-card">
                         <div class="nx-card-header">
-                            <div class="nx-card-title">Client Information</div>
+                            <div class="nx-card-title" data-en="Client Information" data-mr="क्लायंट माहिती">Client Information</div>
                         </div>
 
                         <div class="nx-form-group">
-                            <label>Client Name</label>
+                            <label data-en="Client Name" data-mr="क्लायंटचे नाव">Client Name</label>
                             <input type="text" id="clientName" class="nx-input" list="clientNameSuggestions"
+                                   data-en="Enter client name" data-mr="क्लायंटचे नाव टाका"
                                    placeholder="Enter client name" required autocomplete="off">
                             <datalist id="clientNameSuggestions"></datalist>
                         </div>
 
                         <div class="nx-form-group">
-                            <label>Client Address</label>
+                            <label data-en="Client Address" data-mr="क्लायंटचा पत्ता">Client Address</label>
                             <textarea id="clientAddress" rows="3" class="nx-input"
+                                      data-en="Enter client address" data-mr="क्लायंटचा पत्ता टाका"
                                       placeholder="Enter client address" style="resize:vertical;"></textarea>
                         </div>
 
                         <div class="nx-form-row">
                             <div class="nx-form-group">
-                                <label>PO Number</label>
-                                <input type="text" id="poNumber" class="nx-input" placeholder="Optional">
+                                <label data-en="PO Number" data-mr="PO क्रमांक">PO Number</label>
+                                <input type="text" id="poNumber" class="nx-input" data-en="Optional" data-mr="पर्यायी" placeholder="Optional">
                             </div>
                             <div class="nx-form-group">
-                                <label>Your Challan Ref</label>
-                                <input type="text" id="challanRef" class="nx-input" placeholder="Optional">
+                                <label data-en="Your Challan Ref" data-mr="तुमचा चालन संदर्भ">Your Challan Ref</label>
+                                <input type="text" id="challanRef" class="nx-input" data-en="Optional" data-mr="पर्यायी" placeholder="Optional">
                             </div>
                         </div>
 
                         <div class="nx-form-group">
-                            <label>Vehicle Number</label>
-                            <input type="text" id="vehicleNumber" class="nx-input" placeholder="Optional">
+                            <label data-en="Vehicle Number" data-mr="वाहन क्रमांक">Vehicle Number</label>
+                            <input type="text" id="vehicleNumber" class="nx-input" data-en="Optional" data-mr="पर्यायी" placeholder="Optional">
                         </div>
                     </div>
 
                     <!-- RIGHT: Materials -->
                     <div class="nx-card">
                         <div class="nx-card-header">
-                            <div class="nx-card-title">Materials to Dispatch</div>
+                            <div class="nx-card-title" data-en="Materials to Dispatch" data-mr="डिस्पॅच करायचे साहित्य">Materials to Dispatch</div>
                         </div>
 
                         <!-- Add material row -->
                         <div class="rm-add-row">
                             <div class="nx-form-group" style="margin:0;">
-                                <label>Select Material</label>
+                                <label data-en="Select Material" data-mr="साहित्य निवडा">Select Material</label>
                                 <select id="materialSelect" class="nx-input">
-                                    <option value="">Choose a material</option>
+                                    <option value="" data-en="Choose a material" data-mr="साहित्य निवडा">Choose a material</option>
                                 </select>
                             </div>
                             <div class="nx-form-group" style="margin:0;">
-                                <label>Qty</label>
+                                <label data-en="Qty" data-mr="परिमाण">Qty</label>
                                 <input type="number" id="materialQty" min="0.001" step="any"
-                                       class="nx-input" placeholder="Qty">
+                                       class="nx-input" data-en="Qty" data-mr="परिमाण" placeholder="Qty">
                             </div>
                             <div class="nx-form-group rm-unit-cell" style="margin:0;">
-                                <label>Unit</label>
+                                <label data-en="Unit" data-mr="एकक">Unit</label>
                                 <input type="text" id="materialUnit" class="nx-input" readonly
                                        placeholder="—" style="background:var(--surface2,rgba(255,255,255,0.04));">
                             </div>
                             <div class="rm-btn-cell" style="padding-bottom:1px;">
                                 <button type="button" id="addMaterialBtn"
-                                        class="nx-btn nx-btn-primary" style="white-space:nowrap;">
+                                        class="nx-btn nx-btn-primary" style="white-space:nowrap;"
+                                        data-en="+ Add" data-mr="+ जोडा">
                                     + Add
                                 </button>
                             </div>
@@ -189,7 +195,8 @@
                         <!-- Mobile add button -->
                         <button type="button" id="addMaterialBtnMobile"
                                 class="nx-btn nx-btn-ghost nx-btn-full"
-                                style="display:none; margin-bottom:14px;">
+                                style="display:none; margin-bottom:14px;"
+                                data-en="+ Add Material" data-mr="+ साहित्य जोडा">
                             + Add Material
                         </button>
 
@@ -199,9 +206,9 @@
                                 <table class="nx-table">
                                     <thead>
                                         <tr>
-                                            <th>Material</th>
-                                            <th style="text-align:right;">Qty</th>
-                                            <th style="text-align:center;">Del</th>
+                                            <th data-en="Material" data-mr="साहित्य">Material</th>
+                                            <th style="text-align:right;" data-en="Qty" data-mr="परिमाण">Qty</th>
+                                            <th style="text-align:center;" data-en="Del" data-mr="काढा">Del</th>
                                         </tr>
                                     </thead>
                                     <tbody id="rmTableBody"></tbody>
@@ -212,11 +219,13 @@
                         <!-- Action buttons -->
                         <div style="display:flex; gap:10px; margin-top:20px;">
                             <button type="button" id="saveDraftBtn"
-                                    class="nx-btn nx-btn-secondary" style="flex:1;">
+                                    class="nx-btn nx-btn-secondary" style="flex:1;"
+                                    data-en="Save Draft" data-mr="ड्राफ्ट जतन करा">
                                 Save Draft
                             </button>
                             <button type="button" id="confirmDispatchBtn"
-                                    class="nx-btn nx-btn-green" style="flex:1;">
+                                    class="nx-btn nx-btn-green" style="flex:1;"
+                                    data-en="Confirm Dispatch" data-mr="डिस्पॅच निश्चित करा">
                                 Confirm Dispatch
                             </button>
                         </div>
@@ -228,7 +237,7 @@
             <!-- PAST RAW MATERIAL DISPATCHES -->
             <div class="nx-card nx-mt-24">
                 <div class="nx-card-header">
-                    <div class="nx-card-title">Past Raw Material Dispatches</div>
+                    <div class="nx-card-title" data-en="Past Raw Material Dispatches" data-mr="मागील कच्चा माल डिस्पॅच">Past Raw Material Dispatches</div>
                     <a href="rm-dispatch-history.html"
                        title="View full history"
                        style="display:inline-flex; align-items:center; gap:6px;
@@ -243,18 +252,18 @@
                              stroke-linecap="round" stroke-linejoin="round">
                             <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
                         </svg>
-                        Full History
+                        <span data-en="Full History" data-mr="संपूर्ण इतिहास">Full History</span>
                     </a>
                 </div>
                 <div class="nx-table-wrap">
                     <table class="nx-table">
                         <thead>
                             <tr>
-                                <th>Challan No</th>
-                                <th>Date</th>
-                                <th>Client</th>
-                                <th>Status</th>
-                                <th style="text-align:center;">Actions</th>
+                                <th data-en="Challan No" data-mr="चालन क्र.">Challan No</th>
+                                <th data-en="Date" data-mr="तारीख">Date</th>
+                                <th data-en="Client" data-mr="क्लायंट">Client</th>
+                                <th data-en="Status" data-mr="स्थिती">Status</th>
+                                <th style="text-align:center;" data-en="Actions" data-mr="क्रिया">Actions</th>
                             </tr>
                         </thead>
                         <tbody id="pastDispatchesBody"></tbody>
@@ -268,24 +277,25 @@
     <!-- CONFIRM MODAL -->
     <div id="confirmModal" class="nx-modal-overlay" style="display:none;">
         <div class="nx-modal">
-            <div class="nx-modal-title">Confirm Dispatch?</div>
+            <div class="nx-modal-title" data-en="Confirm Dispatch?" data-mr="डिस्पॅच निश्चित करायचे?">Confirm Dispatch?</div>
             <div style="font-size:13px; margin-bottom:20px;">
                 <div style="margin-bottom:10px;">
-                    <span class="nx-bold">Client:</span>
+                    <span class="nx-bold" data-en="Client:" data-mr="क्लायंट:">Client:</span>
                     <span id="confirmClientName" style="margin-left:6px; color:var(--white);"></span>
                 </div>
                 <div style="margin-bottom:10px;">
-                    <span class="nx-bold">Materials:</span>
+                    <span class="nx-bold" data-en="Materials:" data-mr="साहित्य:">Materials:</span>
                     <ul id="confirmItemsList" style="margin-top:6px; padding-left:16px; list-style:disc;"></ul>
                 </div>
                 <div class="nx-alert nx-alert-yellow" style="margin-bottom:0;">
                     <span class="nx-alert-icon">⚠</span>
-                    <span>This will deduct these materials from stock. This cannot be undone.</span>
+                    <span data-en="This will deduct these materials from stock. This cannot be undone."
+                          data-mr="हे साहित्य साठ्यातून कमी केले जाईल. हे पूर्ववत करता येणार नाही.">This will deduct these materials from stock. This cannot be undone.</span>
                 </div>
             </div>
             <div style="display:flex; gap:10px;">
-                <button id="confirmModalConfirm" class="nx-btn nx-btn-green" style="flex:1;">Confirm</button>
-                <button id="confirmModalCancel"  class="nx-btn nx-btn-ghost" style="flex:1;">Cancel</button>
+                <button id="confirmModalConfirm" class="nx-btn nx-btn-green" style="flex:1;" data-en="Confirm" data-mr="निश्चित करा">Confirm</button>
+                <button id="confirmModalCancel"  class="nx-btn nx-btn-ghost" style="flex:1;" data-en="Cancel" data-mr="रद्द करा">Cancel</button>
             </div>
         </div>
     </div>
@@ -297,6 +307,30 @@
         let tenantId = null;
         let clientsMap = {};
 
+        // ── LANGUAGE ──────────────────────────────────────────────
+        // Standard static sweep — same pattern as grn.html/index.html.
+        function applyLang(lang) {
+            document.querySelectorAll('[data-en]').forEach(el => {
+                if (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA') {
+                    el.placeholder = lang === 'mr' ? el.dataset.mr : el.dataset.en;
+                } else {
+                    el.textContent = lang === 'mr' ? el.dataset.mr : el.dataset.en;
+                }
+            });
+            const btn = document.getElementById('lang-toggle');
+            if (btn) btn.textContent = lang === 'mr' ? 'English' : 'मराठी';
+            localStorage.setItem('nexflow_lang', lang);
+        }
+        window.applyLang = applyLang;
+
+        // applyLang() only sweeps elements present at the moment it runs.
+        // Anything built later by JS (table rows, badges, error text) never
+        // gets touched by that sweep. t() picks the right string AT RENDER
+        // TIME based on current language — use it inside render functions.
+        function t(en, mr) {
+            return (localStorage.getItem('nexflow_lang') || 'en') === 'mr' ? mr : en;
+        }
+
         document.addEventListener('DOMContentLoaded', init);
 
         async function init() {
@@ -306,6 +340,7 @@
                 const { data: { user } } = await window.supabase.auth.getUser();
                 tenantId = user.id;
 
+                applyLang(localStorage.getItem('nexflow_lang') || 'en');
                 applyDemoModeToForms();
 
                 await Promise.all([
@@ -338,7 +373,7 @@
 
             materials = data || [];
             const select = document.getElementById('materialSelect');
-            select.innerHTML = '<option value="">Choose a material</option>';
+            select.innerHTML = `<option value="">${t('Choose a material', 'साहित्य निवडा')}</option>`;
 
             materials.forEach(m => {
                 const opt = document.createElement('option');
@@ -414,7 +449,7 @@
             tbody.innerHTML = '';
 
             if (!data || data.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="5" style="padding:20px; text-align:center; color:var(--mid);">No raw material dispatches yet.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="5" style="padding:20px; text-align:center; color:var(--mid);">${t('No raw material dispatches yet.', 'अद्याप कोणताही कच्चा माल डिस्पॅच झालेला नाही.')}</td></tr>`;
                 return;
             }
 
@@ -431,13 +466,13 @@
                     <td class="nx-td-bold">${d.client_name}</td>
                     <td>
                         <span class="nx-badge ${isDraft ? 'nx-badge-yellow' : 'nx-badge-green'}">
-                            ${isDraft ? 'Draft' : 'Confirmed'}
+                            ${isDraft ? t('Draft', 'ड्राफ्ट') : t('Confirmed', 'निश्चित')}
                         </span>
                     </td>
                     <td style="text-align:center;">
                         ${isDraft
-                            ? `<button onclick="loadDraftToForm('${d.id}')" class="nx-btn nx-btn-secondary nx-btn-sm">Resume</button>`
-                            : `<button onclick="window.open('/challan.html?id=${d.id}','_blank')" class="nx-btn nx-btn-ghost nx-btn-sm">Challan</button>`
+                            ? `<button onclick="loadDraftToForm('${d.id}')" class="nx-btn nx-btn-secondary nx-btn-sm">${t('Resume', 'सुरू ठेवा')}</button>`
+                            : `<button onclick="window.open('/challan.html?id=${d.id}','_blank')" class="nx-btn nx-btn-ghost nx-btn-sm">${t('Challan', 'चालन')}</button>`
                         }
                     </td>
                 `;
@@ -499,11 +534,11 @@
             const stockStr = stock % 1 === 0 ? stock : stock.toFixed(3);
 
             if (stock <= 0) {
-                indicator.innerHTML = `<span class="rm-stock-zero">⚠ No stock — ${stockStr} ${m.unit}</span>`;
+                indicator.innerHTML = `<span class="rm-stock-zero">⚠ ${t('No stock', 'साठा नाही')} — ${stockStr} ${m.unit}</span>`;
             } else if (min > 0 && stock <= min) {
-                indicator.innerHTML = `<span class="rm-stock-low">⚠ Low stock — ${stockStr} ${m.unit} (min: ${min})</span>`;
+                indicator.innerHTML = `<span class="rm-stock-low">⚠ ${t('Low stock', 'कमी साठा')} — ${stockStr} ${m.unit} (${t('min', 'किमान')}: ${min})</span>`;
             } else {
-                indicator.innerHTML = `<span class="rm-stock-ok">✓ Available: ${stockStr} ${m.unit}</span>`;
+                indicator.innerHTML = `<span class="rm-stock-ok">✓ ${t('Available', 'उपलब्ध')}: ${stockStr} ${m.unit}</span>`;
             }
         }
 
@@ -512,8 +547,8 @@
             const matId = document.getElementById('materialSelect').value;
             const qty   = parseFloat(document.getElementById('materialQty').value);
 
-            if (!matId) { showError('Please select a material.'); return; }
-            if (!qty || qty <= 0) { showError('Please enter a valid quantity.'); return; }
+            if (!matId) { showError(t('Please select a material.', 'कृपया साहित्य निवडा.')); return; }
+            if (!qty || qty <= 0) { showError(t('Please enter a valid quantity.', 'कृपया वैध परिमाण टाका.')); return; }
 
             const m = materials.find(x => x.raw_material_id === matId);
             if (!m) return;
@@ -565,11 +600,11 @@
         async function saveDraft() {
             clearMessages();
             const clientName = document.getElementById('clientName').value.trim();
-            if (!clientName) { showError('Client name is required.'); return; }
-            if (dispatchItems.length === 0) { showError('Add at least one material.'); return; }
+            if (!clientName) { showError(t('Client name is required.', 'क्लायंटचे नाव आवश्यक आहे.')); return; }
+            if (dispatchItems.length === 0) { showError(t('Add at least one material.', 'किमान एक साहित्य जोडा.')); return; }
 
             const btn = document.getElementById('saveDraftBtn');
-            btn.disabled = true; btn.textContent = 'Saving...';
+            btn.disabled = true; btn.textContent = t('Saving...', 'जतन होत आहे...');
 
             try {
                 const orderData = {
@@ -629,7 +664,7 @@
                 if (itemsErr) throw itemsErr;
 
                 const successBox = document.getElementById('successMessage');
-                document.getElementById('successText').textContent = 'Draft saved.';
+                document.getElementById('successText').textContent = t('Draft saved.', 'ड्राफ्ट जतन झाला.');
                 document.getElementById('printChallanBtn').style.display = 'none';
                 successBox.style.display = 'flex';
                 window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -637,9 +672,9 @@
 
             } catch (err) {
                 console.error('saveDraft error:', err);
-                showError('Could not save draft: ' + (err.message || 'Unknown error'));
+                showError(t('Could not save draft: ', 'ड्राफ्ट जतन करता आला नाही: ') + (err.message || t('Unknown error', 'अज्ञात त्रुटी')));
             } finally {
-                btn.disabled = false; btn.textContent = 'Save Draft';
+                btn.disabled = false; btn.textContent = t('Save Draft', 'ड्राफ्ट जतन करा');
             }
         }
 
@@ -647,8 +682,8 @@
         function openConfirmModal() {
             clearMessages();
             const clientName = document.getElementById('clientName').value.trim();
-            if (!clientName) { showError('Client name is required.'); return; }
-            if (dispatchItems.length === 0) { showError('Add at least one material.'); return; }
+            if (!clientName) { showError(t('Client name is required.', 'क्लायंटचे नाव आवश्यक आहे.')); return; }
+            if (dispatchItems.length === 0) { showError(t('Add at least one material.', 'किमान एक साहित्य जोडा.')); return; }
 
             document.getElementById('confirmClientName').textContent = clientName;
             const list = document.getElementById('confirmItemsList');
@@ -665,7 +700,7 @@
         async function confirmDispatch() {
             document.getElementById('confirmModal').style.display = 'none';
             const btn = document.getElementById('confirmDispatchBtn');
-            btn.disabled = true; btn.textContent = 'Confirming...';
+            btn.disabled = true; btn.textContent = t('Confirming...', 'निश्चित होत आहे...');
 
             try {
                 const clientName    = document.getElementById('clientName').value.trim();
@@ -745,7 +780,7 @@
 
                 const successBox = document.getElementById('successMessage');
                 document.getElementById('successText').textContent =
-                    `Dispatch confirmed — Challan No. ${challanNumber}`;
+                    `${t('Dispatch confirmed — Challan No.', 'डिस्पॅच निश्चित — चालन क्र.')} ${challanNumber}`;
                 const printBtn = document.getElementById('printChallanBtn');
                 printBtn.style.display = 'inline-block';
                 printBtn.onclick = () => window.open(`/challan.html?id=${orderId}`, '_blank');
@@ -762,9 +797,9 @@
 
             } catch (err) {
                 console.error('confirmDispatch error:', err);
-                showError('Dispatch failed: ' + (err.message || 'Unknown error'));
+                showError(t('Dispatch failed: ', 'डिस्पॅच अयशस्वी: ') + (err.message || t('Unknown error', 'अज्ञात त्रुटी')));
             } finally {
-                btn.disabled = false; btn.textContent = 'Confirm Dispatch';
+                btn.disabled = false; btn.textContent = t('Confirm Dispatch', 'डिस्पॅच निश्चित करा');
             }
         }
 
@@ -802,7 +837,7 @@
                 document.getElementById('dispatchForm').scrollIntoView({ behavior: 'smooth' });
             } catch (err) {
                 console.error('loadDraftToForm:', err);
-                showError('Could not restore draft.');
+                showError(t('Could not restore draft.', 'ड्राफ्ट पुनर्संचयित करता आला नाही.'));
             }
         };
 
