@@ -115,25 +115,6 @@
         .nx-status-msg.info    { background: rgba(59,130,246,0.1); border-color: #3b82f6;    color: #60a5fa; }
         .nx-status-msg.warning { background: var(--yellow-dim); border-color: var(--yellow); color: var(--yellow); }
 
-        /* Logo file input */
-        input[type="file"].nx-input {
-            padding: 8px 14px;
-            cursor: pointer;
-        }
-        input[type="file"].nx-input::file-selector-button {
-            background: var(--orange);
-            color: #fff;
-            border: none;
-            padding: 5px 12px;
-            border-radius: var(--radius-sm);
-            font-family: var(--font);
-            font-size: 11px;
-            font-weight: 700;
-            text-transform: uppercase;
-            cursor: pointer;
-            margin-right: 12px;
-        }
-
         /* Preview container for bulk/price tables */
         .nx-scroll-table { max-height: 260px; overflow-y: auto; }
         .nx-scroll-table::-webkit-scrollbar { height: 4px; }
@@ -177,7 +158,6 @@
     <!-- SETTINGS TABS -->
     <div class="nx-stabs">
         <button id="tab-company"    class="nx-stab" data-en="Company Details"  data-mr="कंपनी तपशील">Company Details</button>
-        <button id="tab-logo"       class="nx-stab" data-en="Logo Upload"      data-mr="लोगो अपलोड">Logo Upload</button>
         <button id="tab-challan"    class="nx-stab" data-en="Challan Settings" data-mr="चलान सेटिंग्ज">Challan Settings</button>
         <button id="tab-telegram"   class="nx-stab" data-en="Telegram Alerts"  data-mr="टेलीग्राम अलर्ट">Telegram Alerts</button>
         <button id="tab-staff"      class="nx-stab owner-only" data-en="Staff"  data-mr="कर्मचारी">Staff</button>
@@ -224,34 +204,6 @@
                 </div>
             </form>
             <div id="company-status" class="nx-status-msg"></div>
-        </div>
-    </div>
-
-    <!-- ── LOGO UPLOAD ─────────────────────────────────── -->
-    <div id="content-logo" class="tab-panel">
-        <div class="nx-card" style="max-width:620px;">
-            <div class="nx-card-header">
-                <div class="nx-card-title" data-en="Company Logo" data-mr="कंपनी लोगो">Company Logo</div>
-            </div>
-
-            <div id="logo-preview-container" class="nx-mb-16" style="display:none;">
-                <label data-en="Current Logo" data-mr="सध्याचा लोगो">Current Logo</label>
-                <div style="background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius); padding:16px; text-align:center; margin-top:8px;">
-                    <img id="logo-preview" src="" alt="Company Logo" style="max-height:80px; max-width:100%;">
-                </div>
-            </div>
-
-            <form id="logo-upload-form" class="nx-form">
-                <div class="nx-form-group">
-                    <label data-en="Upload New Logo" data-mr="नवीन लोगो अपलोड करा">Upload New Logo</label>
-                    <input type="file" id="logo-file" accept="image/*" class="nx-input">
-                    <div style="font-size:11px; color:var(--mid); margin-top:6px;" data-en="Recommended: PNG with transparent background, 200x50px" data-mr="शिफारस केलेले: पारदर्शक पार्श्वभूमी असलेले PNG, 200x50px">
-                        Recommended: PNG with transparent background, 200x50px
-                    </div>
-                </div>
-                <button type="submit" class="nx-btn nx-btn-primary nx-btn-full" data-en="Upload Logo" data-mr="लोगो अपलोड करा">Upload Logo</button>
-            </form>
-            <div id="logo-status" class="nx-status-msg"></div>
         </div>
     </div>
 
@@ -611,7 +563,7 @@
             <div class="nx-drop-zone" onclick="document.getElementById('price-file-input').click()">
                 <div class="nx-drop-icon">📊</div>
                 <div class="nx-drop-text" data-en="Click to upload price Excel/CSV" data-mr="किंमत Excel/CSV अपलोड करण्यासाठी क्लिक करा">Click to upload price Excel/CSV</div>
-                <div class="nx-drop-sub">Required: name, price_per_unit, effective_date &nbsp;·&nbsp; Optional: supplier_name, notes</div>
+                <div class="nx-drop-sub" data-en="Required: name, price_per_unit, effective_date · Optional: supplier_name, notes" data-mr="आवश्यक: name, price_per_unit, effective_date · ऐच्छिक: supplier_name, notes">Required: name, price_per_unit, effective_date &nbsp;·&nbsp; Optional: supplier_name, notes</div>
                 <input type="file" id="price-file-input" accept=".xlsx,.xls,.csv" style="display:none;" onchange="handlePriceFile(this)">
             </div>
 
@@ -619,7 +571,7 @@
                 <div class="nx-flex-between nx-mb-16">
                     <span id="price-preview-summary" style="font-size:12px; color:var(--mid);"></span>
                     <div style="display:flex; gap:8px;">
-                        <button onclick="clearPriceImport()" class="nx-btn nx-btn-ghost nx-btn-sm">Clear</button>
+                        <button onclick="clearPriceImport()" class="nx-btn nx-btn-ghost nx-btn-sm" data-en="Clear" data-mr="साफ करा">Clear</button>
                         <button onclick="submitPriceImport()" id="price-import-btn" class="nx-btn nx-btn-green nx-btn-sm" data-en="Import Prices" data-mr="किंमती आयात करा">Import Prices</button>
                     </div>
                 </div>
@@ -627,11 +579,11 @@
                     <table class="nx-table" style="font-size:12px;">
                         <thead>
                             <tr>
-                                <th>Material</th>
-                                <th style="text-align:right;">Price/Unit (₹)</th>
-                                <th>Effective Date</th>
-                                <th>Supplier</th>
-                                <th>Status</th>
+                                <th data-en="Material"       data-mr="साहित्य">Material</th>
+                                <th style="text-align:right;" data-en="Price/Unit (₹)" data-mr="किंमत/एकक (₹)">Price/Unit (₹)</th>
+                                <th data-en="Effective Date" data-mr="लागू तारीख">Effective Date</th>
+                                <th data-en="Supplier"       data-mr="पुरवठादार">Supplier</th>
+                                <th data-en="Status"         data-mr="स्थिती">Status</th>
                             </tr>
                         </thead>
                         <tbody id="price-preview-body"></tbody>
@@ -642,23 +594,23 @@
 
             <!-- Single Price Update -->
             <div style="background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-top:16px;">
-                <div class="nx-section-head">Update Single Material Price</div>
+                <div class="nx-section-head" data-en="Update Single Material Price" data-mr="एकल साहित्य किंमत अपडेट करा">Update Single Material Price</div>
                 <div class="nx-price-row">
                     <div class="nx-form-group" style="margin:0;">
-                        <label>Material</label>
+                        <label data-en="Material" data-mr="साहित्य">Material</label>
                         <select id="single-price-material" class="nx-input"></select>
                     </div>
                     <div class="nx-form-group" style="margin:0;">
-                        <label>Price/Unit (₹)</label>
-                        <input type="number" id="single-price-value" min="0" step="0.01" class="nx-input" placeholder="0.00">
+                        <label data-en="Price/Unit (₹)" data-mr="किंमत/एकक (₹)">Price/Unit (₹)</label>
+                        <input type="number" id="single-price-value" min="0" step="0.01" class="nx-input" placeholder="0.00" data-en="0.00" data-mr="0.00">
                     </div>
                     <div class="nx-form-group" style="margin:0;">
-                        <label>Effective Date</label>
+                        <label data-en="Effective Date" data-mr="लागू तारीख">Effective Date</label>
                         <input type="date" id="single-price-date" class="nx-input">
                     </div>
                     <div class="nx-form-group" style="margin:0;">
-                        <label>Supplier (optional)</label>
-                        <input type="text" id="single-price-supplier" class="nx-input" placeholder="Supplier name">
+                        <label data-en="Supplier (optional)" data-mr="पुरवठादार (ऐच्छिक)">Supplier (optional)</label>
+                        <input type="text" id="single-price-supplier" class="nx-input" placeholder="Supplier name" data-en="Supplier name" data-mr="पुरवठादाराचे नाव">
                     </div>
                 </div>
                 <button onclick="submitSinglePrice()" class="nx-btn nx-btn-primary" data-en="Save Price" data-mr="किंमत सेव्ह करा">Save Price</button>
@@ -673,23 +625,23 @@
             </div>
 
             <div style="background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px;">
-                <div class="nx-section-head">Set / Update Selling Price</div>
+                <div class="nx-section-head" data-en="Set / Update Selling Price" data-mr="विक्री किंमत सेट / अपडेट करा">Set / Update Selling Price</div>
                 <div class="nx-price-row">
                     <div class="nx-form-group" style="margin:0;">
-                        <label>Product</label>
+                        <label data-en="Product" data-mr="उत्पादन">Product</label>
                         <select id="product-price-product" class="nx-input"></select>
                     </div>
                     <div class="nx-form-group" style="margin:0;">
-                        <label>Selling Price (₹)</label>
-                        <input type="number" id="product-price-value" min="0" step="0.01" class="nx-input" placeholder="0.00">
+                        <label data-en="Selling Price (₹)" data-mr="विक्री किंमत (₹)">Selling Price (₹)</label>
+                        <input type="number" id="product-price-value" min="0" step="0.01" class="nx-input" placeholder="0.00" data-en="0.00" data-mr="0.00">
                     </div>
                     <div class="nx-form-group" style="margin:0;">
-                        <label>Effective Date</label>
+                        <label data-en="Effective Date" data-mr="लागू तारीख">Effective Date</label>
                         <input type="date" id="product-price-date" class="nx-input">
                     </div>
                     <div class="nx-form-group" style="margin:0;">
-                        <label>Notes (optional)</label>
-                        <input type="text" id="product-price-notes" class="nx-input" placeholder="e.g. Rate revision">
+                        <label data-en="Notes (optional)" data-mr="टीपा (ऐच्छिक)">Notes (optional)</label>
+                        <input type="text" id="product-price-notes" class="nx-input" placeholder="e.g. Rate revision" data-en="e.g. Rate revision" data-mr="उदा. दर सुधारणा">
                     </div>
                 </div>
                 <button onclick="submitProductPrice()" class="nx-btn nx-btn-primary" data-en="Save Price" data-mr="किंमत सेव्ह करा">Save Price</button>
@@ -700,14 +652,14 @@
                 <table class="nx-table">
                     <thead>
                         <tr>
-                            <th>Product</th>
-                            <th style="text-align:right;">Price (₹)</th>
-                            <th>Effective Date</th>
-                            <th>Notes</th>
+                            <th data-en="Product"        data-mr="उत्पादन">Product</th>
+                            <th style="text-align:right;" data-en="Price (₹)" data-mr="किंमत (₹)">Price (₹)</th>
+                            <th data-en="Effective Date" data-mr="लागू तारीख">Effective Date</th>
+                            <th data-en="Notes"          data-mr="टीपा">Notes</th>
                         </tr>
                     </thead>
                     <tbody id="product-prices-list">
-                        <tr><td colspan="4" style="padding:20px; text-align:center; color:var(--mid);">Loading...</td></tr>
+                        <tr><td colspan="4" style="padding:20px; text-align:center; color:var(--mid);" data-en="Loading..." data-mr="लोड होत आहे...">Loading...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -718,21 +670,21 @@
             <div class="nx-card-header">
                 <div class="nx-card-title" data-en="Material Price History" data-mr="साहित्य किंमत इतिहास">Material Price History</div>
                 <select id="price-history-material" onchange="loadMaterialPriceHistory()" class="nx-input" style="width:auto; min-width:220px;">
-                    <option value="">Select material to view history</option>
+                    <option value="" data-en="Select material to view history" data-mr="इतिहास पाहण्यासाठी साहित्य निवडा">Select material to view history</option>
                 </select>
             </div>
             <div class="nx-table-wrap">
                 <table class="nx-table">
                     <thead>
                         <tr>
-                            <th>Effective Date</th>
-                            <th style="text-align:right;">Price/Unit (₹)</th>
-                            <th>Supplier</th>
-                            <th>Notes</th>
+                            <th data-en="Effective Date"  data-mr="लागू तारीख">Effective Date</th>
+                            <th style="text-align:right;" data-en="Price/Unit (₹)" data-mr="किंमत/एकक (₹)">Price/Unit (₹)</th>
+                            <th data-en="Supplier"        data-mr="पुरवठादार">Supplier</th>
+                            <th data-en="Notes"           data-mr="टीपा">Notes</th>
                         </tr>
                     </thead>
                     <tbody id="material-price-history-list">
-                        <tr><td colspan="4" style="padding:20px; text-align:center; color:var(--mid);">Select a material above</td></tr>
+                        <tr><td colspan="4" style="padding:20px; text-align:center; color:var(--mid);" data-en="Select a material above" data-mr="वरून साहित्य निवडा">Select a material above</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -793,7 +745,7 @@
     }
 
     // ── TAB SWITCHING ─────────────────────────────────────────────────────────
-    const tabs = ['company','logo','challan','telegram','staff','materials','suppliers','adjustment','prices'];
+    const tabs = ['company','challan','telegram','staff','materials','suppliers','adjustment','prices'];
 
     function switchToTab(activeTab) {
         tabs.forEach(tab => {
@@ -851,10 +803,6 @@
                 document.getElementById('address-line2').value  = data.address_line2 || '';
                 document.getElementById('mobile').value         = data.mobile || '';
                 document.getElementById('gstin').value          = data.gstin || '';
-                if (data.logo_url) {
-                    document.getElementById('logo-preview').src = data.logo_url;
-                    document.getElementById('logo-preview-container').style.display = 'block';
-                }
                 document.getElementById('challan-sequence').value  = data.challan_sequence || 1001;
                 document.getElementById('telegram-chat-id').value  = data.telegram_chat_id || '';
             }
@@ -888,43 +836,6 @@
         } catch (error) {
             console.error('Error saving company details:', error);
             showStatus('company-status','error','Failed to save company details','कंपनी तपशील साठवण्यात अयशस्वी');
-        }
-    });
-
-    // ── UPLOAD LOGO ───────────────────────────────────────────────────────────
-    document.getElementById('logo-upload-form').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const fileInput = document.getElementById('logo-file');
-        const file = fileInput.files[0];
-        if (!file) { showStatus('logo-status','error','Please select a file','कृपया फाइल निवडा'); return; }
-
-        try {
-            const { data: { user } } = await window.supabase.auth.getUser();
-            if (!user) { showStatus('logo-status','error','Not authenticated','प्रमाणित नाही'); return; }
-            const tenantId = user.id;
-            const fileExt  = file.name.split('.').pop();
-            const fileName = `${tenantId}/logo.${fileExt}`;
-
-            showStatus('logo-status','info','Uploading...','अपलोड करत आहे...');
-
-            const { error: uploadError } = await window.supabase.storage
-                .from('tenant-logos').upload(fileName, file, { upsert: true });
-            if (uploadError) throw uploadError;
-
-            const { data: urlData } = window.supabase.storage.from('tenant-logos').getPublicUrl(fileName);
-            const logoUrl = urlData.publicUrl;
-
-            const { error: updateError } = await window.supabase.from('p2_tenant_settings')
-                .upsert({ tenant_id: tenantId, logo_url: logoUrl }, { onConflict: 'tenant_id' });
-            if (updateError) throw updateError;
-
-            document.getElementById('logo-preview').src = logoUrl + '?t=' + Date.now();
-            document.getElementById('logo-preview-container').style.display = 'block';
-            showStatus('logo-status','success','Logo uploaded successfully!','लोगो यशस्वीरित्या अपलोड केला!');
-            fileInput.value = '';
-        } catch (error) {
-            console.error('Error uploading logo:', error);
-            showStatus('logo-status','error','Failed to upload logo','लोगो अपलोड करण्यात अयशस्वी');
         }
     });
 
@@ -1601,6 +1512,7 @@
         document.getElementById('single-price-date').value  = today;
         document.getElementById('product-price-date').value = today;
         loadProductPriceHistory(tenantId, products||[]);
+        applyLang(localStorage.getItem('nexflow_lang') || 'en');
     }
 
     async function loadProductPriceHistory(tenantId, products) {
@@ -1956,7 +1868,6 @@
 
         // Tab click handlers
         document.getElementById('tab-company').addEventListener('click',    () => { switchToTab('company');    loadCompanyDetails(); });
-        document.getElementById('tab-logo').addEventListener('click',       () => { switchToTab('logo');       loadCompanyDetails(); });
         document.getElementById('tab-challan').addEventListener('click',    () => { switchToTab('challan');    loadCompanyDetails(); });
         document.getElementById('tab-telegram').addEventListener('click',   () => { switchToTab('telegram');   loadCompanyDetails(); });
         document.getElementById('tab-staff').addEventListener('click',      () => { switchToTab('staff');      loadStaffList(); });
