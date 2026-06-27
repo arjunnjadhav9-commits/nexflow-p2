@@ -298,15 +298,19 @@
                         </div>
                         <div class="ob-step">
                             <div class="ob-step-num" id="step-num-4">4</div>
-                            <div class="ob-step-label" id="step-label-4">Import BOM</div>
+                            <div class="ob-step-label" id="step-label-4">Import suppliers</div>
                         </div>
                         <div class="ob-step">
                             <div class="ob-step-num" id="step-num-5">5</div>
-                            <div class="ob-step-label" id="step-label-5">Import opening stock</div>
+                            <div class="ob-step-label" id="step-label-5">Import BOM</div>
                         </div>
                         <div class="ob-step">
                             <div class="ob-step-num" id="step-num-6">6</div>
-                            <div class="ob-step-label" id="step-label-6">Done ✓</div>
+                            <div class="ob-step-label" id="step-label-6">Import opening stock</div>
+                        </div>
+                        <div class="ob-step">
+                            <div class="ob-step-num" id="step-num-7">7</div>
+                            <div class="ob-step-label" id="step-label-7">Done ✓</div>
                         </div>
                     </div>
 
@@ -449,10 +453,58 @@
                         <div id="step3Log" class="ob-log"></div>
                     </div>
 
-                    <!-- STEP 4: BOM IMPORT (hidden until step 3 done) -->
+                    <!-- STEP 4: SUPPLIERS IMPORT (hidden until step 3 done) -->
                     <div id="step4Section" class="ob-section" style="display:none;">
                         <div class="ob-section-title">
                             <span>Step 4</span>
+                            <span class="ob-badge">Suppliers</span>
+                        </div>
+                        <div style="font-size:13px; color:var(--mid); margin-bottom:14px;">
+                            Upload their supplier list. Columns needed: <code style="color:var(--orange);">name</code>. Optional: <code style="color:var(--orange);">mobile, address</code>. Existing suppliers with the same name are updated, not duplicated.
+                        </div>
+
+                        <div class="ob-label">Upload Suppliers Excel / CSV</div>
+                        <div class="ob-drop" id="suppliersDrop">
+                            <input type="file" id="suppliersFile" accept=".xlsx,.xls,.csv" onchange="handleSuppliersFile(this)">
+                            <div class="ob-drop-icon">🏭</div>
+                            <div>Drop file here or click to browse</div>
+                            <div style="font-size:11px; margin-top:4px; color:var(--mid);">.xlsx · .xls · .csv — columns: name, mobile, address</div>
+                        </div>
+
+                        <div id="suppliersPreview" style="display:none;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:16px;">
+                                <div id="suppliersStatus" style="font-size:13px;"></div>
+                                <button onclick="clearSuppliersFile()" style="background:none; border:none; color:var(--mid); font-size:12px; cursor:pointer;">✕ Clear</button>
+                            </div>
+                            <div style="overflow-x:auto; max-height:280px; overflow-y:auto;">
+                                <table class="ob-preview-table" id="suppliersTable">
+                                    <thead>
+                                        <tr>
+                                            <th>Status</th>
+                                            <th>Name</th>
+                                            <th>Mobile</th>
+                                            <th>Address</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="suppliersTableBody"></tbody>
+                                </table>
+                            </div>
+                            <button class="ob-action-btn" id="importSuppliersBtn" onclick="importSuppliers()">
+                                Import Suppliers →
+                            </button>
+                        </div>
+                        <div id="step4Log" class="ob-log"></div>
+
+                        <hr class="ob-divider">
+                        <button class="ob-action-btn" style="background:transparent; border:1px solid var(--border); color:var(--mid); margin-top:0;" onclick="skipSuppliers()">
+                            Skip Suppliers (no supplier list for this client) →
+                        </button>
+                    </div>
+
+                    <!-- STEP 5: BOM IMPORT (hidden until step 4 done) -->
+                    <div id="step5Section" class="ob-section" style="display:none;">
+                        <div class="ob-section-title">
+                            <span>Step 5</span>
                             <span class="ob-badge">BOM Import</span>
                         </div>
                         <div style="font-size:13px; color:var(--mid); margin-bottom:14px;">
@@ -490,7 +542,7 @@
                                 Import BOM →
                             </button>
                         </div>
-                        <div id="step4Log" class="ob-log"></div>
+                        <div id="step5Log" class="ob-log"></div>
 
                         <hr class="ob-divider">
                         <button class="ob-action-btn" style="background:transparent; border:1px solid var(--border); color:var(--mid); margin-top:0;" onclick="skipBom()">
@@ -498,10 +550,10 @@
                         </button>
                     </div>
 
-                    <!-- STEP 5: OPENING STOCK (hidden until step 4 done) -->
-                    <div id="step5Section" class="ob-section" style="display:none;">
+                    <!-- STEP 6: OPENING STOCK (hidden until step 5 done) -->
+                    <div id="step6Section" class="ob-section" style="display:none;">
                         <div class="ob-section-title">
-                            <span>Step 5</span>
+                            <span>Step 6</span>
                             <span class="ob-badge">Opening Stock</span>
                         </div>
                         <div style="font-size:13px; color:var(--mid); margin-bottom:14px;">
@@ -550,7 +602,7 @@
                                 Import Opening Stock →
                             </button>
                         </div>
-                        <div id="step5Log" class="ob-log"></div>
+                        <div id="step6Log" class="ob-log"></div>
 
                         <hr class="ob-divider">
                         <button class="ob-action-btn" style="background:var(--green); margin-top:0;" onclick="markDone()">
@@ -558,8 +610,8 @@
                         </button>
                     </div>
 
-                    <!-- STEP 6: DONE -->
-                    <div id="step6Section" class="ob-section" style="display:none; text-align:center; padding:40px 24px;">
+                    <!-- STEP 7: DONE -->
+                    <div id="step7Section" class="ob-section" style="display:none; text-align:center; padding:40px 24px;">
                         <div style="font-size:48px; margin-bottom:16px;">🎉</div>
                         <div style="font-size:20px; font-weight:700; color:var(--fg); margin-bottom:8px;" id="doneTitle">Client onboarded successfully</div>
                         <div style="font-size:13px; color:var(--mid); margin-bottom:28px;" id="doneSub">All steps completed.</div>
@@ -619,7 +671,7 @@
     // ── STEP TRACKER ──────────────────────────────────────────────
     function setStep(n) {
         currentStep = n;
-        for (let i = 1; i <= 6; i++) {
+        for (let i = 1; i <= 7; i++) {
             const num   = document.getElementById(`step-num-${i}`);
             const label = document.getElementById(`step-label-${i}`);
             if (!num) continue;
@@ -710,12 +762,14 @@
         document.getElementById('activeClientPlan').innerHTML = '';
         document.getElementById('activeClientPlan').appendChild(planBadge);
 
-        // Show steps 2–5, hide step 1
+        // Show steps 2–3, hide the rest until unlocked sequentially
         document.getElementById('step1Section').style.display = 'none';
         document.getElementById('step2Section').style.display = 'block';
         document.getElementById('step3Section').style.display = 'block';
-        document.getElementById('step4Section').style.display = 'none'; // shown after step 3
-        document.getElementById('step5Section').style.display = 'none'; // shown after step 4
+        document.getElementById('step4Section').style.display = 'none'; // suppliers — shown after step 3
+        document.getElementById('step5Section').style.display = 'none'; // BOM — shown after step 4
+        document.getElementById('step6Section').style.display = 'none'; // stock — shown after step 5
+        document.getElementById('step7Section').style.display = 'none';
 
         // Set today's date for stock
         document.getElementById('stockDate').value = new Date().toISOString().split('T')[0];
@@ -957,7 +1011,122 @@
         dbMaterials = data || [];
     }
 
-    // ── STEP 4: BOM IMPORT ────────────────────────────────────────
+    // ── STEP 4: SUPPLIERS IMPORT ──────────────────────────────────
+    let supplierRows = [];
+
+    function handleSuppliersFile(input) {
+        const file = input.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = e => {
+            try {
+                const wb    = XLSX.read(new Uint8Array(e.target.result), { type:'array' });
+                const sheet = wb.Sheets[wb.SheetNames[0]];
+                const rows  = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+                if (!rows.length) { toast('File is empty', 'error'); return; }
+
+                const norm = rows.map(row => {
+                    const out = {};
+                    Object.keys(row).forEach(k => { out[k.toLowerCase().trim()] = row[k]; });
+                    return out;
+                });
+
+                if (!('name' in norm[0])) {
+                    toast('Missing required column: name', 'error');
+                    return;
+                }
+                previewSuppliers(norm);
+            } catch(err) {
+                toast('Failed to parse suppliers file', 'error');
+            }
+        };
+        reader.readAsArrayBuffer(file);
+    }
+
+    function previewSuppliers(rows) {
+        supplierRows = [];
+        const tbody = document.getElementById('suppliersTableBody');
+        tbody.innerHTML = '';
+        let valid = 0, errors = 0;
+
+        rows.forEach(row => {
+            const name    = String(row['name'] || '').trim();
+            const mobile  = String(row['mobile'] || row['phone'] || row['contact'] || '').trim() || null;
+            const address = String(row['address'] || row['addr'] || '').trim() || null;
+
+            const errs = [];
+            if (!name) errs.push('name missing');
+
+            const ok = errs.length === 0;
+            if (ok) {
+                valid++;
+                supplierRows.push({ name, mobile, address });
+            } else { errors++; }
+
+            const tr = document.createElement('tr');
+            tr.className = ok ? 'ok-row' : 'error-row';
+            tr.innerHTML = `
+                <td>${ok ? '✓' : '✗ ' + errs.join(', ')}</td>
+                <td>${name || '—'}</td>
+                <td style="font-family:monospace; font-size:11px;">${mobile || '—'}</td>
+                <td style="color:var(--mid); font-size:11px;">${address ? address.substring(0,40) + (address.length>40?'…':'') : '—'}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        document.getElementById('suppliersStatus').innerHTML =
+            `<span style="color:var(--green);">${valid} valid</span>${errors ? ' · <span style="color:var(--red);">' + errors + ' errors (skipped)</span>' : ''}`;
+        document.getElementById('suppliersPreview').style.display = 'block';
+        document.getElementById('importSuppliersBtn').disabled = valid === 0;
+    }
+
+    function clearSuppliersFile() {
+        document.getElementById('suppliersFile').value = '';
+        document.getElementById('suppliersPreview').style.display = 'none';
+        supplierRows = [];
+    }
+
+    async function importSuppliers() {
+        if (!activeTenantId || !supplierRows.length) return;
+        const btn = document.getElementById('importSuppliersBtn');
+        btn.disabled    = true;
+        btn.textContent = 'Importing…';
+
+        log('step4Log', `Starting import of ${supplierRows.length} suppliers…`, 'info');
+
+        const payload = supplierRows.map(r => ({ ...r, tenant_id: activeTenantId }));
+
+        // Upsert on tenant_id + name — no duplicates, existing records updated
+        let imported = 0, failed = 0;
+        for (let i = 0; i < payload.length; i += 50) {
+            const batch = payload.slice(i, i + 50);
+            const { error } = await window.supabase
+                .from('p2_suppliers')
+                .upsert(batch, { onConflict: 'tenant_id,name', ignoreDuplicates: false });
+            if (error) {
+                log('step4Log', `Batch ${Math.floor(i/50)+1} error: ${error.message}`, 'err');
+                failed += batch.length;
+            } else {
+                imported += batch.length;
+                log('step4Log', `Batch ${Math.floor(i/50)+1}: ${batch.length} suppliers saved`, 'ok');
+            }
+        }
+
+        log('step4Log', `✓ Done. ${imported} imported · ${failed} failed`, imported > 0 ? 'ok' : 'err');
+        toast(`${imported} suppliers imported`, imported > 0 ? 'success' : 'error');
+
+        btn.textContent = '✓ Imported';
+        document.getElementById('step5Section').style.display = 'block';
+        setStep(5);
+    }
+
+    function skipSuppliers() {
+        document.getElementById('step5Section').style.display = 'block';
+        setStep(5);
+        toast('Suppliers skipped', 'info');
+    }
+
+    // ── STEP 5: BOM IMPORT ────────────────────────────────────────
     let bomRows = [];
 
     function handleBomFile(input) {
@@ -1045,11 +1214,11 @@
         btn.disabled = true;
         btn.textContent = 'Importing…';
 
-        log('step4Log', `Starting BOM import…`, 'info');
+        log('step5Log', `Starting BOM import…`, 'info');
 
         // Get unique product codes
         const uniqueProducts = [...new Set(bomRows.map(r => r.productCode))];
-        log('step4Log', `Creating ${uniqueProducts.length} products…`, 'info');
+        log('step5Log', `Creating ${uniqueProducts.length} products…`, 'info');
 
         // Upsert products (name = product_code, product_code column)
         const productPayload = uniqueProducts.map(code => ({
@@ -1064,12 +1233,12 @@
             .upsert(productPayload, { onConflict: 'tenant_id,product_code', ignoreDuplicates: false });
 
         if (prodErr) {
-            log('step4Log', 'Product insert error: ' + prodErr.message, 'err');
+            log('step5Log', 'Product insert error: ' + prodErr.message, 'err');
             toast('BOM import failed at products step', 'error');
             btn.disabled = false; btn.textContent = 'Import BOM →';
             return;
         }
-        log('step4Log', `✓ ${uniqueProducts.length} products upserted`, 'ok');
+        log('step5Log', `✓ ${uniqueProducts.length} products upserted`, 'ok');
 
         // Fetch product IDs
         const { data: dbProducts } = await window.supabase
@@ -1097,24 +1266,24 @@
         for (let i = 0; i < bomPayload.length; i += 50) {
             const batch = bomPayload.slice(i, i + 50);
             const { error } = await window.supabase.from('p2_product_bom').insert(batch);
-            if (error) { log('step4Log', 'BOM batch error: ' + error.message, 'err'); }
+            if (error) { log('step5Log', 'BOM batch error: ' + error.message, 'err'); }
             else { imported += batch.length; }
         }
 
-        log('step4Log', `✓ ${imported} BOM lines imported`, 'ok');
+        log('step5Log', `✓ ${imported} BOM lines imported`, 'ok');
         toast(`BOM imported: ${uniqueProducts.length} products, ${imported} lines`, 'success');
         btn.textContent = '✓ Imported';
-        document.getElementById('step5Section').style.display = 'block';
-        setStep(5);
+        document.getElementById('step6Section').style.display = 'block';
+        setStep(6);
     }
 
     function skipBom() {
-        document.getElementById('step5Section').style.display = 'block';
-        setStep(5);
+        document.getElementById('step6Section').style.display = 'block';
+        setStep(6);
         toast('BOM skipped', 'info');
     }
 
-    // ── STEP 5: OPENING STOCK ─────────────────────────────────────
+    // ── STEP 6: OPENING STOCK ─────────────────────────────────────
     async function importStock() {
         if (!activeTenantId || !stockRows.length) return;
         const btn = document.getElementById('importStockBtn');
@@ -1124,7 +1293,7 @@
         const dateVal = document.getElementById('stockDate').value;
         if (!dateVal) { toast('Set a stock date first', 'error'); btn.disabled = false; btn.textContent = 'Import Opening Stock →'; return; }
 
-        log('step5Log', `Clearing old opening stock for this tenant…`, 'info');
+        log('step6Log', `Clearing old opening stock for this tenant…`, 'info');
         await window.supabase
             .from('p2_stock_transactions')
             .delete()
@@ -1132,7 +1301,7 @@
             .eq('transaction_type', 'adjustment')
             .eq('notes', 'Opening Stock');
 
-        log('step5Log', `Inserting ${stockRows.length} opening stock entries…`, 'info');
+        log('step6Log', `Inserting ${stockRows.length} opening stock entries…`, 'info');
         const txns = stockRows.map(r => ({
             tenant_id:        activeTenantId,
             raw_material_id:  r.matId,
@@ -1147,36 +1316,36 @@
             .insert(txns);
 
         if (error) {
-            log('step5Log', 'Error: ' + error.message, 'err');
+            log('step6Log', 'Error: ' + error.message, 'err');
             toast('Import failed: ' + error.message, 'error');
             btn.disabled = false;
             btn.textContent = 'Import Opening Stock →';
             return;
         }
 
-        log('step5Log', `✓ ${txns.length} opening stock entries inserted for ${dateVal}`, 'ok');
+        log('step6Log', `✓ ${txns.length} opening stock entries inserted for ${dateVal}`, 'ok');
         toast(`Opening stock imported for ${txns.length} materials`, 'success');
         btn.textContent = '✓ Done';
-        setStep(6);
+        setStep(7);
     }
 
-    // ── STEP 6: DONE ──────────────────────────────────────────────
+    // ── STEP 7: DONE ──────────────────────────────────────────────
     function markDone() {
         document.getElementById('doneTitle').textContent = `${activeCompany || 'Client'} is live on Nexflow P2`;
         document.getElementById('doneSub').textContent   =
             `Plan: ${selectedPlan.toUpperCase()} · Tenant: ${activeTenantId}`;
-        ['step1Section','step2Section','step3Section','step4Section','step5Section'].forEach(id => {
+        ['step1Section','step2Section','step3Section','step4Section','step5Section','step6Section'].forEach(id => {
             document.getElementById(id).style.display = 'none';
         });
-        document.getElementById('step6Section').style.display = 'block';
-        setStep(6);
+        document.getElementById('step7Section').style.display = 'block';
+        setStep(7);
         toast(`${activeCompany || 'Client'} onboarded successfully 🎉`, 'success');
     }
 
     // ── RESET ─────────────────────────────────────────────────────
     function resetOnboarding() {
         activeTenantId = null; activeEmail = null; activeCompany = null;
-        selectedPlan = 'founder'; materialsRows = []; stockRows = []; bomRows = []; dbMaterials = [];
+        selectedPlan = 'founder'; materialsRows = []; stockRows = []; bomRows = []; supplierRows = []; dbMaterials = [];
 
         document.getElementById('clientEmail').value      = '';
         document.getElementById('manualTenantId').value   = '';
@@ -1185,12 +1354,13 @@
         document.getElementById('lookupError').style.display = 'none';
         document.getElementById('activeClientCard').style.display = 'none';
 
-        ['step2Log','step3Log','step4Log','step5Log'].forEach(id => {
+        ['step2Log','step3Log','step4Log','step5Log','step6Log'].forEach(id => {
             const el = document.getElementById(id);
             if (el) { el.innerHTML = ''; el.classList.remove('visible'); }
         });
 
         clearMaterialsFile();
+        clearSuppliersFile();
         clearBomFile();
         clearStockFile();
 
@@ -1200,12 +1370,13 @@
         document.getElementById('step4Section').style.display = 'none';
         document.getElementById('step5Section').style.display = 'none';
         document.getElementById('step6Section').style.display = 'none';
+        document.getElementById('step7Section').style.display = 'none';
 
         setStep(1);
     }
 
     // ── DRAG AND DROP ─────────────────────────────────────────────
-    ['materialsDrop','bomDrop','stockDrop'].forEach(id => {
+    ['materialsDrop','suppliersDrop','bomDrop','stockDrop'].forEach(id => {
         const el = document.getElementById(id);
         if (!el) return;
         el.addEventListener('dragover', e => { e.preventDefault(); el.classList.add('dragover'); });
@@ -1214,13 +1385,17 @@
             e.preventDefault(); el.classList.remove('dragover');
             const file = e.dataTransfer.files[0];
             if (!file) return;
-            const inputId = id === 'materialsDrop' ? 'materialsFile' : id === 'bomDrop' ? 'bomFile' : 'stockFile';
+            const inputId = id === 'materialsDrop' ? 'materialsFile'
+                          : id === 'suppliersDrop'  ? 'suppliersFile'
+                          : id === 'bomDrop'         ? 'bomFile'
+                          :                           'stockFile';
             const dt = new DataTransfer();
             dt.items.add(file);
             document.getElementById(inputId).files = dt.files;
-            if (id === 'materialsDrop') handleMaterialsFile(document.getElementById(inputId));
-            else if (id === 'bomDrop')  handleBomFile(document.getElementById(inputId));
-            else                        handleStockFile(document.getElementById(inputId));
+            if (id === 'materialsDrop')      handleMaterialsFile(document.getElementById(inputId));
+            else if (id === 'suppliersDrop') handleSuppliersFile(document.getElementById(inputId));
+            else if (id === 'bomDrop')       handleBomFile(document.getElementById(inputId));
+            else                             handleStockFile(document.getElementById(inputId));
         });
     });
 
