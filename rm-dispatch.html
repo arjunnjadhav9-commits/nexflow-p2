@@ -766,14 +766,15 @@
 
                 // Deduct stock — one transaction per material
                 for (const item of dispatchItems) {
-                    await window.supabase.from('p2_stock_transactions').insert({
-                        tenant_id:       tenantId,
-                        raw_material_id: item.raw_material_id,
-                        transaction_type:'consumption',
-                        quantity:        -Math.abs(item.qty),
-                        notes:           `RM Dispatch — Challan ${challanNumber} — ${clientName}`,
-                        created_by:      tenantId
+                    const { error: txnErr } = await window.supabase.from('p2_stock_transactions').insert({
+                        tenant_id:        tenantId,
+                        raw_material_id:  item.raw_material_id,
+                        transaction_type: 'consumption',
+                        quantity:         -Math.abs(item.qty),
+                        transaction_date: new Date().toISOString().split('T')[0],
+                        notes:            `RM Dispatch — Challan ${challanNumber} — ${clientName}`
                     });
+                    if (txnErr) throw new Error(`Stock deduction failed for ${item.name}: ${txnErr.message}`);
                 }
 
                 await upsertClient(clientName, clientAddress);
