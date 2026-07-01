@@ -419,6 +419,9 @@
                         </div>
 
                         <div class="ob-label">Upload Materials Excel / CSV</div>
+                        <div style="margin-bottom:8px;">
+                            <button onclick="downloadTemplate('materials')" style="background:none; border:1px solid var(--border); color:var(--orange); font-size:11px; font-weight:700; padding:5px 12px; border-radius:4px; cursor:pointer; letter-spacing:0.3px;">⬇ Download Template</button>
+                        </div>
                         <div class="ob-drop" id="materialsDrop">
                             <input type="file" id="materialsFile" accept=".xlsx,.xls,.csv" onchange="handleMaterialsFile(this)">
                             <div class="ob-drop-icon">📋</div>
@@ -464,6 +467,9 @@
                         </div>
 
                         <div class="ob-label">Upload Suppliers Excel / CSV</div>
+                        <div style="margin-bottom:8px;">
+                            <button onclick="downloadTemplate('suppliers')" style="background:none; border:1px solid var(--border); color:var(--orange); font-size:11px; font-weight:700; padding:5px 12px; border-radius:4px; cursor:pointer; letter-spacing:0.3px;">⬇ Download Template</button>
+                        </div>
                         <div class="ob-drop" id="suppliersDrop">
                             <input type="file" id="suppliersFile" accept=".xlsx,.xls,.csv" onchange="handleSuppliersFile(this)">
                             <div class="ob-drop-icon">🏭</div>
@@ -512,6 +518,9 @@
                         </div>
 
                         <div class="ob-label">Upload BOM Excel</div>
+                        <div style="margin-bottom:8px;">
+                            <button onclick="downloadTemplate('bom')" style="background:none; border:1px solid var(--border); color:var(--orange); font-size:11px; font-weight:700; padding:5px 12px; border-radius:4px; cursor:pointer; letter-spacing:0.3px;">⬇ Download Template</button>
+                        </div>
                         <div class="ob-drop" id="bomDrop">
                             <input type="file" id="bomFile" accept=".xlsx,.xls,.csv" onchange="handleBomFile(this)">
                             <div class="ob-drop-icon">🔩</div>
@@ -573,6 +582,9 @@
                         </div>
 
                         <div class="ob-label">Upload Stock Excel / CSV</div>
+                        <div style="margin-bottom:8px;">
+                            <button onclick="downloadTemplate('stock')" style="background:none; border:1px solid var(--border); color:var(--orange); font-size:11px; font-weight:700; padding:5px 12px; border-radius:4px; cursor:pointer; letter-spacing:0.3px;">⬇ Download Template</button>
+                        </div>
                         <div class="ob-drop" id="stockDrop">
                             <input type="file" id="stockFile" accept=".xlsx,.xls,.csv" onchange="handleStockFile(this)">
                             <div class="ob-drop-icon">📦</div>
@@ -1284,6 +1296,93 @@
     }
 
     // ── STEP 6: OPENING STOCK ─────────────────────────────────────
+    function handleStockFile(input) {
+        const file = input.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = e => {
+            try {
+                const wb    = XLSX.read(new Uint8Array(e.target.result), { type:'array' });
+                const sheet = wb.Sheets[wb.SheetNames[0]];
+                const rows  = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+                if (!rows.length) { toast('File is empty', 'error'); return; }
+
+                const norm = rows.map(row => {
+                    const out = {};
+                    Object.keys(row).forEach(k => { out[k.toLowerCase().trim()] = row[k]; });
+                    return out;
+                });
+
+                if (!('current_stock' in norm[0])) {
+                    toast('Missing required column: current_stock', 'error');
+                    return;
+                }
+                if (!('material_code' in norm[0]) && !('name' in norm[0])) {
+                    toast('Missing required column: material_code or name', 'error');
+                    return;
+                }
+                previewStock(norm);
+            } catch(err) { toast('Failed to parse stock file', 'error'); }
+        };
+        reader.readAsArrayBuffer(file);
+    }
+
+    function previewStock(rows) {
+        stockRows = [];
+        const tbody = document.getElementById('stockTableBody');
+        tbody.innerHTML = '';
+        let valid = 0, errors = 0;
+
+        // Build lookup maps from already-imported materials
+        const codeMap = {}, nameMap = {};
+        dbMaterials.forEach(m => {
+            if (m.material_code) codeMap[m.material_code.toLowerCase()] = m;
+            if (m.name)          nameMap[m.name.toLowerCase()]          = m;
+        });
+
+        rows.forEach(row => {
+            const code  = String(row['material_code'] || '').trim();
+            const name  = String(row['name'] || '').trim();
+            const qty   = parseFloat(row['current_stock'] || row['qty'] || '');
+
+            const errs  = [];
+            if (isNaN(qty) || qty < 0) errs.push('qty invalid');
+
+            // Match to DB material
+            const mat = (code && codeMap[code.toLowerCase()])
+                     || (name && nameMap[name.toLowerCase()])
+                     || null;
+            if (!mat) errs.push('material not found in DB');
+
+            const ok = errs.length === 0;
+            if (ok) {
+                valid++;
+                stockRows.push({ matId: mat.id, matName: mat.name, qty });
+            } else { errors++; }
+
+            const tr = document.createElement('tr');
+            tr.className = ok ? 'ok-row' : 'error-row';
+            tr.innerHTML = `
+                <td>${ok ? '✓' : '✗ ' + errs.join(', ')}</td>
+                <td style="font-family:monospace; font-size:11px;">${code || name || '—'}</td>
+                <td>${mat ? mat.name : '<span style="color:var(--red);">Not found</span>'}</td>
+                <td style="text-align:right;">${isNaN(qty) ? '—' : qty}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        document.getElementById('stockStatus').innerHTML =
+            `<span style="color:var(--green);">${valid} valid</span>${errors ? ' · <span style="color:var(--red);">' + errors + ' not matched (skipped)</span>' : ''}`;
+        document.getElementById('stockPreview').style.display = 'block';
+        document.getElementById('importStockBtn').disabled = valid === 0;
+    }
+
+    function clearStockFile() {
+        document.getElementById('stockFile').value = '';
+        document.getElementById('stockPreview').style.display = 'none';
+        stockRows = [];
+    }
+
     async function importStock() {
         if (!activeTenantId || !stockRows.length) return;
         const btn = document.getElementById('importStockBtn');
@@ -1373,6 +1472,69 @@
         document.getElementById('step7Section').style.display = 'none';
 
         setStep(1);
+    }
+
+    // ── TEMPLATE DOWNLOADS ────────────────────────────────────────
+    function downloadTemplate(type) {
+        const templates = {
+            materials: {
+                filename: 'nexflow_materials_template.csv',
+                rows: [
+                    ['material_code','name','unit','min_stock_level','current_stock','hsn_sac','gst_rate'],
+                    ['CW-001','Copper Wire','KG','50','420','7408','18'],
+                    ['SS-001','Steel Sheet','PCS','20','71','7209','18'],
+                    ['BR-001','Bearing 6205','PCS','10','15','8482','12'],
+                ]
+            },
+            suppliers: {
+                filename: 'nexflow_suppliers_template.csv',
+                rows: [
+                    ['name','mobile','address'],
+                    ['Hindustan Copper Ltd','9000000001','MIDC Karad, Satara'],
+                    ['Tata Steel Ltd','9000000002','Pune, Maharashtra'],
+                ]
+            },
+            bom: {
+                filename: 'nexflow_bom_template.csv',
+                rows: [
+                    ['product_code','component_code','qty','unit'],
+                    ['MOTOR-001','CW-001','2.5','KG'],
+                    ['MOTOR-001','BR-001','4','PCS'],
+                    ['PANEL-001','SS-001','3','PCS'],
+                ]
+            },
+            stock: {
+                filename: 'nexflow_opening_stock_template.csv',
+                rows: [
+                    ['material_code','current_stock'],
+                    ['CW-001','420'],
+                    ['SS-001','71'],
+                    ['BR-001','15'],
+                ]
+            }
+        };
+
+        const t = templates[type];
+        if (!t) return;
+
+        const csv = t.rows
+            .map(row => row.map(f => {
+                const s = String(f);
+                return s.includes(',') || s.includes('"') ? '"' + s.replace(/"/g,'""') + '"' : s;
+            }).join(','))
+            .join('\r\n');
+
+        const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href     = url;
+        a.download = t.filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        toast(`Downloaded ${t.filename}`, 'ok');
     }
 
     // ── DRAG AND DROP ─────────────────────────────────────────────
