@@ -828,6 +828,13 @@
         activeCompany = company;
         document.getElementById('activeClientName').textContent = company;
 
+        // Refresh plan badge to reflect the newly saved plan
+        const updatedBadge = document.createElement('span');
+        updatedBadge.textContent  = selectedPlan.toUpperCase();
+        updatedBadge.className    = `ob-badge ${(selectedPlan === 'pro' || selectedPlan === 'founder') ? 'green' : ''}`;
+        document.getElementById('activeClientPlan').innerHTML = '';
+        document.getElementById('activeClientPlan').appendChild(updatedBadge);
+
         log('step2Log', `✓ Saved. Company: ${company} | Plan: ${selectedPlan.toUpperCase()}`, 'ok');
         toast('Company & plan saved', 'success');
         setStep(3);
