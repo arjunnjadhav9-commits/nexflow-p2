@@ -285,7 +285,7 @@
   </div>
 
   <!-- ── PAGE HEADER ──────────────────────────────── -->
-  <div class="page-header nx-fade-in">
+  <div class="page-header nx-fade-in" style="display:flex; justify-content:space-between; align-items:flex-start;">
     <div>
       <div class="page-header-eyebrow">Stock Out</div>
       <div class="page-header-title">Production <span>Issue</span></div>
@@ -294,6 +294,9 @@
         data-mr="BOM वरून साहित्य यादी तयार करा आणि उत्पादनासाठी द्या">
         Generate material list from BOM and issue to production
       </div>
+    </div>
+    <div style="display:flex; gap:8px; margin-top:8px;">
+      <a href="issue-history.html" class="btn btn-outline btn-sm" data-en="📋 Issue History" data-mr="📋 इश्यू इतिहास">📋 Issue History</a>
     </div>
   </div>
 
@@ -1006,40 +1009,10 @@ function closeChallanModal() {
   document.getElementById('challanModal').classList.remove('open');
 }
 
-async function generateChallanNumberForIssue() {
-  const { data: tsData } = await window.supabase
-    .from('p2_tenant_settings')
-    .select('unified_challan_numbering')
-    .eq('tenant_id', tenantId)
-    .single();
-  const unified = tsData?.unified_challan_numbering !== false;
-
-  let query = window.supabase
-    .from('p2_dispatch_orders')
-    .select('challan_number')
-    .eq('tenant_id', tenantId)
-    .not('challan_number', 'is', null)
-    .order('created_at', { ascending: false })
-    .limit(100);
-
-  if (!unified) {
-    // Separate mode — RM gets its own counter with RM- prefix
-    query = query.eq('dispatch_type', 'raw_material');
-    const { data } = await query;
-    if (!data || data.length === 0) return 'RM-1001';
-    const nums = data
-      .map(r => parseInt(String(r.challan_number).replace(/^RM-/, ''), 10))
-      .filter(n => !isNaN(n));
-    const next = nums.length === 0 ? 1001 : Math.max(...nums) + 1;
-    return `RM-${next}`;
-  }
-
-  // Unified mode — all orders share one numeric counter
-  const { data } = await query;
-  if (!data || data.length === 0) return 1001;
-  const nums = data.map(r => parseInt(r.challan_number, 10)).filter(n => !isNaN(n));
-  return nums.length === 0 ? 1001 : Math.max(...nums) + 1;
-}
+// Challan number generation is now handled by the shared
+// getNextChallanNumber() utility in utils.js.
+// It reads challan_mode from p2_tenant_settings and calls
+// the get_next_challan_number RPC — unified or split per tenant.
 
 async function createDispatchChallan() {
   const clientName    = document.getElementById('ch-client-name').value.trim();
@@ -1063,7 +1036,7 @@ async function createDispatchChallan() {
     // Only BOM rows with a product link — manual rows are print-only
     // For product dispatch challan, we dispatch the PRODUCT, not individual materials
     // So we create one dispatch item: the product itself
-    const challanNumber = await generateChallanNumberForIssue();
+    const challanNumber = await getNextChallanNumber(window.supabase, tenantId, 'bom_issue');
 
     const { data: order, error: orderErr } = await window.supabase
       .from('p2_dispatch_orders')
@@ -1074,7 +1047,7 @@ async function createDispatchChallan() {
         po_number:      poNumber      || null,
         vehicle_number: vehicleNumber || null,
         status:         'confirmed',
-        dispatch_type:  'raw_material',
+        dispatch_type:  'bom_issue',
         challan_number: String(challanNumber),
         dispatch_date:  document.getElementById('issueDate').value,
         created_by:     tenantId,

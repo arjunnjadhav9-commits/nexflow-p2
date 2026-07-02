@@ -40,7 +40,7 @@
 
         return `
 <style>
-.nx-nav{position:fixed;top:0;left:0;right:0;z-index:400;background:var(--surface);border-bottom:1px solid var(--border);font-family:var(--font)}
+.nx-nav{position:fixed;top:0;left:0;right:0;z-index:400;background:var(--surface);border-bottom:1px solid var(--border);font-family:var(--font);overflow:visible}
 .nx-nav-inner{display:grid;grid-template-columns:180px 1fr 300px;align-items:center;padding:0 28px;height:56px}
 .nx-logo{font-family:var(--condensed);font-weight:900;font-size:20px;color:var(--white);text-decoration:none;letter-spacing:1px;white-space:nowrap}
 .nx-logo span{color:var(--orange)}
@@ -59,13 +59,13 @@
 .nx-logout:hover{background:#b91c1c}
 .nx-burger{display:none;flex-direction:column;gap:5px;background:none;border:none;cursor:pointer;padding:4px}
 .nx-burger span{display:block;width:20px;height:2px;background:var(--white);border-radius:2px}
-.nx-mobile{display:none;flex-direction:column;background:var(--surface);border-top:1px solid var(--border);padding:12px 20px 16px}
-.nx-mobile.open{display:flex}
+.nx-mobile{display:none;flex-direction:column;background:var(--surface,#161929);border-top:1px solid var(--border,#2a2d3e);padding:12px 20px 16px;position:relative;z-index:1}
+.nx-mobile.open{display:flex!important}
 .nx-mlinks{display:flex;flex-direction:column;gap:2px;margin-bottom:12px}
 .nx-mlink{display:block;padding:10px 12px;border-radius:6px}
 .nx-mfooter{border-top:1px solid var(--border);padding-top:12px;display:flex;flex-direction:column;gap:8px}
 body{padding-top:56px}
-@media(max-width:900px){.nx-links{display:none}.nx-right .nx-email,.nx-right .nx-plan,.nx-right .nx-lang{display:none}.nx-burger{display:flex}}
+@media(max-width:900px){.nx-nav-inner{grid-template-columns:1fr auto;padding:0 14px}.nx-links{display:none}.nx-right .nx-email,.nx-right .nx-plan,.nx-right .nx-lang,.nx-right .nx-logout{display:none}.nx-burger{display:flex}}
 </style>
 <nav id="nx-navbar" class="nx-nav">
   <div class="nx-nav-inner">

@@ -224,7 +224,92 @@
                         Next challan will be generated with this number
                     </div>
                 </div>
-                <div style="position:relative; display:inline-block; width:100%;">
+
+                <!-- ── CHALLAN NUMBERING MODE ──────────────────────────────
+                     Root cause of layout bugs:
+                     1. nexflow-design.css sets `form input { width:100%; display:block }`
+                        → radio button fills card width → text div pushed out to the right.
+                     Fix: explicit width:16px + flex:0 0 16px on radio (inline beats class CSS).
+                     2. Text div needs flex:1 1 0 + overflow:hidden + word-break:break-word.
+                     3. Card div needs overflow:hidden so nothing escapes.
+                     4. Using <div> not <label> — avoids .nx-form-group label{display:block}.
+                     5. Pulled outside .nx-form-group so no form-group label rules apply.
+                ──────────────────────────────────────────────────────────── -->
+                <div style="margin-top:20px;">
+                    <div style="font-size:11px; font-weight:700; color:var(--mid);
+                                text-transform:uppercase; letter-spacing:.06em; margin-bottom:10px;"
+                         data-en="Challan Numbering Mode" data-mr="चलान क्रमांकन पद्धत">
+                        Challan Numbering Mode
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:10px;">
+
+                        <!-- SPLIT -->
+                        <div id="challan-mode-split-label"
+                             style="display:flex; align-items:flex-start; gap:12px; cursor:pointer;
+                                    overflow:hidden;
+                                    background:var(--surface2); border:1.5px solid var(--border);
+                                    border-radius:var(--radius); padding:14px;
+                                    transition:border-color 0.15s;"
+                             onclick="document.getElementById('challan-mode-split').checked=true;
+                                      highlightChallanMode('split');">
+                            <input type="radio" name="challan_mode" id="challan-mode-split" value="split"
+                                   style="width:16px; height:16px; flex:0 0 16px;
+                                          margin-top:2px; accent-color:var(--orange); cursor:pointer;">
+                            <div style="flex:1 1 0; min-width:0; overflow:hidden; word-break:break-word;">
+                                <div style="font-size:13px; font-weight:700; color:var(--white); margin-bottom:4px;"
+                                     data-en="Split — Separate sequences per type"
+                                     data-mr="वेगळे — प्रत्येक प्रकारासाठी स्वतंत्र क्रमांक">
+                                    Split — Separate sequences per type
+                                </div>
+                                <div style="font-size:11px; color:var(--mid); line-height:1.6;">
+                                    <span data-en="Product and RM challans run on separate number series."
+                                          data-mr="उत्पादन आणि RM चलान स्वतंत्र क्रमांक मालिका वापरतात.">
+                                        Product and RM challans run on separate number series.
+                                    </span><br>
+                                    <span data-en="e.g. Products: 1001, 1002 — RM: RM-1001, RM-1002"
+                                          data-mr="उदा. उत्पादने: १००१, १००२ — RM: RM-१००१, RM-१००२">
+                                        e.g. Products: 1001, 1002 &nbsp;—&nbsp; RM: RM-1001, RM-1002
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- UNIFIED -->
+                        <div id="challan-mode-unified-label"
+                             style="display:flex; align-items:flex-start; gap:12px; cursor:pointer;
+                                    overflow:hidden;
+                                    background:var(--surface2); border:1.5px solid var(--border);
+                                    border-radius:var(--radius); padding:14px;
+                                    transition:border-color 0.15s;"
+                             onclick="document.getElementById('challan-mode-unified').checked=true;
+                                      highlightChallanMode('unified');">
+                            <input type="radio" name="challan_mode" id="challan-mode-unified" value="unified"
+                                   style="width:16px; height:16px; flex:0 0 16px;
+                                          margin-top:2px; accent-color:var(--orange); cursor:pointer;">
+                            <div style="flex:1 1 0; min-width:0; overflow:hidden; word-break:break-word;">
+                                <div style="font-size:13px; font-weight:700; color:var(--white); margin-bottom:4px;"
+                                     data-en="Unified — One shared sequence for all challans"
+                                     data-mr="एकत्रित — सर्व चलानसाठी एकच सामायिक क्रमांक">
+                                    Unified — One shared sequence for all challans
+                                </div>
+                                <div style="font-size:11px; color:var(--mid); line-height:1.6;">
+                                    <span data-en="All challans share one running number regardless of type."
+                                          data-mr="सर्व प्रकारचे चलान एकाच चालू क्रमांकाचा वापर करतात.">
+                                        All challans share one running number regardless of type.
+                                    </span><br>
+                                    <span data-en="e.g. Product: 1001 → RM: 1002 → Product: 1003"
+                                          data-mr="उदा. उत्पादन: १००१ → RM: १००२ → उत्पादन: १००३">
+                                        e.g. Product: 1001 &nbsp;→&nbsp; RM: 1002 &nbsp;→&nbsp; Product: 1003
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+                <!-- ── END CHALLAN NUMBERING MODE ───────────────────────── -->
+
+                <div style="position:relative; display:inline-block; width:100%; margin-top:20px;">
                     <button type="submit" id="saveChallanBtn" class="nx-btn nx-btn-primary nx-btn-full" data-en="Save Challan Settings" data-mr="चलान सेटिंग्ज साठवा">
                         Save Challan Settings
                     </button>
@@ -805,6 +890,11 @@
                 document.getElementById('gstin').value          = data.gstin || '';
                 document.getElementById('challan-sequence').value  = data.challan_sequence || 1001;
                 document.getElementById('telegram-chat-id').value  = data.telegram_chat_id || '';
+                // Challan mode toggle
+                const savedMode = data.challan_mode || 'split';
+                const modeRadio = document.querySelector(`input[name="challan_mode"][value="${savedMode}"]`);
+                if (modeRadio) modeRadio.checked = true;
+                highlightChallanMode(savedMode);
             }
         } catch (error) {
             console.error('Error loading company details:', error);
@@ -843,11 +933,12 @@
     document.getElementById('challan-form').addEventListener('submit', async (e) => {
         e.preventDefault();
         const challanSequence = parseInt(document.getElementById('challan-sequence').value);
+        const challanMode = document.querySelector('input[name="challan_mode"]:checked')?.value || 'split';
         try {
             const { data: { user } } = await window.supabase.auth.getUser();
             if (!user) { showStatus('challan-status','error','Not authenticated','प्रमाणित नाही'); return; }
             const { error } = await window.supabase.from('p2_tenant_settings')
-                .update({ challan_sequence: challanSequence }).eq('tenant_id', user.id);
+                .update({ challan_sequence: challanSequence, challan_mode: challanMode }).eq('tenant_id', user.id);
             if (error) throw error;
             showStatus('challan-status','success','Challan settings saved successfully!','चलान सेटिंग्ज यशस्वीरित्या साठवल्या!');
         } catch (error) {
@@ -1838,6 +1929,15 @@
         printArea.remove();
     }
 
+    // ── CHALLAN MODE HIGHLIGHT ───────────────────────────────────────────────
+    function highlightChallanMode(value) {
+        ['split','unified'].forEach(v => {
+            const label = document.getElementById(`challan-mode-${v}-label`);
+            if (!label) return;
+            label.style.borderColor = v === value ? 'var(--orange)' : 'var(--border)';
+        });
+    }
+
     // ── DOMContentLoaded ──────────────────────────────────────────────────────
     document.addEventListener('DOMContentLoaded', async () => {
         const authed = await checkAuth();
@@ -1883,6 +1983,11 @@
         document.getElementById('btn-minus').addEventListener('click', () => setAdjSign(-1));
         document.getElementById('btn-plus').addEventListener('click',  () => setAdjSign(1));
         setAdjSign(1);
+
+        // Live border highlight when user clicks challan mode radio
+        document.querySelectorAll('input[name="challan_mode"]').forEach(radio => {
+            radio.addEventListener('change', () => highlightChallanMode(radio.value));
+        });
 
         switchToTab('company');
         await checkAuth();

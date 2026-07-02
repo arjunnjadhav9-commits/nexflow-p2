@@ -371,14 +371,12 @@
             const itemsBody = document.getElementById('items-body');
             itemsBody.innerHTML = '';
             let totalQty = 0;
-            const isRawMaterial = order.dispatch_type === 'raw_material';
+            const isRawMaterial = order.dispatch_type === 'raw_material' || order.dispatch_type === 'bom_issue';
             items.forEach((item, i) => {
                 const name = isRawMaterial
-                    ? (item.material_name || 'Unknown Material')
-                    : (item.p2_products?.name || 'Unknown Product');
-                const unit = isRawMaterial
-                    ? (item.unit || '')
-                    : (item.p2_products?.unit || item.unit || '');
+                    ? (item.material_name || item.p2_products?.name || 'Unknown Material')
+                    : (item.p2_products?.name || item.material_name || 'Unknown Product');
+                const unit = item.unit || item.p2_products?.unit || '';
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td style="text-align:center; vertical-align:middle; padding:10px;">${i + 1}</td>
@@ -391,12 +389,18 @@
             document.getElementById('total-quantity').textContent = Number.isInteger(totalQty) ? totalQty : totalQty.toFixed(2);
             document.getElementById('signature-company').textContent = settings?.company_name || 'Company Name';
 
-            // Fix back button: if raw material dispatch, go to rm-dispatch.html
+            // Fix back button based on dispatch type
             const backBtn = document.querySelector('a[href="dispatch.html"]');
-            if (backBtn && isRawMaterial) {
-                backBtn.href = 'rm-dispatch.html';
-                backBtn.setAttribute('data-en', '← Back to RM Dispatch');
-                backBtn.textContent = '← Back to RM Dispatch';
+            if (backBtn) {
+                if (order.dispatch_type === 'raw_material') {
+                    backBtn.href = 'rm-dispatch.html';
+                    backBtn.setAttribute('data-en', '← Back to RM Dispatch');
+                    backBtn.textContent = '← Back to RM Dispatch';
+                } else if (order.dispatch_type === 'bom_issue') {
+                    backBtn.href = 'production-issue.html';
+                    backBtn.setAttribute('data-en', '← Back to Issue');
+                    backBtn.textContent = '← Back to Issue';
+                }
             }
         }
 

@@ -575,26 +575,10 @@
             renderItemsTable();
         }
 
-        // ── CHALLAN NUMBER ────────────────────────────────────────────
-        async function generateChallanNumber() {
-            const { data, error } = await window.supabase
-                .from('p2_dispatch_orders')
-                .select('challan_number')
-                .eq('tenant_id', tenantId)
-                .eq('dispatch_type', 'raw_material')
-                .not('challan_number', 'is', null)
-                .order('created_at', { ascending: false })
-                .limit(50);
-
-            if (error || !data || data.length === 0) return 'RM-1001';
-
-            // Strip RM- prefix and parse, find max
-            const nums = data
-                .map(r => parseInt(String(r.challan_number).replace(/^RM-/, ''), 10))
-                .filter(n => !isNaN(n));
-            const next = nums.length === 0 ? 1001 : Math.max(...nums) + 1;
-            return `RM-${next}`;
-        }
+        // Challan number generation is now handled by the shared
+        // getNextChallanNumber() utility in utils.js.
+        // It reads challan_mode from p2_tenant_settings and calls
+        // the get_next_challan_number RPC — unified or split per tenant.
 
         // ── SAVE DRAFT ────────────────────────────────────────────────
         async function saveDraft() {
@@ -705,7 +689,7 @@
             try {
                 const clientName    = document.getElementById('clientName').value.trim();
                 const clientAddress = document.getElementById('clientAddress').value.trim();
-                const challanNumber = await generateChallanNumber();
+                const challanNumber = await getNextChallanNumber(window.supabase, tenantId, 'raw_material');
 
                 const orderData = {
                     tenant_id:        tenantId,

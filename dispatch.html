@@ -496,24 +496,10 @@
             }
         };
 
-        async function generateChallanNumber() {
-            const { data, error } = await window.supabase
-                .from('p2_dispatch_orders')
-                .select('challan_number')
-                .eq('tenant_id', tenantId)
-                .eq('dispatch_type', 'product')
-                .not('challan_number', 'is', null)
-                .order('created_at', { ascending: false })
-                .limit(50);
-
-            if (error || !data || data.length === 0) return 1001;
-
-            // Parse only numeric challans (ignore RM- prefixed ones that may exist)
-            const nums = data
-                .map(r => parseInt(r.challan_number, 10))
-                .filter(n => !isNaN(n));
-            return nums.length === 0 ? 1001 : Math.max(...nums) + 1;
-        }
+        // Challan number generation is now handled by the shared
+        // getNextChallanNumber() utility in utils.js.
+        // It reads challan_mode from p2_tenant_settings and calls
+        // the get_next_challan_number RPC — unified or split per tenant.
 
         function setupEventHandlers() {
             setupClientAutofill();
@@ -678,7 +664,7 @@
                     }
                 }
 
-                const rawChallan = await generateChallanNumber();
+                const rawChallan = await getNextChallanNumber(window.supabase, tenantId, 'product');
                 const payload = {
                     tenant_id: tenantId || localStorage.getItem('supabase_tenant_id') || '00000000-0000-0000-0000-000000000000',
                     created_by: tenantId || localStorage.getItem('supabase_tenant_id') || '00000000-0000-0000-0000-000000000000',
@@ -762,8 +748,9 @@
                     const { data, error: confirmErr } = await window.supabase
                         .rpc('confirm_dispatch_transaction', {
                             p_dispatch_order_id: orderId,
-                            p_tenant_id: payload.tenant_id,
-                            p_consumption_json: JSON.stringify(consumptionArray)
+                            p_tenant_id:         payload.tenant_id,
+                            p_consumption_json:  JSON.stringify(consumptionArray),
+                            p_challan_number:    payload.challan_number
                         });
 
                     if (confirmErr) throw confirmErr;

@@ -160,6 +160,39 @@ function initNumberInputSanitization() {
     });
 }
 
+/**
+ * Get the next challan number for any dispatch type.
+ * Reads challan_mode from p2_tenant_settings, then calls the
+ * get_next_challan_number RPC which handles both unified and split modes.
+ *
+ * @param {object} supabase  - Supabase client instance
+ * @param {string} tenantId  - Current tenant UUID
+ * @param {string} type      - 'product' | 'raw_material' | 'bom_issue'
+ * @returns {string}         - Challan number e.g. "1001" or "RM-1001"
+ */
+async function getNextChallanNumber(supabase, tenantId, type) {
+    const { data: settings, error: settingsErr } = await supabase
+        .from('p2_tenant_settings')
+        .select('challan_mode')
+        .eq('tenant_id', tenantId)
+        .single();
+
+    if (settingsErr) {
+        console.warn('getNextChallanNumber: could not fetch challan_mode, defaulting to split', settingsErr);
+    }
+
+    const mode = settings?.challan_mode ?? 'split';
+
+    const { data, error } = await supabase.rpc('get_next_challan_number', {
+        p_tenant_id: tenantId,
+        p_type:      type,
+        p_mode:      mode
+    });
+
+    if (error) throw new Error('Failed to generate challan number: ' + error.message);
+    return String(data);
+}
+
 // Export for use in other scripts
 if (typeof window !== 'undefined') {
     window.formatDate = formatDate;
@@ -167,6 +200,7 @@ if (typeof window !== 'undefined') {
     window.showStatusMessage = showStatusMessage;
     window.initNumberInputSanitization = initNumberInputSanitization;
     window.toast = toast;
+    window.getNextChallanNumber = getNextChallanNumber;
 
     // ── DEMO MODE ──────────────────────────────────────────────
     // True when the logged-in user is the read-only demo account.
