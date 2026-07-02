@@ -28,6 +28,7 @@
         { href: 'reports.html',  labelEn: 'Reports',   labelMr: 'अहवाल' },
         { href: 'scanner.html',  labelEn: '📷 Scanner',labelMr: '📷 स्कॅनर' },
         { href: 'settings.html', labelEn: 'Settings',  labelMr: 'सेटिंग्ज' }
+        { label: 'Production Issue', href: 'production-issue.html' }
     ];
 
     // ── Build navbar HTML ───────────────────────────────────

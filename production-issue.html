@@ -1,0 +1,1172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Production Issue — Nexflow P2</title>
+
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%230c0e14'/><text y='.9em' font-size='80' x='10' fill='%23ff5c1a'>N</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800;900&family=Barlow+Condensed:wght@500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/nexflow-design.css" />
+
+  <style>
+    /* ── Override light vars that conflict with Nexflow dark theme ── */
+    :root {
+      --or1: #ff5c1a;
+      --or2: #ff8c42;
+      --r:   10px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: var(--font, 'Barlow', sans-serif); background: var(--bg); color: var(--fg); min-height: 100vh; }
+
+    /* ── PAGE WRAP ── */
+    .page-wrap { max-width: 100%; padding: 0; }
+
+    /* ── PAGE HEADER — matches nx-page-header style ── */
+    .page-header {
+      display: flex; align-items: flex-start; gap: 12px;
+      margin-bottom: 24px;
+    }
+    .page-header-eyebrow {
+      font-family: var(--condensed); font-size: 11px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 1px; color: var(--orange);
+      margin-bottom: 4px;
+    }
+    .page-header-title {
+      font-family: var(--condensed); font-size: 28px; font-weight: 900;
+      text-transform: uppercase; color: var(--white); line-height: 1;
+    }
+    .page-header-title span { color: var(--orange); }
+    .page-header-sub { font-size: 13px; color: var(--mid); margin-top: 4px; }
+
+    /* ── CARDS — reuse nx-card pattern ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg, 12px);
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+    .card-title {
+      font-family: var(--condensed); font-size: 13px; font-weight: 800;
+      color: var(--mid); text-transform: uppercase; letter-spacing: 0.5px;
+      margin-bottom: 16px;
+    }
+    .card-no-pad { padding: 0; overflow: hidden; }
+
+    /* ── FORM ── */
+    .fg { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+    .fg:last-child { margin-bottom: 0; }
+    .fg label {
+      font-size: 11px; font-weight: 700; color: var(--mid);
+      text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    .fg select,
+    .fg input[type="number"],
+    .fg input[type="date"] {
+      width: 100%; padding: 10px 13px;
+      background: var(--surface3); border: 1px solid var(--border2);
+      border-radius: var(--radius, 8px); font-size: 14px;
+      font-family: var(--font); color: var(--text) !important;
+      -webkit-appearance: none; transition: border-color 0.15s;
+    }
+    .fg select:focus,
+    .fg input:focus { outline: none; border-color: var(--orange); }
+    .fg select option { background: var(--surface3) !important; color: var(--text) !important; }
+
+    /* ── BUTTONS ── */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      gap: 6px; padding: 11px 18px; border-radius: var(--radius);
+      font-size: 13px; font-weight: 700; font-family: var(--condensed);
+      text-transform: uppercase; letter-spacing: 0.5px;
+      cursor: pointer; border: none;
+      transition: opacity 0.15s, transform 0.1s;
+      white-space: nowrap; -webkit-tap-highlight-color: transparent;
+    }
+    .btn:active { transform: scale(0.97); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+    .btn-primary { background: var(--orange); color: #fff; width: 100%; }
+    .btn-primary:hover:not(:disabled) { background: var(--orange-dim, #e04a0e); }
+    .btn-outline {
+      background: transparent; border: 1px solid var(--border2);
+      color: var(--light);
+    }
+    .btn-outline:hover { border-color: var(--orange); color: var(--orange); }
+    .btn-ghost { background: transparent; color: var(--orange); padding: 6px 0; font-size: 12px; font-weight: 700; border: none; cursor: pointer; font-family: var(--condensed); text-transform: uppercase; letter-spacing: 0.5px; }
+    .btn-sm { padding: 7px 14px; font-size: 12px; width: auto; }
+
+    /* ── TABLE ── */
+    .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    table.pi-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    table.pi-table thead th {
+      background: var(--surface2); padding: 10px 10px;
+      text-align: left; font-size: 10px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.5px; color: var(--mid);
+      border-bottom: 1px solid var(--border); white-space: nowrap;
+      font-family: var(--condensed);
+    }
+    table.pi-table tbody td {
+      padding: 9px 10px; border-bottom: 1px solid var(--border);
+      vertical-align: middle; color: var(--light);
+    }
+    table.pi-table tbody tr:last-child td { border-bottom: none; }
+    table.pi-table tbody tr.manual-row > td { background: rgba(245,158,11,0.06); }
+    table.pi-table tbody tr:not(.manual-row):hover > td { background: var(--surface2); }
+    table.pi-table tbody tr.manual-row:hover > td { background: rgba(245,158,11,0.1); }
+
+    /* ── BADGES ── */
+    .bom-badge {
+      display: inline-block; font-size: 8px; font-weight: 700; letter-spacing: 0.06em;
+      text-transform: uppercase; background: rgba(59,91,219,0.15); color: #7b9cff;
+      border-radius: 4px; padding: 1px 5px; margin-left: 5px; vertical-align: middle;
+    }
+    .manual-badge {
+      display: inline-block; font-size: 8px; font-weight: 700; letter-spacing: 0.06em;
+      text-transform: uppercase; background: rgba(245,158,11,0.15); color: #f59e0b;
+      border-radius: 4px; padding: 1px 5px; margin-left: 5px; vertical-align: middle;
+    }
+
+    /* ── INLINE TABLE INPUTS ── */
+    .qty-cell {
+      width: 72px; padding: 5px 7px; border: 1px solid var(--border2);
+      border-radius: 6px; font-size: 13px; font-family: var(--font);
+      text-align: right; color: var(--text) !important; background: var(--surface3);
+      -webkit-appearance: none;
+    }
+    .qty-cell:focus { outline: none; border-color: var(--orange); }
+    .desc-cell {
+      width: 100%; max-width: 200px; padding: 5px 7px; border: 1px solid var(--border2);
+      border-radius: 6px; font-size: 13px; font-family: var(--font);
+      color: var(--text) !important; background: var(--surface3);
+    }
+    .desc-cell:focus { outline: none; border-color: var(--orange); }
+    .unit-cell {
+      width: 56px; padding: 5px 6px; border: 1px solid var(--border2);
+      border-radius: 6px; font-size: 12px; font-family: var(--font);
+      color: var(--text) !important; background: var(--surface3);
+    }
+    .unit-cell:focus { outline: none; border-color: var(--orange); }
+
+    /* ── STOCK STATUS ── */
+    .st-ok  { color: var(--green); font-size: 12px; font-weight: 600; }
+    .st-low { color: #f59e0b;      font-size: 12px; font-weight: 600; }
+    .st-out { color: var(--red);   font-size: 12px; font-weight: 600; }
+    .st-na  { color: var(--mid);   font-size: 12px; }
+
+    /* ── DELETE ROW ── */
+    .del-row {
+      background: none; border: none; color: var(--border2); font-size: 18px;
+      line-height: 1; padding: 2px 4px; cursor: pointer; border-radius: 4px;
+      -webkit-tap-highlight-color: transparent; transition: color 0.15s;
+    }
+    .del-row:hover { color: var(--red); }
+
+    /* ── SECTION STRIP ── */
+    .section-strip { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+    .section-meta  { font-size: 12px; color: var(--mid); font-weight: 600; font-family: var(--condensed); text-transform: uppercase; letter-spacing: 0.5px; }
+
+    /* ── NOTES ── */
+    .notes-ta {
+      width: 100%; padding: 11px 13px; border: 1px solid var(--border2);
+      border-radius: var(--radius); font-size: 14px; font-family: var(--font);
+      color: var(--text) !important; resize: vertical; min-height: 60px;
+      background: var(--surface3);
+    }
+    .notes-ta:focus { outline: none; border-color: var(--orange); }
+
+    /* ── EMPTY STATE ── */
+    .empty-state { padding: 36px 20px; text-align: center; color: var(--mid); font-size: 13px; }
+    .empty-state .icon { font-size: 30px; margin-bottom: 8px; }
+
+    /* ── ACTION BAR ── */
+    .action-bar {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: var(--surface); border-top: 1px solid var(--border2);
+      padding: 12px 20px; display: none; align-items: center;
+      justify-content: space-between; gap: 10px; z-index: 100;
+    }
+    .action-bar.visible { display: flex; }
+    .action-total { font-size: 12px; color: var(--mid); font-weight: 600; font-family: var(--condensed); text-transform: uppercase; letter-spacing: 0.5px; }
+    .action-total strong { color: var(--white); font-size: 16px; font-family: var(--condensed); }
+    .action-btns  { display: flex; gap: 8px; align-items: center; }
+
+    /* ── MODAL ── */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.65);
+      z-index: 200; align-items: center; justify-content: center; padding: 20px;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal-box {
+      background: var(--surface); border: 1px solid var(--border2);
+      border-radius: var(--radius-lg); padding: 28px;
+      width: 100%; max-width: 480px; box-shadow: var(--shadow-md);
+    }
+    .modal-title {
+      font-family: var(--condensed); font-size: 16px; font-weight: 800;
+      text-transform: uppercase; letter-spacing: 0.5px; color: var(--white);
+      margin-bottom: 10px;
+    }
+    .modal-sub    { font-size: 13px; color: var(--mid); margin-bottom: 16px; line-height: 1.6; }
+    .warn-box {
+      background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3);
+      border-radius: 8px; padding: 12px; font-size: 12px; margin-bottom: 12px;
+    }
+    .warn-box strong { color: var(--red); display: block; margin-bottom: 6px; font-size: 13px; }
+    .warn-box ul  { padding-left: 16px; color: #fca5a5; line-height: 1.8; }
+    .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; }
+
+    /* ── PRINT ONLY ── */
+    .print-only { display: none; }
+
+    /* ═══════════ PRINT STYLES ═══════════ */
+    @media print {
+      #navbar-container, .page-header, .setup-card-wrap,
+      .section-strip .btn-ghost, .action-bar, .modal-overlay,
+      .bom-badge, .manual-badge, .del-row, .col-bom-qty, .col-stock, .col-delete,
+      .st-ok, .st-low, .st-out, .st-na, .card-title, .notes-ta-label { display: none !important; }
+
+      @page { margin: 0; size: A4; }
+      body { background: #fff; font-family: Arial, sans-serif; font-size: 10pt; color: #000; }
+      .page-wrap { padding: 10mm 12mm; max-width: 100%; }
+      .print-only { display: block !important; }
+      .card { border: none; padding: 4px 0; margin-bottom: 4px; background: transparent; }
+      .card-no-pad { border: none; }
+      .table-scroll { overflow: visible; }
+
+      table.pi-table { font-size: 10pt; border-collapse: collapse; width: 100%; }
+      table.pi-table thead th {
+        background: #f0f0f0 !important; color: #000 !important;
+        font-size: 9pt; border: 1px solid #000; padding: 5px 6px;
+      }
+      table.pi-table tbody td { border: 1px solid #000; padding: 5px 6px; color: #000; }
+      table.pi-table tbody tr.manual-row > td,
+      table.pi-table tbody tr:hover > td { background: transparent !important; }
+
+      .qty-cell, .desc-cell, .unit-cell {
+        border: none !important; background: transparent !important;
+        padding: 0 !important; width: auto !important; font-size: 10pt !important; color: #000;
+      }
+      .notes-ta { border: none !important; background: transparent !important; padding: 0 !important; font-size: 10pt; font-weight: 700; resize: none; color: #000; }
+    }
+  </style>
+</head>
+
+<body>
+
+<!-- Navbar container — navbar.js populates this -->
+<div id="navbar-container"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/supabase-client.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/navbar.js"></script>
+
+<div class="nx-main">
+<div class="nx-page">
+<div class="page-wrap">
+
+  <!-- ── PRINT HEADER ─────────────────────────────── -->
+  <div class="print-only" id="printHeaderWrap" style="margin-bottom:5mm; text-align:center;">
+    <div id="ph-company" style="font-size:14pt; font-weight:700; letter-spacing:1px;"></div>
+    <div id="ph-address" style="font-size:9pt; color:#555; margin-top:1mm;"></div>
+    <hr style="border:1px solid #000; margin:3mm 0;" />
+    <div style="font-size:12pt; font-weight:700; letter-spacing:3px; margin-bottom:1mm;">MATERIAL ISSUE CHALLAN</div>
+    <div style="font-size:9pt; margin-bottom:3mm;">Please receive the following material in good condition</div>
+    <div style="display:flex; justify-content:space-between; font-size:9pt; padding:0 2mm; margin-bottom:2mm;">
+      <span>Date: <strong id="ph-date"></strong></span>
+      <span>Product: <strong id="ph-product"></strong></span>
+      <span>Batch Qty: <strong id="ph-batch"></strong></span>
+    </div>
+    <hr style="border:0.5px solid #999; margin:2mm 0;" />
+  </div>
+
+  <!-- ── PAGE HEADER ──────────────────────────────── -->
+  <div class="page-header nx-fade-in">
+    <div>
+      <div class="page-header-eyebrow">Stock Out</div>
+      <div class="page-header-title">Production <span>Issue</span></div>
+      <div class="page-header-sub"
+        data-en="Generate material list from BOM and issue to production"
+        data-mr="BOM वरून साहित्य यादी तयार करा आणि उत्पादनासाठी द्या">
+        Generate material list from BOM and issue to production
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SETUP CARD ────────────────────────────────── -->
+  <div class="setup-card-wrap nx-fade-in">
+    <div class="card">
+      <div class="card-title" data-en="New Production Issue" data-mr="नवीन उत्पादन इश्यू">
+        New Production Issue
+      </div>
+
+      <div class="fg">
+        <label data-en="Product" data-mr="उत्पादन">Product</label>
+        <select id="productSelect"></select>
+      </div>
+
+      <div class="fg">
+        <label data-en="Batch Quantity" data-mr="बॅच प्रमाण">Batch Quantity</label>
+        <input type="number" id="batchQty" min="1" step="1" />
+      </div>
+
+      <div class="fg">
+        <label data-en="Issue Date" data-mr="इश्यू तारीख">Issue Date</label>
+        <input type="date" id="issueDate" />
+      </div>
+
+      <div class="fg">
+        <button class="btn btn-primary" id="generateBtn" onclick="generateBOM()">
+          <span data-en="Generate BOM ↓" data-mr="BOM तयार करा ↓">Generate BOM ↓</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── BOM SECTION ───────────────────────────────── -->
+  <div id="bomSection" style="display:none;">
+
+    <div class="section-strip">
+      <span class="section-meta" id="bomMeta"></span>
+      <button class="btn btn-ghost" onclick="addManualRow()">
+        <span data-en="+ Manual Row" data-mr="+ मॅन्युअल ओळ">+ Manual Row</span>
+      </button>
+    </div>
+
+    <!-- Material table -->
+    <div class="card card-no-pad">
+      <div class="table-scroll">
+        <table class="pi-table" id="piTable">
+          <thead>
+            <tr>
+              <th style="width:30px;">#</th>
+              <th data-en="Description"  data-mr="वर्णन">Description</th>
+              <th data-en="Unit"         data-mr="एकक">Unit</th>
+              <th class="col-bom-qty" style="text-align:right; width:72px;"
+                data-en="BOM Calc" data-mr="BOM गणना">BOM Calc</th>
+              <th style="text-align:right; width:84px;"
+                data-en="Issue Qty" data-mr="इश्यू प्रमाण">Issue Qty</th>
+              <th class="col-stock" style="text-align:right; width:72px;"
+                data-en="In Stock" data-mr="स्टॉकमध्ये">In Stock</th>
+              <th class="col-delete" style="width:28px;"></th>
+            </tr>
+          </thead>
+          <tbody id="piTbody">
+            <tr><td colspan="7">
+              <div class="empty-state">
+                <div class="icon">📦</div>
+                <span data-en="Select a product and click Generate BOM."
+                      data-mr="उत्पादन निवडा आणि BOM तयार करा क्लिक करा.">
+                  Select a product and click Generate BOM.
+                </span>
+              </div>
+            </td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Notes -->
+    <div class="card">
+      <div class="card-title notes-ta-label"
+        data-en="Challan Notes" data-mr="चलान नोंदी">Challan Notes</div>
+      <textarea id="issueNotes" class="notes-ta" rows="2"></textarea>
+    </div>
+
+    <!-- Print-only: notes + total + signatures -->
+    <div class="print-only" id="printNotesWrap"
+      style="font-size:10pt; font-weight:700; margin:3mm 0 5mm;"></div>
+    <div class="print-only" id="printTotalWrap"></div>
+    <div class="print-only"
+      style="display:flex; justify-content:space-between; margin-top:22mm;">
+      <div style="text-align:center;">
+        <div style="border-top:1px solid #000; width:55mm; padding-top:2mm; font-size:9pt;">
+          Receiver's Signature
+        </div>
+      </div>
+      <div style="text-align:center;">
+        <div id="ph-auth"
+          style="border-top:1px solid #000; width:55mm; padding-top:2mm; font-size:9pt;">
+          Authorized Signatory
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /bomSection -->
+
+</div><!-- /page-wrap -->
+</div><!-- /nx-page -->
+</div><!-- /nx-main -->
+
+
+<!-- ── ACTION BAR ──────────────────────────────────── -->
+<div class="action-bar" id="actionBar">
+  <div class="action-total">
+    <span data-en="Total:" data-mr="एकूण:">Total:</span>
+    <strong id="totalDisplay">0 NOS</strong>
+  </div>
+  <div class="action-btns" id="actionBtns">
+    <button class="btn btn-outline btn-sm" onclick="printChallan()">
+      <span data-en="🖨 Print" data-mr="🖨 प्रिंट">🖨 Print</span>
+    </button>
+    <button class="btn btn-primary btn-sm" id="issueBtn" onclick="openConfirm()">
+      <span data-en="Issue Materials" data-mr="साहित्य इश्यू करा">Issue Materials</span>
+    </button>
+  </div>
+</div>
+
+
+<!-- ── CONFIRM MODAL ───────────────────────────────── -->
+<div class="modal-overlay" id="confirmModal">
+  <div class="modal-box">
+    <div class="modal-title"
+      data-en="Confirm Material Issue" data-mr="साहित्य इश्यू पुष्टी करा">
+      Confirm Material Issue
+    </div>
+    <div class="modal-sub" id="modalSub"></div>
+    <div id="shortfallWarn"></div>
+    <div class="modal-actions">
+      <button class="btn btn-outline btn-sm" onclick="closeModal()">
+        <span data-en="Cancel" data-mr="रद्द करा">Cancel</span>
+      </button>
+      <button class="btn btn-primary btn-sm" id="confirmBtn" onclick="submitIssue()">
+        <span data-en="Confirm Issue" data-mr="इश्यू पुष्टी करा">Confirm Issue</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ── DISPATCH CHALLAN MODAL ──────────────────────── -->
+<div class="modal-overlay" id="challanModal">
+  <div class="modal-box">
+    <div class="modal-title">Create Dispatch Challan</div>
+    <div class="modal-sub">Fill client details — a delivery challan will be generated from this batch.</div>
+    <div class="fg">
+      <label>Client Name *</label>
+      <input type="text" id="ch-client-name" class="nx-input"
+             style="width:100%; padding:10px 13px; background:var(--surface3); border:1px solid var(--border2); border-radius:var(--radius,8px); font-size:14px; font-family:var(--font); color:var(--text);"
+             placeholder="Enter client name" list="ch-client-suggestions" autocomplete="off">
+      <datalist id="ch-client-suggestions"></datalist>
+    </div>
+    <div class="fg">
+      <label>Client Address</label>
+      <textarea id="ch-client-address" rows="2"
+             style="width:100%; padding:10px 13px; background:var(--surface3); border:1px solid var(--border2); border-radius:var(--radius,8px); font-size:14px; font-family:var(--font); color:var(--text); resize:vertical;"
+             placeholder="Optional"></textarea>
+    </div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+      <div class="fg" style="margin:0;">
+        <label>PO Number</label>
+        <input type="text" id="ch-po-number"
+               style="width:100%; padding:10px 13px; background:var(--surface3); border:1px solid var(--border2); border-radius:var(--radius,8px); font-size:14px; font-family:var(--font); color:var(--text);"
+               placeholder="Optional">
+      </div>
+      <div class="fg" style="margin:0;">
+        <label>Vehicle No</label>
+        <input type="text" id="ch-vehicle"
+               style="width:100%; padding:10px 13px; background:var(--surface3); border:1px solid var(--border2); border-radius:var(--radius,8px); font-size:14px; font-family:var(--font); color:var(--text);"
+               placeholder="Optional">
+      </div>
+    </div>
+    <div class="modal-actions" style="margin-top:20px;">
+      <button class="btn btn-outline btn-sm" onclick="closeChallanModal()">Cancel</button>
+      <button class="btn btn-primary btn-sm" id="createChallanBtn" onclick="createDispatchChallan()">
+        Generate Challan →
+      </button>
+    </div>
+  </div>
+</div>
+
+
+<script>
+/* ═══════════════════════════════════════
+   LANGUAGE HELPER  — same pattern as all P2 pages
+   t() used inline in every render function
+   applyLang() called on load + by navbar मराठी toggle
+═══════════════════════════════════════ */
+const t = (en, mr) =>
+  localStorage.getItem('nexflow_lang') === 'mr' ? mr : en;
+
+function applyLang() {
+  const lang = localStorage.getItem('nexflow_lang') || 'en';
+
+  // Sweep all data-en / data-mr elements (static HTML)
+  document.querySelectorAll('[data-en]').forEach(el => {
+    el.textContent = lang === 'mr'
+      ? (el.dataset.mr || el.dataset.en)
+      : el.dataset.en;
+  });
+
+  // Placeholders — dynamic so set manually
+  const sel = document.getElementById('productSelect');
+  if (sel && sel.options[0]) {
+    sel.options[0].textContent = t('— Select Product —', '— उत्पादन निवडा —');
+  }
+  const bq = document.getElementById('batchQty');
+  if (bq) bq.placeholder = t('e.g. 36', 'उदा. ३६');
+
+  const ta = document.getElementById('issueNotes');
+  if (ta) ta.placeholder = t(
+    'e.g. AS IT IS RETURN, Batch 36 — 10 HP Stator',
+    'उदा. जसे आहे तसे परत, बॅच ३६ — १० HP स्टेटर'
+  );
+
+  // Re-render table body if populated (dynamic content uses t())
+  if (bomRows.length > 0) renderTable();
+
+  // Re-render section meta
+  const meta = document.getElementById('bomMeta');
+  if (meta && meta.textContent) {
+    const p = products.find(x => x.id === document.getElementById('productSelect').value);
+    const batchQty = document.getElementById('batchQty').value;
+    if (p && batchQty) {
+      meta.textContent = `${p.name} × ${batchQty} — ${bomRows.length} ${t('BOM materials', 'BOM साहित्य')}`;
+    }
+  }
+}
+
+
+/* ═══════════════════════════════════════
+   STATE
+═══════════════════════════════════════ */
+let tenantId   = null;
+let products   = [];
+let bomRows    = [];
+let stockMap   = {};
+let company    = { name: '', address: '' };
+let manualSeed = 0;
+
+
+/* ═══════════════════════════════════════
+   INIT
+═══════════════════════════════════════ */
+document.addEventListener('DOMContentLoaded', async () => {
+  document.getElementById('issueDate').value =
+    new Date().toISOString().slice(0, 10);
+
+  const authed = await checkAuth();
+  if (!authed) return;
+
+  const { data: { user } } = await window.supabase.auth.getUser();
+  tenantId = user.id;
+
+  await Promise.all([fetchProducts(), fetchStockMap(), fetchCompany(), fetchClients()]);
+
+  applyLang(); // apply initial language after data loaded
+});
+
+
+/* ═══════════════════════════════════════
+   DATA LOADERS
+═══════════════════════════════════════ */
+async function fetchProducts() {
+  const { data, error } = await window.supabase
+    .from('p2_products')
+    .select('id, name, product_code')
+    .eq('tenant_id', tenantId)
+    .eq('is_active', true)
+    .order('name');
+
+  if (error) { toast(t('Could not load products', 'उत्पादने लोड होऊ शकले नाही'), 'error'); return; }
+  products = data || [];
+
+  const sel = document.getElementById('productSelect');
+  // Clear and re-add default option
+  sel.innerHTML = `<option value="">${t('— Select Product —', '— उत्पादन निवडा —')}</option>`;
+  products.forEach(p => {
+    const o = document.createElement('option');
+    o.value = p.id;
+    o.textContent = p.product_code ? `${p.product_code} — ${p.name}` : p.name;
+    sel.appendChild(o);
+  });
+}
+
+async function fetchStockMap() {
+  // Sum p2_stock_transactions directly — same pattern as dispatch.html (RLS-safe)
+  const { data, error } = await window.supabase
+    .from('p2_stock_transactions')
+    .select('raw_material_id, quantity')
+    .eq('tenant_id', tenantId);
+
+  if (error) { console.warn('Stock fetch error:', error.message); return; }
+  stockMap = {};
+  (data || []).forEach(row => {
+    const id = row.raw_material_id;
+    if (!stockMap[id]) stockMap[id] = 0;
+    stockMap[id] += parseFloat(row.quantity) || 0;
+  });
+}
+
+async function fetchCompany() {
+  const { data } = await window.supabase
+    .from('p2_tenant_settings')
+    .select('company_name, address')
+    .eq('tenant_id', tenantId)
+    .single();
+  if (data) {
+    company.name    = data.company_name || '';
+    company.address = data.address      || '';
+  }
+}
+
+
+/* ═══════════════════════════════════════
+   GENERATE BOM
+═══════════════════════════════════════ */
+async function generateBOM() {
+  const productId = document.getElementById('productSelect').value;
+  const batchQty  = parseFloat(document.getElementById('batchQty').value);
+
+  if (!productId) { toast(t('Select a product first', 'आधी उत्पादन निवडा'), 'warn'); return; }
+  if (!batchQty || batchQty < 1) { toast(t('Enter a valid batch quantity', 'योग्य बॅच प्रमाण टाका'), 'warn'); return; }
+
+  const btn = document.getElementById('generateBtn').querySelector('[data-en]');
+  const genBtn = document.getElementById('generateBtn');
+  genBtn.disabled = true;
+  if (btn) btn.textContent = t('Loading…', 'लोड होत आहे…');
+
+  await fetchStockMap();
+
+  const { data: bom, error } = await window.supabase
+    .from('p2_product_bom')
+    .select(`id, qty_per_unit, unit, raw_material_id,
+             p2_raw_materials ( id, name, material_code, unit )`)
+    .eq('tenant_id', tenantId)
+    .eq('product_id', productId)
+    .order('id');
+
+  genBtn.disabled = false;
+  if (btn) btn.textContent = t('Generate BOM ↓', 'BOM तयार करा ↓');
+
+  if (error) { toast(t('BOM load failed: ', 'BOM लोड अयशस्वी: ') + error.message, 'error'); return; }
+  if (!bom || bom.length === 0) {
+    toast(t('No BOM found for this product.', 'या उत्पादनासाठी BOM सापडला नाही.'), 'warn');
+    return;
+  }
+
+  bomRows = bom.map(line => {
+    const mat     = line.p2_raw_materials || {};
+    const calcQty = Math.round(line.qty_per_unit * batchQty * 10000) / 10000;
+    return {
+      id: 'bom_' + line.id,
+      rawMaterialId: line.raw_material_id,
+      code:     mat.material_code || '',
+      name:     mat.name          || '—',
+      unit:     line.unit         || mat.unit || 'NOS',
+      calcQty,
+      issueQty: calcQty,
+      stock:    stockMap[line.raw_material_id] ?? 0,
+      isManual: false
+    };
+  });
+
+  renderTable();
+  activateBOMSection(productId, batchQty);
+}
+
+
+/* ═══════════════════════════════════════
+   RENDER TABLE
+═══════════════════════════════════════ */
+function renderTable() {
+  const tbody = document.getElementById('piTbody');
+  tbody.innerHTML = '';
+
+  if (bomRows.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="7">
+      <div class="empty-state">
+        <div class="icon">📦</div>
+        ${t('No rows. Generate a BOM or add a manual row.',
+            'ओळी नाहीत. BOM तयार करा किंवा मॅन्युअल ओळ जोडा.')}
+      </div></td></tr>`;
+    updateActionBar();
+    return;
+  }
+
+  bomRows.forEach((row, idx) => {
+    const tr = document.createElement('tr');
+    tr.dataset.idx = idx;
+    if (row.isManual) tr.classList.add('manual-row');
+
+    if (row.isManual) {
+      tr.innerHTML = `
+        <td style="color:var(--muted);font-size:11px;">${idx + 1}</td>
+        <td>
+          <input class="desc-cell" type="text" value="${esc(row.name)}"
+            placeholder="${t('Material description', 'साहित्याचे वर्णन')}"
+            oninput="rowField(${idx},'name',this.value)" />
+          <span class="manual-badge">${t('MANUAL', 'मॅन्युअल')}</span>
+        </td>
+        <td>
+          <input class="unit-cell" type="text" value="${esc(row.unit)}"
+            oninput="rowField(${idx},'unit',this.value)" />
+        </td>
+        <td class="col-bom-qty" style="text-align:right;color:var(--muted);font-size:11px;">—</td>
+        <td style="text-align:right;">
+          <input class="qty-cell" type="number" min="0" step="any"
+            value="${row.issueQty || ''}" placeholder="0"
+            oninput="rowQty(${idx}, this.value)" />
+        </td>
+        <td class="col-stock st-na" style="text-align:right;">—</td>
+        <td class="col-delete">
+          <button class="del-row" onclick="deleteRow(${idx})" title="${t('Remove','काढा')}">×</button>
+        </td>`;
+    } else {
+      const { cls } = stockStatus(row.stock, row.issueQty);
+      tr.innerHTML = `
+        <td style="color:var(--muted);font-size:11px;">${idx + 1}</td>
+        <td>
+          <span style="font-size:13px;">${esc(row.name)}</span>
+          <span class="bom-badge">BOM</span>
+          ${row.code ? `<div style="font-size:10px;color:var(--muted);margin-top:2px;">${esc(row.code)}</div>` : ''}
+        </td>
+        <td style="font-size:12px;color:var(--muted);">${esc(row.unit)}</td>
+        <td class="col-bom-qty" style="text-align:right;color:var(--muted);font-size:11px;">${fmtN(row.calcQty)}</td>
+        <td style="text-align:right;">
+          <input class="qty-cell" type="number" min="0" step="any"
+            value="${row.issueQty}" oninput="rowQty(${idx}, this.value)" />
+        </td>
+        <td class="col-stock" style="text-align:right;">
+          <span class="${cls}" data-stock-idx="${idx}">${fmtN(row.stock)}</span>
+        </td>
+        <td class="col-delete">
+          <button class="del-row" onclick="deleteRow(${idx})" title="${t('Remove','काढा')}">×</button>
+        </td>`;
+    }
+    tbody.appendChild(tr);
+  });
+
+  updateActionBar();
+}
+
+/* Inline qty update — no full re-render, preserves input focus */
+function rowQty(idx, val) {
+  bomRows[idx].issueQty = parseFloat(val) || 0;
+  const span = document.querySelector(`[data-stock-idx="${idx}"]`);
+  if (span) span.className = stockStatus(bomRows[idx].stock, bomRows[idx].issueQty).cls;
+  updateActionBar();
+}
+
+function rowField(idx, field, val) { bomRows[idx][field] = val; }
+
+function deleteRow(idx) { bomRows.splice(idx, 1); renderTable(); }
+
+function addManualRow() {
+  manualSeed++;
+  bomRows.push({
+    id: 'manual_' + manualSeed, rawMaterialId: null, code: '',
+    name: '', unit: 'NOS', calcQty: 0, issueQty: 0, stock: 0, isManual: true
+  });
+  renderTable();
+  const tbody = document.getElementById('piTbody');
+  if (tbody.lastElementChild)
+    tbody.lastElementChild.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+
+/* ═══════════════════════════════════════
+   UI STATE
+═══════════════════════════════════════ */
+function activateBOMSection(productId, batchQty) {
+  document.getElementById('bomSection').style.display = 'block';
+  document.getElementById('actionBar').classList.add('visible');
+
+  const p = products.find(x => x.id === productId);
+  const pName = p ? p.name : 'Product';
+  document.getElementById('bomMeta').textContent =
+    `${pName} × ${batchQty} — ${bomRows.length} ${t('BOM materials', 'BOM साहित्य')}`;
+
+  document.getElementById('ph-company').textContent = company.name;
+  document.getElementById('ph-address').textContent = company.address;
+  document.getElementById('ph-date').textContent    = document.getElementById('issueDate').value;
+  document.getElementById('ph-product').textContent = pName;
+  document.getElementById('ph-batch').textContent   = batchQty;
+  document.getElementById('ph-auth').textContent    =
+    company.name ? `For ${company.name} / Authorized Signatory` : 'Authorized Signatory';
+}
+
+function updateActionBar() {
+  const total = bomRows.reduce((s, r) => s + (parseFloat(r.issueQty) || 0), 0);
+  document.getElementById('totalDisplay').textContent = fmtN(total) + ' NOS';
+}
+
+
+/* ═══════════════════════════════════════
+   PRINT
+═══════════════════════════════════════ */
+function printChallan() {
+  const notes = document.getElementById('issueNotes').value.trim();
+  document.getElementById('printNotesWrap').textContent = notes;
+  const total = bomRows.reduce((s, r) => s + (parseFloat(r.issueQty) || 0), 0);
+  document.getElementById('printTotalWrap').innerHTML = `
+    <hr style="border:1px solid #000; margin:3mm 0;" />
+    <div style="text-align:right; font-size:10pt; font-weight:700;">
+      TOTAL &nbsp;&nbsp; ${fmtN(total)} &nbsp; NOS
+    </div>
+    <div style="text-align:right; font-size:8pt; margin-top:1mm; color:#555;">
+      For ${esc(company.name)}
+    </div>`;
+  window.print();
+}
+
+
+/* ═══════════════════════════════════════
+   CONFIRM MODAL
+═══════════════════════════════════════ */
+function openConfirm() {
+  const deductRows = bomRows.filter(
+    r => !r.isManual && r.rawMaterialId && (parseFloat(r.issueQty) || 0) > 0
+  );
+  if (deductRows.length === 0) {
+    toast(
+      bomRows.length > 0
+        ? t('No BOM-linked materials to issue. Manual rows are print-only.',
+            'कोणतेही BOM साहित्य नाही. मॅन्युअल ओळी फक्त प्रिंटसाठी आहेत.')
+        : t('No rows to issue.', 'इश्यू करण्यासाठी ओळी नाहीत.'),
+      'warn'
+    );
+    return;
+  }
+
+  const shortfalls = deductRows.filter(
+    r => (parseFloat(r.issueQty) || 0) > (parseFloat(r.stock) || 0)
+  );
+  const p     = products.find(x => x.id === document.getElementById('productSelect').value);
+  const batch = document.getElementById('batchQty').value;
+
+  document.getElementById('modalSub').textContent =
+    t(
+      `${deductRows.length} material(s) will be deducted from stock for ${p?.name || ''} × ${batch} units. Cannot be undone.`,
+      `${p?.name || ''} × ${batch} साठी ${deductRows.length} साहित्य स्टॉकमधून कमी होईल. हे पूर्ववत होणार नाही.`
+    );
+
+  const warnDiv    = document.getElementById('shortfallWarn');
+  const confirmBtn = document.getElementById('confirmBtn');
+
+  if (shortfalls.length > 0) {
+    warnDiv.innerHTML = `
+      <div class="warn-box">
+        <strong>⚠ ${t('Insufficient stock for', 'अपुरा स्टॉक')} ${shortfalls.length} ${t('material(s):', 'साहित्यासाठी:')}</strong>
+        <ul>${shortfalls.map(r =>
+          `<li>${esc(r.name)}: ${t('need','हवे')} ${fmtN(r.issueQty)}, ${t('have','आहे')} ${fmtN(r.stock)}</li>`
+        ).join('')}</ul>
+        <div style="margin-top:8px; color:var(--red); font-weight:600; font-size:12px;">
+          ${t('Correct quantities or top up stock before issuing.',
+              'इश्यू करण्यापूर्वी प्रमाण दुरुस्त करा किंवा स्टॉक भरा.')}
+        </div>
+      </div>`;
+    confirmBtn.disabled = true;
+  } else {
+    warnDiv.innerHTML   = '';
+    confirmBtn.disabled = false;
+  }
+
+  document.getElementById('confirmModal').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('confirmModal').classList.remove('open');
+  const btn = document.getElementById('confirmBtn').querySelector('[data-en]');
+  if (btn) btn.textContent = t('Confirm Issue', 'इश्यू पुष्टी करा');
+  document.getElementById('confirmBtn').disabled = false;
+}
+
+
+/* ═══════════════════════════════════════
+   SUBMIT ISSUE — stock deduction happens here
+═══════════════════════════════════════ */
+async function submitIssue() {
+  const confirmBtn = document.getElementById('confirmBtn');
+  const btnLabel   = confirmBtn.querySelector('[data-en]');
+  confirmBtn.disabled = true;
+  if (btnLabel) btnLabel.textContent = t('Issuing…', 'इश्यू होत आहे…');
+
+  const deductRows = bomRows.filter(
+    r => !r.isManual && r.rawMaterialId && (parseFloat(r.issueQty) || 0) > 0
+  );
+
+  const p         = products.find(x => x.id === document.getElementById('productSelect').value);
+  const batchQty  = document.getElementById('batchQty').value;
+  const issueDate = document.getElementById('issueDate').value;
+  const notes     = document.getElementById('issueNotes').value.trim();
+  const noteStr   = `Production Issue: ${p?.name || ''} × ${batchQty}` + (notes ? ` — ${notes}` : '');
+
+  const rows = deductRows.map(row => ({
+    tenant_id        : tenantId,
+    raw_material_id  : row.rawMaterialId,
+    transaction_type : 'consumption',
+    quantity         : -Math.abs(parseFloat(row.issueQty)),  // NEGATIVE — deducts stock
+    notes            : noteStr,
+    transaction_date : issueDate
+  }));
+
+  const { error } = await window.supabase
+    .from('p2_stock_transactions')
+    .insert(rows);
+
+  if (error) {
+    toast(t('Issue failed: ', 'इश्यू अयशस्वी: ') + error.message, 'error');
+    confirmBtn.disabled = false;
+    if (btnLabel) btnLabel.textContent = t('Confirm Issue', 'इश्यू पुष्टी करा');
+    return;
+  }
+
+  closeModal();
+  toast(
+    `✓ ${rows.length} ${t('material(s) issued — stock updated', 'साहित्य इश्यू झाले — स्टॉक अपडेट झाला')}`,
+    'ok'
+  );
+
+  // Refresh stock and update display
+  await fetchStockMap();
+  bomRows.forEach(row => {
+    if (row.rawMaterialId) row.stock = stockMap[row.rawMaterialId] ?? 0;
+  });
+  renderTable();
+
+  confirmBtn.disabled = false;
+  if (btnLabel) btnLabel.textContent = t('Confirm Issue', 'इश्यू पुष्टी करा');
+
+  // Show post-issue buttons: Print + Dispatch Challan + New Issue
+  const actionBtns = document.getElementById('actionBtns');
+  actionBtns.innerHTML = `
+    <button class="btn btn-outline btn-sm" onclick="printChallan()">
+      <span>${t('🖨 Print', '🖨 प्रिंट')}</span>
+    </button>
+    <button class="btn btn-outline btn-sm" onclick="openChallanModal()"
+            style="border-color:var(--orange); color:var(--orange);">
+      <span>📄 ${t('Dispatch Challan', 'डिस्पॅच चलान')}</span>
+    </button>
+    <button class="btn btn-primary btn-sm" onclick="resetForNewIssue()">
+      <span>${t('+ New Issue', '+ नवीन इश्यू')}</span>
+    </button>
+  `;
+}
+
+
+function resetForNewIssue() {
+  bomRows = [];
+  manualSeed = 0;
+  document.getElementById('productSelect').value = '';
+  document.getElementById('batchQty').value = '';
+  document.getElementById('issueNotes').value = '';
+  document.getElementById('bomSection').style.display = 'none';
+  document.getElementById('actionBar').classList.remove('visible');
+  // Restore original issue button
+  document.getElementById('actionBtns').innerHTML = `
+    <button class="btn btn-outline btn-sm" onclick="printChallan()">
+      <span>${t('🖨 Print', '🖨 प्रिंट')}</span>
+    </button>
+    <button class="btn btn-primary btn-sm" id="issueBtn" onclick="openConfirm()">
+      <span>${t('Issue Materials', 'साहित्य इश्यू करा')}</span>
+    </button>
+  `;
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+let clientsMap = {};
+
+async function fetchClients() {
+  const { data } = await window.supabase
+    .from('p2_clients')
+    .select('name, address')
+    .eq('tenant_id', tenantId)
+    .order('name');
+
+  clientsMap = {};
+  const datalist = document.getElementById('ch-client-suggestions');
+  if (!datalist) return;
+  datalist.innerHTML = '';
+  (data || []).forEach(c => {
+    clientsMap[c.name.trim().toLowerCase()] = c;
+    const opt = document.createElement('option');
+    opt.value = c.name;
+    datalist.appendChild(opt);
+  });
+}
+
+function openChallanModal() {
+  // Pre-fill address when client name typed
+  const nameInput    = document.getElementById('ch-client-name');
+  const addressInput = document.getElementById('ch-client-address');
+  nameInput.addEventListener('input', () => {
+    const match = clientsMap[nameInput.value.trim().toLowerCase()];
+    if (match) addressInput.value = match.address || '';
+  });
+  document.getElementById('challanModal').classList.add('open');
+  nameInput.focus();
+}
+
+function closeChallanModal() {
+  document.getElementById('challanModal').classList.remove('open');
+}
+
+async function generateChallanNumberForIssue() {
+  const { data: tsData } = await window.supabase
+    .from('p2_tenant_settings')
+    .select('unified_challan_numbering')
+    .eq('tenant_id', tenantId)
+    .single();
+  const unified = tsData?.unified_challan_numbering !== false;
+
+  let query = window.supabase
+    .from('p2_dispatch_orders')
+    .select('challan_number')
+    .eq('tenant_id', tenantId)
+    .not('challan_number', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(100);
+
+  if (!unified) {
+    // Separate mode — RM gets its own counter with RM- prefix
+    query = query.eq('dispatch_type', 'raw_material');
+    const { data } = await query;
+    if (!data || data.length === 0) return 'RM-1001';
+    const nums = data
+      .map(r => parseInt(String(r.challan_number).replace(/^RM-/, ''), 10))
+      .filter(n => !isNaN(n));
+    const next = nums.length === 0 ? 1001 : Math.max(...nums) + 1;
+    return `RM-${next}`;
+  }
+
+  // Unified mode — all orders share one numeric counter
+  const { data } = await query;
+  if (!data || data.length === 0) return 1001;
+  const nums = data.map(r => parseInt(r.challan_number, 10)).filter(n => !isNaN(n));
+  return nums.length === 0 ? 1001 : Math.max(...nums) + 1;
+}
+
+async function createDispatchChallan() {
+  const clientName    = document.getElementById('ch-client-name').value.trim();
+  const clientAddress = document.getElementById('ch-client-address').value.trim();
+  const poNumber      = document.getElementById('ch-po-number').value.trim();
+  const vehicleNumber = document.getElementById('ch-vehicle').value.trim();
+
+  if (!clientName) {
+    toast(t('Client name is required', 'क्लायंटचे नाव आवश्यक आहे'), 'warn');
+    return;
+  }
+
+  const btn = document.getElementById('createChallanBtn');
+  btn.disabled = true;
+  btn.textContent = t('Creating…', 'तयार होत आहे…');
+
+  try {
+    const p        = products.find(x => x.id === document.getElementById('productSelect').value);
+    const batchQty = document.getElementById('batchQty').value;
+
+    // Only BOM rows with a product link — manual rows are print-only
+    // For product dispatch challan, we dispatch the PRODUCT, not individual materials
+    // So we create one dispatch item: the product itself
+    const challanNumber = await generateChallanNumberForIssue();
+
+    const { data: order, error: orderErr } = await window.supabase
+      .from('p2_dispatch_orders')
+      .insert({
+        tenant_id:      tenantId,
+        client_name:    clientName,
+        client_address: clientAddress || null,
+        po_number:      poNumber      || null,
+        vehicle_number: vehicleNumber || null,
+        status:         'confirmed',
+        dispatch_type:  'raw_material',
+        challan_number: String(challanNumber),
+        dispatch_date:  document.getElementById('issueDate').value,
+        created_by:     tenantId,
+        confirmed_at:   new Date().toISOString()
+      })
+      .select('id')
+      .single();
+
+    if (orderErr) throw orderErr;
+
+    // Insert one dispatch item per BOM material (same as what was issued)
+    const deductRows = bomRows.filter(
+      r => !r.isManual && r.rawMaterialId && (parseFloat(r.issueQty) || 0) > 0
+    );
+    const manualRows = bomRows.filter(
+      r => r.isManual && r.name && (parseFloat(r.issueQty) || 0) > 0
+    );
+
+    const itemRows = [
+      ...deductRows.map(r => ({
+        tenant_id:         tenantId,
+        dispatch_order_id: order.id,
+        product_id:        null,
+        raw_material_id:   r.rawMaterialId,
+        material_name:     r.name,
+        qty_dispatched:    parseFloat(r.issueQty),
+        unit:              r.unit
+      })),
+      ...manualRows.map(r => ({
+        tenant_id:         tenantId,
+        dispatch_order_id: order.id,
+        product_id:        null,
+        raw_material_id:   null,
+        material_name:     r.name,
+        qty_dispatched:    parseFloat(r.issueQty),
+        unit:              r.unit
+      }))
+    ];
+
+    const { error: itemErr } = await window.supabase
+      .from('p2_dispatch_items')
+      .insert(itemRows);
+
+    if (itemErr) throw itemErr;
+
+    // Upsert client
+    if (clientName) {
+      await window.supabase.from('p2_clients').upsert(
+        { tenant_id: tenantId, name: clientName, address: clientAddress || null },
+        { onConflict: 'tenant_id,name' }
+      );
+    }
+
+    closeChallanModal();
+    toast(`✓ Challan ${challanNumber} created`, 'ok');
+
+    // Open challan in new tab
+    setTimeout(() => {
+      window.open(`challan.html?id=${order.id}`, '_blank');
+    }, 400);
+
+  } catch (err) {
+    console.error('createDispatchChallan error:', err);
+    toast(t('Failed: ', 'अयशस्वी: ') + (err.message || 'Unknown error'), 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = t('Generate Challan →', 'चलान तयार करा →');
+  }
+}
+
+
+/* ═══════════════════════════════════════
+   UTILS
+═══════════════════════════════════════ */
+function stockStatus(stock, issueQty) {
+  const s = parseFloat(stock) || 0, q = parseFloat(issueQty) || 0;
+  if (s <= 0) return { cls: 'st-out' };
+  if (s < q)  return { cls: 'st-low' };
+  return { cls: 'st-ok' };
+}
+
+function fmtN(n) {
+  const v = parseFloat(n) || 0;
+  return v % 1 === 0 ? v.toString() : v.toFixed(2);
+}
+
+function esc(str) {
+  return String(str || '')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+
+</body>
+</html>
