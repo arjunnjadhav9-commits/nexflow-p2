@@ -401,6 +401,32 @@
 
   </div><!-- /bomSection -->
 
+  <!-- RECENT ISSUES ─────────────────────────────────── -->
+  <div id="recentIssuesSection" style="margin-top:20px;">
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+        <div class="card-title" style="margin:0;">Recent Issues</div>
+        <a href="issue-history.html" class="btn btn-outline btn-sm" style="font-size:11px;">Full History →</a>
+      </div>
+      <div class="nx-table-wrap">
+        <table class="nx-table" style="font-size:13px;">
+          <thead>
+            <tr>
+              <th>Challan No</th>
+              <th>Date</th>
+              <th>Product</th>
+              <th>Status</th>
+              <th style="text-align:center;">Challan</th>
+            </tr>
+          </thead>
+          <tbody id="recentIssuesBody">
+            <tr><td colspan="5" style="text-align:center; color:var(--mid); padding:16px;">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
 </div><!-- /page-wrap -->
 </div><!-- /nx-page -->
 </div><!-- /nx-main -->
@@ -559,6 +585,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   tenantId = user.id;
 
   await Promise.all([fetchProducts(), fetchStockMap(), fetchCompany(), fetchClients()]);
+  loadRecentIssues();
 
   applyLang(); // apply initial language after data loaded
 });
@@ -1138,6 +1165,50 @@ function esc(str) {
   return String(str || '')
     .replace(/&/g,'&amp;').replace(/</g,'&lt;')
     .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── RECENT ISSUES ──────────────────────────────────────────
+async function loadRecentIssues() {
+  const tbody = document.getElementById('recentIssuesBody');
+  if (!tbody) return;
+  try {
+    const { data: orders, error } = await window.supabase
+      .from('p2_dispatch_orders')
+      .select('id, challan_number, dispatch_date, created_at, client_name, status')
+      .eq('tenant_id', tenantId)
+      .eq('dispatch_type', 'bom_issue')
+      .order('created_at', { ascending: false })
+      .limit(5);
+
+    if (error) throw error;
+
+    if (!orders || orders.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:var(--mid); padding:16px;">No issues yet.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = '';
+    orders.forEach(o => {
+      const challan = (o.challan_number || '—').replace(/^CHAL-\d{8}-/, '');
+      const date    = o.dispatch_date
+        ? new Date(o.dispatch_date).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' })
+        : new Date(o.created_at).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' });
+      const isDraft = o.status === 'draft';
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="nx-td-mono">${challan}</td>
+        <td>${date}</td>
+        <td class="nx-td-bold">${esc(o.client_name || '—')}</td>
+        <td><span class="nx-badge ${isDraft ? 'nx-badge-yellow' : 'nx-badge-green'}" style="font-size:10px;">${isDraft ? 'Draft' : 'Confirmed'}</span></td>
+        <td style="text-align:center;">
+          ${!isDraft ? `<button onclick="window.open('challan.html?id=${o.id}','_blank')" class="btn btn-outline btn-sm" style="font-size:11px; padding:4px 10px;">View</button>` : '—'}
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+  } catch(err) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:var(--mid); padding:12px;">Could not load recent issues.</td></tr>';
+  }
 }
 </script>
 
