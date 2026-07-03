@@ -122,6 +122,8 @@
 body{padding-top:56px}
 @media(max-width:900px){
   .nx-links,.nx-user-badge,.nx-lang,.nx-logout-btn{display:none}
+  .nx-drawer .nx-logout-btn{display:block}
+  .nx-drawer .nx-lang{display:block}
   .nx-burger{display:flex}
   .nx-nav-inner{padding:0 14px}
   .nx-logo{font-size:16px}
