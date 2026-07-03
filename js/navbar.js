@@ -40,15 +40,17 @@
 
         return `
 <style>
+#navbar-container{position:static!important;width:100%!important;float:none!important;margin:0!important;padding:0!important;overflow:visible!important}
 .nx-nav{position:fixed;top:0;left:0;right:0;z-index:400;background:var(--surface);border-bottom:1px solid var(--border);font-family:var(--font);overflow:visible}
-.nx-nav-inner{display:grid;grid-template-columns:180px 1fr 300px;align-items:center;padding:0 28px;height:56px}
+.nx-nav-inner{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;padding:0 28px;height:56px;gap:12px}
 .nx-logo{font-family:var(--condensed);font-weight:900;font-size:20px;color:var(--white);text-decoration:none;letter-spacing:1px;white-space:nowrap}
 .nx-logo span{color:var(--orange)}
-.nx-links{display:flex;align-items:center;gap:4px;justify-content:center}
-.nx-link{font-family:var(--condensed);font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--mid);text-decoration:none;padding:7px 11px;border-radius:6px;white-space:nowrap;transition:color .15s,background .15s}
+.nx-links{display:flex;align-items:center;gap:4px;justify-content:center;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none}
+.nx-links::-webkit-scrollbar{display:none}
+.nx-link{font-family:var(--condensed);font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--mid);text-decoration:none;padding:7px 11px;border-radius:6px;white-space:nowrap;transition:color .15s,background .15s;flex-shrink:0}
 .nx-link:hover{color:var(--white);background:var(--surface2)}
 .nx-link.nx-active{color:var(--orange)}
-.nx-right{display:flex;align-items:center;gap:10px;justify-content:flex-end}
+.nx-right{display:flex;align-items:center;gap:10px;justify-content:flex-end;flex-shrink:0}
 .nx-lang{font-family:var(--condensed);font-size:12px;font-weight:700;background:var(--surface2);border:1px solid var(--border2);color:var(--white);padding:5px 14px;border-radius:6px;cursor:pointer;white-space:nowrap;transition:border-color .15s}
 .nx-lang:hover{border-color:var(--orange);color:var(--orange)}
 .nx-email{font-size:12px;color:var(--mid);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px}
@@ -59,12 +61,13 @@
 .nx-logout:hover{background:#b91c1c}
 .nx-burger{display:none;flex-direction:column;gap:5px;background:none;border:none;cursor:pointer;padding:4px}
 .nx-burger span{display:block;width:20px;height:2px;background:var(--white);border-radius:2px}
-.nx-mobile{display:none;flex-direction:column;background:var(--surface,#161929);border-top:1px solid var(--border,#2a2d3e);padding:12px 20px 16px;position:relative;z-index:1}
+.nx-mobile{display:none;flex-direction:column;background:var(--surface,#161929);border-top:1px solid var(--border,#2a2d3e);padding:12px 20px 16px;position:fixed!important;top:56px!important;left:0!important;right:0!important;width:100%!important;max-width:100%!important;max-height:calc(100vh - 56px)!important;overflow-y:auto!important;margin:0!important;float:none!important;z-index:400}
 .nx-mobile.open{display:flex!important}
 .nx-mlinks{display:flex;flex-direction:column;gap:2px;margin-bottom:12px}
 .nx-mlink{display:block;padding:10px 12px;border-radius:6px}
 .nx-mfooter{border-top:1px solid var(--border);padding-top:12px;display:flex;flex-direction:column;gap:8px}
 body{padding-top:56px}
+@media(min-width:901px) and (max-width:1380px){.nx-link{padding:7px 7px;letter-spacing:0.2px}.nx-links{gap:1px}.nx-email{display:none}.nx-nav-inner{padding:0 16px;gap:8px}}
 @media(max-width:900px){.nx-nav-inner{grid-template-columns:1fr auto;padding:0 14px}.nx-links{display:none}.nx-right .nx-email,.nx-right .nx-plan,.nx-right .nx-lang,.nx-right .nx-logout{display:none}.nx-burger{display:flex}}
 </style>
 <nav id="nx-navbar" class="nx-nav">
@@ -157,10 +160,15 @@ body{padding-top:56px}
         const btn  = document.getElementById('nx-burger');
         const menu = document.getElementById('nx-mobile');
         if (!btn || !menu) return;
-        btn.addEventListener('click', () => menu.classList.toggle('open'));
+        btn.addEventListener('click', () => {
+            const isOpen = menu.classList.toggle('open');
+            document.body.style.paddingBottom = isOpen ? menu.offsetHeight + 'px' : '';
+        });
         document.addEventListener('click', e => {
-            if (!document.getElementById('nx-navbar')?.contains(e.target))
+            if (!document.getElementById('nx-navbar')?.contains(e.target)) {
                 menu.classList.remove('open');
+                document.body.style.paddingBottom = '';
+            }
         });
     }
 
