@@ -49,10 +49,10 @@
         return `
 <style>
 /* ── NEXFLOW P2 NAVBAR v4 — LEFT DRAWER ── */
-#nx-navbar{position:fixed;top:0;left:0;right:0;z-index:400;background:rgba(12,14,20,0.97);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-bottom:1px solid var(--border);font-family:var(--font)}
+#nx-navbar{position:fixed;top:0;left:0;right:0;width:100%;z-index:400;background:rgba(12,14,20,0.97);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-bottom:1px solid var(--border);font-family:var(--font);box-sizing:border-box;overflow:visible}
 #nx-navbar::after{content:'';position:absolute;bottom:-1px;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(255,92,26,0.16) 35%,rgba(255,92,26,0.16) 65%,transparent);pointer-events:none}
 
-.nx-nav-inner{display:flex;align-items:center;height:56px;padding:0 20px;gap:0}
+.nx-nav-inner{display:flex;align-items:center;height:56px;padding:0 20px;gap:0;width:100%;box-sizing:border-box}
 
 /* Logo */
 .nx-logo{font-family:var(--condensed);font-weight:900;font-size:18px;color:var(--white);text-decoration:none;letter-spacing:1.5px;text-transform:uppercase;white-space:nowrap;flex-shrink:0;line-height:1}
@@ -66,7 +66,7 @@
 .nx-link.nx-active{color:var(--orange);border-bottom-color:var(--orange)}
 
 /* Right controls */
-.nx-right{display:flex;align-items:center;gap:8px;flex-shrink:0;margin-left:12px}
+.nx-right{display:flex;align-items:center;gap:8px;flex-shrink:0;margin-left:auto}
 
 /* Language toggle */
 .nx-lang{font-family:var(--condensed);font-size:11px;font-weight:800;letter-spacing:0.8px;text-transform:uppercase;color:var(--mid);background:transparent;border:1px solid var(--border2);padding:5px 11px;border-radius:var(--radius-sm);cursor:pointer;transition:all .15s;white-space:nowrap}
