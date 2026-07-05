@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GRN History | Nexflow P2</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%230c0e14'/><text y='.9em' font-size='80' x='10' fill='%23ff5c1a'>N</text></svg>">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800;900&family=Barlow+Condensed:wght@500;600;700;800;900&display=swap">
+    <link rel="stylesheet" href="css/nexflow-design.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/supabase-client.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/navbar.js"></script>
+
+    <style>
+        /* Modal */
+        .nx-modal-overlay {
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.65);
+            z-index: 500;
+            display: flex; align-items: center; justify-content: center;
+            padding: 20px;
+        }
+        .nx-modal {
+            background: var(--surface);
+            border: 1px solid var(--border2);
+            border-radius: var(--radius-lg);
+            padding: 28px; width: 100%; max-width: 520px;
+            box-shadow: var(--shadow-md);
+        }
+        .nx-modal-title {
+            font-family: var(--condensed); font-weight: 800; font-size: 16px;
+            color: var(--orange); text-transform: uppercase; letter-spacing: 0.5px;
+            margin-bottom: 20px;
+        }
+
+        /* Filter bar */
+        .dh-filters {
+            display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 20px;
+        }
+        .dh-filters .nx-form-group { margin: 0; min-width: 140px; }
+        .dh-filters label {
+            font-size: 11px; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.5px; color: var(--mid); display: block; margin-bottom: 6px;
+        }
+        .dh-filters .nx-input { height: 38px; font-size: 13px; }
+        .dh-filter-search { flex: 1; min-width: 200px; }
+
+        /* Summary */
+        .dh-summary { font-size: 12px; color: var(--mid); margin-bottom: 12px; }
+        .dh-summary strong { color: var(--white); }
+
+        /* GRN badge */
+        .grn-no-badge {
+            font-family: var(--condensed); font-weight: 700; font-size: 12px;
+            color: var(--orange); background: rgba(255,92,26,0.1);
+            border: 1px solid rgba(255,92,26,0.25); border-radius: 4px;
+            padding: 2px 7px; white-space: nowrap;
+        }
+
+        /* Material pills — mirrors dispatch product pills */
+        .dh-materials { display: flex; flex-wrap: wrap; gap: 4px; }
+        .dh-material-pill {
+            background: rgba(255,255,255,0.06);
+            border: 1px solid var(--border2);
+            border-radius: 4px;
+            font-size: 11px; padding: 2px 7px;
+            color: var(--light); white-space: nowrap;
+        }
+
+        #historyBody tr { transition: background 0.12s; }
+        #historyBody tr:hover { background: var(--surface2); }
+
+        /* Print */
+        @media print {
+            #navbar-container, .dh-filters, .dh-no-print { display: none !important; }
+            body, .nx-main { background: #fff !important; color: #000 !important; }
+            .nx-card { box-shadow: none !important; border: 1px solid #ddd !important; }
+            .nx-table th, .nx-table td { color: #000 !important; border-color: #ddd !important; }
+            .nx-page-header { margin-bottom: 16px; }
+            .dh-print-header { display: block !important; font-size: 11px; color: #555; margin-bottom: 8px; }
+        }
+        .dh-print-header { display: none; }
+    </style>
+</head>
+<body>
+    <div id="navbar-container"></div>
+    <div class="nx-main">
+        <div class="nx-page">
+
+            <!-- PAGE HEADER -->
+            <div class="nx-page-header">
+                <div>
+                    <div class="nx-eyebrow" data-en="Stock In" data-mr="साठा आत">Stock In</div>
+                    <div class="nx-page-title">
+                        GRN <span data-en="History" data-mr="इतिहास">History</span>
+                    </div>
+                    <div class="nx-page-sub" data-en="All goods received notes — search, filter, export" data-mr="सर्व माल प्राप्ती नोंदी — शोधा, फिल्टर करा, निर्यात करा">All goods received notes — search, filter, export</div>
+                </div>
+                <div style="display:flex; gap:10px;" class="dh-no-print">
+                    <a href="grn.html" class="nx-btn nx-btn-ghost" data-en="← Back to GRN" data-mr="← GRN वर परत">← Back to GRN</a>
+                    <button id="exportCsvBtn" class="nx-btn nx-btn-secondary" data-en="↓ Export CSV" data-mr="↓ CSV निर्यात">↓ Export CSV</button>
+                    <button class="nx-btn nx-btn-secondary" onclick="window.print()" data-en="⎙ Print" data-mr="⎙ प्रिंट">⎙ Print</button>
+                </div>
+            </div>
+
+            <!-- PRINT HEADER -->
+            <div class="dh-print-header" id="printHeader"></div>
+
+            <!-- LOADING -->
+            <div id="loadingSpinner">
+                <div class="nx-logo-loader">
+                    <div class="nx-logo-loader-mark"></div>
+                    <div class="nx-logo-loader-text" data-en="Loading..." data-mr="लोड होत आहे...">Loading...</div>
+                </div>
+            </div>
+
+            <!-- ERROR -->
+            <div id="errorState" style="display:none;" class="nx-alert nx-alert-red nx-mb-24">
+                <span class="nx-alert-icon">⚠</span>
+                <div>
+                    <div class="nx-bold" data-en="Could not load GRN history" data-mr="GRN इतिहास लोड करू शकला नाही">Could not load GRN history</div>
+                    <div data-en="Check your connection and refresh the page." data-mr="तुमचे कनेक्शन तपासा आणि पृष्ठ रीफ्रेश करा.">Check your connection and refresh.</div>
+                </div>
+            </div>
+
+            <!-- MAIN CONTENT -->
+            <div id="mainContent" style="display:none;">
+
+                <!-- FILTERS -->
+                <div class="dh-filters dh-no-print">
+                    <div class="nx-form-group">
+                        <label data-en="From" data-mr="पासून">From</label>
+                        <input type="date" id="filterFrom" class="nx-input">
+                    </div>
+                    <div class="nx-form-group">
+                        <label data-en="To" data-mr="पर्यंत">To</label>
+                        <input type="date" id="filterTo" class="nx-input">
+                    </div>
+                    <div class="nx-form-group dh-filter-search">
+                        <label data-en="Material / Supplier / GRN No / Invoice" data-mr="सामग्री / पुरवठादार / GRN क्र / बिल">Material / Supplier / GRN No / Invoice</label>
+                        <input type="text" id="filterSearch" class="nx-input" data-en="Search..." data-mr="शोधा..." placeholder="Search...">
+                    </div>
+                    <button id="applyFiltersBtn" class="nx-btn nx-btn-primary" style="height:38px; white-space:nowrap;" data-en="Apply" data-mr="लागू करा">Apply</button>
+                    <button id="resetFiltersBtn" class="nx-btn nx-btn-ghost" style="height:38px; white-space:nowrap;" data-en="Reset" data-mr="रीसेट">Reset</button>
+                </div>
+
+                <!-- SUMMARY -->
+                <div class="dh-summary" id="summaryBar"></div>
+
+                <!-- TABLE -->
+                <div class="nx-card">
+                    <div class="nx-table-wrap">
+                        <table class="nx-table" id="historyTable">
+                            <thead>
+                                <tr>
+                                    <th data-en="GRN No" data-mr="GRN क्र">GRN No</th>
+                                    <th data-en="Date" data-mr="तारीख">Date</th>
+                                    <th data-en="Supplier" data-mr="पुरवठादार">Supplier</th>
+                                    <th data-en="Materials" data-mr="सामग्री">Materials</th>
+                                    <th data-en="Invoice No" data-mr="बिल क्र">Invoice No</th>
+                                    <th class="dh-no-print" style="text-align:center;" data-en="Actions" data-mr="क्रिया">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="historyBody"></tbody>
+                        </table>
+                    </div>
+
+                    <div id="emptyState" style="display:none;" class="nx-empty-state">
+                        <div class="nx-empty-icon">📋</div>
+                        <div data-en="No GRN records found for the selected filters." data-mr="निवडलेल्या फिल्टरसाठी कोणत्याही GRN नोंदी आढळल्या नाहीत.">No GRN records found for the selected filters.</div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- DETAIL MODAL -->
+    <div id="detailModal" class="nx-modal-overlay" style="display:none;">
+        <div class="nx-modal" style="max-width:520px;">
+            <div class="nx-modal-title" id="detailModalTitle">GRN Detail</div>
+            <div id="detailModalMeta" style="font-size:13px; color:var(--mid); margin-bottom:16px; line-height:1.7;"></div>
+
+            <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--mid); margin-bottom:8px;"
+                 data-en="Materials Received" data-mr="प्राप्त सामग्री">Materials Received</div>
+            <div class="nx-table-wrap" style="max-height:280px; overflow-y:auto; margin-bottom:16px;">
+                <table class="nx-table" style="font-size:13px;">
+                    <thead>
+                        <tr>
+                            <th data-en="Material" data-mr="सामग्री">Material</th>
+                            <th style="text-align:right;" data-en="Qty" data-mr="परिमाण">Qty</th>
+                            <th data-en="Unit" data-mr="एकक">Unit</th>
+                            <th style="text-align:right;" data-en="Rate (Rs)" data-mr="दर (Rs)">Rate (Rs)</th>
+                            <th data-en="Invoice" data-mr="बिल">Invoice</th>
+                        </tr>
+                    </thead>
+                    <tbody id="detailModalBody"></tbody>
+                </table>
+            </div>
+
+            <div style="display:flex; gap:10px;">
+                <button id="detailCloseBtn" class="nx-btn nx-btn-ghost" style="flex:1;" data-en="Close" data-mr="बंद करा">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="nx-toast-wrap" id="toastWrap"></div>
+
+    <script>
+        // ── STATE ─────────────────────────────────────────────────────────────
+        let tenantId  = null;
+        let allGRNs   = [];   // grouped by grn_no: [{grn_no, date, supplier, items:[]}]
+        let filtered  = [];   // after search filter applied
+
+        // ── LANGUAGE ──────────────────────────────────────────────────────────
+        function applyLang(lang) {
+            document.querySelectorAll('[data-en]').forEach(el => {
+                if (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA') {
+                    el.placeholder = lang === 'mr' ? el.dataset.mr : el.dataset.en;
+                } else {
+                    el.textContent = lang === 'mr' ? el.dataset.mr : el.dataset.en;
+                }
+            });
+            const btn = document.getElementById('lang-toggle');
+            if (btn) btn.textContent = lang === 'mr' ? 'English' : 'मराठी';
+            localStorage.setItem('nexflow_lang', lang);
+        }
+        window.applyLang = applyLang;
+
+        function t(en, mr) {
+            return (localStorage.getItem('nexflow_lang') || 'en') === 'mr' ? mr : en;
+        }
+
+        // ── INIT ──────────────────────────────────────────────────────────────
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                applyLang(localStorage.getItem('nexflow_lang') || 'en');
+                const authed = await checkAuth();
+                if (!authed) return;
+
+                const { data: { user } } = await window.supabase.auth.getUser();
+                tenantId = user.id;
+
+                setDefaultDates();
+                await loadHistory();
+                setupEventHandlers();
+
+                document.getElementById('loadingSpinner').style.display = 'none';
+                document.getElementById('mainContent').style.display    = 'block';
+                document.getElementById('mainContent').classList.add('nx-fade-in');
+            } catch (err) {
+                console.error('GRN history init error:', err);
+                document.getElementById('loadingSpinner').style.display = 'none';
+                document.getElementById('errorState').style.display     = 'block';
+            }
+        });
+
+        // ── DEFAULT DATES — last 3 months ─────────────────────────────────────
+        function setDefaultDates() {
+            const to   = new Date();
+            const from = new Date();
+            from.setMonth(from.getMonth() - 3);
+            document.getElementById('filterFrom').value = from.toISOString().split('T')[0];
+            document.getElementById('filterTo').value   = to.toISOString().split('T')[0];
+        }
+
+        // ── LOAD ──────────────────────────────────────────────────────────────
+        // Fetch all matching flat transactions, then group by grn_no client-side.
+        // Mirrors dispatch-history's two-query approach but in one query since
+        // GRN data is already flat in p2_stock_transactions.
+        async function loadHistory() {
+            const from   = document.getElementById('filterFrom').value;
+            const to     = document.getElementById('filterTo').value;
+
+            let query = window.supabase
+                .from('p2_stock_transactions')
+                .select('id, grn_no, transaction_date, quantity, rate, invoice_no, p2_suppliers(id, name), p2_raw_materials(name, unit)')
+                .eq('tenant_id', tenantId)
+                .eq('transaction_type', 'grn')
+                .order('transaction_date', { ascending: false })
+                .order('created_at',       { ascending: false });
+
+            if (from) query = query.gte('transaction_date', from);
+            if (to)   query = query.lte('transaction_date', to);
+
+            const { data, error } = await query;
+            if (error) throw error;
+
+            const rows = data || [];
+
+            // Group by grn_no (entries without a grn_no get their own row each)
+            // Each group = one GRN row in the table
+            const grnMap = {};
+            const grnOrder = []; // preserve date order
+
+            rows.forEach(row => {
+                const key = row.grn_no || ('__no_grn__' + row.id);
+                if (!grnMap[key]) {
+                    grnMap[key] = {
+                        grn_no:    row.grn_no || null,
+                        date:      row.transaction_date,
+                        supplier:  row.p2_suppliers?.name || '—',
+                        invoice_no: row.invoice_no || null,
+                        items: []
+                    };
+                    grnOrder.push(key);
+                }
+                grnMap[key].items.push({
+                    material: row.p2_raw_materials?.name || '—',
+                    unit:     row.p2_raw_materials?.unit || '',
+                    qty:      row.quantity,
+                    rate:     row.rate,
+                    invoice:  row.invoice_no
+                });
+                // Use earliest invoice_no found for the group header (usually same per GRN)
+                if (!grnMap[key].invoice_no && row.invoice_no) {
+                    grnMap[key].invoice_no = row.invoice_no;
+                }
+            });
+
+            allGRNs = grnOrder.map(k => grnMap[k]);
+
+            applySearchFilter();
+        }
+
+        // ── SEARCH FILTER (client-side) ───────────────────────────────────────
+        function applySearchFilter() {
+            const search = document.getElementById('filterSearch').value.trim().toLowerCase();
+
+            if (!search) {
+                filtered = [...allGRNs];
+            } else {
+                filtered = allGRNs.filter(g =>
+                    (g.grn_no     || '').toLowerCase().includes(search) ||
+                    (g.supplier   || '').toLowerCase().includes(search) ||
+                    (g.invoice_no || '').toLowerCase().includes(search) ||
+                    g.items.some(i => (i.material || '').toLowerCase().includes(search))
+                );
+            }
+
+            renderTable();
+        }
+
+        // ── RENDER ────────────────────────────────────────────────────────────
+        function renderTable() {
+            const tbody = document.getElementById('historyBody');
+            const empty = document.getElementById('emptyState');
+            tbody.innerHTML = '';
+
+            // Print header
+            const from = document.getElementById('filterFrom').value;
+            const to   = document.getElementById('filterTo').value;
+            document.getElementById('printHeader').textContent =
+                `Nexflow P2 — GRN History · ${formatDate(from)} to ${formatDate(to)} · Printed ${new Date().toLocaleDateString('en-IN')}`;
+
+            // Summary
+            const totalTxns = filtered.reduce((sum, g) => sum + g.items.length, 0);
+            const fromStr = from ? new Date(from).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' }) : '—';
+            const toStr   = to   ? new Date(to).toLocaleDateString('en-IN',   { day:'2-digit', month:'short', year:'numeric' }) : '—';
+            document.getElementById('summaryBar').innerHTML =
+                `<strong>${filtered.length}</strong> ${t('GRN entries', 'GRN नोंदी')} · ` +
+                `<strong>${totalTxns}</strong> ${t('material lines', 'सामग्री ओळी')} · ` +
+                `${t('from', 'पासून')} ${fromStr} ${t('to', 'पर्यंत')} ${toStr}`;
+
+            if (filtered.length === 0) {
+                empty.style.display = 'block';
+                return;
+            }
+            empty.style.display = 'none';
+
+            filtered.forEach((grn, idx) => {
+                const materialPills = buildMaterialPills(grn.items);
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>
+                        ${grn.grn_no
+                            ? `<span class="grn-no-badge">${escapeHtml(grn.grn_no)}</span>`
+                            : `<span style="color:var(--mid);font-size:11px;">—</span>`}
+                    </td>
+                    <td>${formatDate(grn.date)}</td>
+                    <td class="nx-td-bold">${escapeHtml(grn.supplier)}</td>
+                    <td><div class="dh-materials">${materialPills}</div></td>
+                    <td style="color:var(--mid); font-size:12px;">${escapeHtml(grn.invoice_no || '—')}</td>
+                    <td style="text-align:center;" class="dh-no-print">
+                        <button
+                            class="nx-btn nx-btn-ghost nx-btn-sm detail-btn"
+                            data-grn-idx="${idx}"
+                            title="View detail">
+                            ${t('Detail', 'तपशील')}
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        function buildMaterialPills(items) {
+            if (!items || items.length === 0) return '<span style="color:var(--mid); font-size:12px;">—</span>';
+            const MAX_SHOW = 3;
+            let html = '';
+            items.slice(0, MAX_SHOW).forEach(item => {
+                html += `<span class="dh-material-pill">${escapeHtml(item.material)} · ${item.qty} ${escapeHtml(item.unit)}</span>`;
+            });
+            if (items.length > MAX_SHOW) {
+                html += `<span class="dh-material-pill" style="color:var(--mid);">+${items.length - MAX_SHOW} ${t('more','अधिक')}</span>`;
+            }
+            return html;
+        }
+
+        // ── DETAIL MODAL ──────────────────────────────────────────────────────
+        function openDetail(idx) {
+            const grn = filtered[idx];
+            if (!grn) return;
+
+            document.getElementById('detailModalTitle').textContent =
+                grn.grn_no ? `GRN ${grn.grn_no}` : t('GRN Detail', 'GRN तपशील');
+
+            document.getElementById('detailModalMeta').innerHTML = `
+                <span style="color:var(--white); font-weight:700;">${escapeHtml(grn.supplier)}</span><br>
+                ${t('Date', 'तारीख')}: ${formatDate(grn.date)}
+                ${grn.invoice_no ? '<br>' + t('Invoice', 'बिल') + ': ' + escapeHtml(grn.invoice_no) : ''}
+            `;
+
+            const tbody = document.getElementById('detailModalBody');
+            tbody.innerHTML = '';
+
+            if (grn.items.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:var(--mid); padding:16px;">${t('No items recorded.', 'कोणतीही नोंद आढळली नाही.')}</td></tr>`;
+            } else {
+                grn.items.forEach(item => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td class="nx-td-bold">${escapeHtml(item.material)}</td>
+                        <td style="text-align:right; font-family:monospace;">${item.qty ?? '—'}</td>
+                        <td style="color:var(--mid);">${escapeHtml(item.unit)}</td>
+                        <td style="text-align:right;">${item.rate != null ? 'Rs ' + formatNumber(item.rate) : '—'}</td>
+                        <td style="color:var(--mid); font-size:12px;">${escapeHtml(item.invoice || '—')}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            }
+
+            document.getElementById('detailModal').style.display = 'flex';
+        }
+
+        // Close modal
+        document.getElementById('detailCloseBtn').addEventListener('click', () => {
+            document.getElementById('detailModal').style.display = 'none';
+        });
+        document.getElementById('detailModal').addEventListener('click', e => {
+            if (e.target.id === 'detailModal') e.target.style.display = 'none';
+        });
+
+        // Delegated click — detail button
+        document.getElementById('historyBody').addEventListener('click', e => {
+            const btn = e.target.closest('.detail-btn');
+            if (!btn) return;
+            openDetail(parseInt(btn.dataset.grnIdx, 10));
+        });
+
+        // ── EVENT HANDLERS ────────────────────────────────────────────────────
+        function setupEventHandlers() {
+            document.getElementById('applyFiltersBtn').addEventListener('click', async () => {
+                document.getElementById('loadingSpinner').style.display = 'flex';
+                document.getElementById('mainContent').style.display   = 'none';
+                try {
+                    await loadHistory();
+                } finally {
+                    document.getElementById('loadingSpinner').style.display = 'none';
+                    document.getElementById('mainContent').style.display   = 'block';
+                }
+            });
+
+            document.getElementById('resetFiltersBtn').addEventListener('click', async () => {
+                setDefaultDates();
+                document.getElementById('filterSearch').value = '';
+                document.getElementById('loadingSpinner').style.display = 'flex';
+                document.getElementById('mainContent').style.display   = 'none';
+                try {
+                    await loadHistory();
+                } finally {
+                    document.getElementById('loadingSpinner').style.display = 'none';
+                    document.getElementById('mainContent').style.display   = 'block';
+                }
+            });
+
+            document.getElementById('filterSearch').addEventListener('input', e => {
+                applySearchFilter();
+            });
+
+            ['filterFrom', 'filterTo'].forEach(id => {
+                document.getElementById(id).addEventListener('keydown', e => {
+                    if (e.key === 'Enter') document.getElementById('applyFiltersBtn').click();
+                });
+            });
+
+            document.getElementById('exportCsvBtn').addEventListener('click', exportCsv);
+        }
+
+        // ── CSV EXPORT ────────────────────────────────────────────────────────
+        // Flat format: one row per material line.
+        async function exportCsv() {
+            if (filtered.length === 0) { toast('No records to export.', 'warn'); return; }
+
+            const btn = document.getElementById('exportCsvBtn');
+            btn.disabled = true; btn.textContent = t('Exporting...', 'निर्यात होत आहे...');
+
+            try {
+                const headers = ['GRN No', 'Date', 'Supplier', 'Material', 'Unit', 'Quantity', 'Rate (Rs)', 'Invoice No'];
+                const rows = [];
+
+                filtered.forEach(grn => {
+                    if (grn.items.length === 0) {
+                        rows.push([grn.grn_no || '', grn.date || '', grn.supplier, '', '', '', '', grn.invoice_no || '']);
+                    } else {
+                        grn.items.forEach(item => {
+                            rows.push([
+                                grn.grn_no    || '',
+                                grn.date      || '',
+                                grn.supplier,
+                                item.material,
+                                item.unit,
+                                item.qty ?? '',
+                                item.rate ?? '',
+                                item.invoice  || ''
+                            ]);
+                        });
+                    }
+                });
+
+                const csvContent = [headers, ...rows]
+                    .map(row => row.map(f => escapeCSVField(String(f))).join(','))
+                    .join('\r\n');
+
+                const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+                const url  = URL.createObjectURL(blob);
+
+                let slug = 'company';
+                try {
+                    const { data: s } = await window.supabase.from('p2_tenant_settings').select('company_name').eq('tenant_id', tenantId).single();
+                    if (s?.company_name) slug = s.company_name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+                } catch(_) {}
+
+                const from = document.getElementById('filterFrom').value;
+                const to   = document.getElementById('filterTo').value;
+                const a    = document.createElement('a');
+                a.href     = url;
+                a.download = `${slug}_grn_history_${from}_to_${to}.csv`;
+                document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+
+                toast(`Exported ${rows.length} row${rows.length !== 1 ? 's' : ''}.`, 'ok');
+            } catch (err) {
+                console.error('CSV export error:', err);
+                toast('Export failed: ' + (err.message || ''), 'error');
+            } finally {
+                btn.disabled = false; btn.textContent = t('↓ Export CSV', '↓ CSV निर्यात');
+            }
+        }
+
+        // ── HELPERS ───────────────────────────────────────────────────────────
+        function formatDate(d) {
+            if (!d) return '—';
+            try { return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }); }
+            catch(_) { return d; }
+        }
+        function formatNumber(n) {
+            if (n == null || n === '') return '—';
+            const num = parseFloat(n);
+            return isNaN(num) ? String(n) : num % 1 === 0 ? num.toString() : num.toFixed(3).replace(/\.?0+$/, '');
+        }
+        function escapeHtml(s) {
+            return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+        function escapeCSVField(f) {
+            const s = String(f);
+            return (s.includes(',') || s.includes('"') || s.includes('\n')) ? '"' + s.replace(/"/g, '""') + '"' : s;
+        }
+    </script>
+</body>
+</html>

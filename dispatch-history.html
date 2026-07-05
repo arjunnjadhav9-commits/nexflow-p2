@@ -187,6 +187,7 @@
                             <option value="" data-en="All" data-mr="सर्व">All</option>
                             <option value="confirmed" data-en="Confirmed" data-mr="निश्चित">Confirmed</option>
                             <option value="draft" data-en="Draft" data-mr="ड्राफ्ट">Draft</option>
+                            <option value="cancelled" data-en="Cancelled" data-mr="रद्द">Cancelled</option>
                         </select>
                     </div>
                     <div class="nx-form-group dh-filter-search">
@@ -252,6 +253,7 @@
 
             <div style="display:flex; gap:10px;">
                 <button id="detailPrintBtn" class="nx-btn nx-btn-green" style="flex:1;" data-en="View Challan" data-mr="चालन पहा">View Challan</button>
+                <button id="detailCancelBtn" class="nx-btn nx-btn-ghost" style="flex:1; color:#ef4444; display:none;" data-en="Cancel Challan" data-mr="चालन रद्द करा">Cancel Challan</button>
                 <button id="detailCloseBtn" class="nx-btn nx-btn-ghost" style="flex:1;" data-en="Close" data-mr="बंद करा">Close</button>
             </div>
         </div>
@@ -394,6 +396,26 @@
             renderTable();
         }
 
+        window.cancelChallanRow = async (orderId, challanNumber) => {
+            const displayNo = (challanNumber || '').replace(/^CHAL-\d{8}-/, '') || challanNumber;
+            if (!confirm(`Cancel challan ${displayNo}? This will reverse the stock deduction and restore materials. This cannot be undone.`)) return;
+
+            try {
+                const { data, error } = await window.supabase.rpc('cancel_challan', {
+                    p_dispatch_order_id: orderId,
+                    p_tenant_id: tenantId
+                });
+                if (error) throw error;
+
+                toast('Challan cancelled — stock restored', 'ok');
+                document.getElementById('detailModal').style.display = 'none';
+                await loadHistory();
+            } catch (err) {
+                console.error('cancelChallanRow:', err);
+                toast('Cancel failed: ' + (err.message || ''), 'error');
+            }
+        };
+
         // ── RENDER ────────────────────────────────────────────────────
         function renderTable() {
             const tbody = document.getElementById('historyBody');
@@ -409,12 +431,14 @@
             // Summary bar
             const confirmed = filtered.filter(o => o.status === 'confirmed').length;
             const drafts    = filtered.filter(o => o.status === 'draft').length;
+            const cancelledCount = filtered.filter(o => o.status === 'cancelled').length;
             const dispatchWord = filtered.length === 1
                 ? t('dispatch', 'डिस्पॅच')
                 : t('dispatches', 'डिस्पॅच');
             document.getElementById('summaryBar').innerHTML =
                 `${t('Showing', 'दाखवत आहे')} <strong>${filtered.length}</strong> ${dispatchWord} · ` +
-                `<strong>${confirmed}</strong> ${t('confirmed', 'निश्चित')} · <strong>${drafts}</strong> ${t('draft', 'ड्राफ्ट')}`;
+                `<strong>${confirmed}</strong> ${t('confirmed', 'निश्चित')} · <strong>${drafts}</strong> ${t('draft', 'ड्राफ्ट')}` +
+                (cancelledCount ? ` · <strong>${cancelledCount}</strong> ${t('cancelled', 'रद्द')}` : '');
 
             if (filtered.length === 0) {
                 empty.style.display = 'block';
@@ -423,7 +447,8 @@
             empty.style.display = 'none';
 
             filtered.forEach(order => {
-                const isDraft   = order.status === 'draft';
+                const isDraft     = order.status === 'draft';
+                const isCancelled = order.status === 'cancelled';
                 const dateStr   = order.dispatch_date
                     ? formatDate(order.dispatch_date)
                     : formatDate(order.created_at?.split('T')[0]);
@@ -431,6 +456,10 @@
                 // Product pills — show max 3, then "+N more"
                 const productPills = buildProductPills(order.items);
                 const poRef = [order.po_number, order.your_challan_ref].filter(Boolean).join(' / ') || '—';
+
+                let statusBadge = `<span class="nx-badge nx-badge-yellow">${t('Draft','ड्राफ्ट')}</span>`;
+                if (!isDraft && !isCancelled) statusBadge = `<span class="nx-badge nx-badge-green">${t('Confirmed','निश्चित')}</span>`;
+                if (isCancelled) statusBadge = `<span class="nx-badge" style="background:rgba(239,68,68,0.15);color:#ef4444;border:1px solid rgba(239,68,68,0.3);">${t('Cancelled','रद्द')}</span>`;
 
                 const cleanChallanNo = (order.challan_number || '—').replace(/^CHAL-\d{8}-/, '');
                 const row = document.createElement('tr');
@@ -440,11 +469,7 @@
                     <td class="nx-td-bold">${escapeHtml(order.client_name)}</td>
                     <td style="color:var(--mid); font-size:12px;">${escapeHtml(poRef)}</td>
                     <td><div class="dh-products">${productPills}</div></td>
-                    <td>
-                        <span class="nx-badge ${isDraft ? 'nx-badge-yellow' : 'nx-badge-green'}">
-                            ${isDraft ? t('Draft','ड्राफ्ट') : t('Confirmed','निश्चित')}
-                        </span>
-                    </td>
+                    <td>${statusBadge}</td>
                     <td style="text-align:center;" class="dh-no-print">
                         <div style="display:flex; gap:6px; justify-content:center;">
                             <button
@@ -453,13 +478,21 @@
                                 title="View detail">
                                 ${t('Detail','तपशील')}
                             </button>
-                            ${!isDraft ? `
+                            ${!isDraft && !isCancelled ? `
                             <button
                                 onclick="window.open('/challan.html?id=${order.id}','_blank')"
                                 class="nx-btn nx-btn-ghost nx-btn-sm"
                                 title="Print challan">
                                 ${t('Challan','चालन')}
+                            </button>
+                            <button
+                                onclick="cancelChallanRow('${order.id}', '${(order.challan_number||'').replace(/'/g,"")}')"
+                                class="nx-btn nx-btn-ghost nx-btn-sm"
+                                style="color:#ef4444;"
+                                title="Cancel">
+                                ${t('Cancel','रद्द')}
                             </button>` : ''}
+                            ${isCancelled ? `<span style="color:var(--mid); font-size:11px;">${t('Reversed','परत केले')}</span>` : ''}
                         </div>
                     </td>
                 `;
@@ -485,7 +518,8 @@
             const order = allOrders.find(o => o.id === orderId);
             if (!order) return;
 
-            const isDraft = order.status === 'draft';
+            const isDraft     = order.status === 'draft';
+            const isCancelled = order.status === 'cancelled';
             const dateStr = order.dispatch_date
                 ? formatDate(order.dispatch_date)
                 : formatDate(order.created_at?.split('T')[0]);
@@ -496,12 +530,16 @@
             document.getElementById('detailModalTitle').textContent =
                 `${t('Challan','चालन')} ${cleanChallan}`;
 
+            let statusBadge = `<span class="nx-badge nx-badge-yellow" style="font-size:11px;">${t('Draft','ड्राफ्ट')}</span>`;
+            if (!isDraft && !isCancelled) statusBadge = `<span class="nx-badge nx-badge-green" style="font-size:11px;">${t('Confirmed','निश्चित')}</span>`;
+            if (isCancelled) statusBadge = `<span class="nx-badge" style="font-size:11px;background:rgba(239,68,68,0.15);color:#ef4444;border:1px solid rgba(239,68,68,0.3);">${t('Cancelled','रद्द')}</span>`;
+
             const isRM = order.dispatch_type === 'raw_material';
             document.getElementById('detailModalMeta').innerHTML = `
                 <span style="color:var(--white); font-weight:700;">${escapeHtml(order.client_name)}</span><br>
                 ${order.client_address ? escapeHtml(order.client_address) + '<br>' : ''}
                 ${t('Date','तारीख')}: ${dateStr} &nbsp;·&nbsp;
-                ${t('Status','स्थिती')}: <span class="nx-badge ${isDraft ? 'nx-badge-yellow' : 'nx-badge-green'}" style="font-size:11px;">${isDraft ? t('Draft','ड्राफ्ट') : t('Confirmed','निश्चित')}</span>
+                ${t('Status','स्थिती')}: ${statusBadge}
                 &nbsp;·&nbsp;<span style="font-size:11px; color:var(--mid);">${isRM ? '📦 ' + t('Raw Material Dispatch','कच्चा माल डिस्पॅच') : '🏭 ' + t('Product Dispatch','उत्पादन डिस्पॅच')}</span>
                 ${order.po_number        ? '<br>' + t('PO','PO') + ': '      + escapeHtml(order.po_number)        : ''}
                 ${order.your_challan_ref ? '<br>' + t('Ref','संदर्भ') + ': '     + escapeHtml(order.your_challan_ref) : ''}
@@ -524,7 +562,7 @@
                 });
             }
 
-            // Print button — disabled for drafts (no challan to show)
+            // Print button — disabled for drafts and cancelled (nothing valid to show)
             const printBtn = document.getElementById('detailPrintBtn');
             if (isDraft) {
                 printBtn.disabled = true;
@@ -535,6 +573,15 @@
                 printBtn.style.opacity = '1';
                 printBtn.title = '';
                 printBtn.onclick = () => window.open(`/challan.html?id=${orderId}`, '_blank');
+            }
+
+            // Cancel button — only shown for confirmed, non-cancelled orders
+            const cancelBtn = document.getElementById('detailCancelBtn');
+            if (!isDraft && !isCancelled) {
+                cancelBtn.style.display = 'block';
+                cancelBtn.onclick = () => cancelChallanRow(orderId, order.challan_number || '');
+            } else {
+                cancelBtn.style.display = 'none';
             }
 
             document.getElementById('detailModal').style.display = 'flex';

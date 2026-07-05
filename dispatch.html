@@ -431,23 +431,29 @@
                 const displayDate = dispatch.dispatch_date
                     ? new Date(dispatch.dispatch_date).toLocaleDateString()
                     : new Date(dispatch.created_at).toLocaleDateString();
-                const isDraft = dispatch.status === 'draft';
+                const isDraft     = dispatch.status === 'draft';
+                const isCancelled = dispatch.status === 'cancelled';
+
+                let badge = `<span class="nx-badge nx-badge-yellow">Draft</span>`;
+                if (!isDraft && !isCancelled) badge = `<span class="nx-badge nx-badge-green">Confirmed</span>`;
+                if (isCancelled) badge = `<span class="nx-badge" style="background:rgba(239,68,68,0.15);color:#ef4444;border:1px solid rgba(239,68,68,0.3);">Cancelled</span>`;
+
+                let actionCell = `<button onclick="loadDraftToForm('${dispatch.id}')" class="nx-btn nx-btn-secondary nx-btn-sm">Resume</button>`;
+                if (!isDraft && !isCancelled) {
+                    actionCell = `
+                        <button onclick="viewChallan('${dispatch.id}')" class="nx-btn nx-btn-ghost nx-btn-sm">View</button>
+                        <button onclick="cancelChallan('${dispatch.id}', '${(dispatch.challan_number||'').replace(/'/g,"")}')" class="nx-btn nx-btn-ghost nx-btn-sm" style="color:#ef4444;">Cancel</button>
+                    `;
+                } else if (isCancelled) {
+                    actionCell = `<span style="color:var(--mid); font-size:12px;">Reversed</span>`;
+                }
 
                 row.innerHTML = `
                     <td class="nx-td-mono">${dispatch.challan_number || '-'}</td>
                     <td>${displayDate}</td>
                     <td class="nx-td-bold">${dispatch.client_name}</td>
-                    <td>
-                        <span class="nx-badge ${isDraft ? 'nx-badge-yellow' : 'nx-badge-green'}">
-                            ${isDraft ? 'Draft' : 'Confirmed'}
-                        </span>
-                    </td>
-                    <td style="text-align:center;">
-                        ${isDraft
-                            ? `<button onclick="loadDraftToForm('${dispatch.id}')" class="nx-btn nx-btn-secondary nx-btn-sm">Resume</button>`
-                            : `<button onclick="viewChallan('${dispatch.id}')" class="nx-btn nx-btn-ghost nx-btn-sm">View</button>`
-                        }
-                    </td>
+                    <td>${badge}</td>
+                    <td style="text-align:center;">${actionCell}</td>
                 `;
                 tbody.appendChild(row);
             });
@@ -455,6 +461,25 @@
 
         window.viewChallan = (orderId) => {
             window.open(`/challan.html?id=${orderId}`, '_blank');
+        };
+
+        window.cancelChallan = async (orderId, challanNumber) => {
+            if (!confirm(`Cancel challan ${challanNumber}? This will reverse the stock deduction and restore materials. This cannot be undone.`)) return;
+
+            try {
+                const { data, error } = await window.supabase.rpc('cancel_challan', {
+                    p_dispatch_order_id: orderId,
+                    p_tenant_id: tenantId || localStorage.getItem('supabase_tenant_id')
+                });
+                if (error) throw error;
+
+                window.toast ? window.toast('Challan cancelled — stock restored', 'ok') : alert('Challan cancelled — stock restored');
+                await loadRecentDispatches();
+            } catch (err) {
+                console.error('cancelChallan:', err);
+                const errMsg = 'Cancel failed: ' + (err.message || '');
+                window.toast ? window.toast(errMsg, 'error') : alert(errMsg);
+            }
         };
 
         window.loadDraftToForm = async (orderId) => {

@@ -125,6 +125,7 @@
                             <option value="">All</option>
                             <option value="confirmed">Confirmed</option>
                             <option value="draft">Draft</option>
+                            <option value="cancelled">Cancelled</option>
                         </select>
                     </div>
                     <div class="nx-form-group dh-filter-search">
@@ -178,6 +179,8 @@
             </div>
             <div style="display:flex; gap:10px;">
                 <button id="detailPrintBtn" class="nx-btn nx-btn-green" style="flex:1;">View Challan</button>
+                <button id="detailCsvBtn" class="nx-btn nx-btn-secondary" style="flex:1;">↓ CSV</button>
+                <button id="detailCancelBtn" class="nx-btn nx-btn-ghost" style="flex:1; color:#ef4444; display:none;">Cancel Challan</button>
                 <button id="detailCloseBtn" class="nx-btn nx-btn-ghost" style="flex:1;">Close</button>
             </div>
         </div>
@@ -295,24 +298,31 @@
 
             const counts = { product: 0, raw_material: 0, bom_issue: 0 };
             filtered.forEach(o => { if (counts[o.dispatch_type] !== undefined) counts[o.dispatch_type]++; });
+            const cancelledCount = filtered.filter(o => o.status === 'cancelled').length;
 
             document.getElementById('summaryBar').innerHTML =
                 `Showing <strong>${filtered.length}</strong> records · ` +
                 `<span class="type-product">${counts.product} Product</span> &nbsp; ` +
                 `<span class="type-rm">${counts.raw_material} RM</span> &nbsp; ` +
-                `<span class="type-issue">${counts.bom_issue} Issue</span>`;
+                `<span class="type-issue">${counts.bom_issue} Issue</span>` +
+                (cancelledCount ? ` &nbsp; · <strong>${cancelledCount}</strong> Cancelled` : '');
 
             if (filtered.length === 0) { empty.style.display = 'block'; return; }
             empty.style.display = 'none';
 
             filtered.forEach(order => {
-                const isDraft  = order.status === 'draft';
+                const isDraft     = order.status === 'draft';
+                const isCancelled = order.status === 'cancelled';
                 const dateStr  = order.dispatch_date
                     ? formatDate(order.dispatch_date)
                     : formatDate(order.created_at?.split('T')[0]);
                 const challan  = (order.challan_number || '—').replace(/^CHAL-\d{8}-/, '');
                 const pills    = buildPills(order.items);
                 const clientStr = escapeHtml(order.client_name || '—');
+
+                let statusBadge = `<span class="nx-badge nx-badge-yellow">Draft</span>`;
+                if (!isDraft && !isCancelled) statusBadge = `<span class="nx-badge nx-badge-green">Confirmed</span>`;
+                if (isCancelled) statusBadge = `<span class="nx-badge" style="background:rgba(239,68,68,0.15);color:#ef4444;border:1px solid rgba(239,68,68,0.3);">Cancelled</span>`;
 
                 const row = document.createElement('tr');
                 row.innerHTML = `
@@ -321,15 +331,14 @@
                     <td>${dateStr}</td>
                     <td class="nx-td-bold">${clientStr}</td>
                     <td><div class="dh-products">${pills}</div></td>
-                    <td>
-                        <span class="nx-badge ${isDraft ? 'nx-badge-yellow' : 'nx-badge-green'}">
-                            ${isDraft ? 'Draft' : 'Confirmed'}
-                        </span>
-                    </td>
+                    <td>${statusBadge}</td>
                     <td style="text-align:center;" class="dh-no-print">
                         <div style="display:flex; gap:6px; justify-content:center;">
                             <button class="nx-btn nx-btn-ghost nx-btn-sm detail-btn" data-order-id="${order.id}">Detail</button>
-                            ${!isDraft ? `<button onclick="window.open('challan.html?id=${order.id}','_blank')" class="nx-btn nx-btn-ghost nx-btn-sm">Challan</button>` : ''}
+                            ${!isDraft && !isCancelled ? `
+                            <button onclick="window.open('challan.html?id=${order.id}','_blank')" class="nx-btn nx-btn-ghost nx-btn-sm">Challan</button>
+                            <button onclick="cancelChallanRow('${order.id}', '${(order.challan_number||'').replace(/'/g,"")}')" class="nx-btn nx-btn-ghost nx-btn-sm" style="color:#ef4444;">Cancel</button>` : ''}
+                            ${isCancelled ? `<span style="color:var(--mid); font-size:11px;">Reversed</span>` : ''}
                         </div>
                     </td>
                 `;
@@ -352,11 +361,16 @@
             const order = allOrders.find(o => o.id === orderId);
             if (!order) return;
 
-            const isDraft  = order.status === 'draft';
+            const isDraft     = order.status === 'draft';
+            const isCancelled = order.status === 'cancelled';
             const dateStr  = order.dispatch_date
                 ? formatDate(order.dispatch_date)
                 : formatDate(order.created_at?.split('T')[0]);
             const challan  = (order.challan_number || '—').replace(/^CHAL-\d{8}-/, '');
+
+            let statusBadge = `<span class="nx-badge nx-badge-yellow" style="font-size:11px;">Draft</span>`;
+            if (!isDraft && !isCancelled) statusBadge = `<span class="nx-badge nx-badge-green" style="font-size:11px;">Confirmed</span>`;
+            if (isCancelled) statusBadge = `<span class="nx-badge" style="font-size:11px;background:rgba(239,68,68,0.15);color:#ef4444;border:1px solid rgba(239,68,68,0.3);">Cancelled</span>`;
 
             document.getElementById('detailModalTitle').textContent = `Challan ${challan}`;
             document.getElementById('detailModalMeta').innerHTML = `
@@ -364,7 +378,7 @@
                 ${order.client_address ? escapeHtml(order.client_address) + '<br>' : ''}
                 Date: ${dateStr} &nbsp;·&nbsp; ${typeBadge(order.dispatch_type)}
                 &nbsp;·&nbsp;
-                <span class="nx-badge ${isDraft ? 'nx-badge-yellow' : 'nx-badge-green'}" style="font-size:11px;">${isDraft ? 'Draft' : 'Confirmed'}</span>
+                ${statusBadge}
                 ${order.po_number       ? '<br>PO: '      + escapeHtml(order.po_number)        : ''}
                 ${order.your_challan_ref ? '<br>Ref: '    + escapeHtml(order.your_challan_ref) : ''}
                 ${order.vehicle_number  ? '<br>Vehicle: ' + escapeHtml(order.vehicle_number)   : ''}
@@ -387,15 +401,47 @@
             }
 
             const printBtn = document.getElementById('detailPrintBtn');
+            const csvBtn   = document.getElementById('detailCsvBtn');
             if (isDraft) {
                 printBtn.disabled = true; printBtn.style.opacity = '0.4';
+                csvBtn.disabled   = true; csvBtn.style.opacity   = '0.4';
             } else {
                 printBtn.disabled = false; printBtn.style.opacity = '1';
-                printBtn.onclick = () => window.open(`challan.html?id=${orderId}`, '_blank');
+                printBtn.onclick  = () => window.open(`challan.html?id=${orderId}`, '_blank');
+                csvBtn.disabled   = false; csvBtn.style.opacity   = '1';
+                csvBtn.onclick    = () => exportChallanCSV(orderId);
+            }
+
+            const cancelBtn = document.getElementById('detailCancelBtn');
+            if (!isDraft && !isCancelled) {
+                cancelBtn.style.display = 'block';
+                cancelBtn.onclick = () => cancelChallanRow(orderId, order.challan_number || '');
+            } else {
+                cancelBtn.style.display = 'none';
             }
 
             document.getElementById('detailModal').style.display = 'flex';
         }
+
+        window.cancelChallanRow = async (orderId, challanNumber) => {
+            const displayNo = (challanNumber || '').replace(/^CHAL-\d{8}-/, '') || challanNumber;
+            if (!confirm(`Cancel challan ${displayNo}? This will reverse the stock deduction and restore materials. This cannot be undone.`)) return;
+
+            try {
+                const { data, error } = await window.supabase.rpc('cancel_challan', {
+                    p_dispatch_order_id: orderId,
+                    p_tenant_id: tenantId
+                });
+                if (error) throw error;
+
+                toast('Challan cancelled — stock restored', 'ok');
+                document.getElementById('detailModal').style.display = 'none';
+                await loadHistory();
+            } catch (err) {
+                console.error('cancelChallanRow:', err);
+                toast('Cancel failed: ' + (err.message || ''), 'error');
+            }
+        };
 
         document.getElementById('detailCloseBtn').addEventListener('click', () => {
             document.getElementById('detailModal').style.display = 'none';
@@ -407,6 +453,67 @@
             const btn = e.target.closest('.detail-btn');
             if (btn) openDetail(btn.dataset.orderId);
         });
+
+        // ── PER-CHALLAN CSV EXPORT ──────────────────────────────────────────
+        // Mirrors the printed challan format:
+        // Company header → TO details → Challan meta → SR/Description/Qty/Unit → Total
+        // ── PER-CHALLAN CSV EXPORT — flat tabular format ────────────────────────
+        // One header row + one data row per item (order fields repeat per item row).
+        // Matches the standard dispatch CSV format but scoped to a single challan.
+        window.exportChallanCSV = async function(orderId) {
+            const order = allOrders.find(o => o.id === orderId);
+            if (!order) { toast('Order not found.', 'error'); return; }
+
+            try {
+                const challan = (order.challan_number || '').replace(/^CHAL-\d{8}-/, '');
+                const dateStr = order.dispatch_date || order.created_at?.split('T')[0] || '';
+                const type    = order.dispatch_type === 'product'      ? 'Product'
+                              : order.dispatch_type === 'raw_material' ? 'Raw Material'
+                              : 'Production Issue';
+
+                const headers = ['Challan No', 'Type', 'Date', 'Client', 'Address',
+                                 'PO Number', 'Challan Ref', 'Vehicle', 'Status',
+                                 'Item', 'Qty', 'Unit'];
+
+                const base = [
+                    challan,
+                    type,
+                    dateStr,
+                    order.client_name     || '',
+                    order.client_address  || '',
+                    order.po_number       || '',
+                    order.your_challan_ref|| '',
+                    order.vehicle_number  || '',
+                    order.status
+                ];
+
+                const rows = [];
+                if (!order.items.length) {
+                    rows.push([...base, '', '', '']);
+                } else {
+                    order.items.forEach(item => {
+                        rows.push([...base, item.name, item.qty, item.unit]);
+                    });
+                }
+
+                const csv  = [headers, ...rows]
+                    .map(r => r.map(f => escapeCSVField(String(f))).join(','))
+                    .join('\r\n');
+                const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+                const url  = URL.createObjectURL(blob);
+
+                const a = document.createElement('a');
+                a.href     = url;
+                a.download = `challan_${challan}_${dateStr}.csv`;
+                document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+
+                toast(`Challan ${challan} exported.`, 'ok');
+            } catch(err) {
+                console.error('exportChallanCSV error:', err);
+                toast('Export failed: ' + (err.message || ''), 'error');
+            }
+        };
 
         // ── CSV EXPORT ────────────────────────────────────────────────
         document.getElementById('exportCsvBtn').addEventListener('click', async () => {

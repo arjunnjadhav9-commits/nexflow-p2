@@ -433,6 +433,32 @@
             } catch (err) { console.error('upsertClient:', err); }
         }
 
+        window.cancelChallan = async (orderId, challanNumber) => {
+            const msg = t(
+                `Cancel challan ${challanNumber}? This will reverse the stock deduction and restore materials. This cannot be undone.`,
+                `चालन ${challanNumber} रद्द करायचे? यामुळे स्टॉक कपात उलट होईल आणि साहित्य परत येईल. हे पूर्ववत करता येणार नाही.`
+            );
+            if (!confirm(msg)) return;
+
+            try {
+                const { data, error } = await window.supabase.rpc('cancel_challan', {
+                    p_dispatch_order_id: orderId,
+                    p_tenant_id: tenantId
+                });
+                if (error) throw error;
+
+                window.toast
+                    ? window.toast(t('Challan cancelled — stock restored', 'चालन रद्द — स्टॉक परत केला'), 'ok')
+                    : alert(t('Challan cancelled — stock restored', 'चालन रद्द — स्टॉक परत केला'));
+
+                await loadRecentDispatches();
+            } catch (err) {
+                console.error('cancelChallan:', err);
+                const errMsg = t('Cancel failed: ', 'रद्द करणे अयशस्वी: ') + (err.message || '');
+                window.toast ? window.toast(errMsg, 'error') : alert(errMsg);
+            }
+        };
+
         // ── LOAD PAST DISPATCHES (raw_material type only) ─────────────
         async function loadRecentDispatches() {
             const { data, error } = await window.supabase
@@ -458,23 +484,29 @@
                 const displayDate = d.dispatch_date
                     ? new Date(d.dispatch_date).toLocaleDateString('en-IN')
                     : new Date(d.created_at).toLocaleDateString('en-IN');
-                const isDraft = d.status === 'draft';
+                const isDraft     = d.status === 'draft';
+                const isCancelled = d.status === 'cancelled';
+
+                let badge = `<span class="nx-badge nx-badge-yellow">${t('Draft', 'ड्राफ्ट')}</span>`;
+                if (!isDraft && !isCancelled) badge = `<span class="nx-badge nx-badge-green">${t('Confirmed', 'निश्चित')}</span>`;
+                if (isCancelled) badge = `<span class="nx-badge" style="background:rgba(239,68,68,0.15);color:#ef4444;border:1px solid rgba(239,68,68,0.3);">${t('Cancelled', 'रद्द')}</span>`;
+
+                let actionCell = `<button onclick="loadDraftToForm('${d.id}')" class="nx-btn nx-btn-secondary nx-btn-sm">${t('Resume', 'सुरू ठेवा')}</button>`;
+                if (!isDraft && !isCancelled) {
+                    actionCell = `
+                        <button onclick="window.open('/challan.html?id=${d.id}','_blank')" class="nx-btn nx-btn-ghost nx-btn-sm">${t('Challan', 'चालन')}</button>
+                        <button onclick="cancelChallan('${d.id}', '${(d.challan_number||'').replace(/'/g,"")}')" class="nx-btn nx-btn-ghost nx-btn-sm" style="color:#ef4444;">${t('Cancel', 'रद्द करा')}</button>
+                    `;
+                } else if (isCancelled) {
+                    actionCell = `<span style="color:var(--mid); font-size:12px;">${t('Reversed', 'परत केले')}</span>`;
+                }
 
                 row.innerHTML = `
                     <td class="nx-td-mono">${d.challan_number || '—'}</td>
                     <td>${displayDate}</td>
                     <td class="nx-td-bold">${d.client_name}</td>
-                    <td>
-                        <span class="nx-badge ${isDraft ? 'nx-badge-yellow' : 'nx-badge-green'}">
-                            ${isDraft ? t('Draft', 'ड्राफ्ट') : t('Confirmed', 'निश्चित')}
-                        </span>
-                    </td>
-                    <td style="text-align:center;">
-                        ${isDraft
-                            ? `<button onclick="loadDraftToForm('${d.id}')" class="nx-btn nx-btn-secondary nx-btn-sm">${t('Resume', 'सुरू ठेवा')}</button>`
-                            : `<button onclick="window.open('/challan.html?id=${d.id}','_blank')" class="nx-btn nx-btn-ghost nx-btn-sm">${t('Challan', 'चालन')}</button>`
-                        }
-                    </td>
+                    <td>${badge}</td>
+                    <td style="text-align:center;">${actionCell}</td>
                 `;
                 tbody.appendChild(row);
             });
@@ -748,18 +780,24 @@
                     .insert(itemRows);
                 if (itemsErr) throw itemsErr;
 
-                // Deduct stock — one transaction per material
-                for (const item of dispatchItems) {
-                    const { error: txnErr } = await window.supabase.from('p2_stock_transactions').insert({
-                        tenant_id:        tenantId,
-                        raw_material_id:  item.raw_material_id,
-                        transaction_type: 'consumption',
-                        quantity:         -Math.abs(item.qty),
-                        transaction_date: new Date().toISOString().split('T')[0],
-                        notes:            `RM Dispatch — Challan ${challanNumber} — ${clientName}`
+                // Deduct stock via RPC — same function dispatch.html uses.
+                // This sets reference_id = orderId on every transaction row,
+                // which is what makes cancel/reverse possible later. The old
+                // direct-insert loop here never set reference_id — that's
+                // why cancel couldn't work for RM dispatch before.
+                const consumptionArray = dispatchItems.map(item => ({
+                    material_id: item.raw_material_id,
+                    qty:         Math.abs(item.qty)
+                }));
+
+                const { error: confirmErr } = await window.supabase
+                    .rpc('confirm_dispatch_transaction', {
+                        p_dispatch_order_id: orderId,
+                        p_tenant_id:         tenantId,
+                        p_consumption_json:  JSON.stringify(consumptionArray),
+                        p_challan_number:    challanNumber
                     });
-                    if (txnErr) throw new Error(`Stock deduction failed for ${item.name}: ${txnErr.message}`);
-                }
+                if (confirmErr) throw new Error(`Stock deduction failed: ${confirmErr.message}`);
 
                 await upsertClient(clientName, clientAddress);
 

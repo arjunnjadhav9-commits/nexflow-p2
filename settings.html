@@ -310,8 +310,22 @@
                 <!-- ── END CHALLAN NUMBERING MODE ───────────────────────── -->
 
                 <div style="position:relative; display:inline-block; width:100%; margin-top:20px;">
-                    <button type="submit" id="saveChallanBtn" class="nx-btn nx-btn-primary nx-btn-full" data-en="Save Challan Settings" data-mr="चलान सेटिंग्ज साठवा">
-                        Save Challan Settings
+
+                <!-- ── GRN STARTING NUMBER ───────────────────────────────── -->
+                <div class="nx-form-group" style="margin-bottom:20px;">
+                    <label data-en="GRN Starting Number" data-mr="GRN सुरुवातीचा क्रमांक">GRN Starting Number</label>
+                    <input type="number" id="grn-sequence" name="grn_sequence" class="nx-input"
+                           placeholder="e.g. 1"
+                           data-en="e.g. 1" data-mr="उदा. १">
+                    <div style="font-size:11px; color:var(--mid); margin-top:6px;"
+                         data-en="Next GRN will be generated from this sequence. Useful if you have existing paper GRNs."
+                         data-mr="पुढील GRN या क्रमांकापासून तयार होईल. जुन्या कागदी GRN असतील तर उपयुक्त.">
+                        Next GRN will be generated from this sequence. Useful if you have existing paper GRNs.
+                    </div>
+                </div>
+
+                    <button type="submit" id="saveChallanBtn" class="nx-btn nx-btn-primary nx-btn-full" data-en="Save Challan & GRN Settings" data-mr="चलान आणि GRN सेटिंग्ज साठवा">
+                        Save Challan &amp; GRN Settings
                     </button>
                     <span id="unsavedChallan" class="nx-unsaved-dot"></span>
                 </div>
@@ -889,6 +903,7 @@
                 document.getElementById('mobile').value         = data.mobile || '';
                 document.getElementById('gstin').value          = data.gstin || '';
                 document.getElementById('challan-sequence').value  = data.challan_sequence || 1001;
+                document.getElementById('grn-sequence').value      = data.grn_sequence || '';
                 document.getElementById('telegram-chat-id').value  = data.telegram_chat_id || '';
                 // Challan mode toggle
                 const savedMode = data.challan_mode || 'split';
@@ -933,14 +948,17 @@
     document.getElementById('challan-form').addEventListener('submit', async (e) => {
         e.preventDefault();
         const challanSequence = parseInt(document.getElementById('challan-sequence').value);
-        const challanMode = document.querySelector('input[name="challan_mode"]:checked')?.value || 'split';
+        const challanMode     = document.querySelector('input[name="challan_mode"]:checked')?.value || 'split';
+        const grnSequenceVal  = document.getElementById('grn-sequence').value.trim();
+        const grnSequence     = grnSequenceVal ? parseInt(grnSequenceVal) : null;
         try {
             const { data: { user } } = await window.supabase.auth.getUser();
             if (!user) { showStatus('challan-status','error','Not authenticated','प्रमाणित नाही'); return; }
             const { error } = await window.supabase.from('p2_tenant_settings')
-                .update({ challan_sequence: challanSequence, challan_mode: challanMode }).eq('tenant_id', user.id);
+                .update({ challan_sequence: challanSequence, challan_mode: challanMode, grn_sequence: grnSequence })
+                .eq('tenant_id', user.id);
             if (error) throw error;
-            showStatus('challan-status','success','Challan settings saved successfully!','चलान सेटिंग्ज यशस्वीरित्या साठवल्या!');
+            showStatus('challan-status','success','Challan & GRN settings saved!','चलान आणि GRN सेटिंग्ज साठवल्या!');
         } catch (error) {
             console.error('Error saving challan settings:', error);
             showStatus('challan-status','error','Failed to save challan settings','चलान सेटिंग्ज साठवण्यात अयशस्वी');

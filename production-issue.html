@@ -569,6 +569,8 @@ let bomRows    = [];
 let stockMap   = {};
 let company    = { name: '', address: '' };
 let manualSeed = 0;
+let currentIssueOrderId = null;      // set by submitIssue(), used by createDispatchChallan()
+let currentIssueChallanNumber = null; // set by submitIssue(), shown in the challan-created toast
 
 
 /* ═══════════════════════════════════════
@@ -919,25 +921,42 @@ async function submitIssue() {
   const deductRows = bomRows.filter(
     r => !r.isManual && r.rawMaterialId && (parseFloat(r.issueQty) || 0) > 0
   );
+  const manualRows = bomRows.filter(
+    r => r.isManual && r.name && (parseFloat(r.issueQty) || 0) > 0
+  );
 
   const p         = products.find(x => x.id === document.getElementById('productSelect').value);
   const batchQty  = document.getElementById('batchQty').value;
   const issueDate = document.getElementById('issueDate').value;
   const notes     = document.getElementById('issueNotes').value.trim();
-  const noteStr   = `Production Issue: ${p?.name || ''} × ${batchQty}` + (notes ? ` — ${notes}` : '');
 
-  const rows = deductRows.map(row => ({
-    tenant_id        : tenantId,
-    raw_material_id  : row.rawMaterialId,
-    transaction_type : 'consumption',
-    quantity         : -Math.abs(parseFloat(row.issueQty)),  // NEGATIVE — deducts stock
-    notes            : noteStr,
-    transaction_date : issueDate
+  // Header row is created HERE, atomically with the stock deduction —
+  // not later when/if "Dispatch Challan" is clicked. Previously this
+  // event had no id at all, which meant it could never be cancelled.
+  const consumptionArray = deductRows.map(row => ({
+    material_id   : row.rawMaterialId,
+    material_name : row.name,
+    qty           : Math.abs(parseFloat(row.issueQty)),
+    unit          : row.unit
+  }));
+  const manualArray = manualRows.map(row => ({
+    name : row.name,
+    qty  : Math.abs(parseFloat(row.issueQty)),
+    unit : row.unit
   }));
 
-  const { error } = await window.supabase
-    .from('p2_stock_transactions')
-    .insert(rows);
+  const challanNumber = await getNextChallanNumber(window.supabase, tenantId, 'bom_issue');
+
+  const { data, error } = await window.supabase.rpc('confirm_bom_issue', {
+    p_tenant_id        : tenantId,
+    p_challan_number   : String(challanNumber),
+    p_product_name     : p?.name || '',
+    p_batch_qty        : parseFloat(batchQty) || 0,
+    p_issue_date       : issueDate,
+    p_notes            : notes,
+    p_consumption_json : JSON.stringify(consumptionArray),
+    p_manual_json      : JSON.stringify(manualArray)
+  });
 
   if (error) {
     toast(t('Issue failed: ', 'इश्यू अयशस्वी: ') + error.message, 'error');
@@ -946,11 +965,15 @@ async function submitIssue() {
     return;
   }
 
+  currentIssueOrderId = data.order_id;
+  currentIssueChallanNumber = data.challan_number;
+
   closeModal();
   toast(
-    `✓ ${rows.length} ${t('material(s) issued — stock updated', 'साहित्य इश्यू झाले — स्टॉक अपडेट झाला')}`,
+    `✓ ${deductRows.length} ${t('material(s) issued — stock updated', 'साहित्य इश्यू झाले — स्टॉक अपडेट झाला')}`,
     'ok'
   );
+  await loadRecentIssues();
 
   // Refresh stock and update display
   await fetchStockMap();
@@ -982,6 +1005,8 @@ async function submitIssue() {
 function resetForNewIssue() {
   bomRows = [];
   manualSeed = 0;
+  currentIssueOrderId = null;
+  currentIssueChallanNumber = null;
   document.getElementById('productSelect').value = '';
   document.getElementById('batchQty').value = '';
   document.getElementById('issueNotes').value = '';
@@ -1057,68 +1082,32 @@ async function createDispatchChallan() {
   btn.textContent = t('Creating…', 'तयार होत आहे…');
 
   try {
-    const p        = products.find(x => x.id === document.getElementById('productSelect').value);
-    const batchQty = document.getElementById('batchQty').value;
+    if (!currentIssueOrderId) {
+      toast(t('No active issue to attach a challan to. Issue materials first.', 'चालन जोडण्यासाठी कोणतेही सक्रिय इश्यू नाही. आधी साहित्य इश्यू करा.'), 'error');
+      btn.disabled = false;
+      btn.textContent = t('Create', 'तयार करा');
+      return;
+    }
 
-    // Only BOM rows with a product link — manual rows are print-only
-    // For product dispatch challan, we dispatch the PRODUCT, not individual materials
-    // So we create one dispatch item: the product itself
-    const challanNumber = await getNextChallanNumber(window.supabase, tenantId, 'bom_issue');
-
-    const { data: order, error: orderErr } = await window.supabase
+    // The order + items + stock transactions already exist — they were
+    // created atomically in submitIssue(). This step only adds the
+    // client-facing details onto that same row. It never creates a new
+    // order, so there's no duplicate/orphan record.
+    const { error: orderErr } = await window.supabase
       .from('p2_dispatch_orders')
-      .insert({
-        tenant_id:      tenantId,
+      .update({
         client_name:    clientName,
         client_address: clientAddress || null,
         po_number:      poNumber      || null,
         vehicle_number: vehicleNumber || null,
-        status:         'confirmed',
-        dispatch_type:  'bom_issue',
-        challan_number: String(challanNumber),
-        dispatch_date:  document.getElementById('issueDate').value,
-        created_by:     tenantId,
-        confirmed_at:   new Date().toISOString()
+        updated_at:     new Date().toISOString()
       })
-      .select('id')
-      .single();
+      .eq('id', currentIssueOrderId)
+      .eq('tenant_id', tenantId);
 
     if (orderErr) throw orderErr;
 
-    // Insert one dispatch item per BOM material (same as what was issued)
-    const deductRows = bomRows.filter(
-      r => !r.isManual && r.rawMaterialId && (parseFloat(r.issueQty) || 0) > 0
-    );
-    const manualRows = bomRows.filter(
-      r => r.isManual && r.name && (parseFloat(r.issueQty) || 0) > 0
-    );
-
-    const itemRows = [
-      ...deductRows.map(r => ({
-        tenant_id:         tenantId,
-        dispatch_order_id: order.id,
-        product_id:        null,
-        raw_material_id:   r.rawMaterialId,
-        material_name:     r.name,
-        qty_dispatched:    parseFloat(r.issueQty),
-        unit:              r.unit
-      })),
-      ...manualRows.map(r => ({
-        tenant_id:         tenantId,
-        dispatch_order_id: order.id,
-        product_id:        null,
-        raw_material_id:   null,
-        material_name:     r.name,
-        qty_dispatched:    parseFloat(r.issueQty),
-        unit:              r.unit
-      }))
-    ];
-
-    const { error: itemErr } = await window.supabase
-      .from('p2_dispatch_items')
-      .insert(itemRows);
-
-    if (itemErr) throw itemErr;
+    const order = { id: currentIssueOrderId };
 
     // Upsert client
     if (clientName) {
@@ -1129,7 +1118,7 @@ async function createDispatchChallan() {
     }
 
     closeChallanModal();
-    toast(`✓ Challan ${challanNumber} created`, 'ok');
+    toast(`✓ Challan ${currentIssueChallanNumber || ''} created`, 'ok');
 
     // Open challan in new tab
     setTimeout(() => {
@@ -1167,6 +1156,31 @@ function esc(str) {
     .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+window.cancelChallan = async (orderId, challanNumber) => {
+  const msg = t(
+    `Cancel issue ${challanNumber}? This will reverse the stock deduction and restore materials. This cannot be undone.`,
+    `इश्यू ${challanNumber} रद्द करायचा? यामुळे स्टॉक कपात उलट होईल आणि साहित्य परत येईल. हे पूर्ववत करता येणार नाही.`
+  );
+  if (!confirm(msg)) return;
+
+  try {
+    const { data, error } = await window.supabase.rpc('cancel_challan', {
+      p_dispatch_order_id: orderId,
+      p_tenant_id: tenantId
+    });
+    if (error) throw error;
+
+    toast(t('Issue cancelled — stock restored', 'इश्यू रद्द — स्टॉक परत केला'), 'ok');
+    await loadRecentIssues();
+    await fetchStockMap();
+    bomRows.forEach(row => { if (row.rawMaterialId) row.stock = stockMap[row.rawMaterialId] ?? 0; });
+    if (typeof renderTable === 'function') renderTable();
+  } catch (err) {
+    console.error('cancelChallan:', err);
+    toast(t('Cancel failed: ', 'रद्द करणे अयशस्वी: ') + (err.message || ''), 'error');
+  }
+};
+
 // ── RECENT ISSUES ──────────────────────────────────────────
 async function loadRecentIssues() {
   const tbody = document.getElementById('recentIssuesBody');
@@ -1193,16 +1207,30 @@ async function loadRecentIssues() {
       const date    = o.dispatch_date
         ? new Date(o.dispatch_date).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' })
         : new Date(o.created_at).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' });
-      const isDraft = o.status === 'draft';
+      const isDraft     = o.status === 'draft';
+      const isCancelled = o.status === 'cancelled';
+
+      let badge = `<span class="nx-badge nx-badge-yellow" style="font-size:10px;">Draft</span>`;
+      if (!isDraft && !isCancelled) badge = `<span class="nx-badge nx-badge-green" style="font-size:10px;">Confirmed</span>`;
+      if (isCancelled) badge = `<span class="nx-badge" style="font-size:10px;background:rgba(239,68,68,0.15);color:#ef4444;border:1px solid rgba(239,68,68,0.3);">Cancelled</span>`;
+
+      let actionCell = '—';
+      if (!isDraft && !isCancelled) {
+        actionCell = `
+          <button onclick="window.open('challan.html?id=${o.id}','_blank')" class="btn btn-outline btn-sm" style="font-size:11px; padding:4px 10px;">View</button>
+          <button onclick="cancelChallan('${o.id}', '${challan.replace(/'/g,"")}')" class="btn btn-outline btn-sm" style="font-size:11px; padding:4px 10px; color:#ef4444; border-color:#ef4444;">Cancel</button>
+        `;
+      } else if (isCancelled) {
+        actionCell = `<span style="color:var(--mid); font-size:11px;">Reversed</span>`;
+      }
+
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td class="nx-td-mono">${challan}</td>
         <td>${date}</td>
         <td class="nx-td-bold">${esc(o.client_name || '—')}</td>
-        <td><span class="nx-badge ${isDraft ? 'nx-badge-yellow' : 'nx-badge-green'}" style="font-size:10px;">${isDraft ? 'Draft' : 'Confirmed'}</span></td>
-        <td style="text-align:center;">
-          ${!isDraft ? `<button onclick="window.open('challan.html?id=${o.id}','_blank')" class="btn btn-outline btn-sm" style="font-size:11px; padding:4px 10px;">View</button>` : '—'}
-        </td>
+        <td>${badge}</td>
+        <td style="text-align:center;">${actionCell}</td>
       `;
       tbody.appendChild(tr);
     });
