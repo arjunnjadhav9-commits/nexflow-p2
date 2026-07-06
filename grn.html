@@ -562,7 +562,7 @@
                 const matSearch = buildMaterialSearch(row);
 
                 const qInput = document.createElement('input');
-                qInput.type='number'; qInput.step='0.01'; qInput.min='0'; qInput.value=row.quantity;
+                qInput.type='number'; qInput.step='any'; qInput.min='0'; qInput.value=row.quantity;
                 qInput.className='grn-row-input';
                 qInput.addEventListener('input', e => { row.quantity = e.target.value; });
 
@@ -571,7 +571,7 @@
                 uInput.className='grn-row-input unit-readonly';
 
                 const rInput = document.createElement('input');
-                rInput.type='number'; rInput.step='0.01'; rInput.min='0'; rInput.value=row.rate; rInput.placeholder='0.00';
+                rInput.type='number'; rInput.step='any'; rInput.min='0'; rInput.value=row.rate; rInput.placeholder='0.00';
                 rInput.className='grn-row-input';
                 rInput.addEventListener('input', e => { row.rate = e.target.value; });
 

@@ -164,7 +164,7 @@
                             </div>
                             <div class="nx-form-group" style="margin:0; width:90px;">
                                 <label id="qtyLabel" data-en="Quantity" data-mr="परिमाण">Qty</label>
-                                <input type="number" id="productQty" min="1" step="1" class="nx-input"
+                                <input type="number" id="productQty" min="0.001" step="any" class="nx-input"
                                        data-en="Qty" data-mr="परिमाण" placeholder="Qty">
                             </div>
                         </div>
@@ -531,7 +531,7 @@
 
             document.getElementById('addProductBtn').addEventListener('click', () => {
                 const productId = document.getElementById('productSelect').value;
-                const qty = parseInt(document.getElementById('productQty').value);
+                const qty = parseFloat(document.getElementById('productQty').value);
 
                 if (!productId || !qty || qty <= 0) {
                     showError('Please select a product and enter a valid quantity');
@@ -639,7 +639,7 @@
                     const tenantIdForCheck = tenantId || localStorage.getItem('supabase_tenant_id') || '00000000-0000-0000-0000-000000000000';
 
                     for (const item of dispatchItems) {
-                        const numericQty = parseInt(item.quantity || item.qty || item.qty_dispatched || 0, 10);
+                        const numericQty = parseFloat(item.quantity || item.qty || item.qty_dispatched || 0);
                         const safeQty = isNaN(numericQty) ? 0 : numericQty;
 
                         const { data: bomList } = await window.supabase
@@ -679,7 +679,7 @@
                     if (insufficientItems.length > 0) {
                         const lang = localStorage.getItem('nexflow_lang') || 'en';
                         const errorLines = insufficientItems.map(i =>
-                            `• ${i.name}: Need ${i.required.toFixed(2)}, Available ${i.available.toFixed(2)}`
+                            `• ${i.name}: Need ${i.required.toFixed(3)}, Available ${i.available.toFixed(3)}`
                         ).join('\n');
                         const msg = lang === 'mr'
                             ? `साठा अपुरा आहे:\n${errorLines}`
@@ -730,7 +730,7 @@
 
                 if (dispatchItems.length > 0) {
                     const itemsPayload = dispatchItems.map(item => {
-                        const numericQty = parseInt(item.quantity || item.qty || item.qty_dispatched || 0, 10);
+                        const numericQty = parseFloat(item.quantity || item.qty || item.qty_dispatched || 0);
                         return {
                             dispatch_order_id: orderId,
                             product_id: item.product_id,
@@ -752,7 +752,7 @@
                     consumptionArray = [];
 
                     for (const item of dispatchItems) {
-                        const numericQty = parseInt(item.quantity || item.qty || item.qty_dispatched || 0, 10);
+                        const numericQty = parseFloat(item.quantity || item.qty || item.qty_dispatched || 0);
                         const safeQty = isNaN(numericQty) ? 0 : numericQty;
 
                         const { data: bomList, error: bomErr } = await window.supabase

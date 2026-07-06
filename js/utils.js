@@ -24,9 +24,10 @@ function formatNumber(value) {
     const num = parseFloat(value);
     if (isNaN(num)) return '0';
 
-    // Round to 2 decimal places and remove trailing zeros
-    const rounded = Math.round(num * 100) / 100;
-    return rounded.toString().replace(/\.00$/, '').replace(/(\.\d)0$/, '$1');
+    // Preserve up to 4 decimal places, strip trailing zeros
+    // e.g. 1.5 → "1.5", 1.25 → "1.25", 100 → "100", 0.0025 → "0.0025"
+    const rounded = Math.round(num * 10000) / 10000;
+    return rounded.toString().replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
 }
 
 /**

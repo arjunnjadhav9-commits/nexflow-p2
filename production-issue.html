@@ -349,7 +349,7 @@
 
       <div class="fg">
         <label data-en="Batch Quantity" data-mr="बॅच प्रमाण">Batch Quantity</label>
-        <input type="number" id="batchQty" min="1" step="1" />
+        <input type="number" id="batchQty" min="0.001" step="any" />
       </div>
 
       <div class="fg">
@@ -1364,7 +1364,7 @@ function stockStatus(stock, issueQty) {
 
 function fmtN(n) {
   const v = parseFloat(n) || 0;
-  return v % 1 === 0 ? v.toString() : v.toFixed(2);
+  return v % 1 === 0 ? v.toString() : v.toFixed(3);
 }
 
 function esc(str) {
