@@ -758,6 +758,7 @@
                         const { data: bomList, error: bomErr } = await window.supabase
                             .from('p2_product_bom')
                             .select('raw_material_id, qty_per_unit')
+                            .eq('tenant_id', tenantId)
                             .eq('product_id', item.product_id);
 
                         if (bomErr) { console.error('BOM Lookup error:', bomErr); continue; }
