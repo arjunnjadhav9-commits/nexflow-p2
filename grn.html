@@ -383,10 +383,13 @@
         async function loadMaterials() {
             if (!tenantId) return;
             const { data, error } = await window.supabase
-                .from('p2_raw_materials').select('id, name, unit')
-                .eq('tenant_id', tenantId).eq('is_active', true).order('name');
+                .from('v_p2_stock_balance')
+                .select('raw_material_id, name, unit, material_code')
+                .eq('tenant_id', tenantId)
+                .order('name');
             if (error) { console.error('Error loading materials:', error); return; }
-            materials = data || [];
+            // Normalise: rest of GRN code uses .id, alias raw_material_id -> id
+            materials = (data || []).map(m => ({ ...m, id: m.raw_material_id }));
         }
 
         // ── Shared builder injected here ──────────────────────────────
@@ -444,7 +447,10 @@
                     d.className='mat-dropdown-item';
                     d.dataset.id=getId(m); d.dataset.unit=m.unit||''; d.dataset.name=m.name;
                     d.innerHTML='<span class="mat-item-name">'+esc(m.name)+'</span>'+
-                                 '<span class="mat-item-unit">'+esc(m.unit||'')+'</span>';
+                                 '<span style="display:flex;gap:4px;align-items:center;flex-shrink:0;">'+
+                                 (m.material_code ? '<span class="mat-item-unit" style="color:var(--orange);border-color:rgba(255,92,26,0.3);">'+esc(m.material_code)+'</span>' : '')+
+                                 '<span class="mat-item-unit">'+esc(m.unit||'')+'</span>'+
+                                 '</span>';
                     d.addEventListener('mousedown',function(e){
                         e.preventDefault(); sel(this.dataset.id,this.dataset.name,this.dataset.unit);
                     });
@@ -519,7 +525,7 @@
         function buildMaterialSearch(row) {
             // grn loadMaterials() gives .id not .raw_material_id — normalise
             var normMats = materials.map(function(m){
-                return { raw_material_id: m.id, name: m.name, unit: m.unit };
+                return { raw_material_id: m.raw_material_id || m.id, name: m.name, unit: m.unit, material_code: m.material_code || '' };
             });
             var ta = buildMatTypeahead(normMats, {
                 placeholder: 'Search material...',
