@@ -36,6 +36,54 @@
             margin-bottom: 20px;
         }
         #bomDetails { display: none; }
+        /* ── Shared material typeahead ─────────────────────────── */
+        .mat-search-wrap{position:relative;width:100%;}
+        .mat-search-inner{position:relative;display:flex;align-items:center;}
+        .mat-search-icon{
+            position:absolute;left:10px;top:50%;transform:translateY(-50%);
+            color:var(--mid);pointer-events:none;font-size:15px;line-height:1;
+            font-style:normal;
+        }
+        .mat-search-input{
+            width:100%;background:var(--surface3);border:1px solid var(--border2);
+            border-radius:var(--radius-sm);color:var(--text);font-family:var(--font);
+            font-size:13px;padding:8px 30px 8px 32px;outline:none;
+            transition:border-color 0.15s,background 0.15s;box-sizing:border-box;
+        }
+        @media(max-width:900px){.mat-search-input{font-size:16px;min-height:44px;}}
+        .mat-search-input:focus{border-color:var(--orange);}
+        .mat-search-input.mat-selected{border-color:#22c55e;background:rgba(34,197,94,0.05);}
+        .mat-search-input::placeholder{color:var(--mid);opacity:0.7;}
+        .mat-clear-btn{
+            position:absolute;right:8px;top:50%;transform:translateY(-50%);
+            background:none;border:none;color:var(--mid);cursor:pointer;
+            font-size:16px;line-height:1;padding:0 3px;display:none;
+            transition:color 0.12s;
+        }
+        .mat-clear-btn:hover{color:var(--white);}
+        .mat-clear-btn.visible{display:block;}
+        .mat-dropdown{
+            position:absolute;top:calc(100% + 4px);left:0;right:0;
+            background:var(--surface);border:1px solid var(--border2);
+            border-radius:var(--radius-sm);z-index:300;
+            max-height:220px;overflow-y:auto;
+            box-shadow:0 8px 28px rgba(0,0,0,0.45);display:none;
+        }
+        .mat-dropdown.open{display:block;}
+        .mat-dropdown-item{
+            padding:9px 12px;font-size:13px;color:var(--text);
+            cursor:pointer;border-bottom:1px solid var(--border);
+            transition:background 0.08s;
+            display:flex;align-items:center;justify-content:space-between;gap:8px;
+        }
+        .mat-dropdown-item:last-child{border-bottom:none;}
+        .mat-dropdown-item:hover,.mat-dropdown-item.kbd-active{background:var(--surface2);}
+        .mat-dropdown-item:hover .mat-item-name,
+        .mat-dropdown-item.kbd-active .mat-item-name{color:var(--orange);}
+        .mat-item-name{font-weight:500;flex:1;}
+        .mat-item-unit{font-size:11px;color:var(--mid);font-family:monospace;
+            background:var(--surface3);padding:1px 6px;border-radius:3px;flex-shrink:0;}
+        .mat-dropdown-empty{padding:12px;font-size:12px;color:var(--mid);text-align:center;}
     </style>
 </head>
 <body>
@@ -201,9 +249,9 @@
                                     <form id="add-ingredient-form">
                                         <div class="nx-form-group">
                                             <label data-en="Raw Material" data-mr="कच्चा माल">Raw Material</label>
-                                            <select name="material_id" required id="ingredient-material-select" class="nx-input">
-                                                <option value="" data-en="-- Select Raw Material --" data-mr="-- कच्चा माल निवडा --">-- Select Raw Material --</option>
-                                            </select>
+                                            <div id="ingMatMount"></div>
+                                            <!-- hidden input driven by typeahead so form validation works -->
+                                            <input type="hidden" name="material_id" id="ingredient-material-id">
                                         </div>
                                         <div class="nx-form-group">
                                             <label data-en="Quantity per Unit of Product" data-mr="उत्पादनाच्या प्रति युनिट प्रमाण">Quantity per Unit of Product</label>
@@ -394,17 +442,21 @@
 
             if (error) throw error;
 
-            const select = document.getElementById('ingredient-material-select');
-            select.innerHTML = '<option value="" data-en="-- Select Raw Material --" data-mr="-- कच्चा माल निवडा --">-- Select Raw Material --</option>';
-
             materialsMap = {};
-            data.forEach(material => {
-                materialsMap[material.id] = material;
-                const option = document.createElement('option');
-                option.value       = material.id;
-                option.textContent = `${material.name} (${material.unit})`;
-                select.appendChild(option);
-            });
+            data.forEach(material => { materialsMap[material.id] = material; });
+
+            // Build or rebuild the typeahead
+            const mount = document.getElementById('ingMatMount');
+            if (mount) {
+                mount.innerHTML = '';
+                ingTypeahead = buildMatTypeahead(data, {
+                    placeholder: '-- Search Raw Material --',
+                    onSelect: function(id, name, unit) {
+                        document.getElementById('ingredient-material-id').value = id;
+                    }
+                });
+                mount.appendChild(ingTypeahead.element);
+            }
         }
 
         async function loadBOM(productId) {
@@ -491,6 +543,11 @@
                 e.preventDefault();
                 const formData   = new FormData(e.target);
                 const materialId = formData.get('material_id');
+                if (!materialId) {
+                    const lang = localStorage.getItem('nexflow_lang') || 'en';
+                    toast(lang === 'mr' ? 'कृपया कच्चा माल निवडा' : 'Please select a raw material', 'error');
+                    return;
+                }
                 const qtyPerUnit = parseFloat(formData.get('qty_per_unit'));
                 const chosenMat  = materialsMap[materialId];
                 const unitValue  = chosenMat ? chosenMat.unit : 'NOS';
@@ -525,6 +582,8 @@
                     const lang = localStorage.getItem('nexflow_lang') || 'en';
                     toast(lang === 'mr' ? 'घटक यशस्वीरित्या जोडला!' : 'Ingredient added successfully!', 'ok');
                     e.target.reset();
+                    if (ingTypeahead) ingTypeahead.reset();
+                    document.getElementById('ingredient-material-id').value = '';
                     await loadBOM(selectedProductId);
                     await loadProducts();
                 } catch (error) {
@@ -604,6 +663,125 @@
                 toast('Action failed.', 'error');
             }
         }
+
+        // ── Shared typeahead ──────────────────────────────────────────
+
+        // ── Shared material typeahead ───────────────────────────────────────
+        // materialsArr: array with .id OR .raw_material_id, .name, .unit, .material_code
+        // opts: { placeholder, onSelect(id,name,unit) }
+        // Returns: { element, getId(), getUnit(), reset(), setValue(id,name,unit) }
+        function buildMatTypeahead(materialsArr, opts) {
+            opts = opts || {};
+            var ph       = opts.placeholder || 'Search material...';
+            var onSelect = opts.onSelect    || function(){};
+
+            var wrap = document.createElement('div');
+            wrap.className = 'mat-search-wrap';
+            var inner = document.createElement('div');
+            inner.className = 'mat-search-inner';
+            var icon = document.createElement('i');
+            icon.className = 'mat-search-icon';
+            icon.textContent = '⌕';
+            var input = document.createElement('input');
+            input.type='text'; input.className='mat-search-input';
+            input.placeholder=ph; input.autocomplete='off';
+            var clearBtn = document.createElement('button');
+            clearBtn.type='button'; clearBtn.className='mat-clear-btn';
+            clearBtn.title='Clear'; clearBtn.textContent='×';
+            inner.appendChild(icon); inner.appendChild(input); inner.appendChild(clearBtn);
+            var dd = document.createElement('div');
+            dd.className = 'mat-dropdown';
+            wrap.appendChild(inner); wrap.appendChild(dd);
+
+            var selId='', selUnit='', kbdIdx=-1;
+
+            function getId(m){ return m.raw_material_id || m.id || ''; }
+            function esc(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+            function filter(term){
+                var t=(term||'').toLowerCase().trim();
+                return t==='' ? materialsArr.slice(0,50)
+                    : materialsArr.filter(function(m){
+                        return m.name.toLowerCase().includes(t)||
+                               (m.material_code&&m.material_code.toLowerCase().includes(t));
+                      });
+            }
+
+            function renderDd(term){
+                var res=filter(term);
+                dd.innerHTML=''; kbdIdx=-1;
+                if(res.length===0){
+                    dd.innerHTML='<div class="mat-dropdown-empty">No materials found</div>';
+                    return;
+                }
+                res.forEach(function(m){
+                    var d=document.createElement('div');
+                    d.className='mat-dropdown-item';
+                    d.dataset.id=getId(m); d.dataset.unit=m.unit||''; d.dataset.name=m.name;
+                    d.innerHTML='<span class="mat-item-name">'+esc(m.name)+'</span>'+
+                                 '<span class="mat-item-unit">'+esc(m.unit||'')+'</span>';
+                    d.addEventListener('mousedown',function(e){
+                        e.preventDefault(); sel(this.dataset.id,this.dataset.name,this.dataset.unit);
+                    });
+                    dd.appendChild(d);
+                });
+            }
+
+            function sel(id,name,unit){
+                selId=id; selUnit=unit;
+                input.value=name;
+                input.classList.add('mat-selected');
+                clearBtn.classList.add('visible');
+                dd.classList.remove('open');
+                onSelect(id,name,unit);
+            }
+
+            function reset(){
+                selId=''; selUnit='';
+                input.value='';
+                input.classList.remove('mat-selected');
+                clearBtn.classList.remove('visible');
+                dd.classList.remove('open');
+                onSelect('','','');
+            }
+
+            input.addEventListener('focus',function(){ renderDd(input.value); dd.classList.add('open'); });
+            input.addEventListener('input',function(){
+                if(selId){ selId=''; selUnit=''; input.classList.remove('mat-selected'); onSelect('','',''); }
+                clearBtn.classList.toggle('visible', input.value.length>0);
+                renderDd(input.value); dd.classList.add('open');
+            });
+            input.addEventListener('blur',function(){ setTimeout(function(){ dd.classList.remove('open'); },160); });
+            input.addEventListener('keydown',function(e){
+                var items=dd.querySelectorAll('.mat-dropdown-item');
+                if(e.key==='ArrowDown'){
+                    e.preventDefault();
+                    kbdIdx=Math.min(kbdIdx+1,items.length-1);
+                    items.forEach(function(el,i){ el.classList.toggle('kbd-active',i===kbdIdx); });
+                } else if(e.key==='ArrowUp'){
+                    e.preventDefault();
+                    kbdIdx=Math.max(kbdIdx-1,0);
+                    items.forEach(function(el,i){ el.classList.toggle('kbd-active',i===kbdIdx); });
+                } else if(e.key==='Enter'){
+                    e.preventDefault();
+                    if(kbdIdx>=0&&items[kbdIdx]){
+                        var el=items[kbdIdx];
+                        sel(el.dataset.id,el.dataset.name,el.dataset.unit);
+                    }
+                } else if(e.key==='Escape'){ dd.classList.remove('open'); }
+            });
+            clearBtn.addEventListener('click',reset);
+
+            return {
+                element:  wrap,
+                getId:    function(){ return selId; },
+                getUnit:  function(){ return selUnit; },
+                reset:    reset,
+                setValue: sel
+            };
+        }
+
+        var ingTypeahead = null;
 
         // Language
         function applyLang(lang) {

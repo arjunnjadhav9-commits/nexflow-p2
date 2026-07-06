@@ -27,30 +27,54 @@
         .grn-row-input[readonly]{background:var(--surface2);color:var(--mid);cursor:not-allowed;}
         .grn-row-input::placeholder{color:var(--mid);opacity:0.6;}
 
-        /* Material search typeahead */
-        .mat-search-wrap{position:relative;width:100%;min-width:130px;}
+        /* ── Shared material typeahead ─────────────────────────── */
+        .mat-search-wrap{position:relative;width:100%;}
+        .mat-search-inner{position:relative;display:flex;align-items:center;}
+        .mat-search-icon{
+            position:absolute;left:10px;top:50%;transform:translateY(-50%);
+            color:var(--mid);pointer-events:none;font-size:15px;line-height:1;
+            font-style:normal;
+        }
         .mat-search-input{
-            width:100%; background:var(--surface3); border:1px solid var(--border2);
-            border-radius:var(--radius-sm); color:var(--text); font-family:var(--font);
-            font-size:13px; padding:7px 10px; outline:none; transition:border-color 0.15s; box-sizing:border-box;
+            width:100%;background:var(--surface3);border:1px solid var(--border2);
+            border-radius:var(--radius-sm);color:var(--text);font-family:var(--font);
+            font-size:13px;padding:8px 30px 8px 32px;outline:none;
+            transition:border-color 0.15s,background 0.15s;box-sizing:border-box;
         }
         @media(max-width:900px){.mat-search-input{font-size:16px;min-height:44px;}}
         .mat-search-input:focus{border-color:var(--orange);}
-        .mat-search-input.mat-selected{border-color:#22c55e;}
+        .mat-search-input.mat-selected{border-color:#22c55e;background:rgba(34,197,94,0.05);}
+        .mat-search-input::placeholder{color:var(--mid);opacity:0.7;}
+        .mat-clear-btn{
+            position:absolute;right:8px;top:50%;transform:translateY(-50%);
+            background:none;border:none;color:var(--mid);cursor:pointer;
+            font-size:16px;line-height:1;padding:0 3px;display:none;
+            transition:color 0.12s;
+        }
+        .mat-clear-btn:hover{color:var(--white);}
+        .mat-clear-btn.visible{display:block;}
         .mat-dropdown{
-            position:absolute; top:calc(100% + 4px); left:0; right:0;
-            background:var(--surface); border:1px solid var(--border2);
-            border-radius:var(--radius-sm); z-index:200;
-            max-height:200px; overflow-y:auto; box-shadow:var(--shadow-md); display:none;
+            position:fixed;
+            background:var(--surface);border:1px solid var(--border2);
+            border-radius:var(--radius-sm);z-index:9999;
+            max-height:220px;overflow-y:auto;
+            box-shadow:0 8px 28px rgba(0,0,0,0.45);display:none;
         }
         .mat-dropdown.open{display:block;}
         .mat-dropdown-item{
-            padding:9px 12px; font-size:13px; color:var(--text);
-            cursor:pointer; border-bottom:1px solid var(--border); transition:background 0.1s;
+            padding:9px 12px;font-size:13px;color:var(--text);
+            cursor:pointer;border-bottom:1px solid var(--border);
+            transition:background 0.08s;
+            display:flex;align-items:center;justify-content:space-between;gap:8px;
         }
         .mat-dropdown-item:last-child{border-bottom:none;}
-        .mat-dropdown-item:hover,.mat-dropdown-item.active{background:var(--surface2);color:var(--orange);}
-        .mat-dropdown-empty{padding:10px 12px;font-size:12px;color:var(--mid);}
+        .mat-dropdown-item:hover,.mat-dropdown-item.kbd-active{background:var(--surface2);}
+        .mat-dropdown-item:hover .mat-item-name,
+        .mat-dropdown-item.kbd-active .mat-item-name{color:var(--orange);}
+        .mat-item-name{font-weight:500;flex:1;}
+        .mat-item-unit{font-size:11px;color:var(--mid);font-family:monospace;
+            background:var(--surface3);padding:1px 6px;border-radius:3px;flex-shrink:0;}
+        .mat-dropdown-empty{padding:12px;font-size:12px;color:var(--mid);text-align:center;}
 
         /* Modal */
         .nx-modal-overlay{
@@ -365,64 +389,152 @@
             materials = data || [];
         }
 
-        function buildMaterialSearch(row) {
-            const wrap = document.createElement('div');
-            wrap.className = 'mat-search-wrap';
-            const input = document.createElement('input');
-            input.type = 'text'; input.className = 'mat-search-input';
-            input.placeholder = 'Search material...'; input.autocomplete = 'off';
-            if (row.material_id) {
-                const mat = materials.find(m => m.id === row.material_id);
-                if (mat) { input.value = mat.name; input.classList.add('mat-selected'); }
-            }
-            const dropdown = document.createElement('div');
-            dropdown.className = 'mat-dropdown';
-            let activeIdx = -1;
+        // ── Shared builder injected here ──────────────────────────────
 
-            function renderDropdown(term) {
-                const t = term.trim().toLowerCase();
-                const filtered = t.length === 0 ? materials.slice(0, 40) : materials.filter(m => m.name.toLowerCase().includes(t));
-                dropdown.innerHTML = ''; activeIdx = -1;
-                if (filtered.length === 0) {
-                    const empty = document.createElement('div');
-                    empty.className = 'mat-dropdown-empty'; empty.textContent = 'No materials found';
-                    dropdown.appendChild(empty); return;
+        // ── Shared material typeahead ───────────────────────────────────────
+        // materialsArr: array with .id OR .raw_material_id, .name, .unit, .material_code
+        // opts: { placeholder, onSelect(id,name,unit) }
+        // Returns: { element, getId(), getUnit(), reset(), setValue(id,name,unit) }
+        function buildMatTypeahead(materialsArr, opts) {
+            opts = opts || {};
+            var ph       = opts.placeholder || 'Search material...';
+            var onSelect = opts.onSelect    || function(){};
+
+            var wrap = document.createElement('div');
+            wrap.className = 'mat-search-wrap';
+            var inner = document.createElement('div');
+            inner.className = 'mat-search-inner';
+            var icon = document.createElement('i');
+            icon.className = 'mat-search-icon';
+            icon.textContent = '⌕';
+            var input = document.createElement('input');
+            input.type='text'; input.className='mat-search-input';
+            input.placeholder=ph; input.autocomplete='off';
+            var clearBtn = document.createElement('button');
+            clearBtn.type='button'; clearBtn.className='mat-clear-btn';
+            clearBtn.title='Clear'; clearBtn.textContent='×';
+            inner.appendChild(icon); inner.appendChild(input); inner.appendChild(clearBtn);
+            var dd = document.createElement('div');
+            dd.className = 'mat-dropdown';
+            wrap.appendChild(inner); wrap.appendChild(dd);
+
+            var selId='', selUnit='', kbdIdx=-1;
+
+            function getId(m){ return m.raw_material_id || m.id || ''; }
+            function esc(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+            function filter(term){
+                var t=(term||'').toLowerCase().trim();
+                return t==='' ? materialsArr.slice(0,50)
+                    : materialsArr.filter(function(m){
+                        return m.name.toLowerCase().includes(t)||
+                               (m.material_code&&m.material_code.toLowerCase().includes(t));
+                      });
+            }
+
+            function renderDd(term){
+                var res=filter(term);
+                dd.innerHTML=''; kbdIdx=-1;
+                if(res.length===0){
+                    dd.innerHTML='<div class="mat-dropdown-empty">No materials found</div>';
+                    return;
                 }
-                filtered.forEach(mat => {
-                    const item = document.createElement('div');
-                    item.className = 'mat-dropdown-item'; item.textContent = mat.name;
-                    item.dataset.matId = mat.id; item.dataset.matUnit = mat.unit || '';
-                    item.addEventListener('mousedown', e => { e.preventDefault(); selectMaterial(mat.id, mat.name, mat.unit || ''); });
-                    dropdown.appendChild(item);
+                res.forEach(function(m){
+                    var d=document.createElement('div');
+                    d.className='mat-dropdown-item';
+                    d.dataset.id=getId(m); d.dataset.unit=m.unit||''; d.dataset.name=m.name;
+                    d.innerHTML='<span class="mat-item-name">'+esc(m.name)+'</span>'+
+                                 '<span class="mat-item-unit">'+esc(m.unit||'')+'</span>';
+                    d.addEventListener('mousedown',function(e){
+                        e.preventDefault(); sel(this.dataset.id,this.dataset.name,this.dataset.unit);
+                    });
+                    dd.appendChild(d);
                 });
             }
 
-            function selectMaterial(matId, matName, matUnit) {
-                row.material_id = matId; row.unit = matUnit;
-                input.value = matName; input.classList.add('mat-selected');
-                dropdown.classList.remove('open');
-                const unitInput = wrap.closest('tr') && wrap.closest('tr').querySelector('.unit-readonly');
-                if (unitInput) unitInput.value = matUnit;
+            function positionDd(){
+                var r = inner.getBoundingClientRect();
+                dd.style.top   = (r.bottom + 4) + 'px';
+                dd.style.left  = r.left + 'px';
+                dd.style.width = r.width + 'px';
             }
 
-            input.addEventListener('focus', () => { renderDropdown(input.value); dropdown.classList.add('open'); });
-            input.addEventListener('input', () => {
-                row.material_id = ''; row.unit = ''; input.classList.remove('mat-selected');
-                const unitInput = wrap.closest('tr') && wrap.closest('tr').querySelector('.unit-readonly');
-                if (unitInput) unitInput.value = '';
-                renderDropdown(input.value); dropdown.classList.add('open');
-            });
-            input.addEventListener('blur', () => { setTimeout(() => dropdown.classList.remove('open'), 150); });
-            input.addEventListener('keydown', e => {
-                const items = dropdown.querySelectorAll('.mat-dropdown-item');
-                if (e.key === 'ArrowDown') { e.preventDefault(); activeIdx = Math.min(activeIdx+1, items.length-1); items.forEach((el,i) => el.classList.toggle('active', i===activeIdx)); }
-                else if (e.key === 'ArrowUp') { e.preventDefault(); activeIdx = Math.max(activeIdx-1, 0); items.forEach((el,i) => el.classList.toggle('active', i===activeIdx)); }
-                else if (e.key === 'Enter') { e.preventDefault(); if (activeIdx >= 0 && items[activeIdx]) { const el = items[activeIdx]; selectMaterial(el.dataset.matId, el.textContent.trim(), el.dataset.matUnit); } }
-                else if (e.key === 'Escape') { dropdown.classList.remove('open'); }
-            });
+            function sel(id,name,unit){
+                selId=id; selUnit=unit;
+                input.value=name;
+                input.classList.add('mat-selected');
+                clearBtn.classList.add('visible');
+                dd.classList.remove('open');
+                onSelect(id,name,unit);
+            }
 
-            wrap.appendChild(input); wrap.appendChild(dropdown);
-            return wrap;
+            function reset(){
+                selId=''; selUnit='';
+                input.value='';
+                input.classList.remove('mat-selected');
+                clearBtn.classList.remove('visible');
+                dd.classList.remove('open');
+                onSelect('','','');
+            }
+
+            input.addEventListener('focus',function(){ renderDd(input.value); positionDd(); dd.classList.add('open'); });
+            input.addEventListener('input',function(){
+                if(selId){ selId=''; selUnit=''; input.classList.remove('mat-selected'); onSelect('','',''); }
+                clearBtn.classList.toggle('visible', input.value.length>0);
+                renderDd(input.value); positionDd(); dd.classList.add('open');
+            });
+            window.addEventListener('scroll', function(){ if(dd.classList.contains('open')) positionDd(); }, true);
+            window.addEventListener('resize', function(){ if(dd.classList.contains('open')) positionDd(); });
+            input.addEventListener('blur',function(){ setTimeout(function(){ dd.classList.remove('open'); },160); });
+            input.addEventListener('keydown',function(e){
+                var items=dd.querySelectorAll('.mat-dropdown-item');
+                if(e.key==='ArrowDown'){
+                    e.preventDefault();
+                    kbdIdx=Math.min(kbdIdx+1,items.length-1);
+                    items.forEach(function(el,i){ el.classList.toggle('kbd-active',i===kbdIdx); });
+                } else if(e.key==='ArrowUp'){
+                    e.preventDefault();
+                    kbdIdx=Math.max(kbdIdx-1,0);
+                    items.forEach(function(el,i){ el.classList.toggle('kbd-active',i===kbdIdx); });
+                } else if(e.key==='Enter'){
+                    e.preventDefault();
+                    if(kbdIdx>=0&&items[kbdIdx]){
+                        var el=items[kbdIdx];
+                        sel(el.dataset.id,el.dataset.name,el.dataset.unit);
+                    }
+                } else if(e.key==='Escape'){ dd.classList.remove('open'); }
+            });
+            clearBtn.addEventListener('click',reset);
+
+            return {
+                element:  wrap,
+                getId:    function(){ return selId; },
+                getUnit:  function(){ return selUnit; },
+                reset:    reset,
+                setValue: sel
+            };
+        }
+
+        // GRN per-row wrapper using the shared builder
+        function buildMaterialSearch(row) {
+            // grn loadMaterials() gives .id not .raw_material_id — normalise
+            var normMats = materials.map(function(m){
+                return { raw_material_id: m.id, name: m.name, unit: m.unit };
+            });
+            var ta = buildMatTypeahead(normMats, {
+                placeholder: 'Search material...',
+                onSelect: function(id, name, unit) {
+                    row.material_id = id;
+                    row.unit        = unit;
+                    var tr = ta.element.closest('tr');
+                    if (tr) { var u = tr.querySelector('.unit-readonly'); if (u) u.value = unit; }
+                }
+            });
+            if (row.material_id) {
+                var mat = materials.find(function(m){ return m.id === row.material_id; });
+                if (mat) ta.setValue(mat.id, mat.name, mat.unit || '');
+            }
+            return ta.element;
         }
 
         function addGRNRow() {
