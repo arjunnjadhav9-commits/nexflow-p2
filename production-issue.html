@@ -219,6 +219,41 @@
     .warn-box ul  { padding-left: 16px; color: #fca5a5; line-height: 1.8; }
     .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; }
 
+
+    /* ── Material typeahead (manual rows) ── */
+    .mat-ta-wrap{position:relative;width:100%;}
+    .mat-ta-inner{position:relative;display:flex;align-items:center;}
+    .mat-ta-icon{position:absolute;left:8px;top:50%;transform:translateY(-50%);color:var(--mid);pointer-events:none;font-size:13px;font-style:normal;}
+    .mat-ta-input{
+        width:100%;background:var(--surface3);border:1px solid var(--border2);
+        border-radius:6px;color:var(--text);font-family:var(--font);
+        font-size:13px;padding:5px 24px 5px 26px;outline:none;
+        transition:border-color 0.15s;box-sizing:border-box;
+    }
+    .mat-ta-input:focus{border-color:var(--orange);}
+    .mat-ta-input.mat-ta-sel{border-color:#22c55e;background:rgba(34,197,94,0.05);}
+    .mat-ta-input::placeholder{color:var(--mid);opacity:0.7;}
+    .mat-ta-clr{position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--mid);cursor:pointer;font-size:14px;padding:0 2px;display:none;}
+    .mat-ta-clr.vis{display:block;}
+    .mat-ta-dd{
+        position:fixed;background:var(--surface);border:1px solid var(--border2);
+        border-radius:6px;z-index:9999;max-height:200px;overflow-y:auto;
+        box-shadow:0 8px 24px rgba(0,0,0,0.5);display:none;
+    }
+    .mat-ta-dd.open{display:block;}
+    .mat-ta-item{
+        padding:8px 10px;font-size:12px;color:var(--text);cursor:pointer;
+        border-bottom:1px solid var(--border);
+        display:flex;align-items:center;justify-content:space-between;gap:6px;
+    }
+    .mat-ta-item:last-child{border-bottom:none;}
+    .mat-ta-item:hover,.mat-ta-item.kbd{background:var(--surface2);}
+    .mat-ta-item:hover .mat-ta-iname,.mat-ta-item.kbd .mat-ta-iname{color:var(--orange);}
+    .mat-ta-iname{font-weight:500;flex:1;}
+    .mat-ta-ibadge{font-size:10px;color:var(--mid);font-family:monospace;background:var(--surface3);padding:1px 5px;border-radius:3px;flex-shrink:0;}
+    .mat-ta-ibadge.code{color:var(--orange);background:rgba(255,92,26,0.08);border:1px solid rgba(255,92,26,0.25);}
+    .mat-ta-empty{padding:10px;font-size:12px;color:var(--mid);text-align:center;}
+
     /* ── PRINT ONLY ── */
     .print-only { display: none; }
 
@@ -563,10 +598,11 @@ function applyLang() {
 /* ═══════════════════════════════════════
    STATE
 ═══════════════════════════════════════ */
-let tenantId   = null;
-let products   = [];
-let bomRows    = [];
-let stockMap   = {};
+let tenantId     = null;
+let products     = [];
+let bomRows      = [];
+let stockMap     = {};
+let rawMaterials = [];   // for manual row RM typeahead
 let company    = { name: '', address: '' };
 let manualSeed = 0;
 let currentIssueOrderId = null;      // set by submitIssue(), used by createDispatchChallan()
@@ -586,7 +622,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const { data: { user } } = await window.supabase.auth.getUser();
   tenantId = user.id;
 
-  await Promise.all([fetchProducts(), fetchStockMap(), fetchCompany(), fetchClients()]);
+  await Promise.all([fetchProducts(), fetchStockMap(), fetchCompany(), fetchClients(), fetchRawMaterials()]);
   loadRecentIssues();
 
   applyLang(); // apply initial language after data loaded
@@ -647,6 +683,17 @@ async function fetchCompany() {
 }
 
 
+async function fetchRawMaterials() {
+  const { data, error } = await window.supabase
+    .from('v_p2_stock_balance')
+    .select('raw_material_id, name, material_code, unit, current_stock')
+    .eq('tenant_id', tenantId)
+    .order('name');
+  if (error) { console.warn('fetchRawMaterials error:', error.message); return; }
+  rawMaterials = data || [];
+}
+
+
 /* ═══════════════════════════════════════
    GENERATE BOM
 ═══════════════════════════════════════ */
@@ -702,6 +749,145 @@ async function generateBOM() {
 }
 
 
+
+/* ═══════════════════════════════════════
+   RM TYPEAHEAD — for manual rows
+═══════════════════════════════════════ */
+function buildRMTypeahead(idx) {
+  var wrap  = document.createElement('div');
+  wrap.className = 'mat-ta-wrap';
+  var inner = document.createElement('div');
+  inner.className = 'mat-ta-inner';
+  var icon  = document.createElement('i');
+  icon.className = 'mat-ta-icon'; icon.textContent = '⌕';
+  var input = document.createElement('input');
+  input.type = 'text'; input.className = 'mat-ta-input';
+  input.placeholder = t('Search RM...', 'RM शोधा...');
+  input.autocomplete = 'off';
+  var clrBtn = document.createElement('button');
+  clrBtn.type = 'button'; clrBtn.className = 'mat-ta-clr';
+  clrBtn.textContent = '×';
+  inner.appendChild(icon); inner.appendChild(input); inner.appendChild(clrBtn);
+  var dd = document.createElement('div');
+  dd.className = 'mat-ta-dd';
+  wrap.appendChild(inner); wrap.appendChild(dd);
+
+  var kbdIdx = -1;
+
+  function filterRM(term) {
+    var t2 = (term || '').toLowerCase().trim();
+    return t2 === '' ? rawMaterials.slice(0, 50)
+      : rawMaterials.filter(function(m) {
+          return m.name.toLowerCase().includes(t2) ||
+                 (m.material_code && m.material_code.toLowerCase().includes(t2));
+        });
+  }
+
+  function renderDD(term) {
+    var res = filterRM(term);
+    dd.innerHTML = ''; kbdIdx = -1;
+    if (res.length === 0) {
+      dd.innerHTML = '<div class="mat-ta-empty">No materials found</div>';
+      return;
+    }
+    res.forEach(function(m) {
+      var item = document.createElement('div');
+      item.className = 'mat-ta-item';
+      item.dataset.id   = m.raw_material_id;
+      item.dataset.name = m.name;
+      item.dataset.unit = m.unit || '';
+      item.dataset.code = m.material_code || '';
+      item.dataset.stock = m.current_stock || 0;
+      item.innerHTML =
+        '<span class="mat-ta-iname">' + esc(m.name) + '</span>' +
+        (m.material_code ? '<span class="mat-ta-ibadge code">' + esc(m.material_code) + '</span>' : '') +
+        '<span class="mat-ta-ibadge">' + esc(m.unit || '') + '</span>';
+      item.addEventListener('mousedown', function(e) {
+        e.preventDefault();
+        selectRM(this.dataset.id, this.dataset.name, this.dataset.unit, this.dataset.code, parseFloat(this.dataset.stock) || 0);
+      });
+      dd.appendChild(item);
+    });
+  }
+
+  function posDD() {
+    var r = inner.getBoundingClientRect();
+    dd.style.top   = (r.bottom + 4) + 'px';
+    dd.style.left  = r.left + 'px';
+    dd.style.width = r.width + 'px';
+  }
+
+  function selectRM(id, name, unit, code, stock) {
+    bomRows[idx].rawMaterialId = id;
+    bomRows[idx].name  = name;
+    bomRows[idx].unit  = unit;
+    bomRows[idx].code  = code;
+    bomRows[idx].stock = stock;
+    input.value = name;
+    input.classList.add('mat-ta-sel');
+    clrBtn.classList.add('vis');
+    dd.classList.remove('open');
+    // Update unit cell in same row
+    var tr = wrap.closest('tr');
+    if (tr) {
+      var uc = tr.querySelector('.unit-cell');
+      if (uc) uc.value = unit;
+      // Update stock display
+      var sc = tr.querySelector('.manual-stock-cell');
+      if (sc) {
+        var s = parseFloat(stock) || 0;
+        var q = parseFloat(bomRows[idx].issueQty) || 0;
+        var cls = s <= 0 ? 'st-out' : (q > 0 && s < q) ? 'st-low' : 'st-ok';
+        sc.className = 'col-stock ' + cls;
+        sc.style.textAlign = 'right';
+        sc.textContent = fmtN(stock);
+      }
+    }
+    updateActionBar();
+  }
+
+  function clearRM() {
+    bomRows[idx].rawMaterialId = null;
+    bomRows[idx].name  = '';
+    bomRows[idx].unit  = 'NOS';
+    bomRows[idx].code  = '';
+    bomRows[idx].stock = 0;
+    input.value = '';
+    input.classList.remove('mat-ta-sel');
+    clrBtn.classList.remove('vis');
+    dd.classList.remove('open');
+    var tr = wrap.closest('tr');
+    if (tr) {
+      var uc = tr.querySelector('.unit-cell');
+      if (uc) uc.value = 'NOS';
+      var sc = tr.querySelector('.manual-stock-cell');
+      if (sc) { sc.textContent = '—'; sc.className = 'col-stock st-na'; }
+    }
+    updateActionBar();
+  }
+
+  input.addEventListener('focus', function() { renderDD(input.value); posDD(); dd.classList.add('open'); });
+  input.addEventListener('input', function() {
+    bomRows[idx].rawMaterialId = null;
+    input.classList.remove('mat-ta-sel');
+    clrBtn.classList.toggle('vis', input.value.length > 0);
+    renderDD(input.value); posDD(); dd.classList.add('open');
+  });
+  input.addEventListener('blur', function() { setTimeout(function() { dd.classList.remove('open'); }, 160); });
+  input.addEventListener('keydown', function(e) {
+    var items = dd.querySelectorAll('.mat-ta-item');
+    if (e.key === 'ArrowDown') { e.preventDefault(); kbdIdx = Math.min(kbdIdx+1, items.length-1); items.forEach(function(el,i){ el.classList.toggle('kbd', i===kbdIdx); }); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); kbdIdx = Math.max(kbdIdx-1, 0); items.forEach(function(el,i){ el.classList.toggle('kbd', i===kbdIdx); }); }
+    else if (e.key === 'Enter') { e.preventDefault(); if (kbdIdx >= 0 && items[kbdIdx]) { var el = items[kbdIdx]; selectRM(el.dataset.id, el.dataset.name, el.dataset.unit, el.dataset.code, parseFloat(el.dataset.stock)||0); } }
+    else if (e.key === 'Escape') { dd.classList.remove('open'); }
+  });
+  window.addEventListener('scroll', function() { if (dd.classList.contains('open')) posDD(); }, true);
+  window.addEventListener('resize', function() { if (dd.classList.contains('open')) posDD(); });
+  clrBtn.addEventListener('click', clearRM);
+
+  return wrap;
+}
+
 /* ═══════════════════════════════════════
    RENDER TABLE
 ═══════════════════════════════════════ */
@@ -726,12 +912,17 @@ function renderTable() {
     if (row.isManual) tr.classList.add('manual-row');
 
     if (row.isManual) {
+      // Build the RM typeahead node separately (can't use innerHTML for it)
+      const taNode = buildRMTypeahead(idx);
+
       tr.innerHTML = `
         <td style="color:var(--mid);font-size:11px;">${idx + 1}</td>
         <td>
+          <div id="ta-mount-${idx}" style="margin-bottom:4px;"></div>
           <input class="desc-cell" type="text" value="${esc(row.name)}"
-            placeholder="${t('Material description', 'साहित्याचे वर्णन')}"
-            oninput="rowField(${idx},'name',this.value)" />
+            placeholder="${t('Or type description', 'किंवा वर्णन लिहा')}"
+            oninput="rowField(${idx},'name',this.value)"
+            style="margin-top:2px;" />
           <span class="manual-badge">${t('MANUAL', 'मॅन्युअल')}</span>
         </td>
         <td>
@@ -744,18 +935,41 @@ function renderTable() {
             value="${row.issueQty || ''}" placeholder="0"
             oninput="rowQty(${idx}, this.value)" />
         </td>
-        <td class="col-stock st-na" style="text-align:right;">—</td>
+        <td class="manual-stock-cell col-stock st-na" style="text-align:right;">
+          ${row.rawMaterialId ? fmtN(row.stock) : '—'}
+        </td>
         <td class="col-delete">
           <button class="del-row" onclick="deleteRow(${idx})" title="${t('Remove','काढा')}">×</button>
         </td>`;
+
+      // Mount the typeahead into the placeholder div
+      const mount = tr.querySelector(`#ta-mount-${idx}`);
+      if (mount) {
+        mount.appendChild(taNode);
+        // If row already has a selection, restore it
+        if (row.rawMaterialId) {
+          const inp = taNode.querySelector('.mat-ta-input');
+          if (inp) { inp.value = row.name; inp.classList.add('mat-ta-sel'); }
+          const clr = taNode.querySelector('.mat-ta-clr');
+          if (clr) clr.classList.add('vis');
+          // Set stock cell class
+          const sc = tr.querySelector('.manual-stock-cell');
+          if (sc) {
+            const s = parseFloat(row.stock) || 0;
+            const q = parseFloat(row.issueQty) || 0;
+            const cls = s <= 0 ? 'st-out' : (q > 0 && s < q) ? 'st-low' : 'st-ok';
+            sc.className = 'manual-stock-cell col-stock ' + cls;
+          }
+        }
+      }
     } else {
       const { cls } = stockStatus(row.stock, row.issueQty);
       tr.innerHTML = `
         <td style="color:var(--mid);font-size:11px;">${idx + 1}</td>
         <td>
-          <span style="font-size:13px;">${esc(row.name)}</span>
+          <span style="font-size:13px;">${row.code ? esc(row.code) : esc(row.name)}</span>
           <span class="bom-badge">BOM</span>
-          ${row.code ? `<div style="font-size:10px;color:var(--mid);margin-top:2px;">${esc(row.code)}</div>` : ''}
+          ${row.code ? `<div style="font-size:10px;color:var(--mid);margin-top:2px;">${esc(row.name)}</div>` : ''}
         </td>
         <td style="font-size:12px;color:var(--mid);">${esc(row.unit)}</td>
         <td class="col-bom-qty" style="text-align:right;color:var(--mid);font-size:11px;">${fmtN(row.calcQty)}</td>
@@ -852,13 +1066,13 @@ function printChallan() {
 ═══════════════════════════════════════ */
 function openConfirm() {
   const deductRows = bomRows.filter(
-    r => !r.isManual && r.rawMaterialId && (parseFloat(r.issueQty) || 0) > 0
+    r => r.rawMaterialId && (parseFloat(r.issueQty) || 0) > 0
   );
   if (deductRows.length === 0) {
     toast(
       bomRows.length > 0
-        ? t('No BOM-linked materials to issue. Manual rows are print-only.',
-            'कोणतेही BOM साहित्य नाही. मॅन्युअल ओळी फक्त प्रिंटसाठी आहेत.')
+        ? t('No RM-linked materials to issue. Select an RM for manual rows or link them to BOM.',
+            'कोणतेही RM साहित्य नाही. मॅन्युअल ओळींसाठी RM निवडा किंवा BOM शी जोडा.')
         : t('No rows to issue.', 'इश्यू करण्यासाठी ओळी नाहीत.'),
       'warn'
     );
@@ -918,11 +1132,13 @@ async function submitIssue() {
   confirmBtn.disabled = true;
   if (btnLabel) btnLabel.textContent = t('Issuing…', 'इश्यू होत आहे…');
 
+  // deductRows: all rows with a linked rawMaterialId (BOM + manual RM-linked)
   const deductRows = bomRows.filter(
-    r => !r.isManual && r.rawMaterialId && (parseFloat(r.issueQty) || 0) > 0
+    r => r.rawMaterialId && (parseFloat(r.issueQty) || 0) > 0
   );
+  // manualRows: manual rows with NO RM link (pure text/print-only rows)
   const manualRows = bomRows.filter(
-    r => r.isManual && r.name && (parseFloat(r.issueQty) || 0) > 0
+    r => r.isManual && !r.rawMaterialId && r.name && (parseFloat(r.issueQty) || 0) > 0
   );
 
   const p         = products.find(x => x.id === document.getElementById('productSelect').value);
@@ -936,6 +1152,7 @@ async function submitIssue() {
   const consumptionArray = deductRows.map(row => ({
     material_id   : row.rawMaterialId,
     material_name : row.name,
+    material_code : row.code || '',
     qty           : Math.abs(parseFloat(row.issueQty)),
     unit          : row.unit
   }));

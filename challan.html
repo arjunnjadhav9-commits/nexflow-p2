@@ -371,11 +371,20 @@
             const itemsBody = document.getElementById('items-body');
             itemsBody.innerHTML = '';
             let totalQty = 0;
-            const isRawMaterial = order.dispatch_type === 'raw_material' || order.dispatch_type === 'bom_issue';
             items.forEach((item, i) => {
-                const name = isRawMaterial
-                    ? (item.material_name || item.p2_products?.name || 'Unknown Material')
-                    : (item.p2_products?.name || item.material_name || 'Unknown Product');
+                let name;
+                if (order.dispatch_type === 'bom_issue') {
+                    // Issue Materials challan ONLY: prefer the internal material
+                    // code, fall back to name when no code exists. This is
+                    // intentionally scoped to bom_issue alone — RM Dispatch and
+                    // Product Dispatch go to actual external clients and must
+                    // always show a readable name, never an internal SKU code.
+                    name = item.material_code || item.material_name || item.p2_products?.name || 'Unknown Material';
+                } else if (order.dispatch_type === 'raw_material') {
+                    name = item.material_name || item.p2_products?.name || 'Unknown Material';
+                } else {
+                    name = item.p2_products?.name || item.material_name || 'Unknown Product';
+                }
                 const unit = item.unit || item.p2_products?.unit || '';
                 const row = document.createElement('tr');
                 row.innerHTML = `
