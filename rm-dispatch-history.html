@@ -355,7 +355,7 @@
 
             const { data: items, error: itemsErr } = await window.supabase
                 .from('p2_dispatch_items')
-                .select('dispatch_order_id, qty_dispatched, unit, product_id, material_name, p2_products(name)')
+                .select('dispatch_order_id, qty_dispatched, unit, product_id, material_name, material_code, p2_products(name)')
                 .in('dispatch_order_id', orderIds);
 
             if (itemsErr) throw itemsErr;
@@ -364,10 +364,10 @@
             const itemMap = {};
             (items || []).forEach(item => {
                 if (!itemMap[item.dispatch_order_id]) itemMap[item.dispatch_order_id] = [];
-                // For raw material dispatches product_id is null — use material_name
+                // For raw material dispatches product_id is null — show code if available
                 const name = item.product_id
                     ? (item.p2_products?.name || 'Unknown Product')
-                    : (item.material_name || 'Unknown Material');
+                    : (item.material_code || item.material_name || 'Unknown Material');
                 itemMap[item.dispatch_order_id].push({
                     product_name: name,
                     qty: item.qty_dispatched,

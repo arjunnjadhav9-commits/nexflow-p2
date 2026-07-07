@@ -381,7 +381,7 @@
                     // always show a readable name, never an internal SKU code.
                     name = item.material_code || item.material_name || item.p2_products?.name || 'Unknown Material';
                 } else if (order.dispatch_type === 'raw_material') {
-                    name = item.material_name || item.p2_products?.name || 'Unknown Material';
+                    name = item.material_code || item.material_name || item.p2_products?.name || 'Unknown Material';
                 } else {
                     name = item.p2_products?.name || item.material_name || 'Unknown Product';
                 }

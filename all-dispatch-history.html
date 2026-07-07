@@ -18,7 +18,9 @@
     <style>
         .nx-modal-overlay {
             position: fixed; inset: 0; background: rgba(0,0,0,0.65);
-            z-index: 500; display: flex; align-items: center; justify-content: center; padding: 20px;
+            z-index: 500; display: flex; align-items: center; justify-content: center;
+        /* amend-badge */
+        .amend-badge{display:inline-block;font-size:10px;font-weight:700;text-transform:uppercase;background:rgba(251,191,36,0.12);color:#fbbf24;border:1px solid rgba(251,191,36,0.3);border-radius:3px;padding:1px 6px;margin-left:6px;} padding: 20px;
         }
         .nx-modal {
             background: var(--surface); border: 1px solid var(--border2);
@@ -177,9 +179,10 @@
                     <tbody id="detailModalBody"></tbody>
                 </table>
             </div>
-            <div style="display:flex; gap:10px;">
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
                 <button id="detailPrintBtn" class="nx-btn nx-btn-green" style="flex:1;">View Challan</button>
                 <button id="detailCsvBtn" class="nx-btn nx-btn-secondary" style="flex:1;">↓ CSV</button>
+                <button id="detailAmendBtn" class="nx-btn nx-btn-ghost" style="flex:1;color:#fbbf24;border-color:rgba(251,191,36,0.4);display:none;">+ Missing Deduction</button>
                 <button id="detailCancelBtn" class="nx-btn nx-btn-ghost" style="flex:1; color:#ef4444; display:none;">Cancel Challan</button>
                 <button id="detailCloseBtn" class="nx-btn nx-btn-ghost" style="flex:1;">Close</button>
             </div>
@@ -250,7 +253,7 @@
 
             const { data: items, error: itemsErr } = await window.supabase
                 .from('p2_dispatch_items')
-                .select('dispatch_order_id, qty_dispatched, unit, product_id, material_name, p2_products(name)')
+                .select('dispatch_order_id, qty_dispatched, unit, product_id, material_name, material_code, p2_products(name)')
                 .in('dispatch_order_id', orderIds);
 
             if (itemsErr) throw itemsErr;
@@ -260,7 +263,7 @@
                 if (!itemMap[item.dispatch_order_id]) itemMap[item.dispatch_order_id] = [];
                 const name = item.product_id
                     ? (item.p2_products?.name || 'Unknown Product')
-                    : (item.material_name     || 'Unknown Material');
+                    : (item.material_code || item.material_name || 'Unknown Material');
                 itemMap[item.dispatch_order_id].push({ name, qty: item.qty_dispatched, unit: item.unit });
             });
 
@@ -413,11 +416,18 @@
             }
 
             const cancelBtn = document.getElementById('detailCancelBtn');
+            const amendBtn  = document.getElementById('detailAmendBtn');
             if (!isDraft && !isCancelled) {
                 cancelBtn.style.display = 'block';
                 cancelBtn.onclick = () => cancelChallanRow(orderId, order.challan_number || '');
+                amendBtn.style.display = 'block';
+                amendBtn.onclick = () => {
+                    const ch = (order.challan_number || '').replace(/^CHAL-\d{8}-/, '');
+                    openAmendModal(orderId, 'Challan ' + ch);
+                };
             } else {
                 cancelBtn.style.display = 'none';
+                amendBtn.style.display = 'none';
             }
 
             document.getElementById('detailModal').style.display = 'flex';
@@ -618,6 +628,144 @@
             const s = String(f);
             return (s.includes(',') || s.includes('"') || s.includes('\n')) ? '"' + s.replace(/"/g,'""') + '"' : s;
         }
+    
+        // ── AMENDMENT ─────────────────────────────────────────────────────
+        var _amendOrderId = null;
+        var _amendTA      = null;
+        var _amendRMList  = [];
+
+        async function openAmendModal(orderId, challanRef) {
+            _amendOrderId = orderId;
+            document.getElementById('amendChallanRef').textContent = 'Adding missing deduction to: ' + (challanRef || orderId);
+            document.getElementById('amendQty').value    = '';
+            document.getElementById('amendUnit').value   = '';
+            document.getElementById('amendReason').value = '';
+            document.getElementById('amendError').style.display = 'none';
+            if (_amendRMList.length === 0) {
+                var _tid = (typeof tenantId !== 'undefined' && tenantId) ? tenantId : '';
+                var res  = await window.supabase.from('v_p2_stock_balance')
+                    .select('raw_material_id, name, material_code, unit, current_stock')
+                    .eq('tenant_id', _tid).order('name');
+                if (!res.error) _amendRMList = res.data || [];
+            }
+            var mount = document.getElementById('amendMatMount');
+            mount.innerHTML = '';
+            _amendTA = _buildAmendTA(_amendRMList);
+            mount.appendChild(_amendTA.el);
+            document.getElementById('amendModal').style.display = 'flex';
+            setTimeout(function(){ var inp=mount.querySelector('input'); if(inp) inp.focus(); }, 80);
+        }
+
+        function _buildAmendTA(mats) {
+            var wrap=document.createElement('div'); wrap.style.cssText='position:relative;width:100%;';
+            var inner=document.createElement('div'); inner.style.cssText='position:relative;display:flex;align-items:center;';
+            var icon=document.createElement('i'); icon.style.cssText='position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--mid);pointer-events:none;font-size:14px;font-style:normal;'; icon.textContent='⌕';
+            var input=document.createElement('input'); input.type='text'; input.autocomplete='off'; input.className='nx-input'; input.style.cssText='padding-left:30px;padding-right:28px;'; input.placeholder='Search material or code...';
+            var clr=document.createElement('button'); clr.type='button'; clr.textContent='×'; clr.style.cssText='position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--mid);cursor:pointer;font-size:16px;padding:0;display:none;';
+            inner.appendChild(icon); inner.appendChild(input); inner.appendChild(clr);
+            var dd=document.createElement('div'); dd.style.cssText='position:fixed;background:var(--surface);border:1px solid var(--border2);border-radius:6px;z-index:10000;max-height:200px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,0.5);display:none;';
+            wrap.appendChild(inner); wrap.appendChild(dd);
+            var selId='',selUnit='',selName='',selCode='',kbdIdx=-1;
+            function esc(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+            function posDD(){var r=inner.getBoundingClientRect(); dd.style.top=(r.bottom+4)+'px'; dd.style.left=r.left+'px'; dd.style.width=r.width+'px';}
+            function filterM(t){var q=(t||'').toLowerCase().trim(); return q===''?mats.slice(0,50):mats.filter(function(m){return m.name.toLowerCase().includes(q)||(m.material_code&&m.material_code.toLowerCase().includes(q));});}
+            function renderDD(term){
+                var res=filterM(term); dd.innerHTML=''; kbdIdx=-1;
+                if(res.length===0){dd.innerHTML='<div style="padding:10px;font-size:12px;color:var(--mid);text-align:center;">No materials found</div>';return;}
+                res.forEach(function(m){
+                    var d=document.createElement('div');
+                    d.style.cssText='padding:8px 10px;font-size:13px;color:var(--text);cursor:pointer;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:6px;';
+                    d.dataset.id=m.raw_material_id; d.dataset.unit=m.unit||''; d.dataset.name=m.name; d.dataset.code=m.material_code||'';
+                    d.innerHTML='<span style="font-weight:500;flex:1;">'+esc(m.name)+'</span>'+(m.material_code?'<span style="font-size:10px;color:var(--orange);font-family:monospace;background:rgba(255,92,26,0.08);border:1px solid rgba(255,92,26,0.25);padding:1px 5px;border-radius:3px;">'+esc(m.material_code)+'</span>':'')+'<span style="font-size:10px;color:var(--mid);font-family:monospace;background:var(--surface3);padding:1px 5px;border-radius:3px;">'+esc(m.unit||'')+'</span>';
+                    d.addEventListener('mousedown',function(e){e.preventDefault();selIt(d.dataset.id,d.dataset.name,d.dataset.unit,d.dataset.code);});
+                    d.addEventListener('mouseover',function(){d.style.background='var(--surface2)';});
+                    d.addEventListener('mouseout', function(){d.style.background='';});
+                    dd.appendChild(d);
+                });
+            }
+            function selIt(id,name,unit,code){selId=id;selUnit=unit;selName=name;selCode=code;input.value=name;input.style.borderColor='#22c55e';clr.style.display='block';dd.style.display='none';document.getElementById('amendUnit').value=unit;}
+            function resetTA(){selId='';selUnit='';selName='';selCode='';input.value='';input.style.borderColor='';clr.style.display='none';dd.style.display='none';document.getElementById('amendUnit').value='';}
+            input.addEventListener('focus',function(){renderDD(input.value);posDD();dd.style.display='block';});
+            input.addEventListener('input',function(){selId='';input.style.borderColor='';clr.style.display=input.value.length>0?'block':'none';renderDD(input.value);posDD();dd.style.display='block';});
+            input.addEventListener('blur', function(){setTimeout(function(){dd.style.display='none';},160);});
+            input.addEventListener('keydown',function(e){
+                var items=dd.querySelectorAll('div[data-id]');
+                if(e.key==='ArrowDown'){e.preventDefault();kbdIdx=Math.min(kbdIdx+1,items.length-1);items.forEach(function(el,ii){el.style.background=ii===kbdIdx?'var(--surface2)':'';});}
+                else if(e.key==='ArrowUp'){e.preventDefault();kbdIdx=Math.max(kbdIdx-1,0);items.forEach(function(el,ii){el.style.background=ii===kbdIdx?'var(--surface2)':'';});}
+                else if(e.key==='Enter'){e.preventDefault();if(kbdIdx>=0&&items[kbdIdx]){var el=items[kbdIdx];selIt(el.dataset.id,el.dataset.name,el.dataset.unit,el.dataset.code);}}
+                else if(e.key==='Escape'){dd.style.display='none';}
+            });
+            window.addEventListener('scroll',function(){if(dd.style.display!=='none')posDD();},true);
+            clr.addEventListener('click',resetTA);
+            return {el:wrap,getId:function(){return selId;},getName:function(){return selName;},getUnit:function(){return selUnit;},getCode:function(){return selCode;}};
+        }
+
+        document.getElementById('amendCancelBtn').addEventListener('click', function(){
+            document.getElementById('amendModal').style.display='none';
+        });
+
+        document.getElementById('amendConfirmBtn').addEventListener('click', async function(){
+            var errEl=document.getElementById('amendError'); errEl.style.display='none';
+            var matId  =_amendTA?_amendTA.getId():'';
+            var matName=_amendTA?_amendTA.getName():'';
+            var matCode=_amendTA?_amendTA.getCode():'';
+            var unit   =_amendTA?_amendTA.getUnit():'';
+            var qty    =parseFloat(document.getElementById('amendQty').value);
+            var reason =document.getElementById('amendReason').value.trim();
+            if(!matId){errEl.textContent='Please select a raw material.';errEl.style.display='block';return;}
+            if(!qty||qty<=0){errEl.textContent='Enter a valid quantity.';errEl.style.display='block';return;}
+            var btn=document.getElementById('amendConfirmBtn');
+            btn.disabled=true; btn.textContent='Saving...';
+            var _tid=(typeof tenantId!=='undefined'&&tenantId)?tenantId:'';
+            try {
+                var res=await window.supabase.rpc('add_missing_deduction',{
+                    p_tenant_id:_tid, p_dispatch_order_id:_amendOrderId,
+                    p_raw_material_id:matId, p_material_name:matName,
+                    p_material_code:matCode, p_qty:qty, p_unit:unit,
+                    p_reason:reason||null
+                });
+                if(res.error) throw res.error;
+                document.getElementById('amendModal').style.display='none';
+                toast('Missing deduction added — stock updated.','ok');
+                _amendRMList=[];
+            } catch(err){
+                errEl.textContent='Failed: '+err.message; errEl.style.display='block';
+            } finally {
+                btn.disabled=false; btn.textContent='Confirm Deduction';
+            }
+        });
+
     </script>
+
+    <!-- AMENDMENT MODAL -->
+    <div id="amendModal" class="nx-modal-overlay" style="display:none;z-index:9999;">
+        <div class="nx-modal" style="max-width:440px;">
+            <div class="nx-modal-title" style="color:#fbbf24;">&#9888; Add Missing Deduction</div>
+            <div id="amendChallanRef" style="font-size:12px; color:var(--mid); margin-bottom:16px;"></div>
+            <div class="nx-form-group">
+                <label style="font-size:12px;">Raw Material</label>
+                <div id="amendMatMount"></div>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                <div class="nx-form-group">
+                    <label style="font-size:12px;">Quantity</label>
+                    <input type="number" id="amendQty" class="nx-input" placeholder="0" min="0" step="any">
+                </div>
+                <div class="nx-form-group">
+                    <label style="font-size:12px;">Unit</label>
+                    <input type="text" id="amendUnit" class="nx-input" readonly placeholder="auto">
+                </div>
+            </div>
+            <div class="nx-form-group">
+                <label style="font-size:12px;">Reason <span style="color:var(--mid);">(optional)</span></label>
+                <input type="text" id="amendReason" class="nx-input" placeholder="e.g. missed in original dispatch">
+            </div>
+            <div id="amendError" style="display:none; color:#ef4444; font-size:12px; margin-bottom:10px;"></div>
+            <div style="display:flex; gap:10px;">
+                <button id="amendConfirmBtn" class="nx-btn nx-btn-primary" style="flex:1;">Confirm Deduction</button>
+                <button id="amendCancelBtn"  class="nx-btn nx-btn-ghost"   style="flex:1;">Cancel</button>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
