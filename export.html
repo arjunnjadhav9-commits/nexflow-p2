@@ -267,7 +267,7 @@ function buildCSV(rows) {
 
 function downloadCSV(filename, rows) {
   const csv  = buildCSV(rows);
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
   a.href = url; a.download = filename;
@@ -389,7 +389,7 @@ async function exportTallyMasters() {
   log('Fetching raw materials...');
   const { data: items, error } = await window.supabase
     .from('p2_raw_materials')
-    .select('id, material_code, name, unit, hsn_sac, gst_rate')
+    .select('id, material_code, name, unit, hsn_sac, gst_rate, current_stock')
     .eq('tenant_id', tenantId)
     .eq('is_active', true)
     .order('name');
@@ -404,23 +404,54 @@ async function exportTallyMasters() {
     log(`Warning: ${missingHsn} items missing HSN code.`, 'err');
   }
 
-  log('Fetching opening stock...');
+  // Opening quantity: prefer an explicit 'Opening Stock' adjustment transaction if one exists
+  // (this is the historically correct source when GRN/consumption activity has since moved
+  // the balance). If no such transaction exists — which is the case for tenants onboarded via
+  // CSV import, where current_stock is written directly onto p2_raw_materials — fall back to
+  // the material's current_stock. This ensures the export never silently shows 0 just because
+  // the tenant's data entry path didn't create a transaction-log row.
+  log('Fetching opening stock transactions (if any)...');
   const { data: opening, error: oe } = await window.supabase
     .from('p2_stock_transactions')
-    .select('raw_material_id, quantity, rate')
+    .select('raw_material_id, quantity')
     .eq('tenant_id', tenantId)
     .eq('transaction_type', 'adjustment')
     .eq('notes', 'Opening Stock');
 
   if (oe) throw new Error(`Opening stock fetch error: ${oe.message}`);
 
-  const openingMap = {};
+  const openingQtyMap = {};
   (opening || []).forEach(o => {
-    openingMap[o.raw_material_id] = {
-      qty:  parseFloat(o.quantity) || 0,
-      rate: parseFloat(o.rate)     || 0
-    };
+    openingQtyMap[o.raw_material_id] = parseFloat(o.quantity) || 0;
   });
+
+  // Rate: always sourced from p2_material_prices — this is the single source of truth for
+  // "what does this material cost", not stock transactions (which record what was PAID on a
+  // specific GRN, not a standing valuation rate). Take the most recent price per material by
+  // effective_date. If a material has no price entry at all, rate stays 0 and we warn.
+  log('Fetching material prices...');
+  const { data: prices, error: pe } = await window.supabase
+    .from('p2_material_prices')
+    .select('raw_material_id, price_per_unit, effective_date')
+    .eq('tenant_id', tenantId)
+    .order('effective_date', { ascending: false });
+
+  if (pe) throw new Error(`Material prices fetch error: ${pe.message}`);
+
+  const rateMap = {};
+  (prices || []).forEach(p => {
+    // First row per raw_material_id wins because we sorted descending by effective_date —
+    // so this naturally keeps only the LATEST price per material.
+    if (!(p.raw_material_id in rateMap)) {
+      rateMap[p.raw_material_id] = parseFloat(p.price_per_unit) || 0;
+    }
+  });
+
+  const missingRate = items.filter(i => !(i.id in rateMap)).length;
+  if (missingRate > 0) {
+    showWarn(`${missingRate} material(s) have no price entry in Material Prices — Opening Rate will show 0 for these. Add a price in Settings before presenting this to a CA.`);
+    log(`Warning: ${missingRate} items have no price entry.`, 'err');
+  }
 
   log('Building Tally Stock Items CSV...');
   const headers = [
@@ -432,14 +463,16 @@ async function exportTallyMasters() {
 
   items.forEach(item => {
     const uom    = UOM_MAP[item.unit]?.tally || item.unit;
-    const os     = openingMap[item.id] || { qty: 0, rate: 0 };
-    const oValue = (os.qty * os.rate).toFixed(2);
+    // Opening qty: explicit opening-stock transaction if present, else fall back to current_stock.
+    const qty    = (item.id in openingQtyMap) ? openingQtyMap[item.id] : (parseFloat(item.current_stock) || 0);
+    const rate   = rateMap[item.id] || 0;
+    const oValue = (qty * rate).toFixed(2);
     const taxable = item.gst_rate > 0;
     rows.push([
       item.name,
       'Raw Materials',
       uom,
-      os.qty, os.rate, oValue,
+      qty, rate, oValue,
       item.hsn_sac || '',
       taxable ? 'Applicable'  : 'Not Applicable',
       taxable ? 'Taxable'     : '',
@@ -492,11 +525,26 @@ async function exportTallyTransactions() {
     const voucherType = t.transaction_type === 'grn' ? 'Purchase' : 'Stock Journal';
     const partyName   = t.transaction_type === 'grn' ? (t.supplier_name || '') : (t.notes || 'Production Floor');
     const rate        = parseFloat(t.rate) || 0;
-    const qty         = parseFloat(t.quantity) || 0;
+    // Consumption rows are stored as negative in p2_stock_transactions (stock decreasing).
+    // Tally's Billed Quantity must always be positive — the voucher type (Stock Journal)
+    // already conveys direction. Use absolute value for both qty and amount here.
+    const qty         = Math.abs(parseFloat(t.quantity) || 0);
+
+    // Amendment rows must NOT share a Voucher No with same-day regular consumption rows —
+    // Tally merges rows with identical Voucher No into one Stock Journal voucher, which
+    // makes an amendment indistinguishable from the original production issue it corrects.
+    // Detect amendments via the notes prefix (set by confirm_bom_issue / amendment RPCs)
+    // and give them a distinct prefix so they always land in their own voucher.
+    const isAmendment = t.transaction_type === 'consumption' &&
+                         /^amendment/i.test((t.notes || '').trim());
+    const fallbackVoucherNo = isAmendment
+      ? 'AMENDMENT-' + t.transaction_date
+      : t.transaction_type.toUpperCase() + '-' + t.transaction_date;
+
     rows.push([
       fmtTally(t.transaction_date),
       voucherType,
-      t.invoice_no || t.transaction_type.toUpperCase() + '-' + t.transaction_date,
+      t.invoice_no || fallbackVoucherNo,
       partyName,
       t.p2_raw_materials.name,
       qty, rate,
@@ -518,7 +566,7 @@ async function exportZohoMasters() {
   log('Fetching raw materials...');
   const { data: items, error } = await window.supabase
     .from('p2_raw_materials')
-    .select('id, material_code, name, unit, hsn_sac, gst_rate')
+    .select('id, material_code, name, unit, hsn_sac, gst_rate, current_stock')
     .eq('tenant_id', tenantId)
     .eq('is_active', true)
     .order('name');
@@ -527,22 +575,45 @@ async function exportZohoMasters() {
   if (!items.length) throw new Error('No active materials found.');
   log(`Fetched ${items.length} materials.`);
 
-  log('Fetching opening stock...');
+  // Opening quantity: prefer explicit 'Opening Stock' adjustment transaction, else fall back
+  // to current_stock on p2_raw_materials — same logic as the Tally Stock Master export, kept
+  // consistent so both exports always agree on quantity for the same tenant.
+  log('Fetching opening stock transactions (if any)...');
   const { data: opening, error: oe } = await window.supabase
     .from('p2_stock_transactions')
-    .select('raw_material_id, quantity, rate')
+    .select('raw_material_id, quantity')
     .eq('tenant_id', tenantId)
     .eq('transaction_type', 'adjustment')
     .eq('notes', 'Opening Stock');
 
   if (oe) throw new Error(`Opening stock fetch error: ${oe.message}`);
-  const openingMap = {};
+  const openingQtyMap = {};
   (opening || []).forEach(o => {
-    openingMap[o.raw_material_id] = {
-      qty:  parseFloat(o.quantity) || 0,
-      rate: parseFloat(o.rate)     || 0
-    };
+    openingQtyMap[o.raw_material_id] = parseFloat(o.quantity) || 0;
   });
+
+  // Rate: sourced from p2_material_prices (latest by effective_date), NOT from stock
+  // transactions — same fix applied to the Tally export, kept consistent between both.
+  log('Fetching material prices...');
+  const { data: prices, error: pe } = await window.supabase
+    .from('p2_material_prices')
+    .select('raw_material_id, price_per_unit, effective_date')
+    .eq('tenant_id', tenantId)
+    .order('effective_date', { ascending: false });
+
+  if (pe) throw new Error(`Material prices fetch error: ${pe.message}`);
+  const rateMap = {};
+  (prices || []).forEach(p => {
+    if (!(p.raw_material_id in rateMap)) {
+      rateMap[p.raw_material_id] = parseFloat(p.price_per_unit) || 0;
+    }
+  });
+
+  const missingRate = items.filter(i => !(i.id in rateMap)).length;
+  if (missingRate > 0) {
+    showWarn(`${missingRate} material(s) have no price entry in Material Prices — Purchase Price will show 0 for these. Add a price in Settings before presenting this to a CA.`);
+    log(`Warning: ${missingRate} items have no price entry.`, 'err');
+  }
 
   const missingCode = items.filter(i => !i.material_code).length;
   if (missingCode > 0) {
@@ -559,16 +630,17 @@ async function exportZohoMasters() {
   const rows = [headers];
 
   items.forEach(item => {
-    const uom = UOM_MAP[item.unit]?.zoho || item.unit.toLowerCase();
-    const os  = openingMap[item.id] || { qty: 0, rate: 0 };
+    const uom  = UOM_MAP[item.unit]?.zoho || item.unit.toLowerCase();
+    const qty  = (item.id in openingQtyMap) ? openingQtyMap[item.id] : (parseFloat(item.current_stock) || 0);
+    const rate = rateMap[item.id] || 0;
     rows.push([
       item.name,
       item.material_code || '',
       uom,
       'Inventory',
-      os.rate,
-      os.qty,
-      os.rate,
+      rate,
+      qty,
+      rate,
       item.hsn_sac  || '',
       item.gst_rate || 0,
       'Cost of Goods Sold',
@@ -608,9 +680,14 @@ async function exportZohoTransactions() {
 
   const missingSupplier = txns.filter(t => !t.supplier_name).length;
   const missingRate     = txns.filter(t => !t.rate).length;
+  const missingInvoiceNo = txns.filter(t => !t.invoice_no || t.invoice_no.trim() === '').length;
   if (missingSupplier > 0 || missingRate > 0) {
     showWarn(`${missingSupplier} row(s) missing vendor name. ${missingRate} row(s) missing rate. Zoho bills need both — CA will fill manually.`);
     log(`Warning: ${missingSupplier} missing vendor, ${missingRate} missing rate.`, 'err');
+  }
+  if (missingInvoiceNo > 0) {
+    showWarn(`${missingInvoiceNo} row(s) have no vendor invoice number captured at GRN entry. These are grouped into one bill per vendor per day as a best-effort fallback — but if a vendor sent TWO separate invoices on the same day, they'll be wrongly merged into one bill. Capture the real invoice number at GRN entry to fix this properly.`);
+    log(`Warning: ${missingInvoiceNo} row(s) using fallback bill grouping (no invoice_no captured).`, 'err');
   }
 
   log('Building Zoho Bills CSV...');
@@ -628,12 +705,33 @@ async function exportZohoTransactions() {
     return `GST${r}`;
   }
 
-  let billCounter = 1;
+  // Bill Number logic:
+  // - If invoice_no is captured on the GRN row, use it directly. Rows sharing the same
+  //   invoice_no correctly group into ONE Zoho bill — this is the ideal path and requires
+  //   GRN entry to capture the vendor's actual invoice number.
+  // - If invoice_no is missing, the OLD fallback gave every row its own counter
+  //   (GRN-{date}-001, 002, 003...) even when multiple items came from the same vendor
+  //   on the same day under one physical invoice. That split one real bill into N fake
+  //   bills in Zoho — vendor payables and reconciliation broke.
+  // - FIX: fallback now groups by vendor + date. All items from the same supplier on
+  //   the same GRN date share one fallback Bill Number. This is still an approximation
+  //   (two genuinely separate same-day invoices from one vendor would wrongly merge) —
+  //   the real fix is capturing invoice_no at GRN entry. This fallback just stops the
+  //   export from actively creating MORE separate bills than actually exist.
+  const fallbackBillMap = {}; // key: `${supplier}|${date}` -> bill number
+  let fallbackCounter = 1;
 
   txns.forEach(t => {
-    const billNo  = t.invoice_no && t.invoice_no.trim() !== ''
-      ? t.invoice_no.trim()
-      : `GRN-${t.transaction_date}-${String(billCounter++).padStart(3,'0')}`;
+    let billNo;
+    if (t.invoice_no && t.invoice_no.trim() !== '') {
+      billNo = t.invoice_no.trim();
+    } else {
+      const key = `${(t.supplier_name || 'UNKNOWN').trim().toUpperCase()}|${t.transaction_date}`;
+      if (!fallbackBillMap[key]) {
+        fallbackBillMap[key] = `GRN-${t.transaction_date}-${String(fallbackCounter++).padStart(3,'0')}`;
+      }
+      billNo = fallbackBillMap[key];
+    }
     const gstRate = t.p2_raw_materials.gst_rate || 0;
     rows.push([
       t.supplier_name   || '',
@@ -671,5 +769,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 </script>
 </body>
 </html>
+
 
 

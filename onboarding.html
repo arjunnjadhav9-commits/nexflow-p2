@@ -943,7 +943,7 @@
             const batch = payload.slice(i, i + 50);
             const { error } = await window.supabase
                 .from('p2_raw_materials')
-                .upsert(batch, { onConflict: 'material_code,tenant_id', ignoreDuplicates: false });
+                .upsert(batch, { onConflict: 'name,tenant_id', ignoreDuplicates: false });
             if (error) {
                 log('step3Log', `Batch ${Math.floor(i/50)+1} error: ${error.message}`, 'err');
                 failed += batch.length;
@@ -1249,7 +1249,7 @@
 
         const { error: prodErr } = await window.supabase
             .from('p2_products')
-            .upsert(productPayload, { onConflict: 'tenant_id,product_code', ignoreDuplicates: false });
+            .upsert(productPayload, { onConflict: 'name,tenant_id', ignoreDuplicates: false });
 
         if (prodErr) {
             log('step5Log', 'Product insert error: ' + prodErr.message, 'err');

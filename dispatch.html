@@ -149,11 +149,17 @@
                             </div>
                         </div>
 
-                        <div class="nx-form-group">
-                            <label id="vehicleNumberLabel" data-en="Vehicle Number" data-mr="वाहन क्रमांक">Vehicle Number</label>
-                            <input type="text" id="vehicleNumber" class="nx-input"
-                                   data-en="Enter vehicle number" data-mr="वाहन क्रमांक प्रविष्ट करा"
-                                   placeholder="Enter vehicle number">
+                        <div class="nx-form-row">
+                            <div class="nx-form-group">
+                                <label id="dispatchDateLabel" data-en="Dispatch Date" data-mr="पाठवण्याची तारीख">Dispatch Date</label>
+                                <input type="date" id="dispatchDate" class="nx-input">
+                            </div>
+                            <div class="nx-form-group">
+                                <label id="vehicleNumberLabel" data-en="Vehicle Number" data-mr="वाहन क्रमांक">Vehicle Number</label>
+                                <input type="text" id="vehicleNumber" class="nx-input"
+                                       data-en="Enter vehicle number" data-mr="वाहन क्रमांक प्रविष्ट करा"
+                                       placeholder="Enter vehicle number">
+                            </div>
                         </div>
                     </div>
 
@@ -319,6 +325,38 @@
         </div>
     </div>
 
+    
+    <!-- AMENDMENT MODAL -->
+    <div id="amendModal" class="nx-modal-overlay" style="display:none;z-index:9999;">
+        <div class="nx-modal" style="max-width:440px;">
+            <div class="nx-modal-title" style="color:#fbbf24;">&#9888; Add Missing Deduction</div>
+            <div id="amendChallanRef" style="font-size:12px; color:var(--mid); margin-bottom:16px;"></div>
+            <div class="nx-form-group">
+                <label style="font-size:12px;">Raw Material</label>
+                <div id="amendMatMount"></div>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                <div class="nx-form-group">
+                    <label style="font-size:12px;">Quantity</label>
+                    <input type="number" id="amendQty" class="nx-input" placeholder="0" min="0" step="any">
+                </div>
+                <div class="nx-form-group">
+                    <label style="font-size:12px;">Unit</label>
+                    <input type="text" id="amendUnit" class="nx-input" readonly placeholder="auto">
+                </div>
+            </div>
+            <div class="nx-form-group">
+                <label style="font-size:12px;">Reason <span style="color:var(--mid);">(optional)</span></label>
+                <input type="text" id="amendReason" class="nx-input" placeholder="e.g. missed in original dispatch">
+            </div>
+            <div id="amendError" style="display:none; color:#ef4444; font-size:12px; margin-bottom:10px;"></div>
+            <div style="display:flex; gap:10px;">
+                <button id="amendConfirmBtn" class="nx-btn nx-btn-primary" style="flex:1;">Confirm Deduction</button>
+                <button id="amendCancelBtn"  class="nx-btn nx-btn-ghost"   style="flex:1;">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         let products = [];
         let dispatchItems = [];
@@ -340,6 +378,8 @@
                 applyDemoModeToForms();
 
                 tenantId = user.id;
+
+                document.getElementById('dispatchDate').value = new Date().toISOString().split('T')[0];
 
                 const loadPromise = Promise.all([
                     loadProducts(),
@@ -514,6 +554,7 @@
                 document.getElementById('poNumber').value = order.po_number || '';
                 document.getElementById('challanRef').value = order.your_challan_ref || '';
                 document.getElementById('vehicleNumber').value = order.vehicle_number || '';
+                document.getElementById('dispatchDate').value = order.dispatch_date || new Date().toISOString().split('T')[0];
 
                 dispatchItems = items.map(item => ({
                     product_id: item.product_id,
@@ -709,7 +750,7 @@
                     vehicle_number: document.getElementById('vehicleNumber')?.value || '',
                     status: String(targetStatus),
                     challan_number: String(rawChallan || '1001'),
-                    dispatch_date: new Date().toISOString().split('T')[0],
+                    dispatch_date: document.getElementById('dispatchDate')?.value || new Date().toISOString().split('T')[0],
                     dispatch_type: 'product'
                 };
 
@@ -1021,6 +1062,8 @@
             mount.appendChild(_amendTA.el);
             document.getElementById('amendModal').style.display = 'flex';
             setTimeout(function(){ var inp=mount.querySelector('input'); if(inp) inp.focus(); }, 80);
+            document.getElementById('amendCancelBtn').onclick  = function(){ document.getElementById('amendModal').style.display='none'; };
+            document.getElementById('amendConfirmBtn').onclick = _amendConfirmFn;
         }
 
         function _buildAmendTA(mats) {
@@ -1067,11 +1110,7 @@
             return {el:wrap,getId:function(){return selId;},getName:function(){return selName;},getUnit:function(){return selUnit;},getCode:function(){return selCode;}};
         }
 
-        document.getElementById('amendCancelBtn').addEventListener('click', function(){
-            document.getElementById('amendModal').style.display='none';
-        });
-
-        document.getElementById('amendConfirmBtn').addEventListener('click', async function(){
+        async function _amendConfirmFn(){
             var errEl=document.getElementById('amendError'); errEl.style.display='none';
             var matId  =_amendTA?_amendTA.getId():'';
             var matName=_amendTA?_amendTA.getName():'';
@@ -1100,39 +1139,9 @@
             } finally {
                 btn.disabled=false; btn.textContent='Confirm Deduction';
             }
-        });
+        }
 
     </script>
 
-    <!-- AMENDMENT MODAL -->
-    <div id="amendModal" class="nx-modal-overlay" style="display:none;z-index:9999;">
-        <div class="nx-modal" style="max-width:440px;">
-            <div class="nx-modal-title" style="color:#fbbf24;">&#9888; Add Missing Deduction</div>
-            <div id="amendChallanRef" style="font-size:12px; color:var(--mid); margin-bottom:16px;"></div>
-            <div class="nx-form-group">
-                <label style="font-size:12px;">Raw Material</label>
-                <div id="amendMatMount"></div>
-            </div>
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-                <div class="nx-form-group">
-                    <label style="font-size:12px;">Quantity</label>
-                    <input type="number" id="amendQty" class="nx-input" placeholder="0" min="0" step="any">
-                </div>
-                <div class="nx-form-group">
-                    <label style="font-size:12px;">Unit</label>
-                    <input type="text" id="amendUnit" class="nx-input" readonly placeholder="auto">
-                </div>
-            </div>
-            <div class="nx-form-group">
-                <label style="font-size:12px;">Reason <span style="color:var(--mid);">(optional)</span></label>
-                <input type="text" id="amendReason" class="nx-input" placeholder="e.g. missed in original dispatch">
-            </div>
-            <div id="amendError" style="display:none; color:#ef4444; font-size:12px; margin-bottom:10px;"></div>
-            <div style="display:flex; gap:10px;">
-                <button id="amendConfirmBtn" class="nx-btn nx-btn-primary" style="flex:1;">Confirm Deduction</button>
-                <button id="amendCancelBtn"  class="nx-btn nx-btn-ghost"   style="flex:1;">Cancel</button>
-            </div>
-        </div>
-    </div>
 </body>
 </html>
