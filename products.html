@@ -504,11 +504,66 @@
             document.getElementById('add-product-form').addEventListener('submit', async (e) => {
                 e.preventDefault();
                 const formData = new FormData(e.target);
+                const productName = formData.get('name');
+
                 try {
+                    // Check if a product with this exact name already exists for this
+                    // tenant — active or inactive. The DB has a UNIQUE(name, tenant_id)
+                    // constraint, so a plain insert silently fails if an inactive product
+                    // with the same name exists (this is exactly what happened at SS
+                    // Engineering — deactivated products can't just be re-added by name).
+                    const { data: existing, error: checkErr } = await supabaseClient
+                        .from('p2_products')
+                        .select('id, is_active')
+                        .eq('tenant_id', currentTenantId)
+                        .eq('name', productName)
+                        .maybeSingle();
+
+                    if (checkErr) throw checkErr;
+
+                    if (existing) {
+                        if (existing.is_active) {
+                            // Genuine duplicate — a product with this name is already active.
+                            const lang = localStorage.getItem('nexflow_lang') || 'en';
+                            toast(
+                                lang === 'mr'
+                                    ? `"${productName}" हे उत्पादन आधीच सक्रिय आहे.`
+                                    : `"${productName}" already exists and is active.`,
+                                'error'
+                            );
+                            return;
+                        }
+                        // Exists but inactive — reactivate it instead of failing.
+                        // Also refresh description/unit in case they changed them
+                        // when re-adding.
+                        const { error: reactivateErr } = await supabaseClient
+                            .from('p2_products')
+                            .update({
+                                is_active:   true,
+                                description: formData.get('description'),
+                                unit:        formData.get('unit')
+                            })
+                            .eq('id', existing.id);
+
+                        if (reactivateErr) throw reactivateErr;
+
+                        const lang = localStorage.getItem('nexflow_lang') || 'en';
+                        toast(
+                            lang === 'mr'
+                                ? `"${productName}" पुन्हा सक्रिय केले (आधी निष्क्रिय होते)!`
+                                : `"${productName}" reactivated (was previously deactivated)!`,
+                            'ok'
+                        );
+                        e.target.reset();
+                        await loadProducts();
+                        return;
+                    }
+
+                    // No existing product with this name — normal insert path.
                     const { error } = await supabaseClient
                         .from('p2_products')
                         .insert({
-                            name:        formData.get('name'),
+                            name:        productName,
                             description: formData.get('description'),
                             unit:        formData.get('unit'),
                             tenant_id:   currentTenantId
@@ -520,7 +575,7 @@
                     await loadProducts();
                 } catch (error) {
                     console.error('Error adding product:', error);
-                    toast('Error creating product.', 'error');
+                    toast('Error creating product: ' + (error.message || 'Unknown error'), 'error');
                 }
             });
 
