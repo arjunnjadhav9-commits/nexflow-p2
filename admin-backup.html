@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Full Data Backup | Nexflow Internal</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%230c0e14'/><text y='.9em' font-size='80' x='10' fill='%23ff5c1a'>N</text></svg>">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800;900&family=Barlow+Condensed:wght@500;600;700;800;900&display=swap">
+    <link rel="stylesheet" href="css/nexflow-design.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+    <script src="js/supabase-client.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/navbar.js"></script>
+    <style>
+        .ab-internal-warning {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(255, 92, 26, 0.08);
+            border: 1px solid rgba(255, 92, 26, 0.3);
+            border-radius: 10px;
+            padding: 12px 16px;
+            font-size: 13px;
+            color: var(--orange);
+            margin-bottom: 24px;
+        }
+        .ab-client-select {
+            margin-bottom: 20px;
+        }
+        .ab-client-select label {
+            display: block;
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--mid);
+            margin-bottom: 8px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .spin { animation: spin 0.7s linear infinite; display: inline-block; }
+        #backupStatus { display: none; }
+        #backupLog { display: none; }
+        .bl-row { display: flex; gap: 12px; font-family: 'Courier New', monospace; font-size: 11px; padding: 3px 0; }
+        .bl-ok  { color: var(--green); }
+        .bl-err { color: var(--red); }
+        .bl-info{ color: var(--light); }
+    </style>
+</head>
+<body>
+<div id="navbar-container"></div>
+
+<div class="nx-main">
+<div class="nx-page" style="max-width: 720px;">
+
+    <!-- HEADER -->
+    <div class="nx-page-header">
+        <div>
+            <div class="nx-eyebrow">Internal Tool</div>
+            <div class="nx-page-title">Full Data <span>Backup</span></div>
+            <div class="nx-page-sub">Independent safety copy of a tenant's complete data, outside Supabase</div>
+        </div>
+    </div>
+
+    <!-- INTERNAL WARNING -->
+    <div class="ab-internal-warning">
+        <span>🔒</span>
+        <span>This page is for Arjun only. Do not share this URL with clients. Read-only export — makes no changes to production data.</span>
+    </div>
+
+    <div class="nx-card nx-mb-16">
+        <div class="nx-card-header">
+            <div class="nx-card-title">Select Client</div>
+        </div>
+
+        <div class="ab-client-select">
+            <label>Tenant</label>
+            <select id="tenantSelect" class="nx-input">
+                <option value="5ab7fb07-2557-42e7-8a8a-5d9fd59048ac">S.S. Engineering (Karad)</option>
+                <option value="fe2b94fb-9668-405f-9c62-5f54b32f8c7a">Shree Ganesh Engineering Works (test)</option>
+            </select>
+        </div>
+
+        <div style="font-size:13px; color:var(--mid); margin-bottom:16px; line-height:1.6;">
+            Downloads every raw material, product, BOM line, price, supplier, stock transaction,
+            and dispatch record for the selected tenant — as a single dated ZIP of clean CSV files.
+            This is independent of Supabase's own backups: keep a copy on your own drive,
+            updated monthly, so client data is never trapped behind one provider.
+        </div>
+
+        <button id="backupBtn" onclick="runFullBackup()" class="nx-btn nx-btn-green nx-btn-full nx-btn-lg">
+            <span id="backupBtnLabel">🛡 Download Full Backup (ZIP)</span>
+        </button>
+
+        <div id="backupStatus" style="font-size:12px; color:var(--mid); margin-top:12px;"></div>
+    </div>
+
+    <!-- Backup Log -->
+    <div id="backupLog" class="nx-card">
+        <div class="nx-card-header">
+            <div class="nx-card-title">Backup Log</div>
+        </div>
+        <div id="backupLogInner"></div>
+    </div>
+
+</div>
+</div>
+
+<script>
+'use strict';
+
+// ─── CSV BUILDER ─────────────────────────────────────────────────────────────
+function buildCSV(rows) {
+    return rows.map(row =>
+        row.map(v => `"${String(v === null || v === undefined ? '' : v).replace(/"/g,'""')}"`).join(',')
+    ).join('\r\n');
+}
+
+// ─── LOGGING ─────────────────────────────────────────────────────────────────
+function logLine(msg, type = 'info') {
+    const area  = document.getElementById('backupLog');
+    const inner = document.getElementById('backupLogInner');
+    area.style.display = 'block';
+    const now = new Date();
+    const ts  = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+    const line = document.createElement('div');
+    line.className = 'bl-row';
+    const cls = type === 'ok' ? 'bl-ok' : type === 'err' ? 'bl-err' : 'bl-info';
+    line.innerHTML = `<span style="color:var(--mid); flex-shrink:0;">${ts}</span><span class="${cls}">${msg}</span>`;
+    inner.appendChild(line);
+    inner.scrollTop = inner.scrollHeight;
+}
+
+// ─── FULL DATA BACKUP ──────────────────────────────────────────────────────
+// Exports every table for the selected tenant as plain CSV files bundled into
+// one ZIP. Deliberately NOT platform-formatted (no Tally/Zoho column mapping) —
+// a raw, complete copy meant to sit outside Supabase entirely as an independent
+// safety net. Moved here from export.html so it's owner-gated like onboarding.html,
+// not exposed to clients who only need Tally/Zoho export tools.
+const BACKUP_TABLES = [
+    { name: 'raw_materials',      table: 'p2_raw_materials',      cols: 'id, material_code, name, unit, min_stock_level, current_stock, hsn_sac, gst_rate, is_active, created_at' },
+    { name: 'products',           table: 'p2_products',           cols: 'id, product_code, name, description, unit, is_active, created_at' },
+    { name: 'product_bom',        table: 'p2_product_bom',        cols: 'id, product_id, raw_material_id, qty_per_unit, unit, created_at' },
+    { name: 'material_prices',    table: 'p2_material_prices',    cols: 'id, raw_material_id, price_per_unit, effective_date, supplier_name, notes, created_at' },
+    { name: 'product_prices',     table: 'p2_product_prices',     cols: 'id, product_id, price, effective_date, notes, created_at' },
+    { name: 'suppliers',          table: 'p2_suppliers',          cols: 'id, name, mobile, address, is_active, created_at' },
+    { name: 'stock_transactions', table: 'p2_stock_transactions', cols: 'id, raw_material_id, transaction_type, quantity, rate, supplier_name, invoice_no, transaction_date, notes, reference_id, created_at' },
+    { name: 'dispatch_orders',    table: 'p2_dispatch_orders',    cols: 'id, dispatch_type, status, challan_number, client_name, client_address, po_number, your_challan_ref, vehicle_number, dispatch_date, challan_note, challan_footer, created_by, confirmed_at, created_at, updated_at' },
+    { name: 'dispatch_items',     table: 'p2_dispatch_items',     cols: 'id, dispatch_order_id, product_id, raw_material_id, material_name, material_code, qty_dispatched, unit, created_at' },
+];
+
+async function runFullBackup() {
+    const btn    = document.getElementById('backupBtn');
+    const lbl    = document.getElementById('backupBtnLabel');
+    const status = document.getElementById('backupStatus');
+    const tenantId = document.getElementById('tenantSelect').value;
+    const tenantLabel = document.getElementById('tenantSelect').selectedOptions[0].textContent;
+
+    document.getElementById('backupLogInner').innerHTML = '';
+    btn.disabled = true;
+    lbl.innerHTML = '<span class="spin" style="display:inline-block; margin-right:8px;">⟳</span>Backing up...';
+    status.style.display = 'block';
+    status.textContent = `Starting backup for ${tenantLabel}...`;
+    logLine(`Starting full backup for ${tenantLabel} (${tenantId})`, 'info');
+
+    try {
+        const zip = new JSZip();
+        const summary = [];
+        let totalRows = 0;
+
+        for (const t of BACKUP_TABLES) {
+            status.textContent = `Fetching ${t.name}...`;
+            logLine(`Fetching ${t.name}...`, 'info');
+            const { data, error } = await window.supabase
+                .from(t.table)
+                .select(t.cols)
+                .eq('tenant_id', tenantId);
+
+            if (error) {
+                // Don't let one missing/renamed table kill the whole backup — log it,
+                // note it in the summary, and keep going. A partial backup with a
+                // clear gap noted is far more useful than no backup at all.
+                summary.push(`${t.name}: FAILED — ${error.message}`);
+                logLine(`${t.name}: FAILED — ${error.message}`, 'err');
+                continue;
+            }
+
+            const rows = data || [];
+            totalRows += rows.length;
+            summary.push(`${t.name}: ${rows.length} rows`);
+            logLine(`${t.name}: ${rows.length} rows`, 'ok');
+
+            if (rows.length === 0) {
+                zip.file(`${t.name}.csv`, '\uFEFF' + 'No data\r\n');
+                continue;
+            }
+
+            const headers = Object.keys(rows[0]);
+            const csvRows = [headers, ...rows.map(r => headers.map(h => r[h]))];
+            const csv = buildCSV(csvRows);
+            zip.file(`${t.name}.csv`, '\uFEFF' + csv);
+        }
+
+        const dateStr = new Date().toISOString().slice(0, 10);
+        zip.file('_backup_info.txt',
+            `Nexflow P2 — Full Data Backup\r\n` +
+            `Client: ${tenantLabel}\r\n` +
+            `Tenant ID: ${tenantId}\r\n` +
+            `Generated: ${new Date().toString()}\r\n` +
+            `Total rows: ${totalRows}\r\n\r\n` +
+            `Table summary:\r\n${summary.join('\r\n')}\r\n\r\n` +
+            `This is a raw data copy independent of Supabase's own backups.\r\n` +
+            `Keep this file somewhere outside Supabase (Google Drive, local disk, etc).\r\n` +
+            `Recommended: run this backup monthly for every active client.`
+        );
+
+        status.textContent = 'Compressing...';
+        logLine('Compressing into ZIP...', 'info');
+        const blob = await zip.generateAsync({ type: 'blob' });
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        const safeLabel = tenantLabel.replace(/[^a-z0-9]+/gi, '_');
+        a.href = url;
+        a.download = `Nexflow_Backup_${safeLabel}_${dateStr}.zip`;
+        document.body.appendChild(a); a.click();
+        document.body.removeChild(a); URL.revokeObjectURL(url);
+
+        status.textContent = `✓ Backup complete — ${totalRows} total rows across ${BACKUP_TABLES.length} tables. Save this ZIP somewhere safe outside Supabase.`;
+        logLine(`✓ Backup complete — ${totalRows} total rows`, 'ok');
+    } catch (err) {
+        status.textContent = `Backup failed: ${err.message}`;
+        logLine(`Backup failed: ${err.message}`, 'err');
+        console.error('Full backup error:', err);
+    } finally {
+        btn.disabled = false;
+        lbl.innerHTML = '🛡 Download Full Backup (ZIP)';
+    }
+}
+
+// ── INIT ──────────────────────────────────────────────────────
+async function initPage() {
+    const authed = await checkAuth();
+    if (!authed) return;
+
+    // Owner check — hardcoded to Arjun's user ID, identical pattern to
+    // onboarding.html. This page writes nothing (read-only export) but still
+    // exposes raw client data across ALL tenants via the dropdown, so it must
+    // stay owner-gated exactly like onboarding.html.
+    const { data: { user } } = await window.supabase.auth.getUser();
+    if (!user) { window.location.href = 'login.html'; return; }
+
+    const OWNER_ID = 'fe2b94fb-9668-405f-9c62-5f54b32f8c7a';
+    if (user.id !== OWNER_ID) {
+        window.location.href = 'dashboard.html?unauthorized=true';
+        return;
+    }
+}
+
+document.addEventListener('DOMContentLoaded', initPage);
+</script>
+</body>
+</html>
