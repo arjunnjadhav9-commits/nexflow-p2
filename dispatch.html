@@ -137,9 +137,10 @@
                         <div class="nx-form-row">
                             <div class="nx-form-group">
                                 <label id="poNumberLabel" data-en="PO Number" data-mr="PO क्रमांक">PO Number</label>
-                                <input type="text" id="poNumber" class="nx-input"
+                                <input type="text" id="poNumber" list="poSuggestions" class="nx-input"
                                        data-en="Enter PO number" data-mr="PO क्रमांक प्रविष्ट करा"
                                        placeholder="Enter PO number">
+                                <datalist id="poSuggestions"></datalist>
                             </div>
                             <div class="nx-form-group">
                                 <label id="challanRefLabel" data-en="Your Challan Ref" data-mr="तुमचा चलान संदर्भ">Your Challan Ref</label>
@@ -155,7 +156,7 @@
                                 <input type="date" id="dispatchDate" class="nx-input">
                             </div>
                             <div class="nx-form-group">
-                                <label id="vehicleNumberLabel" data-en="Vehicle Number" data-mr="वाहन क्रमांक">Vehicle Number</label>
+                                <label id="vehicleNumberLabel" data-en="Transport" data-mr="ट्रान्सपोर्ट">Transport</label>
                                 <input type="text" id="vehicleNumber" class="nx-input"
                                        data-en="Enter vehicle number" data-mr="वाहन क्रमांक प्रविष्ट करा"
                                        placeholder="Enter vehicle number">
@@ -552,6 +553,7 @@
                 document.getElementById('clientName').value = order.client_name;
                 document.getElementById('clientAddress').value = order.client_address || '';
                 document.getElementById('poNumber').value = order.po_number || '';
+                loadPOSuggestions(order.client_name);
                 document.getElementById('challanRef').value = order.your_challan_ref || '';
                 document.getElementById('vehicleNumber').value = order.vehicle_number || '';
                 document.getElementById('dispatchDate').value = order.dispatch_date || new Date().toISOString().split('T')[0];
@@ -840,7 +842,11 @@
                 // Save/update this client's Name + Address for next-time
                 // autofill. Uses payload (captured before form reset below)
                 // rather than re-reading the now-cleared input fields.
-                await upsertClient(payload.client_name, payload.client_address);
+                await upsertClient(payload.client_name, payload.client_address, payload.po_number);
+
+                if (targetStatus === 'confirmed') {
+                    await savePONumber(payload.client_name, payload.po_number);
+                }
 
                 resetWorkspaceForm();
                 await loadRecentDispatches();
@@ -948,7 +954,7 @@
         async function loadClients() {
             const { data, error } = await window.supabase
                 .from('p2_clients')
-                .select('name, address')
+                .select('name, address, po_number')
                 .eq('tenant_id', tenantId)
                 .order('name', { ascending: true });
 
@@ -967,6 +973,34 @@
                 opt.value = c.name;
                 datalist.appendChild(opt);
             });
+        }
+
+        async function loadPOSuggestions(clientName) {
+            if (!clientName || !tenantId) return;
+            const { data } = await window.supabase
+                .from('p2_client_po_numbers')
+                .select('po_number')
+                .eq('tenant_id', tenantId)
+                .eq('client_name', clientName)
+                .order('created_at', { ascending: false })
+                .limit(20);
+            const datalist = document.getElementById('poSuggestions');
+            if (datalist && data) {
+                datalist.innerHTML = '';
+                data.forEach(row => {
+                    const option = document.createElement('option');
+                    option.value = row.po_number;
+                    datalist.appendChild(option);
+                });
+            }
+        }
+
+        async function savePONumber(clientName, poNumber) {
+            if (!clientName || !poNumber || !tenantId) return;
+            await window.supabase
+                .from('p2_client_po_numbers')
+                .upsert({ tenant_id: tenantId, client_name: clientName, po_number: poNumber },
+                         { onConflict: 'tenant_id,client_name,po_number' });
         }
 
         function setupClientAutofill() {
@@ -996,18 +1030,19 @@
                     addressInput.value = match.address || '';
                     userEditedAddress = false;
                 }
+                loadPOSuggestions(nameInput.value.trim());
             });
         }
 
         // Save/update this client's info so next time their name is typed,
         // address auto-fills. Called after a successful dispatch confirm.
-        async function upsertClient(name, address) {
+        async function upsertClient(name, address, poNum) {
             if (!name) return;
             try {
                 await window.supabase
                     .from('p2_clients')
                     .upsert(
-                        { tenant_id: tenantId, name: name.trim(), address: address ? address.trim() : null },
+                        { tenant_id: tenantId, name: name.trim(), address: address ? address.trim() : null, po_number: poNum ? poNum.trim() : null },
                         { onConflict: 'tenant_id,name' }
                     );
                 await loadClients();

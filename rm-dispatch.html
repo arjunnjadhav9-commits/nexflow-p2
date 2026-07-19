@@ -199,7 +199,8 @@
                         <div class="nx-form-row">
                             <div class="nx-form-group">
                                 <label data-en="PO Number" data-mr="PO क्रमांक">PO Number</label>
-                                <input type="text" id="poNumber" class="nx-input" data-en="Optional" data-mr="पर्यायी" placeholder="Optional">
+                                <input type="text" id="poNumber" list="poSuggestions" class="nx-input" data-en="Optional" data-mr="पर्यायी" placeholder="Optional">
+                                <datalist id="poSuggestions"></datalist>
                             </div>
                             <div class="nx-form-group">
                                 <label data-en="Your Challan Ref" data-mr="तुमचा चालन संदर्भ">Your Challan Ref</label>
@@ -213,7 +214,7 @@
                                 <input type="date" id="dispatchDate" class="nx-input">
                             </div>
                             <div class="nx-form-group">
-                                <label data-en="Vehicle Number" data-mr="वाहन क्रमांक">Vehicle Number</label>
+                                <label data-en="Transport" data-mr="ट्रान्सपोर्ट">Transport</label>
                                 <input type="text" id="vehicleNumber" class="nx-input" data-en="Optional" data-mr="पर्यायी" placeholder="Optional">
                             </div>
                         </div>
@@ -633,6 +634,34 @@
             });
         }
 
+        async function loadPOSuggestions(clientName) {
+            if (!clientName || !tenantId) return;
+            const { data } = await window.supabase
+                .from('p2_client_po_numbers')
+                .select('po_number')
+                .eq('tenant_id', tenantId)
+                .eq('client_name', clientName)
+                .order('created_at', { ascending: false })
+                .limit(20);
+            const datalist = document.getElementById('poSuggestions');
+            if (datalist && data) {
+                datalist.innerHTML = '';
+                data.forEach(row => {
+                    const option = document.createElement('option');
+                    option.value = row.po_number;
+                    datalist.appendChild(option);
+                });
+            }
+        }
+
+        async function savePONumber(clientName, poNumber) {
+            if (!clientName || !poNumber || !tenantId) return;
+            await window.supabase
+                .from('p2_client_po_numbers')
+                .upsert({ tenant_id: tenantId, client_name: clientName, po_number: poNumber },
+                         { onConflict: 'tenant_id,client_name,po_number' });
+        }
+
         function setupClientAutofill() {
             const nameInput    = document.getElementById('clientName');
             const addressInput = document.getElementById('clientAddress');
@@ -641,20 +670,21 @@
             addressInput.addEventListener('input', () => { userEditedAddress = true; });
             nameInput.addEventListener('input', () => {
                 const match = clientsMap[nameInput.value.trim().toLowerCase()];
-                if (match && !userEditedAddress) addressInput.value = match.address || '';
+                if (match && !userEditedAddress) { addressInput.value = match.address || ''; }
                 else if (!match) userEditedAddress = false;
             });
             nameInput.addEventListener('change', () => {
                 const match = clientsMap[nameInput.value.trim().toLowerCase()];
                 if (match) { addressInput.value = match.address || ''; userEditedAddress = false; }
+                loadPOSuggestions(nameInput.value.trim());
             });
         }
 
-        async function upsertClient(name, address) {
+        async function upsertClient(name, address, poNum) {
             if (!name) return;
             try {
                 await window.supabase.from('p2_clients').upsert(
-                    { tenant_id: tenantId, name: name.trim(), address: address ? address.trim() : null },
+                    { tenant_id: tenantId, name: name.trim(), address: address ? address.trim() : null, po_number: poNum ? poNum.trim() : null },
                     { onConflict: 'tenant_id,name' }
                 );
                 await loadClients();
@@ -1029,7 +1059,8 @@
                     });
                 if (confirmErr) throw new Error(`Stock deduction failed: ${confirmErr.message}`);
 
-                await upsertClient(clientName, clientAddress);
+                await upsertClient(clientName, clientAddress, document.getElementById('poNumber').value.trim());
+                await savePONumber(clientName, document.getElementById('poNumber').value.trim());
 
                 const successBox = document.getElementById('successMessage');
                 document.getElementById('successText').textContent =
@@ -1080,6 +1111,7 @@
                 document.getElementById('clientName').value    = order.client_name;
                 document.getElementById('clientAddress').value = order.client_address || '';
                 document.getElementById('poNumber').value      = order.po_number || '';
+                loadPOSuggestions(order.client_name);
                 document.getElementById('challanRef').value    = order.your_challan_ref || '';
                 document.getElementById('vehicleNumber').value = order.vehicle_number || '';
 

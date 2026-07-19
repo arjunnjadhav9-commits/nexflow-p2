@@ -536,12 +536,13 @@
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
       <div class="fg" style="margin:0;">
         <label>PO Number</label>
-        <input type="text" id="ch-po-number"
+        <input type="text" id="ch-po-number" list="poSuggestions"
                style="width:100%; padding:10px 13px; background:var(--surface3); border:1px solid var(--border2); border-radius:var(--radius,8px); font-size:14px; font-family:var(--font); color:var(--text);"
                placeholder="Optional">
+        <datalist id="poSuggestions"></datalist>
       </div>
       <div class="fg" style="margin:0;">
-        <label>Vehicle No</label>
+        <label>Transport</label>
         <input type="text" id="ch-vehicle"
                style="width:100%; padding:10px 13px; background:var(--surface3); border:1px solid var(--border2); border-radius:var(--radius,8px); font-size:14px; font-family:var(--font); color:var(--text);"
                placeholder="Optional">
@@ -1333,6 +1334,34 @@ async function fetchClients() {
   });
 }
 
+async function loadPOSuggestions(clientName) {
+    if (!clientName || !tenantId) return;
+    const { data } = await window.supabase
+        .from('p2_client_po_numbers')
+        .select('po_number')
+        .eq('tenant_id', tenantId)
+        .eq('client_name', clientName)
+        .order('created_at', { ascending: false })
+        .limit(20);
+    const datalist = document.getElementById('poSuggestions');
+    if (datalist && data) {
+        datalist.innerHTML = '';
+        data.forEach(row => {
+            const option = document.createElement('option');
+            option.value = row.po_number;
+            datalist.appendChild(option);
+        });
+    }
+}
+
+async function savePONumber(clientName, poNumber) {
+    if (!clientName || !poNumber || !tenantId) return;
+    await window.supabase
+        .from('p2_client_po_numbers')
+        .upsert({ tenant_id: tenantId, client_name: clientName, po_number: poNumber },
+                 { onConflict: 'tenant_id,client_name,po_number' });
+}
+
 function openChallanModal() {
   // Pre-fill address when client name typed
   const nameInput    = document.getElementById('ch-client-name');
@@ -1340,6 +1369,7 @@ function openChallanModal() {
   nameInput.addEventListener('input', () => {
     const match = clientsMap[nameInput.value.trim().toLowerCase()];
     if (match) addressInput.value = match.address || '';
+    loadPOSuggestions(nameInput.value.trim());
   });
   document.getElementById('challanModal').classList.add('open');
   nameInput.focus();
@@ -1404,6 +1434,8 @@ async function createDispatchChallan() {
         { onConflict: 'tenant_id,name' }
       );
     }
+
+    await savePONumber(clientName, poNumber);
 
     closeChallanModal();
     toast(`✓ Challan ${currentIssueChallanNumber || ''} created`, 'ok');
