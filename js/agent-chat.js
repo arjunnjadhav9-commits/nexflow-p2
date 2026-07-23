@@ -147,7 +147,7 @@
       white-space: nowrap; transition: border-color 0.15s, color 0.15s;
     }
     .nf-chip:hover { border-color: var(--orange); color: var(--orange); }
-    @media (max-width: 480px) {
+    @media (max-width: 600px) {
       #nf-agent-panel {
         width: calc(100vw - 16px);
         height: calc(100vh - 80px);
@@ -345,6 +345,7 @@
 
   function openPanel() {
     isOpen = true;
+    fab.style.display = 'none';
     panel.classList.remove('nf-panel-closing');
     panel.style.display = 'flex';
     requestAnimationFrame(() => panel.classList.add('nf-panel-visible'));
@@ -372,6 +373,7 @@
       panel.removeEventListener('animationend', onEnd);
       panel.classList.remove('nf-panel-closing');
       panel.style.display = 'none';
+      fab.style.display = 'flex';
     }, { once: true });
   }
 
