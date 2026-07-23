@@ -884,6 +884,18 @@
             const matMap = {};
             (matRows || []).forEach(m => { matMap[m.raw_material_id] = m; });
 
+            const lowIds = (matRows || [])
+                .filter(m => m.min_stock_level != null && m.current_stock < m.min_stock_level)
+                .map(m => m.raw_material_id)
+            if (lowIds.length > 0) {
+                const tid = tenantId || localStorage.getItem('supabase_tenant_id')
+                fetch('https://jhqxvpihauvhfclosuxn.supabase.co/functions/v1/check-low-stock-instant', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
+                    body: JSON.stringify({ tenant_id: tid, material_ids: lowIds })
+                }).catch(() => {})
+            }
+
             // Aggregate consumption (same material may appear from multiple products)
             const aggregated = {};
             for (const c of consumptionArray) {
@@ -1178,5 +1190,6 @@
 
     </script>
 
+<script src="js/agent-chat.js"></script>
 </body>
 </html>

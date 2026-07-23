@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agent Dashboard — Internal</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%230c0e14'/><text y='.9em' font-size='80' x='10' fill='%23ff5c1a'>N</text></svg>">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800;900&family=Barlow+Condensed:wght@500;600;700;800;900&display=swap">
+    <link rel="stylesheet" href="css/nexflow-design.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/supabase-client.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/navbar.js"></script>
+    <style>
+        .aa-internal-warning {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(255, 92, 26, 0.08);
+            border: 1px solid rgba(255, 92, 26, 0.3);
+            border-radius: 10px;
+            padding: 12px 16px;
+            font-size: 13px;
+            color: var(--orange);
+            margin-bottom: 24px;
+        }
+        @keyframes aa-spin { to { transform: rotate(360deg); } }
+        .aa-spin { animation: aa-spin 0.7s linear infinite; display: inline-block; }
+
+        .aa-tenant-card-header {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 18px;
+            padding-bottom: 14px;
+            border-bottom: 1px solid var(--border);
+        }
+        .aa-tenant-name {
+            font-family: var(--condensed);
+            font-weight: 800;
+            font-size: 16px;
+            color: var(--white);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .aa-last-active { font-size: 12px; color: var(--mid); }
+
+        .aa-mini-stats {
+            display: flex;
+            gap: 24px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+        .aa-mini-stat-label {
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--mid);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 4px;
+        }
+        .aa-mini-stat-value {
+            font-family: var(--condensed);
+            font-weight: 900;
+            font-size: 22px;
+            color: var(--white);
+        }
+
+        .aa-subhead {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--mid);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin: 18px 0 10px;
+        }
+
+        .aa-bar-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+            font-size: 12px;
+        }
+        .aa-bar-label {
+            width: 130px;
+            flex-shrink: 0;
+            color: var(--light);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .aa-bar-track {
+            flex: 1;
+            background: rgba(255,255,255,0.08);
+            border-radius: 4px;
+            height: 8px;
+            min-width: 60px;
+        }
+        .aa-bar-fill {
+            height: 8px;
+            border-radius: 4px;
+            background: var(--orange);
+            transition: width 0.4s ease;
+        }
+        .aa-bar-count {
+            width: 30px;
+            flex-shrink: 0;
+            text-align: right;
+            color: var(--mid);
+            font-weight: 700;
+        }
+
+        .aa-failure-row {
+            background: var(--red-dim);
+            color: var(--red);
+            border-radius: var(--radius-sm);
+            padding: 10px 12px;
+            font-size: 12px;
+            margin-bottom: 6px;
+            line-height: 1.5;
+        }
+        .aa-failure-row .aa-fmsg { color: var(--text); font-style: italic; }
+        .aa-failure-meta { color: var(--mid); font-size: 11px; margin-top: 8px; }
+
+        .aa-empty { color: var(--mid); font-size: 12px; padding: 8px 0; }
+
+        @media (max-width: 480px) {
+            .aa-bar-label { width: 90px; }
+        }
+    </style>
+</head>
+<body>
+<div id="navbar-container"></div>
+
+<div class="nx-main">
+<div class="nx-page">
+
+    <!-- HEADER -->
+    <div class="nx-page-header">
+        <div>
+            <div class="nx-eyebrow">Internal Tool</div>
+            <div class="nx-page-title">Agent <span>Dashboard</span></div>
+            <div class="nx-page-sub">Cross-tenant AI Copilot usage, success rate, and failures</div>
+        </div>
+        <div>
+            <button id="refreshBtn" onclick="refreshDashboard()" class="nx-btn nx-btn-secondary">
+                <span id="refreshBtnLabel">🔄 Refresh</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- INTERNAL WARNING -->
+    <div class="aa-internal-warning">
+        <span>🔒</span>
+        <span>This page is for Arjun only. Do not share this URL with clients. Read-only — makes no changes to production data.</span>
+    </div>
+
+    <!-- LOADING -->
+    <div id="loadingSpinner">
+        <div class="nx-logo-loader">
+            <div class="nx-logo-loader-mark"></div>
+            <div class="nx-logo-loader-text">Loading...</div>
+        </div>
+    </div>
+
+    <!-- ERROR -->
+    <div id="errorState" style="display:none;" class="nx-alert nx-alert-red nx-mb-24">
+        <span class="nx-alert-icon">⚠</span>
+        <div>
+            <div class="nx-bold">Could not load agent dashboard</div>
+            <div id="errorText">Check your connection and refresh the page.</div>
+        </div>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div id="mainContent" style="display:none;">
+
+        <!-- SECTION 1: GLOBAL SUMMARY -->
+        <div class="nx-stat-grid nx-fade-in">
+            <div class="nx-stat">
+                <div class="nx-stat-label">Interactions Today</div>
+                <div class="nx-stat-value" id="statToday">—</div>
+                <div class="nx-stat-unit">all tenants</div>
+            </div>
+            <div class="nx-stat">
+                <div class="nx-stat-label">Interactions This Month</div>
+                <div class="nx-stat-value" id="statMonth">—</div>
+                <div class="nx-stat-unit">all tenants</div>
+            </div>
+            <div class="nx-stat" id="statSuccessCard">
+                <div class="nx-stat-label">Success Rate (Month)</div>
+                <div class="nx-stat-value" id="statSuccess">—</div>
+                <div class="nx-stat-unit">overall</div>
+            </div>
+            <div class="nx-stat">
+                <div class="nx-stat-label">Active Tenants (Month)</div>
+                <div class="nx-stat-value" id="statActiveTenants">—</div>
+                <div class="nx-stat-unit">at least 1 interaction</div>
+            </div>
+        </div>
+
+        <!-- SECTION 2: PER-TENANT CARDS -->
+        <div id="tenantCards"></div>
+
+    </div>
+
+</div>
+</div>
+
+<script>
+'use strict';
+
+const ADMIN_LOOKBACK_LIMIT = 100; // failures fetch — plenty for 5-10 tenants
+
+// ─── TIME HELPERS ──────────────────────────────────────────────────────────
+function getStartOfToday() {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+}
+function getStartOfWeek() {
+    // Monday-start ISO week, matching Postgres DATE_TRUNC('week', ...)
+    const now = new Date();
+    const dow = now.getDay(); // 0=Sun..6=Sat
+    const diffToMonday = (dow === 0) ? 6 : dow - 1;
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate() - diffToMonday);
+}
+function getStartOfMonth() {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+}
+function getFetchStart() {
+    const monthStart = getStartOfMonth();
+    const weekStart = getStartOfWeek();
+    return new Date(Math.min(monthStart.getTime(), weekStart.getTime()));
+}
+function timeAgo(dateString) {
+    if (!dateString) return 'never';
+    const then = new Date(dateString).getTime();
+    const diffMs = Date.now() - then;
+    const mins = Math.floor(diffMs / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return `${mins} minute${mins === 1 ? '' : 's'} ago`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+    const days = Math.floor(hours / 24);
+    return `${days} day${days === 1 ? '' : 's'} ago`;
+}
+
+// ─── DATA FETCH ────────────────────────────────────────────────────────────
+async function fetchDashboardData() {
+    const fetchStart = getFetchStart();
+
+    const { data: logs, error: logsError } = await window.supabase
+        .from('p2_agent_logs')
+        .select('id, tenant_id, created_at, success, intent')
+        .gte('created_at', fetchStart.toISOString())
+        .order('created_at', { ascending: false });
+
+    if (logsError) throw logsError;
+
+    const { data: failures, error: failuresError } = await window.supabase
+        .from('p2_agent_logs')
+        .select('tenant_id, message, intent, error_reason, created_at')
+        .or('success.eq.false,intent.eq.unknown')
+        .order('created_at', { ascending: false })
+        .limit(ADMIN_LOOKBACK_LIMIT);
+
+    if (failuresError) throw failuresError;
+
+    const tenantIds = [...new Set((logs || []).map(r => r.tenant_id))];
+    let tenantNames = {};
+    if (tenantIds.length > 0) {
+        const { data: settings, error: settingsError } = await window.supabase
+            .from('p2_tenant_settings')
+            .select('tenant_id, company_name')
+            .in('tenant_id', tenantIds);
+        if (settingsError) throw settingsError;
+        (settings || []).forEach(s => { tenantNames[s.tenant_id] = s.company_name; });
+    }
+
+    return { logs: logs || [], failures: failures || [], tenantNames };
+}
+
+// ─── AGGREGATION ───────────────────────────────────────────────────────────
+function buildStats(logs, failures, tenantNames) {
+    const todayStart = getStartOfToday();
+    const weekStart = getStartOfWeek();
+    const monthStart = getStartOfMonth();
+
+    const monthLogs = logs.filter(r => new Date(r.created_at) >= monthStart);
+    const todayLogsAll = logs.filter(r => new Date(r.created_at) >= todayStart);
+
+    const globalSuccessCount = monthLogs.filter(r => r.success === true).length;
+    const globalSuccessRate = monthLogs.length > 0
+        ? Math.round((globalSuccessCount / monthLogs.length) * 100)
+        : null;
+    const activeTenants = new Set(monthLogs.map(r => r.tenant_id));
+
+    const global = {
+        today: todayLogsAll.length,
+        month: monthLogs.length,
+        successRate: globalSuccessRate,
+        activeTenants: activeTenants.size,
+    };
+
+    const tenantIds = [...new Set(logs.map(r => r.tenant_id))];
+    const failuresByTenant = {};
+    failures.forEach(f => {
+        if (!failuresByTenant[f.tenant_id]) failuresByTenant[f.tenant_id] = [];
+        failuresByTenant[f.tenant_id].push(f);
+    });
+
+    const tenants = tenantIds.map(tid => {
+        const rows = logs.filter(r => r.tenant_id === tid);
+        const todayRows = rows.filter(r => new Date(r.created_at) >= todayStart);
+        const weekRows = rows.filter(r => new Date(r.created_at) >= weekStart);
+        const monthRows = rows.filter(r => new Date(r.created_at) >= monthStart);
+        const monthSuccessCount = monthRows.filter(r => r.success === true).length;
+        const successRate = monthRows.length > 0
+            ? Math.round((monthSuccessCount / monthRows.length) * 100)
+            : null;
+
+        const intentCounts = {};
+        monthRows.forEach(r => {
+            const key = r.intent || 'unknown';
+            intentCounts[key] = (intentCounts[key] || 0) + 1;
+        });
+        const intentBreakdown = Object.entries(intentCounts)
+            .sort((a, b) => b[1] - a[1]);
+
+        const lastActive = rows.length > 0 ? rows[0].created_at : null;
+
+        return {
+            tenantId: tid,
+            companyName: tenantNames[tid] || `Tenant ${tid.slice(0, 8)}…`,
+            today: todayRows.length,
+            thisWeek: weekRows.length,
+            thisMonth: monthRows.length,
+            successRate,
+            intentBreakdown,
+            lastActive,
+            recentFailures: (failuresByTenant[tid] || []).slice(0, 5),
+        };
+    });
+
+    tenants.sort((a, b) => {
+        const at = a.lastActive ? new Date(a.lastActive).getTime() : 0;
+        const bt = b.lastActive ? new Date(b.lastActive).getTime() : 0;
+        return bt - at;
+    });
+
+    return { global, tenants };
+}
+
+// ─── RENDER ────────────────────────────────────────────────────────────────
+function successColor(rate) {
+    if (rate === null) return 'var(--mid)';
+    if (rate >= 80) return 'var(--green)';
+    if (rate >= 60) return 'var(--yellow)';
+    return 'var(--red)';
+}
+
+function renderGlobal(global) {
+    document.getElementById('statToday').textContent = global.today;
+    document.getElementById('statMonth').textContent = global.month;
+    document.getElementById('statActiveTenants').textContent = global.activeTenants;
+
+    const successEl = document.getElementById('statSuccess');
+    const successCard = document.getElementById('statSuccessCard');
+    successCard.classList.remove('green', 'yellow', 'red');
+    if (global.successRate === null) {
+        successEl.textContent = '—';
+    } else {
+        successEl.textContent = global.successRate + '%';
+        successEl.style.color = successColor(global.successRate);
+        if (global.successRate >= 80) successCard.classList.add('green');
+        else if (global.successRate >= 60) successCard.classList.add('yellow');
+        else successCard.classList.add('red');
+    }
+}
+
+function renderIntentBars(intentBreakdown) {
+    if (intentBreakdown.length === 0) {
+        return '<div class="aa-empty">No interactions this month.</div>';
+    }
+    const maxCount = intentBreakdown[0][1];
+    return intentBreakdown.map(([intent, count]) => {
+        const pct = Math.max(4, Math.round((count / maxCount) * 100));
+        return `
+            <div class="aa-bar-row">
+                <div class="aa-bar-label">${escapeHtml(intent)}</div>
+                <div class="aa-bar-track"><div class="aa-bar-fill" style="width:${pct}%;"></div></div>
+                <div class="aa-bar-count">${count}</div>
+            </div>`;
+    }).join('');
+}
+
+function renderFailures(failures) {
+    if (failures.length === 0) {
+        return '<div class="aa-empty">No recent failures.</div>';
+    }
+    return failures.map(f => `
+        <div class="aa-failure-row">
+            <span class="aa-fmsg">"${escapeHtml(f.message || '')}"</span>
+            — ${escapeHtml(f.intent || 'unknown')}${f.error_reason ? ' / ' + escapeHtml(f.error_reason) : ''}
+            — ${timeAgo(f.created_at)}
+        </div>`).join('');
+}
+
+function renderTenantCard(t) {
+    const successStyle = t.successRate === null ? '' : `color:${successColor(t.successRate)};`;
+    return `
+        <div class="nx-card nx-mb-16">
+            <div class="aa-tenant-card-header">
+                <div class="aa-tenant-name">${escapeHtml(t.companyName)}</div>
+                <div class="aa-last-active">Last active: ${timeAgo(t.lastActive)}</div>
+            </div>
+            <div class="aa-mini-stats">
+                <div>
+                    <div class="aa-mini-stat-label">Today</div>
+                    <div class="aa-mini-stat-value">${t.today}</div>
+                </div>
+                <div>
+                    <div class="aa-mini-stat-label">This Week</div>
+                    <div class="aa-mini-stat-value">${t.thisWeek}</div>
+                </div>
+                <div>
+                    <div class="aa-mini-stat-label">This Month</div>
+                    <div class="aa-mini-stat-value">${t.thisMonth}</div>
+                </div>
+                <div>
+                    <div class="aa-mini-stat-label">Success</div>
+                    <div class="aa-mini-stat-value" style="${successStyle}">${t.successRate === null ? '—' : t.successRate + '%'}</div>
+                </div>
+            </div>
+
+            <div class="aa-subhead">Intent Breakdown (this month)</div>
+            ${renderIntentBars(t.intentBreakdown)}
+
+            <div class="aa-subhead">Recent Failures</div>
+            ${renderFailures(t.recentFailures)}
+        </div>`;
+}
+
+function renderTenants(tenants) {
+    const wrap = document.getElementById('tenantCards');
+    if (tenants.length === 0) {
+        wrap.innerHTML = '<div class="nx-card"><div class="aa-empty">No agent activity recorded yet.</div></div>';
+        return;
+    }
+    wrap.innerHTML = tenants.map(renderTenantCard).join('');
+}
+
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+// ─── LOAD / REFRESH ────────────────────────────────────────────────────────
+async function loadDashboard() {
+    const { logs, failures, tenantNames } = await fetchDashboardData();
+    const { global, tenants } = buildStats(logs, failures, tenantNames);
+    renderGlobal(global);
+    renderTenants(tenants);
+}
+
+async function refreshDashboard() {
+    const btn = document.getElementById('refreshBtn');
+    const lbl = document.getElementById('refreshBtnLabel');
+    btn.disabled = true;
+    lbl.innerHTML = '<span class="aa-spin" style="display:inline-block; margin-right:6px;">⟳</span>Refreshing...';
+    try {
+        await loadDashboard();
+    } catch (err) {
+        document.getElementById('errorText').textContent = err.message || 'Unknown error.';
+        document.getElementById('errorState').style.display = 'flex';
+        console.error('Agent dashboard refresh error:', err);
+    } finally {
+        btn.disabled = false;
+        lbl.innerHTML = '🔄 Refresh';
+    }
+}
+
+// ─── INIT ──────────────────────────────────────────────────────
+async function initPage() {
+    const authed = await checkAuth();
+    if (!authed) return;
+
+    // Owner check — hardcoded to Arjun's user ID, same pattern as
+    // admin-backup.html. tenant_id = user.id per project convention, and
+    // the test tenant fe2b94fb-... IS arjunjadhav9@gmail.com's user id, so
+    // this is equivalent to (and more robust than) an email string compare.
+    const { data: { user } } = await window.supabase.auth.getUser();
+    if (!user) { window.location.href = 'login.html'; return; }
+
+    const OWNER_ID = 'fe2b94fb-9668-405f-9c62-5f54b32f8c7a';
+    if (user.id !== OWNER_ID) {
+        window.location.href = 'index.html';
+        return;
+    }
+
+    try {
+        await loadDashboard();
+        document.getElementById('loadingSpinner').style.display = 'none';
+        document.getElementById('mainContent').style.display = 'block';
+    } catch (err) {
+        document.getElementById('errorText').textContent = err.message || 'Unknown error.';
+        document.getElementById('loadingSpinner').style.display = 'none';
+        document.getElementById('errorState').style.display = 'flex';
+        console.error('Agent dashboard load error:', err);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', initPage);
+</script>
+</body>
+</html>

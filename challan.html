@@ -299,7 +299,7 @@
 
                 const { data: dispatchItems, error: itemsError } = await window.supabase
                     .from('p2_dispatch_items').select('*, p2_products (name, unit)')
-                    .eq('dispatch_order_id', dispatchOrderId).order('id');
+                    .eq('dispatch_order_id', dispatchOrderId).order('created_at', { ascending: true });
                 if (itemsError) throw itemsError;
 
                 const { data: tenantSettings, error: settingsError } = await window.supabase

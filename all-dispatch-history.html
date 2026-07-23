@@ -286,7 +286,8 @@
             const { data: items, error: itemsErr } = await window.supabase
                 .from('p2_dispatch_items')
                 .select('dispatch_order_id, qty_dispatched, unit, product_id, material_name, material_code, p2_products(name)')
-                .in('dispatch_order_id', orderIds);
+                .in('dispatch_order_id', orderIds)
+                .order('created_at', { ascending: true });
 
             if (itemsErr) throw itemsErr;
 
@@ -767,5 +768,6 @@
 
     </script>
 
+<script src="js/agent-chat.js"></script>
 </body>
 </html>

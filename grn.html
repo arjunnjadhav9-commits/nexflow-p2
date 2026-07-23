@@ -151,8 +151,8 @@
 
                     <div class="nx-form-group">
                         <label data-en="GRN Number" data-mr="GRN क्रमांक">GRN Number</label>
-                        <input type="text" id="grnNo" class="nx-input" placeholder="Auto-generating...">
-                        <div style="font-size:11px;color:var(--mid);margin-top:4px;" data-en="Auto-suggested — edit if you need a specific number" data-mr="स्वयं-सुचवलेले — विशिष्ट क्रमांक हवा असल्यास बदला">Auto-suggested — edit if you need a specific number</div>
+                        <input type="text" id="grnNo" class="nx-input" readonly placeholder="Assigned automatically on submit">
+                        <div style="font-size:11px;color:var(--mid);margin-top:4px;" data-en="Assigned automatically when you submit — not editable" data-mr="सबमिट केल्यावर आपोआप दिले जाईल — संपादन करता येणार नाही">Assigned automatically when you submit — not editable</div>
                     </div>
 
                     <div class="nx-form-group">
@@ -277,64 +277,6 @@
             localStorage.setItem('nexflow_lang', lang);
         }
 
-        async function getNextGRNNumber() {
-            try {
-                // Read last GRN records + tenant grn_sequence setting in parallel
-                const [txnResult, settingsResult] = await Promise.all([
-                    window.supabase
-                        .from('p2_stock_transactions')
-                        .select('grn_no')
-                        .eq('tenant_id', tenantId)
-                        .eq('transaction_type', 'grn')
-                        .not('grn_no', 'is', null)
-                        .order('created_at', { ascending: false })
-                        .limit(50),
-                    window.supabase
-                        .from('p2_tenant_settings')
-                        .select('grn_sequence')
-                        .eq('tenant_id', tenantId)
-                        .single()
-                ]);
-
-                const now = new Date();
-                const ym  = now.getFullYear() + '' + String(now.getMonth()+1).padStart(2,'0');
-
-                // Floor from settings (if set)
-                const settingFloor = parseInt(settingsResult?.data?.grn_sequence) || 0;
-
-                // Max from saved GRNs
-                let maxSeq = 0;
-                const data = txnResult.data || [];
-                data.forEach(r => {
-                    const grn = r.grn_no || '';
-                    const monthMatch  = grn.match(/^GRN-\d{6}-(\d+)$/);
-                    const legacyMatch = grn.match(/^GRN-(\d+)$/);
-                    const n = monthMatch  ? parseInt(monthMatch[1],  10)
-                            : legacyMatch ? parseInt(legacyMatch[1], 10)
-                            : NaN;
-                    if (!isNaN(n) && n > maxSeq) maxSeq = n;
-                });
-
-                // Next = max of (last saved + 1) and setting floor
-                const next = Math.max(maxSeq + 1, settingFloor);
-                const seq  = String(next).padStart(3, '0');
-                return 'GRN-' + ym + '-' + seq;
-
-            } catch (err) {
-                console.error('getNextGRNNumber error:', err);
-                const now = new Date();
-                const ym  = now.getFullYear() + '' + String(now.getMonth()+1).padStart(2,'0');
-                return 'GRN-' + ym + '-001';
-            }
-        }
-
-        async function prefetchGRNNo() {
-            const input = document.getElementById('grnNo');
-            input.placeholder = 'Generating...';
-            const no = await getNextGRNNumber();
-            input.value = no;
-        }
-
         async function init() {
             const loadingSpinner = document.getElementById('loadingSpinner');
             const errorState     = document.getElementById('errorState');
@@ -349,8 +291,7 @@
                 await Promise.all([
                     loadSuppliers().catch(e => console.error('loadSuppliers failed:', e)),
                     loadMaterials().catch(e => console.error('loadMaterials failed:', e)),
-                    loadRecentGRN().catch(e => console.error('loadRecentGRN failed:', e)),
-                    prefetchGRNNo().catch(e => console.error('prefetchGRNNo failed:', e))
+                    loadRecentGRN().catch(e => console.error('loadRecentGRN failed:', e))
                 ]);
                 const today = new Date().toISOString().split('T')[0];
                 document.getElementById('grnDate').value = today;
@@ -605,7 +546,6 @@
             e.preventDefault();
             const supplierId = document.getElementById('supplierSelect').value;
             const grnDate    = document.getElementById('grnDate').value;
-            const grnNoVal   = document.getElementById('grnNo').value.trim();
             const lang       = localStorage.getItem('nexflow_lang') || 'en';
 
             if (!supplierId) { toast(lang==='mr' ? 'कृपया पुरवठादार निवडा' : 'Please select a supplier', 'error'); document.getElementById('supplierSelect').focus(); return; }
@@ -624,56 +564,40 @@
             const validRows = grnRows.filter(row => row.material_id && row.quantity && parseFloat(row.quantity) > 0);
             if (validRows.length === 0) { toast(lang==='mr' ? 'कृपया किमान एक वैध ओळ जोडा' : 'Please add at least one valid material with quantity', 'error'); return; }
 
-            if (!grnNoVal) { toast(lang==='mr' ? 'कृपया GRN क्रमांक प्रविष्ट करा' : 'Please enter a GRN number', 'error'); document.getElementById('grnNo').focus(); return; }
-
             const { data: { user } } = await window.supabase.auth.getUser();
             const tid = user.id;
-
-            // GRN number is user-editable now, so it can collide with an
-            // earlier GRN. There's no DB-level unique constraint on grn_no
-            // (one GRN submission legitimately inserts several rows that all
-            // share the same grn_no, so a column-level UNIQUE would break
-            // every real submission). This check is app-level and has a
-            // small theoretical race window between check and insert — not
-            // a concern at this usage scale, but worth knowing it's not
-            // airtight against two simultaneous submissions of the same
-            // custom number.
-            const { data: dupeCheck, error: dupeErr } = await window.supabase
-                .from('p2_stock_transactions')
-                .select('id')
-                .eq('tenant_id', tid)
-                .eq('transaction_type', 'grn')
-                .eq('grn_no', grnNoVal)
-                .limit(1);
-            if (dupeErr) { toast('Could not verify GRN number: ' + dupeErr.message, 'error'); return; }
-            if (dupeCheck && dupeCheck.length > 0) {
-                toast(lang==='mr' ? 'GRN क्रमांक "'+grnNoVal+'" आधीच वापरला आहे. कृपया वेगळा क्रमांक द्या.' : 'GRN number "'+grnNoVal+'" is already used. Please choose a different one.', 'error');
-                document.getElementById('grnNo').focus();
-                return;
-            }
 
             const sel = suppliers.find(s => s.id === supplierId);
             const supplierName = sel ? sel.name : null;
 
-            const transactions = validRows.map(row => ({
-                tenant_id: tid, raw_material_id: row.material_id,
-                transaction_type: 'grn', quantity: parseFloat(row.quantity),
-                rate: row.rate !== '' ? parseFloat(row.rate) : null,
-                supplier_id: supplierId, supplier_name: supplierName,
-                transaction_date: grnDate, invoice_no: row.invoice_no || null,
-                grn_no: grnNoVal
-            }));
-
             try {
+                // GRN numbers are exclusively issued by the get_next_grn_number
+                // RPC — the same atomic, tenant-locked counter the AI Copilot's
+                // create_grn path already uses (confirm_agent_grn). One call
+                // per submission (not per row) — every row in this GRN shares
+                // the returned number.
+                const { data: grnNo, error: grnErr } = await window.supabase
+                    .rpc('get_next_grn_number', { p_tenant_id: tid });
+                if (grnErr) throw grnErr;
+
+                const transactions = validRows.map(row => ({
+                    tenant_id: tid, raw_material_id: row.material_id,
+                    transaction_type: 'grn', quantity: parseFloat(row.quantity),
+                    rate: row.rate !== '' ? parseFloat(row.rate) : null,
+                    supplier_id: supplierId, supplier_name: supplierName,
+                    transaction_date: grnDate, invoice_no: row.invoice_no || null,
+                    grn_no: grnNo
+                }));
+
                 const { error } = await window.supabase.from('p2_stock_transactions').insert(transactions);
                 if (error) throw error;
-                toast(lang==='mr' ? validRows.length+' सामग्री यशस्वीरित्या प्राप्त झाली. ('+grnNoVal+')' : validRows.length+' materials received. GRN '+grnNoVal+' saved.', 'ok');
+                toast(lang==='mr' ? validRows.length+' सामग्री यशस्वीरित्या प्राप्त झाली. ('+grnNo+')' : validRows.length+' materials received. GRN '+grnNo+' saved.', 'ok');
                 document.getElementById('grnForm').reset();
                 grnRows = [];
                 addGRNRow();
                 document.getElementById('grnDate').value = new Date().toISOString().split('T')[0];
+                document.getElementById('grnNo').value = grnNo;
                 await loadRecentGRN();
-                await prefetchGRNNo();
             } catch (error) {
                 console.error('Error submitting GRN:', error);
                 // Map raw Postgres errors to something a factory-floor user
@@ -753,5 +677,6 @@
             init();
         });
     </script>
+<script src="js/agent-chat.js"></script>
 </body>
 </html>

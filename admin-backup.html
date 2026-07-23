@@ -174,10 +174,19 @@ async function runFullBackup() {
         for (const t of BACKUP_TABLES) {
             status.textContent = `Fetching ${t.name}...`;
             logLine(`Fetching ${t.name}...`, 'info');
-            const { data, error } = await window.supabase
-                .from(t.table)
-                .select(t.cols)
-                .eq('tenant_id', tenantId);
+
+            // Use the owner-only SECURITY DEFINER RPC instead of querying tables
+            // directly. RLS policies scope select access to tenant_id = auth.uid(),
+            // which correctly blocks a normal session from reading another tenant's
+            // rows — including this admin tool's own session, since Arjun's auth.uid()
+            // only ever equals HIS tenant_id, never a client's. The RPC hard-checks
+            // the caller is the owner server-side before bypassing RLS for the
+            // specific requested tenant, and whitelists which tables it will touch.
+            const { data: rawRows, error } = await window.supabase
+                .rpc('admin_get_tenant_table_data', {
+                    p_table_name: t.table,
+                    p_tenant_id: tenantId
+                });
 
             if (error) {
                 // Don't let one missing/renamed table kill the whole backup — log it,
@@ -188,7 +197,16 @@ async function runFullBackup() {
                 continue;
             }
 
-            const rows = data || [];
+            // RPC returns full rows as jsonb — project down to just the columns
+            // this table's config asks for, so output stays identical to a direct
+            // column-scoped select.
+            const wantedCols = t.cols.split(',').map(c => c.trim());
+            const rows = (rawRows || []).map(r => {
+                const projected = {};
+                wantedCols.forEach(c => { projected[c] = r[c]; });
+                return projected;
+            });
+
             totalRows += rows.length;
             summary.push(`${t.name}: ${rows.length} rows`);
             logLine(`${t.name}: ${rows.length} rows`, 'ok');

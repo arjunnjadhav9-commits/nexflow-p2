@@ -1059,6 +1059,15 @@
                     });
                 if (confirmErr) throw new Error(`Stock deduction failed: ${confirmErr.message}`);
 
+                const consumedRmIds = consumptionArray.map(c => c.material_id).filter(Boolean)
+                if (consumedRmIds.length > 0) {
+                    fetch('https://jhqxvpihauvhfclosuxn.supabase.co/functions/v1/check-low-stock-instant', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
+                        body: JSON.stringify({ tenant_id: tenantId, material_ids: consumedRmIds })
+                    }).catch(() => {})
+                }
+
                 await upsertClient(clientName, clientAddress, document.getElementById('poNumber').value.trim());
                 await savePONumber(clientName, document.getElementById('poNumber').value.trim());
 
@@ -1282,5 +1291,6 @@
 
     </script>
 
+<script src="js/agent-chat.js"></script>
 </body>
 </html>

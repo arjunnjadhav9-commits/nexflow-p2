@@ -1266,6 +1266,15 @@ async function submitIssue() {
   });
   renderTable();
 
+  const consumedIds = deductRows.map(r => r.rawMaterialId).filter(Boolean)
+  if (consumedIds.length > 0) {
+    fetch('https://jhqxvpihauvhfclosuxn.supabase.co/functions/v1/check-low-stock-instant', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
+      body: JSON.stringify({ tenant_id: tenantId, material_ids: consumedIds })
+    }).catch(() => {})
+  }
+
   confirmBtn.disabled = false;
   if (btnLabel) btnLabel.textContent = t('Confirm Issue', 'इश्यू पुष्टी करा');
 
@@ -1666,5 +1675,6 @@ async function loadRecentIssues() {
     </script>
 
 
+<script src="js/agent-chat.js"></script>
 </body>
 </html>
