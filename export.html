@@ -498,7 +498,7 @@ async function exportTallyTransactions() {
     .select(`
       transaction_type, transaction_date, invoice_no,
       quantity, rate, notes, supplier_name,
-      p2_raw_materials!inner(name, material_code)
+      p2_raw_materials!inner(name, material_code, gst_rate, hsn_sac)
     `)
     .eq('tenant_id', tenantId)
     .in('transaction_type', ['grn', 'consumption'])
@@ -518,7 +518,7 @@ async function exportTallyTransactions() {
   }
 
   log('Building Tally Vouchers CSV...');
-  const headers = ['Date','Voucher Type','Voucher No','Party Ledger Name','Item Name','Billed Quantity','Rate','Amount'];
+  const headers = ['Date','Voucher Type','Voucher No','Party Ledger Name','Item Name','HSN/SAC','Billed Quantity','Rate','Taxable Amount','CGST Rate (%)','CGST Amount','SGST Rate (%)','SGST Amount','IGST Rate (%)','IGST Amount','Total GST Amount','Invoice Total'];
   const rows    = [headers];
 
   txns.forEach(t => {
@@ -541,14 +541,35 @@ async function exportTallyTransactions() {
       ? 'AMENDMENT-' + t.transaction_date
       : t.transaction_type.toUpperCase() + '-' + t.transaction_date;
 
+    // GST applies to GRN (purchase) rows only — consumption rows are internal
+    // stock movements with no supplier invoice, so their GST columns stay blank.
+    const taxableAmount = qty * rate;
+    const isGrn      = t.transaction_type === 'grn';
+    const gstRate    = isGrn ? (t.p2_raw_materials.gst_rate || 0) : 0;
+    const cgstRate   = isGrn ? gstRate / 2 : '';
+    const sgstRate   = isGrn ? gstRate / 2 : '';
+    const igstRate   = isGrn ? 0 : '';
+    const cgstAmount = isGrn ? (taxableAmount * (gstRate / 2) / 100).toFixed(2) : '';
+    const sgstAmount = isGrn ? (taxableAmount * (gstRate / 2) / 100).toFixed(2) : '';
+    const igstAmount = isGrn ? '0.00' : '';
+    const totalGst   = isGrn ? (parseFloat(cgstAmount) + parseFloat(sgstAmount) + parseFloat(igstAmount)).toFixed(2) : '';
+    const invoiceTotal = isGrn ? (taxableAmount + parseFloat(totalGst)).toFixed(2) : '';
+    const hsnSac     = t.p2_raw_materials.hsn_sac || '';
+
     rows.push([
       fmtTally(t.transaction_date),
       voucherType,
       t.invoice_no || fallbackVoucherNo,
       partyName,
       t.p2_raw_materials.name,
+      hsnSac,
       qty, rate,
-      (qty * rate).toFixed(2)
+      taxableAmount.toFixed(2),
+      cgstRate, cgstAmount,
+      sgstRate, sgstAmount,
+      igstRate, igstAmount,
+      totalGst,
+      invoiceTotal
     ]);
   });
 
