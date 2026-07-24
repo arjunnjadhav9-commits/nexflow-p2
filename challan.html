@@ -13,6 +13,7 @@
     <script src="js/supabase-client.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/utils.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
 
     <style>
         .challan-controls {
@@ -151,6 +152,10 @@
             <button id="printBtn" onclick="handlePrint()" class="nx-btn nx-btn-green"
                     data-en="Print Challan" data-mr="चलान प्रिंट करा">
                 🖨️ Print Challan
+            </button>
+            <button onclick="downloadExcel()" class="nx-btn nx-btn-secondary no-print"
+                    data-en="⬇ Excel" data-mr="⬇ एक्सेल">
+                ⬇ Excel
             </button>
             <a href="dispatch.html" class="nx-btn nx-btn-ghost"
                data-en="← Back to Dispatch" data-mr="← डिस्पॅचवर परत जा">
@@ -491,6 +496,150 @@
             } else {
                 window.print();
             }
+        }
+
+        async function downloadExcel() {
+            const companyName    = document.getElementById('company-header').textContent.trim();
+            const companyDetails = document.getElementById('company-details').innerText.trim();
+            const clientDetails  = document.getElementById('client-details').innerText.trim();
+            const challanNo      = document.getElementById('challan-no').textContent.trim();
+            const challanDate    = document.getElementById('challan-date').textContent.trim();
+            const poNo           = document.getElementById('po-no').textContent.trim();
+            const note           = document.getElementById('note-display').textContent.trim();
+            const sigCompany     = document.getElementById('signature-company').textContent.trim();
+            const totalQty       = document.getElementById('total-quantity').textContent.trim();
+
+            const itemRows = document.querySelectorAll('#items-body tr');
+            const items = Array.from(itemRows).map(row => {
+                const cells = row.querySelectorAll('td');
+                return {
+                    srNo: cells[0]?.textContent.trim() || '',
+                    desc: cells[1]?.textContent.trim() || '',
+                    qty:  cells[2]?.textContent.trim() || '',
+                    unit: cells[3]?.textContent.trim() || ''
+                };
+            });
+
+            const workbook = new ExcelJS.Workbook();
+            const ws = workbook.addWorksheet('Challan');
+
+            // Border style helper
+            const thinBorder = {
+                top:    { style: 'thin' },
+                left:   { style: 'thin' },
+                bottom: { style: 'thin' },
+                right:  { style: 'thin' }
+            };
+
+            // Row 1: DELIVERY CHALLAN — bold, centered across all 4 cols
+            const r1 = ws.addRow(['DELIVERY CHALLAN', '', '', '']);
+            ws.mergeCells(`A${r1.number}:D${r1.number}`);
+            r1.getCell(1).font = { bold: true, size: 13 };
+            r1.getCell(1).alignment = { horizontal: 'center' };
+            r1.getCell(1).border = thinBorder;
+
+            // Row 2: Company name — bold, centered
+            const r2 = ws.addRow([companyName, '', '', '']);
+            ws.mergeCells(`A${r2.number}:D${r2.number}`);
+            r2.getCell(1).font = { bold: true, size: 12 };
+            r2.getCell(1).alignment = { horizontal: 'center' };
+            r2.getCell(1).border = thinBorder;
+
+            // Row 3: Company details — centered
+            const r3 = ws.addRow([companyDetails, '', '', '']);
+            ws.mergeCells(`A${r3.number}:D${r3.number}`);
+            r3.getCell(1).alignment = { horizontal: 'center', wrapText: true };
+            r3.height = 90;
+            r3.getCell(1).border = thinBorder;
+
+            // Row 4: blank separator
+            const r4 = ws.addRow(['', '', '', '']);
+            ws.mergeCells(`A${r4.number}:D${r4.number}`);
+            r4.getCell(1).border = thinBorder;
+
+            // Rows 5-7: TO block (left) + Challan meta (right) — side by side
+            const clientLines = clientDetails.split('\n').map(l => l.trim()).filter(Boolean);
+            const toData = [
+                ['TO,',                    '', 'Challan No.',  '- ' + challanNo],
+                [clientLines[0] || '',     '', 'Date',         challanDate],
+                [clientLines[1] || '',     '', 'Po No.',       poNo],
+            ];
+            toData.forEach(rowData => {
+                const r = ws.addRow(rowData);
+                // Left cell (TO block) — merge A+B
+                r.getCell(1).border = thinBorder;
+                r.getCell(2).border = thinBorder;
+                // Right cells (meta)
+                r.getCell(3).border = thinBorder;
+                r.getCell(3).font = { bold: true };
+                r.getCell(4).border = thinBorder;
+            });
+
+            // Note row
+            const rNote = ws.addRow([note, '', '', '']);
+            ws.mergeCells(`A${rNote.number}:D${rNote.number}`);
+            rNote.getCell(1).font = { italic: true };
+            rNote.getCell(1).border = thinBorder;
+
+            // Header row
+            const rHead = ws.addRow(['Sr No.', 'Description', 'Quantity', 'Unit']);
+            rHead.eachCell(cell => {
+                cell.font = { bold: true };
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE5E7EB' } };
+                cell.border = thinBorder;
+                cell.alignment = { horizontal: 'center' };
+            });
+
+            // Item rows
+            items.forEach(item => {
+                const r = ws.addRow([item.srNo, item.desc, item.qty, item.unit]);
+                r.eachCell(cell => { cell.border = thinBorder; });
+                r.getCell(1).alignment = { horizontal: 'center' };
+                r.getCell(3).alignment = { horizontal: 'right' };
+                r.getCell(4).alignment = { horizontal: 'center' };
+            });
+
+            // Total row
+            const rTotal = ws.addRow(['', 'TOTAL', totalQty, '']);
+            rTotal.eachCell(cell => { cell.border = thinBorder; });
+            rTotal.getCell(2).font = { bold: true };
+            rTotal.getCell(2).alignment = { horizontal: 'right' };
+            rTotal.getCell(3).font = { bold: true };
+            rTotal.getCell(3).alignment = { horizontal: 'right' };
+
+            // Blank row
+            ws.addRow(['', '', '', '']);
+
+            // Signature row
+            const rSig = ws.addRow(['Receivers Signature', '', 'For ' + sigCompany, '']);
+            ws.mergeCells(`C${rSig.number}:D${rSig.number}`);
+            rSig.getCell(1).border = thinBorder;
+            rSig.getCell(3).border = thinBorder;
+            rSig.getCell(3).font = { bold: true };
+
+            const rAuth = ws.addRow(['', '', 'Authorized Signatory', '']);
+            ws.mergeCells(`C${rAuth.number}:D${rAuth.number}`);
+            rAuth.getCell(3).border = thinBorder;
+
+            // Column widths
+            ws.getColumn(1).width = 6;
+            ws.getColumn(2).width = 35;
+            ws.getColumn(3).width = 14;
+            ws.getColumn(4).width = 25;
+
+            // Download
+            const buffer = await workbook.xlsx.writeBuffer();
+            const blob = new Blob([buffer], {
+                type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `Challan_${challanNo}_${challanDate}.xlsx`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
         }
 
         function checkMobileDevice() {
