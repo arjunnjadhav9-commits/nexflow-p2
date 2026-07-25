@@ -475,6 +475,13 @@
             ),
             'nf-msg-bot'
           );
+          addGrnRateCard(data.result.grn_no, [{
+            material_name: data.result.material_name,
+            material_code: confirmData.material_code ?? null,
+            quantity: data.result.quantity,
+            unit: data.result.unit,
+            transaction_id: data.result.transaction_id,
+          }], tenantId);
         } else {
           addMessage(data.error || t('Could not save. Please try again.', 'जतन करता आले नाही. पुन्हा प्रयत्न करा.'), 'nf-msg-error');
         }
@@ -1098,6 +1105,10 @@
         addDispatchConfirmCard(confirm.confirm_text, confirm.confirm_data, tenantId, 'product_dispatch');
       } else if (data.intent === 'create_rm_dispatch') {
         addDispatchConfirmCard(confirm.confirm_text, confirm.confirm_data, tenantId, 'rm_dispatch');
+      } else if (data.intent === 'send_challan') {
+        // Write intent, but no confirm card — the edge function already
+        // executed the send and confirm_text is the plain result message.
+        addMessage(confirm.confirm_text, 'nf-msg-bot');
       }
     } catch (err) {
       removeTyping();

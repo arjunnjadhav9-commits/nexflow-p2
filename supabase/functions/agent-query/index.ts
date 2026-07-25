@@ -7,6 +7,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import Anthropic from 'https://esm.sh/@anthropic-ai/sdk@0.32.0'
+import XLSX from 'https://esm.sh/xlsx-js-style@1.2.0?bundle'
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -24,6 +25,9 @@ const supabase = createClient(
 const anthropic = new Anthropic({
   apiKey: Deno.env.get('ANTHROPIC_API_KEY') ?? '',
 })
+
+// send_challan only — emails a challan Excel via Resend.
+const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')
 
 interface AgentQueryRequest {
   tenant_id: string
@@ -165,6 +169,7 @@ type HaikuIntent =
   | 'supplier_list'
   | 'dispatch_detail'
   | 'issue_detail'
+  | 'send_challan'
   | 'bom_detail'
   | 'top_supplier'
   | 'unknown'
@@ -184,7 +189,8 @@ interface HaikuResult {
     supplier_name?: string // shared: create_grn, supplier_history, supplier_delivery_check
     days?: number // recent_grn, consumption_summary, top_received, top_supplier — default varies by intent
     grn_no?: string // grn_detail only
-    challan_number?: string // challan_detail, dispatch_detail, issue_detail
+    challan_number?: string // challan_detail, dispatch_detail, issue_detail, send_challan
+    recipient_name?: string | null // send_challan only — explicit client override; null/absent means "use the order's client_name"
     product_name?: string // stock_check_product, product_code_lookup, bom_detail
     quantity?: number // stock_check_product — how many units to produce
     top_n?: number // top_consumption, top_received — how many to show, default 5
@@ -1084,6 +1090,15 @@ Classify the message as one of:
   Examples:
   - "Issue challan 4310 madhe konti materials geli?" -> { "challan_number": "4310" }
   - "Production issue 4310 madhe kay hota?" -> { "challan_number": "4310" }
+- "send_challan" — user wants to email a delivery challan to a client.
+  extracted fields: { "challan_number": string, "recipient_name"?: string | null }
+  Rules:
+  - "recipient_name" is only set if the user explicitly names who to send it to. If they just say "pathav"/"send karo"/"email kar" without naming anyone, omit it or set null — the system uses the challan's own client.
+  Examples:
+  - "Challan 4325 KPML la pathav" -> { "challan_number": "4325", "recipient_name": "KPML" }
+  - "4325 challan email kar" -> { "challan_number": "4325", "recipient_name": null }
+  - "Challan 4325 pathav" -> { "challan_number": "4325", "recipient_name": null }
+  IMPORTANT: This EMAILS an already-confirmed challan by number. Do not confuse with create_product_dispatch/create_rm_dispatch, which create a NEW dispatch.
 - "bom_detail" — user asks what the bill of materials is for a specific product.
   extracted fields: { "product_name": string }
   Examples:
@@ -1141,7 +1156,7 @@ Examples of correct create_grn extraction from mixed Hinglish/Marathi messages:
 - Message: "steel sheet 200 kg Sharma Traders ne bheja" -> extracted: { "items": [{ "material_name": "steel sheet", "quantity": 200, "unit": "kg" }], "supplier_name": "Sharma Traders" }
 
 Respond with ONLY valid JSON, no markdown code fences, no preamble, no explanation. The response must match exactly this shape:
-{ "intent": "check_stock" | "create_grn" | "create_production_issue" | "create_product_dispatch" | "create_rm_dispatch" | "recent_grn" | "consumption_summary" | "supplier_history" | "low_stock_list" | "grn_detail" | "pending_dispatches" | "grn_summary" | "top_consumption" | "material_list" | "stock_check_product" | "zero_stock_list" | "dispatch_summary" | "supplier_delivery_check" | "challan_detail" | "issue_summary" | "product_code_lookup" | "top_received" | "product_list" | "supplier_list" | "dispatch_detail" | "issue_detail" | "bom_detail" | "top_supplier" | "unknown", "extracted": { ...fields... } }`
+{ "intent": "check_stock" | "create_grn" | "create_production_issue" | "create_product_dispatch" | "create_rm_dispatch" | "recent_grn" | "consumption_summary" | "supplier_history" | "low_stock_list" | "grn_detail" | "pending_dispatches" | "grn_summary" | "top_consumption" | "material_list" | "stock_check_product" | "zero_stock_list" | "dispatch_summary" | "supplier_delivery_check" | "challan_detail" | "issue_summary" | "product_code_lookup" | "top_received" | "product_list" | "supplier_list" | "dispatch_detail" | "issue_detail" | "send_challan" | "bom_detail" | "top_supplier" | "unknown", "extracted": { ...fields... } }`
 
   try {
     const response = await anthropicClient.messages.create({
@@ -1376,6 +1391,67 @@ function matchSupplierName(supplierName: string | undefined, suppliers: Supplier
     return { id: supplierMatches[0].id, name: supplierMatches[0].name }
   }
   return null
+}
+
+// send_challan only — local row/result shapes for the challan-email flow.
+interface ClientRow {
+  id: string
+  name: string
+  email: string | null
+}
+
+interface DispatchOrderForChallan {
+  id: string
+  challan_number: string
+  client_name: string
+  client_address: string | null
+  status: string
+  dispatch_date: string | null
+  po_number: string | null
+}
+
+interface DispatchItemForChallan {
+  material_name: string
+  material_code: string | null
+  qty_dispatched: number
+  unit: string
+}
+
+interface TenantSettingsForChallan {
+  company_name: string | null
+  address_line1: string | null
+  address_line2: string | null
+  gstin: string | null
+  mobile: string | null
+  email: string | null
+}
+
+interface SendChallanResult {
+  text: string
+  success: boolean
+  matchStatus: string | null
+  errorReason: string | null
+}
+
+// Resolves extracted.recipient_name (or order.client_name as fallback)
+// against p2_clients. Unlike matchSupplierName, this is a required/blocking
+// match (mirrors matchMaterialName's 3-way result shape) — a missing or
+// ambiguous client must stop the send, not silently fall through.
+function matchClientName(
+  clientName: string,
+  clients: ClientRow[]
+): { client: ClientRow } | { error: string; errorKind: 'no_match' | 'ambiguous' } {
+  const matches = findMatches(clientName, clients)
+
+  if (matches.length === 0) {
+    return { error: 'Client sapadla nahi — Settings > Clients madhe check kara', errorKind: 'no_match' }
+  }
+
+  if (matches.length > 1) {
+    return { error: 'Konti client la pathavayche? More specific sanga', errorKind: 'ambiguous' }
+  }
+
+  return { client: matches[0] }
 }
 
 // Resolves Haiku's free-text extraction against real DB rows. Haiku's text
@@ -2313,6 +2389,333 @@ async function executeQuery(
   return 'Unrecognized query.'
 }
 
+// send_challan only — builds the styled challan workbook, returned as a
+// base64 xlsx string ready for a Resend attachment. Pure formatting, no I/O.
+function buildChallanWorkbook(params: {
+  companyName: string
+  addressLine1: string | null
+  addressLine2: string | null
+  gstin: string | null
+  mobile: string | null
+  clientName: string
+  clientAddressLines: string[]
+  challanNumber: string
+  dispatchDateFormatted: string
+  poNumber: string | null
+  items: DispatchItemForChallan[]
+}): string {
+  const rows: (string | number)[][] = []
+  rows.push(['DELIVERY CHALLAN', '', '', '']) // row 1
+  rows.push([params.companyName, '', '', '']) // row 2
+  rows.push(['', '', '', '']) // row 3 — address block, value set on ws['A3'] after aoa_to_sheet
+  rows.push(['', '', '', '']) // row 4 — blank
+  rows.push(['TO,', '', 'Challan No.', params.challanNumber]) // row 5
+  rows.push([params.clientName, '', 'Date', params.dispatchDateFormatted]) // row 6
+  rows.push([params.clientAddressLines[0] ?? '', '', 'Po No.', params.poNumber || 'N/A']) // row 7
+  rows.push([params.clientAddressLines[1] ?? '', '', '', '']) // row 8
+  rows.push(['Please receive the following material in good condition', '', '', '']) // row 9
+  rows.push(['Sr.No.', 'Description', 'Quantity', 'Unit']) // header row (row 10)
+  params.items.forEach((item, i) => {
+    rows.push([i + 1, item.material_code || item.material_name, item.qty_dispatched, item.unit])
+  })
+  const totalQty = params.items.reduce((sum, it) => sum + Number(it.qty_dispatched || 0), 0)
+  rows.push(['TOTAL', '', totalQty, ''])
+  rows.push(['', '', '', '']) // blank spacer row
+  const sigRow1Idx = rows.length
+  rows.push(["Receiver's Signature", '', `For ${params.companyName}`, ''])
+  const sigRow2Idx = rows.length
+  rows.push(['', '', 'Authorized Signatory', ''])
+
+  const ws = XLSX.utils.aoa_to_sheet(rows)
+  ws['!merges'] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 3 } },
+    { s: { r: 1, c: 0 }, e: { r: 1, c: 3 } },
+    { s: { r: 2, c: 0 }, e: { r: 2, c: 3 } },
+    { s: { r: 8, c: 0 }, e: { r: 8, c: 3 } },
+    { s: { r: sigRow1Idx, c: 0 }, e: { r: sigRow1Idx, c: 1 } },
+    { s: { r: sigRow1Idx, c: 2 }, e: { r: sigRow1Idx, c: 3 } },
+    { s: { r: sigRow2Idx, c: 2 }, e: { r: sigRow2Idx, c: 3 } },
+  ]
+  ws['!cols'] = [{ wch: 8 }, { wch: 35 }, { wch: 12 }, { wch: 15 }]
+
+  const range = XLSX.utils.decode_range(ws['!ref'] as string)
+  const thinBorder = {
+    top: { style: 'thin', color: { rgb: '000000' } },
+    bottom: { style: 'thin', color: { rgb: '000000' } },
+    left: { style: 'thin', color: { rgb: '000000' } },
+    right: { style: 'thin', color: { rgb: '000000' } },
+  }
+  for (let R = range.s.r; R <= range.e.r; R++) {
+    for (let C = range.s.c; C <= range.e.c; C++) {
+      const cellRef = XLSX.utils.encode_cell({ r: R, c: C })
+      if (!ws[cellRef]) ws[cellRef] = { v: '', t: 's' }
+      ws[cellRef].s = { border: thinBorder }
+    }
+  }
+
+  ws['A1'].s = { ...ws['A1'].s, font: { bold: true, sz: 14 }, alignment: { horizontal: 'center' } }
+  ws['A2'].s = { ...ws['A2'].s, font: { bold: true, sz: 12 }, alignment: { horizontal: 'center' } }
+  ws['A3'].v = `${params.addressLine1 ?? ''}\n${params.addressLine2 ?? ''}\nMobile: ${params.mobile ?? ''}\nGSTIN: ${params.gstin ?? ''}`
+  ws['A3'].s = { ...ws['A3'].s, alignment: { horizontal: 'center', wrapText: true } }
+
+  for (let C = 0; C <= 3; C++) {
+    const headerRef = XLSX.utils.encode_cell({ r: 9, c: C })
+    ws[headerRef].s = {
+      ...ws[headerRef].s,
+      font: { bold: true },
+      fill: { patternType: 'solid', fgColor: { rgb: 'FFEEEEEE' } },
+    }
+  }
+
+  const receiverSigRef = XLSX.utils.encode_cell({ r: sigRow1Idx, c: 0 })
+  const forCompanyRef = XLSX.utils.encode_cell({ r: sigRow1Idx, c: 2 })
+  ws[receiverSigRef].s = { ...ws[receiverSigRef].s, font: { bold: true } }
+  ws[forCompanyRef].s = { ...ws[forCompanyRef].s, font: { bold: true } }
+
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'Challan')
+  return XLSX.write(wb, { type: 'base64', bookType: 'xlsx', cellStyles: true }) as string
+}
+
+// send_challan only — sends the challan email via Resend. Mirrors
+// check-low-stock-instant's sendTelegramMessage guard/fetch/catch shape.
+async function sendChallanEmail(params: {
+  toEmail: string
+  clientName: string
+  challanNumber: string
+  dispatchDateFormatted: string
+  companyName: string
+  mobile: string | null
+  replyToEmail: string | null
+  excelBase64: string
+  fileNameDateDDMMYYYY: string
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!RESEND_API_KEY) {
+    console.error('[sendChallanEmail] RESEND_API_KEY not configured')
+    return { ok: false, error: 'RESEND_API_KEY not configured' }
+  }
+
+  const body: Record<string, unknown> = {
+    from: 'Nexflow <challans@nexflowautomations.in>',
+    to: [params.toEmail],
+    subject: `Delivery Challan ${params.challanNumber} — ${params.companyName}`,
+    text: `Dear ${params.clientName},\n\nPlease find attached Delivery Challan ${params.challanNumber} dated ${params.dispatchDateFormatted}.\n\nRegards,\n${params.companyName}\n${params.mobile ?? ''}`,
+    attachments: [
+      { filename: `Challan_${params.challanNumber}_${params.fileNameDateDDMMYYYY}.xlsx`, content: params.excelBase64 },
+    ],
+  }
+  if (params.replyToEmail && params.replyToEmail.trim()) {
+    body.reply_to = params.replyToEmail
+  }
+
+  try {
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    })
+
+    if (!response.ok) {
+      const errText = await response.text()
+      console.error(`[sendChallanEmail] Resend API error for ${params.toEmail}:`, errText)
+      return { ok: false, error: errText || `Resend API returned ${response.status}` }
+    }
+
+    return { ok: true }
+  } catch (err) {
+    console.error(`[sendChallanEmail] Failed to send to ${params.toEmail}:`, err)
+    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+// send_challan orchestrator — finds the confirmed challan, resolves the
+// recipient client + email, builds the Excel, and sends it. Executes
+// immediately, no confirm gate (this intent never writes to the DB).
+async function sendChallanIntent(
+  supabaseClient: ReturnType<typeof createClient>,
+  tenantId: string,
+  extracted: HaikuResult['extracted']
+): Promise<SendChallanResult> {
+  const challanNumber = (extracted.challan_number ?? '').trim()
+  if (!challanNumber) {
+    return { text: 'Please provide a challan number.', success: false, matchStatus: null, errorReason: 'no challan number' }
+  }
+
+  let { data: orders, error: orderError } = await supabaseClient
+    .from('p2_dispatch_orders')
+    .select('id, challan_number, client_name, client_address, status, dispatch_date, po_number')
+    .eq('tenant_id', tenantId)
+    .eq('challan_number', challanNumber)
+    .limit(1)
+
+  if (orderError) {
+    return { text: 'Could not fetch challan details.', success: false, matchStatus: null, errorReason: orderError.message }
+  }
+
+  if (!orders?.length) {
+    const { data: likeOrders, error: likeError } = await supabaseClient
+      .from('p2_dispatch_orders')
+      .select('id, challan_number, client_name, client_address, status, dispatch_date, po_number')
+      .eq('tenant_id', tenantId)
+      .ilike('challan_number', `%${challanNumber}`)
+      .limit(5)
+
+    if (likeError) {
+      return { text: 'Could not fetch challan details.', success: false, matchStatus: null, errorReason: likeError.message }
+    }
+    orders = likeOrders
+  }
+
+  if (!orders?.length) {
+    return { text: `Challan ${challanNumber} sapadla nahi`, success: false, matchStatus: null, errorReason: 'challan_not_found' }
+  }
+
+  if (orders.length > 1) {
+    const nums = (orders as DispatchOrderForChallan[]).map((o) => o.challan_number).join(', ')
+    return {
+      text: `Multiple challans match "${challanNumber}": ${nums}. Please be more specific.`,
+      success: false,
+      matchStatus: null,
+      errorReason: 'challan_ambiguous',
+    }
+  }
+
+  const order = orders[0] as DispatchOrderForChallan
+
+  if (order.status !== 'confirmed') {
+    return { text: 'He challan confirmed nahi — pathavta yet nahi', success: false, matchStatus: null, errorReason: 'not_confirmed' }
+  }
+
+  const { data: items, error: itemsError } = await supabaseClient
+    .from('p2_dispatch_items')
+    .select('material_name, material_code, qty_dispatched, unit')
+    .eq('tenant_id', tenantId)
+    .eq('dispatch_order_id', order.id)
+
+  if (itemsError) {
+    return { text: 'Challan items load karta aale nahi.', success: false, matchStatus: null, errorReason: itemsError.message }
+  }
+  if (!items?.length) {
+    return {
+      text: `Challan ${order.challan_number} madhe items nahit — pathavta yet nahi`,
+      success: false,
+      matchStatus: null,
+      errorReason: 'no_items',
+    }
+  }
+  const dispatchItems = items as DispatchItemForChallan[]
+
+  const { data: clients, error: clientsError } = await supabaseClient
+    .from('p2_clients')
+    .select('id, name, email')
+    .eq('tenant_id', tenantId)
+
+  if (clientsError) {
+    return { text: 'Client list load karta aali nahi.', success: false, matchStatus: null, errorReason: clientsError.message }
+  }
+
+  const matchText = (extracted.recipient_name && extracted.recipient_name.trim()) || order.client_name
+  const clientMatch = matchClientName(matchText, (clients ?? []) as ClientRow[])
+
+  if ('error' in clientMatch) {
+    return { text: clientMatch.error, success: false, matchStatus: clientMatch.errorKind, errorReason: clientMatch.errorKind }
+  }
+
+  const client = clientMatch.client
+
+  if (!client.email || !client.email.trim()) {
+    return {
+      text: `${client.name} cha email Settings > Clients madhe add kara`,
+      success: false,
+      matchStatus: 'no_email',
+      errorReason: 'client_no_email',
+    }
+  }
+
+  const { data: settings, error: settingsError } = await supabaseClient
+    .from('p2_tenant_settings')
+    .select('company_name, address_line1, address_line2, gstin, mobile, email')
+    .eq('tenant_id', tenantId)
+    .single()
+
+  if (settingsError || !settings) {
+    return {
+      text: 'Tenant settings load karta aale nahi.',
+      success: false,
+      matchStatus: 'matched',
+      errorReason: settingsError?.message ?? 'no settings row',
+    }
+  }
+  const tenantSettings = settings as TenantSettingsForChallan
+
+  const dispatchDateObj = order.dispatch_date ? new Date(order.dispatch_date) : new Date()
+  const dd = String(dispatchDateObj.getDate()).padStart(2, '0')
+  const mm = String(dispatchDateObj.getMonth() + 1).padStart(2, '0')
+  const yyyy = dispatchDateObj.getFullYear()
+  const dispatchDateFormatted = `${dd}/${mm}/${yyyy}`
+  const fileNameDateDDMMYYYY = `${dd}${mm}${yyyy}`
+
+  const clientAddressLines = (order.client_address ?? '')
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)
+
+  let excelBase64: string
+  try {
+    excelBase64 = buildChallanWorkbook({
+      companyName: tenantSettings.company_name ?? '',
+      addressLine1: tenantSettings.address_line1,
+      addressLine2: tenantSettings.address_line2,
+      gstin: tenantSettings.gstin,
+      mobile: tenantSettings.mobile,
+      clientName: order.client_name,
+      clientAddressLines,
+      challanNumber: order.challan_number,
+      dispatchDateFormatted,
+      poNumber: order.po_number,
+      items: dispatchItems,
+    })
+  } catch (err) {
+    return {
+      text: 'Excel banata error aala.',
+      success: false,
+      matchStatus: 'matched',
+      errorReason: err instanceof Error ? err.message : String(err),
+    }
+  }
+
+  const emailResult = await sendChallanEmail({
+    toEmail: client.email,
+    clientName: order.client_name,
+    challanNumber: order.challan_number,
+    dispatchDateFormatted,
+    companyName: tenantSettings.company_name ?? '',
+    mobile: tenantSettings.mobile,
+    replyToEmail: tenantSettings.email,
+    excelBase64,
+    fileNameDateDDMMYYYY,
+  })
+
+  if (!emailResult.ok) {
+    return {
+      text: `❌ Email pathavayala error aala — ${emailResult.error}`,
+      success: false,
+      matchStatus: 'matched',
+      errorReason: emailResult.error,
+    }
+  }
+
+  return {
+    text: `✅ Challan ${order.challan_number} ${client.name} la pathavla (${client.email})`,
+    success: true,
+    matchStatus: 'matched',
+    errorReason: null,
+  }
+}
+
 async function logInteraction(
   supabaseClient: ReturnType<typeof createClient>,
   tenantId: string,
@@ -2455,6 +2858,22 @@ Deno.serve(async (req) => {
         status: 'ok',
         intent: haikuResult.intent,
         confirm: { status: 'ready', confirm_text: answer },
+      })
+    }
+
+    // Not in READ_ONLY_INTENTS on purpose — this is a write (sends an
+    // email) even though it executes immediately with no confirm gate.
+    if (haikuResult.intent === 'send_challan') {
+      const result = await sendChallanIntent(supabase, tenant_id, haikuResult.extracted)
+      void logInteraction(
+        supabase, tenant_id, message, 'send_challan',
+        haikuResult.extracted as Record<string, unknown>,
+        result.matchStatus, result.success, result.errorReason
+      )
+      return respond({
+        status: 'ok',
+        intent: 'send_challan',
+        confirm: { status: 'ready', confirm_text: result.text },
       })
     }
 

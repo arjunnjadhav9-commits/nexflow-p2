@@ -11,7 +11,7 @@ Mobile-first: owners use phones. Must work on mobile browser.
 - Backend: Supabase (PostgreSQL + Edge Functions + Storage + Auth)
 - Hosting: Vercel (static HTML files)
 - Notifications: Telegram Bot API (daily 8AM IST alert, pg_net cron, jobid 2, fires 2:30 UTC)
-- Email: Resend (for future export/agent features)
+- Email: Resend (send_challan live; CA export planned Tier 3 next)
 - AI/Automation: Claude Haiku 4.5 via Anthropic API, in a Supabase Edge Function only.
   No n8n, no middleware, no separate agent service.
 
@@ -33,7 +33,8 @@ Mobile-first: owners use phones. Must work on mobile browser.
 
 ## Database Tables (all with p2_ prefix)
 - p2_tenant_settings — company name, address, logo_url, challan_sequence, GSTIN,
-  challan_mode, agent_tier, agent_interactions_today, agent_reset_date, ca_email, agent_enabled
+  challan_mode, agent_tier, agent_interactions_today, agent_reset_date, ca_email, agent_enabled,
+  email (used as reply_to for challan emails — tell owners to fill this in Settings)
 - p2_raw_materials — raw material master (name, unit, min_stock_level, is_active, material_code)
 - p2_suppliers — supplier master (is_active — CSV-imported suppliers default to
   is_active=false, invisible in dropdowns/matching unless checked)
@@ -48,9 +49,11 @@ Mobile-first: owners use phones. Must work on mobile browser.
   cancel_challan, add_missing_challan_item, get_next_grn_number.
   dispatch_type values: bom_issue, raw_material, product.
   status values: draft, confirmed, cancelled — NO 'pending'.
-  challan_number column (NOT challan_no).
+  challan_number column (NOT challan_no). NO notes column — use challan_note if needed.
 - p2_dispatch_items — line items in a dispatch. Columns: id, tenant_id, dispatch_order_id,
   material_name, material_code, qty_dispatched, unit, raw_material_id, product_id, notes, created_at.
+- p2_clients — client master. Columns: id, tenant_id, name, address, email, created_at,
+  updated_at, po_number. NO is_active column. email added July 25 — used for send_challan.
 - p2_material_prices — price history. Columns: id, tenant_id, raw_material_id, price_per_unit,
   effective_date, supplier_name, notes, created_at.
   Valuation rate = latest price_per_unit by effective_date (used in CA report, export).
@@ -87,6 +90,8 @@ Mobile-first: owners use phones. Must work on mobile browser.
   fresh at render time.
 - export.html is deliberately EXCLUDED from translation — Tally/Zoho column
   headers must stay in English (CA-facing field names).
+- index.ts (Edge Function) has NO language toggle — every string is single hardcoded
+  Hinglish. Bilingual support across all intents is a future pass, not per-intent.
 
 ## Pricing (DO NOT expose in UI)
 Current live tiers (July 2026) — verify against latest master doc before quoting:
@@ -105,12 +110,14 @@ First 5 founders get agent free, 30/day cap — not a permanent entitlement.
   manual rows for non-stock items, Marathi toggle)
 - rm-dispatch.html / rm-dispatch-history.html — raw material dispatch
 - challan.html — printable delivery challan (?id=dispatch_order_id)
+  Has "⬇ Excel" export via ExcelJS (cdnjs 4.3.0) — styled, bordered, merged cells.
 - products.html — manage products + BOM
 - grn-history.html — standalone GRN history page
 - export.html — Tally/Zoho CSV export (UTF-8 BOM, per-vendor-per-date grouping)
 - onboarding.html — internal 6-step tool, gated by owner UUID, for new tenant setup
 - ca-report.html — CA audit report (?from=DATE&to=DATE)
-- settings.html — tenant settings, logo upload, Agent tab (status, tier, usage, ca_email)
+- settings.html — tenant settings, logo upload, Agent tab (status, tier, usage, ca_email),
+  Clients tab (Add/Edit/Delete clients with email field — owner-only for mutations)
 - admin-agent.html — URL-only internal tool, gated by owner UUID
   (fe2b94fb-9668-405f-9c62-5f54b32f8c7a). Shows cross-tenant agent usage,
   intent breakdown, success rates, recent failures with actual message text.
@@ -123,8 +130,9 @@ First 5 founders get agent free, 30/day cap — not a permanent entitlement.
 ### Locked architecture principles
 - Haiku's ONLY job is extraction (intent + raw text fields) — it NEVER resolves
   database identity and NEVER authors the confirmation text shown to the user.
-- All fuzzy-matching against p2_raw_materials / p2_suppliers / p2_products happens
-  in code (matchMaterialName, matchSupplierName, findProductMatches), never by the model.
+- All fuzzy-matching against p2_raw_materials / p2_suppliers / p2_products / p2_clients
+  happens in code (matchMaterialName, matchSupplierName, findProductMatches,
+  matchClientName), never by the model.
 - confirm_data and confirmation messages are built server-side from fixed templates
   + real matched DB fields only — never from Haiku's free-text reply.
 - Re-fetch and re-validate matched rows at confirm-time before executing any write.
@@ -138,6 +146,8 @@ First 5 founders get agent free, 30/day cap — not a permanent entitlement.
   falls back to material_code if no name match. Case-insensitive.
 - findProductMatches() — matches on name OR product_code. Case-insensitive.
 - matchSupplierName() — name only, substring both directions.
+- matchClientName() — blocking three-way result: single match / no_match / ambiguous.
+  Reuses findMatches<T extends {name:string}>. "No email" check is caller's job.
 - CSV-imported suppliers default is_active=false — invisible to all matching.
 
 ### Date filtering — getISTDateRange(days)
@@ -149,7 +159,7 @@ All days-based queries use IST calendar-day boundaries, not rolling 24h windows.
 - transaction_date is a date column — use .split('T')[0] on getISTDateRange output.
 - confirmed_at / created_at are timestamptz — use ISO string directly.
 
-### Live intents (28 total as of July 25, 2026)
+### Live intents (31 total as of July 25, 2026)
 
 **Write (confirm-gated):**
 | Intent | Description |
@@ -158,6 +168,11 @@ All days-based queries use IST calendar-day boundaries, not rolling 24h windows.
 | create_production_issue | Issue materials for production via BOM explosion — single product |
 | create_product_dispatch | Dispatch finished products to client — multi-product, BOM stock check |
 | create_rm_dispatch | Dispatch raw materials to client — multi-material, stock check |
+
+**Write (no confirm card — executes immediately):**
+| Intent | Description |
+|--------|-------------|
+| send_challan | Email confirmed challan as Excel to stored client email via Resend |
 
 **Read-only:**
 | Intent | Example query |
@@ -189,11 +204,30 @@ All days-based queries use IST calendar-day boundaries, not rolling 24h windows.
 
 **Intentionally deferred (do not build yet):**
 - stock_value — needs p2_material_prices populated; SS Engineering has 0 price records
-- Tier 3: send_document — email challan/CSV (Resend API, after Tier 2)
+- send_tally_export — email CA export CSV to ca_email via Resend (gate: 2 weeks SS Engineering usage data)
+
+### send_challan — critical implementation notes
+- NO confirm card — executes and returns result immediately like a read intent
+- NOT in READ_ONLY_INTENTS (Edge Function) — it's a write (sends email)
+- NOT in READ_ONLY_TEXT_INTENTS (agent-chat.js) — same reason
+- Haiku extracts: { challan_number: string, recipient_name?: string | null }
+- recipient_name optional — if absent, uses order.client_name to match p2_clients
+- p2_clients fetched inline in sendChallanIntent, NOT in buildContext() — pay-per-use
+- Excel built server-side: import XLSX from 'https://esm.sh/xlsx-js-style@1.2.0?bundle'
+  CRITICAL: must be DEFAULT import (import XLSX from ...), NOT (import * as XLSX from ...)
+  — xlsx-js-style is CJS; import * silently returns undefined for named exports via esm.sh
+- XLSX.write(wb, { type: 'base64', bookType: 'xlsx', cellStyles: true }) — cellStyles required
+- Description column uses material_code || material_name (material_code first)
+- client_address split on '\n' for address rows — uses frozen order value, not live p2_clients.address
+- reply_to set to tenantSettings.email only if truthy — omitted entirely if null
+- Sending address: challans@nexflowautomations.in (verified on Resend)
+- RESEND_API_KEY secret (not 'Nexflow-P2-API' — that's the old name, both exist, code uses RESEND_API_KEY)
+- Known cosmetic issue: Row 3 address wrap (mobile/GSTIN) not expanding row height visually — deferred
 
 ### Critical agent gotchas
 - Adding new intent: MUST update BOTH READ_ONLY_INTENTS (Edge Function) AND
-  READ_ONLY_TEXT_INTENTS (agent-chat.js) — missing either = silent blank response.
+  READ_ONLY_TEXT_INTENTS (agent-chat.js) for read intents — missing either = silent blank response.
+  Write intents go in NEITHER — routed via body.action (confirm-gated) or inline handler (send_challan).
 - v_p2_stock_balance has NO is_active — filter via context.materials intersection.
 - SB_SECRET_KEY (agent-query) ≠ SUPABASE_SERVICE_ROLE_KEY (check-low-stock functions).
 - SUPABASE_ANON_KEY is a bare global from js/supabase-client.js — no window. prefix.
@@ -201,13 +235,15 @@ All days-based queries use IST calendar-day boundaries, not rolling 24h windows.
 - p2_dispatch_orders.challan_number not challan_no.
 - p2_dispatch_orders.status only: draft, confirmed, cancelled — no pending.
 - p2_dispatch_orders.dispatch_type only: bom_issue, raw_material, product.
+- p2_dispatch_orders has NO notes column — use challan_note or omit.
 - p2_stock_transactions has NO unit column — unit lives only on p2_raw_materials.
 - One sequence generator per counter — no client-side GRN number preview logic.
 - challan_detail does exact match first, then suffix ilike fallback.
 - dispatch_detail vs challan_detail: challan_detail = when/status, dispatch_detail = what's inside.
 - confirm_grn write path logs message:'' — original logged at create_grn parse step.
 - Chips fetch ALL materials (no .limit) — top 6 displayed, full list for search.
-- create_product_dispatch and create_rm_dispatch: neither in READ_ONLY_INTENTS nor READ_ONLY_TEXT_INTENTS — routed via body.action like confirm_grn.
+- create_product_dispatch and create_rm_dispatch: neither in READ_ONLY_INTENTS nor READ_ONLY_TEXT_INTENTS.
+- First message after cold start sometimes fails with "Failed to load raw materials" — known Deno cold start issue, not a code bug, second attempt always works.
 
 ### Proactive Telegram layer
 - Daily briefing (check-low-stock): 8am IST via pg_net cron (jobid 2, 30 2 * * *)
@@ -249,7 +285,11 @@ Reset via: UPDATE p2_tenant_settings SET agent_interactions_today=0, agent_reset
 - Agent Tier 2 complete: create_production_issue, create_product_dispatch, create_rm_dispatch — all confirm-gated, re-validate at write time, mandatory client info card after dispatch confirms, all-or-nothing multi-item blocking.
 - confirm_dispatch_transaction RPC: now writes notes = 'Dispatch: Challan {challan_number}' on p2_stock_transactions rows — reference column now populated for all dispatches (manual and agent).
 - addDispatchConfirmCard: shared widget function for both dispatch types, mandatory client info card (no Skip), mirrors production issue confirm flow.
-- Multi-material GRN via agent now shares ONE GRN number: confirm_agent_grn_multi RPC calls get_next_grn_number() once for the whole batch (single-material messages still use confirm_agent_grn/confirm_grn, unchanged). New edge actions confirm_multi_grn and update_grn_rates; widget adds addMultiGrnConfirmCard (one combined card for 2+ materials) chaining into addGrnRateCard (optional rate/invoice-number entry per material, Skip or Save).
+- Multi-material GRN via agent now shares ONE GRN number: confirm_agent_grn_multi RPC calls get_next_grn_number() once for the whole batch. New edge actions confirm_multi_grn and update_grn_rates; widget adds addMultiGrnConfirmCard + addGrnRateCard.
+- p2_clients.email column added (migration: 20260725_add_client_email.sql).
+- Clients tab in settings.html: Add/Edit/Delete clients with email field, Yellow "No email" badge. Owner-only mutations, list visible to all roles.
+- SS Engineering onboarding visit: July 25. Owner shown agent for first time.
+- Agent Tier 3: send_challan shipped July 25. Emails confirmed challan as styled Excel to stored client email via Resend. No confirm card. challans@nexflowautomations.in verified sending domain. Tested end-to-end — email delivered with correct attachment.
 
 ## GST Scope — PERMANENTLY LOCKED
 Nexflow P2 is operational software only. No GST filing, no GSTR generation, no financial reporting layer. That is Tally's job. The CA export provides clean structured data for the CA to work with in Tally — that is the full extent of financial output. Never revisit this decision.
