@@ -149,12 +149,15 @@ All days-based queries use IST calendar-day boundaries, not rolling 24h windows.
 - transaction_date is a date column — use .split('T')[0] on getISTDateRange output.
 - confirmed_at / created_at are timestamptz — use ISO string directly.
 
-### Live intents (25 total as of July 23, 2026)
+### Live intents (28 total as of July 25, 2026)
 
 **Write (confirm-gated):**
 | Intent | Description |
 |--------|-------------|
 | create_grn | Record material receipt — multi-material, shared supplier |
+| create_production_issue | Issue materials for production via BOM explosion — single product |
+| create_product_dispatch | Dispatch finished products to client — multi-product, BOM stock check |
+| create_rm_dispatch | Dispatch raw materials to client — multi-material, stock check |
 
 **Read-only:**
 | Intent | Example query |
@@ -186,7 +189,6 @@ All days-based queries use IST calendar-day boundaries, not rolling 24h windows.
 
 **Intentionally deferred (do not build yet):**
 - stock_value — needs p2_material_prices populated; SS Engineering has 0 price records
-- Tier 2 writes: production issue + RM dispatch via agent (wait 2+ weeks usage data)
 - Tier 3: send_document — email challan/CSV (Resend API, after Tier 2)
 
 ### Critical agent gotchas
@@ -205,6 +207,7 @@ All days-based queries use IST calendar-day boundaries, not rolling 24h windows.
 - dispatch_detail vs challan_detail: challan_detail = when/status, dispatch_detail = what's inside.
 - confirm_grn write path logs message:'' — original logged at create_grn parse step.
 - Chips fetch ALL materials (no .limit) — top 6 displayed, full list for search.
+- create_product_dispatch and create_rm_dispatch: neither in READ_ONLY_INTENTS nor READ_ONLY_TEXT_INTENTS — routed via body.action like confirm_grn.
 
 ### Proactive Telegram layer
 - Daily briefing (check-low-stock): 8am IST via pg_net cron (jobid 2, 30 2 * * *)
@@ -234,3 +237,19 @@ Reset via: UPDATE p2_tenant_settings SET agent_interactions_today=0, agent_reset
 - PowerShell: never use &&, separate git commands on their own lines.
 - Never test writes against the live S.S. Engineering tenant — test tenant only.
 - Badminton questions → answer as a professional coach.
+
+## Shipped July 24, 2026
+- export.html (Tally Transactions): 17-column GST layout — HSN/SAC, CGST Rate (%), CGST Amount, SGST Rate (%), SGST Amount, IGST Rate (%) (blank — intrastate), IGST Amount, Total GST Amount, Invoice Total. Join extended to `p2_raw_materials!inner(name, material_code, gst_rate, hsn_sac)`. GRN rows computed; consumption rows blank. Zoho exports unchanged.
+- challan.html: "⬇ Excel" button via ExcelJS (cdnjs 4.3.0). Formatted challan with borders, bold headers, shaded header row, merged title rows, signature section. Reads DOM only — no new Supabase calls. Filename: `Challan_[no]_[date].xlsx`.
+- nexflow-design.css: Radial orange vignette on body (grid lines removed), stat card box-shadow depth, `.nx-stat-red` / `.nx-stat-green` tinted backgrounds, warmer table hover, nav active glow, stat value text-shadow.
+- admin-agent.html: Test tenant (`fe2b94fb`) excluded from all queries permanently via `.neq()`.
+- p2_agent_logs: Cleared July 24 — fresh start for real SS Engineering owner usage.
+
+## Shipped July 25, 2026
+- Agent Tier 2 complete: create_production_issue, create_product_dispatch, create_rm_dispatch — all confirm-gated, re-validate at write time, mandatory client info card after dispatch confirms, all-or-nothing multi-item blocking.
+- confirm_dispatch_transaction RPC: now writes notes = 'Dispatch: Challan {challan_number}' on p2_stock_transactions rows — reference column now populated for all dispatches (manual and agent).
+- addDispatchConfirmCard: shared widget function for both dispatch types, mandatory client info card (no Skip), mirrors production issue confirm flow.
+- Multi-material GRN via agent now shares ONE GRN number: confirm_agent_grn_multi RPC calls get_next_grn_number() once for the whole batch (single-material messages still use confirm_agent_grn/confirm_grn, unchanged). New edge actions confirm_multi_grn and update_grn_rates; widget adds addMultiGrnConfirmCard (one combined card for 2+ materials) chaining into addGrnRateCard (optional rate/invoice-number entry per material, Skip or Save).
+
+## GST Scope — PERMANENTLY LOCKED
+Nexflow P2 is operational software only. No GST filing, no GSTR generation, no financial reporting layer. That is Tally's job. The CA export provides clean structured data for the CA to work with in Tally — that is the full extent of financial output. Never revisit this decision.

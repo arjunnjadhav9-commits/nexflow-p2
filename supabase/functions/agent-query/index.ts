@@ -49,6 +49,42 @@ interface ConfirmAgentGrnRpcResult {
   unit?: string
 }
 
+interface ConfirmMultiGrnRequest {
+  action: 'confirm_multi_grn'
+  tenant_id: string
+  supplier_id: string | null
+  items: Array<{
+    material_id: string
+    quantity: number
+    unit: string
+    material_name: string
+    material_code: string | null
+  }>
+}
+
+interface ConfirmMultiGrnRpcResult {
+  success: boolean
+  error?: string
+  grn_no?: string
+  items?: Array<{
+    transaction_id: string
+    material_name: string
+    material_code: string | null
+    quantity: number
+    unit: string
+  }>
+}
+
+interface UpdateGrnRatesRequest {
+  action: 'update_grn_rates'
+  tenant_id: string
+  updates: Array<{
+    transaction_id: string
+    rate: number | null
+    invoice_no: string | null
+  }>
+}
+
 interface RawMaterial {
   id: string
   name: string
@@ -70,6 +106,7 @@ interface Product {
   id: string
   product_code: string
   name: string
+  unit: string
 }
 
 interface Supplier {
@@ -82,6 +119,7 @@ interface AgentContext {
   stockBalances: StockBalance[]
   products: Product[]
   suppliers: Supplier[]
+  challanMode: string
 }
 
 interface ContextError {
@@ -103,6 +141,9 @@ type UsageResult = UsageAllowed | UsageDenied
 type HaikuIntent =
   | 'check_stock'
   | 'create_grn'
+  | 'create_production_issue'
+  | 'create_product_dispatch'
+  | 'create_rm_dispatch'
   | 'recent_grn'
   | 'consumption_summary'
   | 'supplier_history'
@@ -138,7 +179,8 @@ interface HaikuResult {
   intent: HaikuIntent
   extracted: {
     material_name?: string // shared: check_stock, recent_grn, consumption_summary
-    items?: GrnItem[] // create_grn only
+    items?: GrnItem[] // create_grn AND create_rm_dispatch — identical shape, reused as-is
+    dispatch_items?: { product_name: string; quantity: number }[] // create_product_dispatch only
     supplier_name?: string // shared: create_grn, supplier_history, supplier_delivery_check
     days?: number // recent_grn, consumption_summary, top_received, top_supplier — default varies by intent
     grn_no?: string // grn_detail only
@@ -189,7 +231,7 @@ async function buildContext(
 
   const { data: products, error: productsError } = await supabaseClient
     .from('p2_products')
-    .select('id, product_code, name')
+    .select('id, product_code, name, unit')
     .eq('tenant_id', tenantId)
 
   if (productsError) {
@@ -208,11 +250,22 @@ async function buildContext(
     return { error: `Failed to load suppliers: ${suppliersError.message}` }
   }
 
+  const { data: tenantSettings, error: settingsError } = await supabaseClient
+    .from('p2_tenant_settings')
+    .select('challan_mode')
+    .eq('tenant_id', tenantId)
+    .single()
+
+  if (settingsError) {
+    return { error: `Failed to load tenant settings: ${settingsError.message}` }
+  }
+
   return {
     materials: (materials ?? []) as RawMaterial[],
     stockBalances: (stockBalances ?? []) as StockBalance[],
     products: (products ?? []) as Product[],
     suppliers: (suppliers ?? []) as Supplier[],
+    challanMode: tenantSettings?.challan_mode ?? 'unified',
   }
 }
 
@@ -275,6 +328,581 @@ async function confirmGrn(
 
   void logInteraction(supabaseClient, tenant_id, '', 'confirm_grn', {}, null, true, null)
   return respond({ status: 'ok', confirmed: true, result })
+}
+
+// Re-validates every matched material via confirm_agent_grn_multi (row-locked,
+// tenant-scoped, unit-checked) and records all items under ONE shared GRN
+// number. Sibling to confirmGrn() above, used only when create_grn extracted
+// more than one material from a single message.
+async function confirmMultiGrn(
+  supabaseClient: ReturnType<typeof createClient>,
+  body: Partial<ConfirmMultiGrnRequest>
+): Promise<Response> {
+  const { tenant_id, supplier_id, items } = body
+
+  if (!tenant_id || !items?.length) {
+    return respond({ status: 'error', error: 'Missing required fields' }, 400)
+  }
+
+  const rpcItems = items.map(item => ({
+    material_id: item.material_id,
+    quantity: item.quantity,
+    unit: item.unit,
+  }))
+
+  const { data, error } = await supabaseClient.rpc('confirm_agent_grn_multi', {
+    p_tenant_id: tenant_id,
+    p_supplier_id: supplier_id ?? null,
+    p_items: JSON.stringify(rpcItems),
+  })
+
+  if (error) {
+    void logInteraction(supabaseClient, tenant_id, '', 'confirm_multi_grn', {}, null, false, error.message)
+    return respond({ status: 'error', error: error.message }, 500)
+  }
+
+  const result = data as ConfirmMultiGrnRpcResult
+
+  if (!result.success) {
+    void logInteraction(supabaseClient, tenant_id, '', 'confirm_multi_grn', {}, null, false, result.error ?? 'RPC returned success:false')
+    return respond({ status: 'ok', confirmed: false, error: result.error ?? 'GRN could not be saved.' })
+  }
+
+  void logInteraction(supabaseClient, tenant_id, '', 'confirm_multi_grn', {}, null, true, null)
+
+  return respond({
+    status: 'ok',
+    confirmed: true,
+    result: {
+      grn_no: result.grn_no,
+      items: result.items,
+    },
+    next: 'rate_invoice',
+  })
+}
+
+// Updates rate/invoice_no on already-saved GRN transaction rows — an
+// optional follow-up step after confirmMultiGrn(), not itself confirm-gated
+// since the write (the GRN) already happened; this only edits metadata on
+// rows the same session just created. Skips any update where both fields
+// are null (nothing to write).
+async function updateGrnRates(
+  supabaseClient: ReturnType<typeof createClient>,
+  body: Partial<UpdateGrnRatesRequest>
+): Promise<Response> {
+  const { tenant_id, updates } = body
+
+  if (!tenant_id || !updates?.length) {
+    return respond({ status: 'error', error: 'Missing required fields' }, 400)
+  }
+
+  for (const update of updates) {
+    if (!update.transaction_id) continue
+    if (update.rate === null && update.invoice_no === null) continue
+
+    const { error } = await supabaseClient
+      .from('p2_stock_transactions')
+      .update({
+        ...(update.rate !== null ? { rate: update.rate } : {}),
+        ...(update.invoice_no !== null ? { invoice_no: update.invoice_no } : {}),
+      })
+      .eq('id', update.transaction_id)
+      .eq('tenant_id', tenant_id)
+
+    if (error) {
+      void logInteraction(supabaseClient, tenant_id, '', 'update_grn_rates', {}, null, false, error.message)
+      return respond({ status: 'error', error: error.message }, 500)
+    }
+  }
+
+  void logInteraction(supabaseClient, tenant_id, '', 'update_grn_rates', {}, null, true, null)
+  return respond({ status: 'ok', confirmed: true })
+}
+
+// Re-validates the matched product/BOM via confirm_bom_issue (row-locked,
+// tenant-scoped) and records the production issue. Mirrors confirmGrn()'s
+// re-fetch-at-write-time pattern — nothing from the parse phase is trusted.
+async function confirmProductionIssue(
+  supabaseClient: ReturnType<typeof createClient>,
+  body: Partial<ConfirmProductionIssueRequest>
+): Promise<Response> {
+  const { tenant_id, product_id, product_name, quantity, bom_lines } = body
+
+  if (!tenant_id || !product_id || !product_name || !quantity || !bom_lines?.length) {
+    return respond({ status: 'error', error: 'Missing required fields for production issue' }, 400)
+  }
+
+  // Re-fetch tenant settings to get challan_mode at write time
+  const { data: settings, error: settingsError } = await supabaseClient
+    .from('p2_tenant_settings')
+    .select('challan_mode')
+    .eq('tenant_id', tenant_id)
+    .single()
+
+  if (settingsError) {
+    return respond({ status: 'error', error: 'Could not load tenant settings' }, 500)
+  }
+
+  const challanMode = settings?.challan_mode ?? 'unified'
+
+  // Re-fetch product to verify still active at write time
+  const { data: product, error: productError } = await supabaseClient
+    .from('p2_products')
+    .select('id, name, is_active')
+    .eq('tenant_id', tenant_id)
+    .eq('id', product_id)
+    .single()
+
+  if (productError || !product) {
+    return respond({ status: 'error', error: 'Product not found' }, 400)
+  }
+
+  if (!product.is_active) {
+    return respond({ status: 'error', error: `Product "${product_name}" is no longer active` }, 400)
+  }
+
+  // Re-fetch BOM at write time to verify unchanged
+  const { data: bomRows, error: bomError } = await supabaseClient
+    .from('p2_product_bom')
+    .select('raw_material_id, qty_per_unit, unit')
+    .eq('tenant_id', tenant_id)
+    .eq('product_id', product_id)
+
+  if (bomError || !bomRows?.length) {
+    return respond({ status: 'error', error: 'BOM not found or empty at write time' }, 400)
+  }
+
+  // Re-fetch stock balances at write time
+  const { data: stockRows, error: stockError } = await supabaseClient
+    .from('v_p2_stock_balance')
+    .select('raw_material_id, name, unit, current_stock, material_code')
+    .eq('tenant_id', tenant_id)
+
+  if (stockError) {
+    return respond({ status: 'error', error: 'Could not verify stock at write time' }, 500)
+  }
+
+  const typedStockRows = (stockRows ?? []) as { raw_material_id: string; name: string; unit: string; current_stock: number; material_code: string | null }[]
+  const stockMap = new Map(typedStockRows.map((r) => [r.raw_material_id, r]))
+
+  // Build consumption_json from re-fetched BOM
+  const consumption = bomRows.map((row: { raw_material_id: string; qty_per_unit: number; unit: string }) => {
+    const stockRow = stockMap.get(row.raw_material_id)
+    return {
+      material_id: row.raw_material_id,
+      material_name: stockRow?.name ?? 'Unknown',
+      material_code: stockRow?.material_code ?? null,
+      qty: Math.round(row.qty_per_unit * quantity * 10000) / 10000,
+      unit: row.unit,
+    }
+  })
+
+  // Get next challan number
+  const { data: challanNumber, error: challanError } = await supabaseClient
+    .rpc('get_next_challan_number', {
+      p_tenant_id: tenant_id,
+      p_type: 'bom_issue',
+      p_mode: challanMode,
+    })
+
+  if (challanError || !challanNumber) {
+    return respond({ status: 'error', error: 'Could not generate challan number' }, 500)
+  }
+
+  // Today's IST calendar date, via the same IST boundary math used everywhere
+  // else in this file (getISTDateRange) rather than Intl-based date parsing.
+  const issueDate = getISTDateRange(0).since.split('T')[0]
+
+  // Call confirm_bom_issue RPC — 9-parameter overload
+  const { data: rpcResult, error: rpcError } = await supabaseClient.rpc('confirm_bom_issue', {
+    p_tenant_id: tenant_id,
+    p_challan_number: challanNumber,
+    p_product_name: product_name,
+    p_batch_qty: quantity,
+    p_issue_date: issueDate,
+    p_notes: 'Created via AI Copilot',
+    p_consumption_json: JSON.stringify(consumption),
+    p_manual_json: '[]',
+    p_force: false,
+  })
+
+  if (rpcError) {
+    // Surface duplicate check error clearly
+    if (rpcError.message?.includes('DUPLICATE_ISSUE')) {
+      void logInteraction(supabaseClient, tenant_id, '', 'confirm_production_issue', {}, null, false, 'duplicate_issue')
+      return respond({
+        status: 'ok',
+        confirmed: false,
+        error: `${product_name} × ${quantity} aaj already issue zala aahe. Dublyane issue karayche aahe ka? (Please use the production issue form to force.)`
+      })
+    }
+    void logInteraction(supabaseClient, tenant_id, '', 'confirm_production_issue', {}, null, false, rpcError.message)
+    return respond({ status: 'error', error: rpcError.message }, 500)
+  }
+
+  // Fire-and-forget low stock alert
+  void (async () => {
+    try {
+      await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/check-low-stock-instant`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${Deno.env.get('SB_SECRET_KEY')}`,
+        },
+        body: JSON.stringify({ tenant_id }),
+      })
+    } catch { /* fire-and-forget, never block */ }
+  })()
+
+  void logInteraction(supabaseClient, tenant_id, '', 'confirm_production_issue', {}, null, true, null)
+
+  return respond({
+    status: 'ok',
+    confirmed: true,
+    result: {
+      order_id: rpcResult?.order_id,
+      challan_number: (rpcResult as { challan_number?: string } | null)?.challan_number ?? challanNumber,
+      product_name,
+      quantity,
+    },
+    next: 'client_info'
+  })
+}
+
+// Re-fetches and re-validates every product/BOM row at write time (mirrors
+// confirmProductionIssue's re-fetch-at-write-time pattern), builds the
+// dispatch order + items itself (unlike confirm_bom_issue, there is no
+// single all-in-one RPC for product/RM dispatch — see dispatch.html), then
+// deducts stock via confirm_dispatch_transaction.
+async function confirmProductDispatch(
+  supabaseClient: ReturnType<typeof createClient>,
+  body: Partial<ConfirmProductDispatchRequest>
+): Promise<Response> {
+  const { tenant_id, items } = body
+
+  if (!tenant_id || !items?.length) {
+    return respond({ status: 'error', error: 'Missing required fields for product dispatch' }, 400)
+  }
+
+  for (const item of items) {
+    if (!item.product_id || !item.product_name || typeof item.quantity !== 'number' || !Number.isFinite(item.quantity) || item.quantity <= 0 || !item.bom_lines?.length) {
+      return respond({ status: 'error', error: 'Invalid item in request' }, 400)
+    }
+  }
+
+  // Re-fetch tenant settings to get challan_mode at write time
+  const { data: settings, error: settingsError } = await supabaseClient
+    .from('p2_tenant_settings')
+    .select('challan_mode')
+    .eq('tenant_id', tenant_id)
+    .single()
+
+  if (settingsError) {
+    console.error('[confirmProductDispatch] tenant settings fetch failed:', tenant_id, settingsError.message)
+    void logInteraction(supabaseClient, tenant_id, '', 'confirm_product_dispatch', {}, null, false, `settings fetch: ${settingsError.message}`)
+    return respond({ status: 'error', error: `Could not load tenant settings: ${settingsError.message}` }, 500)
+  }
+
+  const challanMode = settings?.challan_mode ?? 'unified'
+
+  const consumptionArray: { material_id: string; qty: number }[] = []
+  const itemRows: { product_id: string; qty_dispatched: number; unit: string }[] = []
+
+  for (const item of items) {
+    // Re-fetch product to verify still active at write time
+    const { data: product, error: productError } = await supabaseClient
+      .from('p2_products')
+      .select('id, name, is_active, unit')
+      .eq('tenant_id', tenant_id)
+      .eq('id', item.product_id)
+      .single()
+
+    if (productError || !product) {
+      return respond({ status: 'error', error: 'Product not found' }, 400)
+    }
+
+    if (!product.is_active) {
+      return respond({ status: 'error', error: `Product "${item.product_name}" is no longer active` }, 400)
+    }
+
+    // Re-fetch BOM at write time to verify unchanged
+    const { data: bomRows, error: bomError } = await supabaseClient
+      .from('p2_product_bom')
+      .select('raw_material_id, qty_per_unit, unit')
+      .eq('tenant_id', tenant_id)
+      .eq('product_id', item.product_id)
+
+    if (bomError || !bomRows?.length) {
+      return respond({ status: 'error', error: 'BOM not found or empty at write time' }, 400)
+    }
+
+    const exploded = explodeBomQty(bomRows as { raw_material_id: string; qty_per_unit: number; unit: string }[], item.quantity)
+    for (const row of exploded) {
+      consumptionArray.push({ material_id: row.raw_material_id, qty: row.qty })
+    }
+
+    itemRows.push({
+      product_id: item.product_id,
+      qty_dispatched: item.quantity,
+      unit: item.unit || product.unit || 'NOS',
+    })
+  }
+
+  // Get next challan number
+  const { data: challanNumber, error: challanError } = await supabaseClient
+    .rpc('get_next_challan_number', {
+      p_tenant_id: tenant_id,
+      p_type: 'product',
+      p_mode: challanMode,
+    })
+
+  if (challanError || !challanNumber) {
+    console.error('[confirmProductDispatch] get_next_challan_number failed:', tenant_id, challanError?.message ?? 'no challan number returned')
+    void logInteraction(supabaseClient, tenant_id, '', 'confirm_product_dispatch', {}, null, false, `challan number: ${challanError?.message ?? 'no challan number returned'}`)
+    return respond({ status: 'error', error: challanError?.message ?? 'Could not generate challan number' }, 500)
+  }
+
+  const dispatchDate = getISTDateRange(0).since.split('T')[0]
+
+  const { data: order, error: orderError } = await supabaseClient
+    .from('p2_dispatch_orders')
+    .insert({
+      tenant_id,
+      created_by: tenant_id,
+      dispatch_type: 'product',
+      status: 'confirmed',
+      challan_number: challanNumber,
+      dispatch_date: dispatchDate,
+    })
+    .select('id')
+    .single()
+
+  if (orderError || !order) {
+    console.error('[confirmProductDispatch] p2_dispatch_orders insert failed:', tenant_id, orderError?.message ?? 'no order row returned')
+    void logInteraction(supabaseClient, tenant_id, '', 'confirm_product_dispatch', {}, null, false, `order insert: ${orderError?.message ?? 'order insert failed'}`)
+    return respond({ status: 'error', error: orderError?.message ?? 'Could not create dispatch order' }, 500)
+  }
+
+  const orderId = order.id as string
+
+  const { error: itemsError } = await supabaseClient
+    .from('p2_dispatch_items')
+    .insert(itemRows.map((row) => ({ ...row, dispatch_order_id: orderId, tenant_id })))
+
+  if (itemsError) {
+    console.error('[confirmProductDispatch] p2_dispatch_items insert failed:', tenant_id, orderId, itemsError.message)
+    void logInteraction(supabaseClient, tenant_id, '', 'confirm_product_dispatch', {}, null, false, `items insert: ${itemsError.message}`)
+    return respond({ status: 'error', error: itemsError.message }, 500)
+  }
+
+  const { error: rpcError } = await supabaseClient.rpc('confirm_dispatch_transaction', {
+    p_dispatch_order_id: orderId,
+    p_tenant_id: tenant_id,
+    p_consumption_json: JSON.stringify(consumptionArray),
+    p_challan_number: challanNumber,
+  })
+
+  if (rpcError) {
+    console.error('[confirmProductDispatch] confirm_dispatch_transaction RPC failed:', tenant_id, orderId, rpcError.message)
+    void logInteraction(supabaseClient, tenant_id, '', 'confirm_product_dispatch', {}, null, false, `confirm_dispatch_transaction: ${rpcError.message}`)
+    return respond({ status: 'error', error: rpcError.message }, 500)
+  }
+
+  // Fire-and-forget low stock alert
+  void (async () => {
+    try {
+      await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/check-low-stock-instant`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${Deno.env.get('SB_SECRET_KEY')}`,
+        },
+        body: JSON.stringify({ tenant_id }),
+      })
+    } catch { /* fire-and-forget, never block */ }
+  })()
+
+  void logInteraction(supabaseClient, tenant_id, '', 'confirm_product_dispatch', {}, null, true, null)
+
+  return respond({
+    status: 'ok',
+    confirmed: true,
+    result: { order_id: orderId, challan_number: challanNumber },
+    next: 'client_info',
+  })
+}
+
+// Mirrors confirmProductDispatch's structure but with no BOM explosion — the
+// consumption array is built directly from the confirmed items. Re-validates
+// nothing about the material row itself (matches rm-dispatch.html's own
+// confirmDispatch(), which likewise never re-checks stock before calling
+// confirm_dispatch_transaction).
+async function confirmRmDispatch(
+  supabaseClient: ReturnType<typeof createClient>,
+  body: Partial<ConfirmRmDispatchRequest>
+): Promise<Response> {
+  const { tenant_id, items } = body
+
+  if (!tenant_id || !items?.length) {
+    return respond({ status: 'error', error: 'Missing required fields for RM dispatch' }, 400)
+  }
+
+  for (const item of items) {
+    if (!item.raw_material_id || !item.material_name || typeof item.quantity !== 'number' || !Number.isFinite(item.quantity) || item.quantity <= 0 || !item.unit) {
+      return respond({ status: 'error', error: 'Invalid item in request' }, 400)
+    }
+  }
+
+  // Re-fetch tenant settings to get challan_mode at write time
+  const { data: settings, error: settingsError } = await supabaseClient
+    .from('p2_tenant_settings')
+    .select('challan_mode')
+    .eq('tenant_id', tenant_id)
+    .single()
+
+  if (settingsError) {
+    return respond({ status: 'error', error: 'Could not load tenant settings' }, 500)
+  }
+
+  const challanMode = settings?.challan_mode ?? 'unified'
+
+  const consumptionArray = items.map((item) => ({ material_id: item.raw_material_id, qty: item.quantity }))
+
+  // Get next challan number
+  const { data: challanNumber, error: challanError } = await supabaseClient
+    .rpc('get_next_challan_number', {
+      p_tenant_id: tenant_id,
+      p_type: 'raw_material',
+      p_mode: challanMode,
+    })
+
+  if (challanError || !challanNumber) {
+    return respond({ status: 'error', error: 'Could not generate challan number' }, 500)
+  }
+
+  const dispatchDate = getISTDateRange(0).since.split('T')[0]
+
+  const { data: order, error: orderError } = await supabaseClient
+    .from('p2_dispatch_orders')
+    .insert({
+      tenant_id,
+      created_by: tenant_id,
+      dispatch_type: 'raw_material',
+      status: 'confirmed',
+      challan_number: challanNumber,
+      dispatch_date: dispatchDate,
+    })
+    .select('id')
+    .single()
+
+  if (orderError || !order) {
+    void logInteraction(supabaseClient, tenant_id, '', 'confirm_rm_dispatch', {}, null, false, orderError?.message ?? 'order insert failed')
+    return respond({ status: 'error', error: 'Could not create dispatch order' }, 500)
+  }
+
+  const orderId = order.id as string
+
+  const { error: itemsError } = await supabaseClient
+    .from('p2_dispatch_items')
+    .insert(items.map((item) => ({
+      tenant_id,
+      dispatch_order_id: orderId,
+      raw_material_id: item.raw_material_id,
+      material_name: item.material_name,
+      material_code: item.material_code ?? null,
+      qty_dispatched: item.quantity,
+      unit: item.unit,
+    })))
+
+  if (itemsError) {
+    void logInteraction(supabaseClient, tenant_id, '', 'confirm_rm_dispatch', {}, null, false, itemsError.message)
+    return respond({ status: 'error', error: 'Could not save dispatch items' }, 500)
+  }
+
+  const { error: rpcError } = await supabaseClient.rpc('confirm_dispatch_transaction', {
+    p_dispatch_order_id: orderId,
+    p_tenant_id: tenant_id,
+    p_consumption_json: JSON.stringify(consumptionArray),
+    p_challan_number: challanNumber,
+  })
+
+  if (rpcError) {
+    void logInteraction(supabaseClient, tenant_id, '', 'confirm_rm_dispatch', {}, null, false, rpcError.message)
+    return respond({ status: 'error', error: rpcError.message }, 500)
+  }
+
+  // Fire-and-forget low stock alert
+  void (async () => {
+    try {
+      await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/check-low-stock-instant`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${Deno.env.get('SB_SECRET_KEY')}`,
+        },
+        body: JSON.stringify({ tenant_id }),
+      })
+    } catch { /* fire-and-forget, never block */ }
+  })()
+
+  void logInteraction(supabaseClient, tenant_id, '', 'confirm_rm_dispatch', {}, null, true, null)
+
+  return respond({
+    status: 'ok',
+    confirmed: true,
+    result: { order_id: orderId, challan_number: challanNumber },
+    next: 'client_info',
+  })
+}
+
+async function addProductionIssueClient(
+  supabaseClient: ReturnType<typeof createClient<any>>,
+  body: Partial<AddProductionIssueClientRequest>
+): Promise<Response> {
+  const { tenant_id, order_id, client_name, client_address, po_number, vehicle_number } = body
+
+  if (!tenant_id || !order_id || !client_name?.trim()) {
+    return respond({ status: 'error', error: 'tenant_id, order_id, and client_name are required' }, 400)
+  }
+
+  // Update the dispatch order with client info
+  const { error: updateError } = await supabaseClient
+    .from('p2_dispatch_orders')
+    .update({
+      client_name:    client_name.trim(),
+      client_address: client_address?.trim() || null,
+      po_number:      po_number?.trim()      || null,
+      vehicle_number: vehicle_number?.trim() || null,
+      updated_at:     new Date().toISOString()
+    })
+    .eq('id', order_id)
+    .eq('tenant_id', tenant_id)
+
+  if (updateError) {
+    return respond({ status: 'error', error: updateError.message }, 500)
+  }
+
+  // Upsert client for future autocomplete
+  await supabaseClient
+    .from('p2_clients')
+    .upsert(
+      { tenant_id, name: client_name.trim(), address: client_address?.trim() || null },
+      { onConflict: 'tenant_id,name' }
+    )
+
+  // Upsert PO number if provided
+  if (po_number?.trim()) {
+    await supabaseClient
+      .from('p2_client_po_numbers')
+      .upsert(
+        { tenant_id, client_name: client_name.trim(), po_number: po_number.trim() },
+        { onConflict: 'tenant_id,client_name,po_number' }
+      )
+  }
+
+  void logInteraction(supabaseClient, tenant_id, '', 'add_production_issue_client', {}, null, true, null)
+
+  return respond({ status: 'ok', confirmed: true })
 }
 
 // Extraction-only call to Claude Haiku. Haiku classifies intent and pulls
@@ -469,6 +1097,41 @@ Classify the message as one of:
   - "Sarvat jast konty supplier ne pathavle this month?" -> { "days": 30 }
   - "This week konty supplier ne jast delivery keli?" -> { "days": 7 }
   - "Konty supplier ne sarvat jast maal dila?" -> { "days": 30 }
+- "create_production_issue" — user wants to issue materials for production of a product (BOM explosion). User mentions a product name and how many units to produce.
+  extracted fields: { "product_name": string, "quantity": number }
+  Rules:
+  - "product_name" is exactly as the user said it — do not resolve to DB.
+  - "quantity" is the number of units to produce. Default to 1 if not mentioned.
+  - Strip Hinglish/Marathi filler: "issue karo" = issue/do, "banva" = make/produce, "batch" = batch.
+  Examples:
+  - "KS4 motor 5 issue karo" -> { "product_name": "KS4 motor", "quantity": 5 }
+  - "KS6-1.5HP 10 banva" -> { "product_name": "KS6-1.5HP", "quantity": 10 }
+  - "3 pump assembly issue" -> { "product_name": "pump assembly", "quantity": 3 }
+  IMPORTANT: Only use this intent when the user wants to ISSUE/CONSUME materials for production, not just check stock. "Enough stock aahe ka?" = stock_check_product. "Issue karo / banva" = create_production_issue.
+- "create_product_dispatch" — user wants to dispatch/ship finished product(s) OUT to a client (not consume materials for internal production). User names product(s) and quantity to send.
+  extracted fields: { "dispatch_items": [{ "product_name": string, "quantity": number }] }
+  Rules:
+  - "dispatch_items" is always an array, even for a single product.
+  - "product_name" exactly as the user said it — partial/loose names are fine, do not resolve to DB.
+  - "quantity" defaults to 1 if not mentioned.
+  - Strip Hinglish/Marathi filler: "dispatch karo"/"pathva"/"bhejaycha aahe"/"send karo" = dispatch/send, "aani" = and (item separator).
+  Examples:
+  - "Panel 5 dispatch karo" -> { "dispatch_items": [{ "product_name": "Panel", "quantity": 5 }] }
+  - "KS4 motor 10 ani KS6 pump 3 pathav" -> { "dispatch_items": [{ "product_name": "KS4 motor", "quantity": 10 }, { "product_name": "KS6 pump", "quantity": 3 }] }
+  - "KS4 1 ani KS6 1 dispatch karo" -> { "dispatch_items": [{ "product_name": "KS4", "quantity": 1 }, { "product_name": "KS6", "quantity": 1 }] }
+  - "KS4 motor ani panel dispatch karo" -> { "dispatch_items": [{ "product_name": "KS4 motor", "quantity": 1 }, { "product_name": "panel", "quantity": 1 }] }
+  IMPORTANT: Only when user wants to DISPATCH/SEND products out to a client. "Issue karo"/"banva" for internal production consumption = create_production_issue. "Dispatch karo / pathav" = create_product_dispatch.
+  IMPORTANT: If the user mentions names that match known products (listed above as Known products), always use create_product_dispatch, never create_rm_dispatch. create_rm_dispatch is ONLY for raw materials. When in doubt and the names could be either, prefer create_product_dispatch.
+- "create_rm_dispatch" — user wants to dispatch raw material(s) OUT directly (to a client or elsewhere), not report receiving them.
+  extracted fields: { "items": [{ "material_name": string, "quantity": number, "unit"?: string }] }
+  Rules:
+  - "items" is always an array, even for a single material.
+  - "material_name" exactly as the user said it.
+  - "pathva"/"dispatch karo" = dispatch.
+  Examples:
+  - "MS Sheet 50 kg dispatch karo" -> { "items": [{ "material_name": "MS Sheet", "quantity": 50, "unit": "kg" }] }
+  - "Hex Bolt 100 ani Bearing 20 pathav" -> { "items": [{ "material_name": "Hex Bolt", "quantity": 100 }, { "material_name": "Bearing", "quantity": 20 }] }
+  IMPORTANT: "aala"/"aali"/"kadun aale" = incoming = create_grn. "pathva"/"dispatch karo"/"send karo" = outgoing = create_rm_dispatch. Never confuse direction — this is the opposite of create_grn.
 - "unknown" — neither intent fits.
   extracted fields: {}
 
@@ -478,7 +1141,7 @@ Examples of correct create_grn extraction from mixed Hinglish/Marathi messages:
 - Message: "steel sheet 200 kg Sharma Traders ne bheja" -> extracted: { "items": [{ "material_name": "steel sheet", "quantity": 200, "unit": "kg" }], "supplier_name": "Sharma Traders" }
 
 Respond with ONLY valid JSON, no markdown code fences, no preamble, no explanation. The response must match exactly this shape:
-{ "intent": "check_stock" | "create_grn" | "recent_grn" | "consumption_summary" | "supplier_history" | "low_stock_list" | "grn_detail" | "pending_dispatches" | "grn_summary" | "top_consumption" | "material_list" | "stock_check_product" | "zero_stock_list" | "dispatch_summary" | "supplier_delivery_check" | "challan_detail" | "issue_summary" | "product_code_lookup" | "top_received" | "product_list" | "supplier_list" | "dispatch_detail" | "issue_detail" | "bom_detail" | "top_supplier" | "unknown", "extracted": { ...fields... } }`
+{ "intent": "check_stock" | "create_grn" | "create_production_issue" | "create_product_dispatch" | "create_rm_dispatch" | "recent_grn" | "consumption_summary" | "supplier_history" | "low_stock_list" | "grn_detail" | "pending_dispatches" | "grn_summary" | "top_consumption" | "material_list" | "stock_check_product" | "zero_stock_list" | "dispatch_summary" | "supplier_delivery_check" | "challan_detail" | "issue_summary" | "product_code_lookup" | "top_received" | "product_list" | "supplier_list" | "dispatch_detail" | "issue_detail" | "bom_detail" | "top_supplier" | "unknown", "extracted": { ...fields... } }`
 
   try {
     const response = await anthropicClient.messages.create({
@@ -525,6 +1188,7 @@ interface MatchedMaterial {
   name: string
   unit: string
   current_stock?: number
+  material_code?: string | null
 }
 
 interface MatchedSupplier {
@@ -552,6 +1216,74 @@ interface MatchEntitiesResultGrn {
   status: 'matched' | 'partial' | 'no_match'
   items?: MatchedGrnItem[]
   blocked_items?: { material_name: string; reason: string }[]
+}
+
+interface BomLine {
+  raw_material_id: string
+  material_name: string
+  material_code: string | null
+  required_qty: number
+  unit: string
+  current_stock: number
+  sufficient: boolean
+}
+
+interface ConfirmProductionIssueRequest {
+  action: 'confirm_production_issue'
+  tenant_id: string
+  product_id: string
+  product_name: string
+  quantity: number
+  bom_lines: BomLine[]
+}
+
+// Lighter than BomLine — confirmProductDispatch re-fetches BOM at write time
+// and only checks bom_lines for non-empty presence (same pattern
+// confirmProductionIssue already uses for its own bom_lines field), so
+// material_name/current_stock/sufficient aren't needed on the wire. The full
+// BomLine shape is still used internally during the parse phase to compute
+// the stock-sufficiency block/pass decision and render the confirm card.
+interface DispatchBomLine {
+  raw_material_id: string
+  qty: number
+}
+
+interface ConfirmProductDispatchItem {
+  product_id: string
+  product_name: string
+  quantity: number
+  unit: string
+  bom_lines: DispatchBomLine[]
+}
+
+interface ConfirmProductDispatchRequest {
+  action: 'confirm_product_dispatch'
+  tenant_id: string
+  items: ConfirmProductDispatchItem[]
+}
+
+interface ConfirmRmDispatchItem {
+  raw_material_id: string
+  material_name: string
+  material_code: string | null
+  quantity: number
+  unit: string
+}
+
+interface ConfirmRmDispatchRequest {
+  action: 'confirm_rm_dispatch'
+  tenant_id: string
+  items: ConfirmRmDispatchItem[]
+}
+
+interface AddProductionIssueClientRequest {
+  action: 'add_production_issue_client'
+  tenant_id: string
+  order_id: string
+  client_name: string
+  client_address?: string
+  po_number?: string
+  vehicle_number?: string
 }
 
 type MatchEntitiesResult = MatchEntitiesResultStock | MatchEntitiesResultGrn
@@ -583,6 +1315,23 @@ function findProductMatches(query: string, products: Product[]): Product[] {
 // Returns " [CODE]" suffix if material_code exists, empty string otherwise.
 function codeTag(code: string | null | undefined): string {
   return code ? ` [${code}]` : ''
+}
+
+// Multiplies each BOM row's qty_per_unit by the requested quantity, rounded
+// to 4dp — identical math to create_production_issue's inline version, but
+// factored out here so create_product_dispatch's parse-phase stock check and
+// confirmProductDispatch's write-phase re-explosion can't drift from each
+// other. Scoped only to the two new dispatch intents — not wired into
+// confirmProductionIssue or its parse block, which keep their own inline math.
+function explodeBomQty(
+  bomRows: { raw_material_id: string; qty_per_unit: number; unit: string }[],
+  quantity: number
+): { raw_material_id: string; qty: number; unit: string }[] {
+  return bomRows.map((row) => ({
+    raw_material_id: row.raw_material_id,
+    qty: Math.round(row.qty_per_unit * quantity * 10000) / 10000,
+    unit: row.unit,
+  }))
 }
 
 // Resolves a single extracted material name against context.materials.
@@ -691,6 +1440,7 @@ function matchEntities(context: AgentContext, haikuResult: HaikuResult): MatchEn
         id: matchResult.material.id,
         name: matchResult.material.name,
         unit: matchResult.material.unit,
+        material_code: matchResult.material.material_code,
       },
       quantity: item.quantity,
       unit: matchResult.material.unit, // never item.unit — real stored unit only
@@ -721,12 +1471,14 @@ interface ConfirmDataReadyGrn {
     data: {
       material_id: string
       material_name: string
+      material_code: string | null
       quantity: number
       unit: string
       supplier_id: string | null
       supplier_name: string | null
     }
   }>
+  supplier_id: string | null
   blocked_items?: Array<{ material_name: string; reason: string }>
 }
 
@@ -767,6 +1519,7 @@ function buildConfirmData(haikuResult: HaikuResult, matchResult: MatchEntitiesRe
           data: {
             material_id: item.material.id,
             material_name: item.material.name,
+            material_code: item.material.material_code ?? null,
             quantity: item.quantity,
             unit: item.unit,
             supplier_id: item.supplier ? item.supplier.id : null,
@@ -782,6 +1535,7 @@ function buildConfirmData(haikuResult: HaikuResult, matchResult: MatchEntitiesRe
     return {
       status: 'ready',
       items,
+      supplier_id: items[0]?.data.supplier_id ?? null,
       blocked_items: grnMatch.blocked_items && grnMatch.blocked_items.length > 0 ? grnMatch.blocked_items : undefined,
     }
   }
@@ -1598,10 +2352,42 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const body: Partial<AgentQueryRequest & ConfirmGrnRequest> = await req.json()
+    const body: Partial<AgentQueryRequest> &
+      Partial<Omit<ConfirmGrnRequest, 'action'>> &
+      Partial<Omit<ConfirmProductionIssueRequest, 'action'>> &
+      Partial<Omit<AddProductionIssueClientRequest, 'action'>> &
+      Partial<Omit<ConfirmProductDispatchRequest, 'action'>> &
+      Partial<Omit<ConfirmRmDispatchRequest, 'action'>> &
+      Partial<Omit<ConfirmMultiGrnRequest, 'action'>> &
+      Partial<Omit<UpdateGrnRatesRequest, 'action'>> &
+      { action?: 'confirm_grn' | 'confirm_production_issue' | 'add_production_issue_client' | 'confirm_product_dispatch' | 'confirm_rm_dispatch' | 'confirm_multi_grn' | 'update_grn_rates' } = await req.json()
 
     if (body.action === 'confirm_grn') {
-      return await confirmGrn(supabase, body)
+      return await confirmGrn(supabase, body as Partial<ConfirmGrnRequest>)
+    }
+
+    if (body.action === 'confirm_multi_grn') {
+      return await confirmMultiGrn(supabase, body as Partial<ConfirmMultiGrnRequest>)
+    }
+
+    if (body.action === 'update_grn_rates') {
+      return await updateGrnRates(supabase, body as Partial<UpdateGrnRatesRequest>)
+    }
+
+    if (body.action === 'confirm_production_issue') {
+      return await confirmProductionIssue(supabase, body as Partial<ConfirmProductionIssueRequest>)
+    }
+
+    if (body.action === 'confirm_product_dispatch') {
+      return await confirmProductDispatch(supabase, body as Partial<ConfirmProductDispatchRequest>)
+    }
+
+    if (body.action === 'confirm_rm_dispatch') {
+      return await confirmRmDispatch(supabase, body as Partial<ConfirmRmDispatchRequest>)
+    }
+
+    if (body.action === 'add_production_issue_client') {
+      return await addProductionIssueClient(supabase, body as Partial<AddProductionIssueClientRequest>)
     }
 
     const { tenant_id, message } = body
@@ -1669,6 +2455,296 @@ Deno.serve(async (req) => {
         status: 'ok',
         intent: haikuResult.intent,
         confirm: { status: 'ready', confirm_text: answer },
+      })
+    }
+
+    if (haikuResult.intent === 'create_production_issue') {
+      const productName = haikuResult.extracted.product_name ?? ''
+      const quantity = haikuResult.extracted.quantity ?? 1
+
+      if (!productName.trim()) {
+        void logInteraction(supabase, tenant_id, message, 'create_production_issue', haikuResult.extracted as Record<string, unknown>, null, false, 'no product name')
+        return respond({ status: 'ok', intent: 'create_production_issue', confirm: { status: 'blocked', reason: 'Please provide a product name.' } })
+      }
+
+      const productMatches = findProductMatches(productName, context.products)
+
+      if (productMatches.length === 0) {
+        void logInteraction(supabase, tenant_id, message, 'create_production_issue', haikuResult.extracted as Record<string, unknown>, 'no_match', false, 'product not found')
+        return respond({ status: 'ok', intent: 'create_production_issue', confirm: { status: 'blocked', reason: `Couldn't find a product matching "${productName}".` } })
+      }
+
+      if (productMatches.length > 1) {
+        const names = productMatches.map(p => p.name).join(', ')
+        void logInteraction(supabase, tenant_id, message, 'create_production_issue', haikuResult.extracted as Record<string, unknown>, 'ambiguous', false, 'ambiguous product')
+        return respond({ status: 'ok', intent: 'create_production_issue', confirm: { status: 'blocked', reason: `"${productName}" is ambiguous — did you mean ${names}?` } })
+      }
+
+      const product = productMatches[0]
+
+      // Fetch BOM
+      const { data: bomRows, error: bomError } = await supabase
+        .from('p2_product_bom')
+        .select('raw_material_id, qty_per_unit, unit')
+        .eq('tenant_id', tenant_id)
+        .eq('product_id', product.id)
+
+      if (bomError) {
+        void logInteraction(supabase, tenant_id, message, 'create_production_issue', haikuResult.extracted as Record<string, unknown>, null, false, 'bom fetch error')
+        return respond({ status: 'error', error: 'Could not fetch BOM.' }, 500)
+      }
+
+      if (!bomRows?.length) {
+        void logInteraction(supabase, tenant_id, message, 'create_production_issue', haikuResult.extracted as Record<string, unknown>, 'no_match', false, 'empty bom')
+        return respond({ status: 'ok', intent: 'create_production_issue', confirm: { status: 'blocked', reason: `${product.name} cha BOM define nahi aahe. Please products.html madhun BOM add kara.` } })
+      }
+
+      // Build BOM lines with stock sufficiency check
+      const materialMap = new Map(context.materials.map(m => [m.id, m]))
+      const stockMap = new Map(context.stockBalances.map(b => [b.raw_material_id, b]))
+
+      const bomLines: BomLine[] = (bomRows as { raw_material_id: string; qty_per_unit: number; unit: string }[]).map(row => {
+        const mat = materialMap.get(row.raw_material_id)
+        const stock = stockMap.get(row.raw_material_id)
+        const requiredQty = Math.round(row.qty_per_unit * quantity * 10000) / 10000
+        const currentStock = stock?.current_stock ?? 0
+        return {
+          raw_material_id: row.raw_material_id,
+          material_name: mat?.name ?? 'Unknown',
+          material_code: mat?.material_code ?? null,
+          required_qty: requiredQty,
+          unit: row.unit,
+          current_stock: currentStock,
+          sufficient: currentStock >= requiredQty,
+        }
+      })
+
+      const insufficientLines = bomLines.filter(line => !line.sufficient)
+
+      if (insufficientLines.length > 0) {
+        const shortLines = insufficientLines.map(line => {
+          const codeStr = line.material_code ? ` [${line.material_code}]` : ''
+          return `• ${line.material_name}${codeStr}: stock ${line.current_stock} ${line.unit}, need ${line.required_qty} ${line.unit}`
+        })
+        const blockedReason = `Stock insufficient for ${product.name} × ${quantity}:\n\n${shortLines.join('\n')}\n\nPlease receive the missing materials first.`
+        void logInteraction(supabase, tenant_id, message, 'create_production_issue', haikuResult.extracted as Record<string, unknown>, 'no_match', false, 'insufficient_stock')
+        return respond({
+          status: 'ok',
+          intent: 'create_production_issue',
+          confirm: { status: 'blocked', reason: blockedReason }
+        })
+      }
+
+      // Build confirm text
+      const lines = bomLines.map(line => {
+        const codeStr = line.material_code ? ` [${line.material_code}]` : ''
+        const stockStr = line.sufficient
+          ? '✓'
+          : `⚠ (stock: ${line.current_stock} ${line.unit}, need: ${line.required_qty} ${line.unit})`
+        return `• ${line.material_name}${codeStr} — ${line.required_qty} ${line.unit}  ${stockStr}`
+      })
+
+      const confirmText = `📦 Production Issue — ${product.name} × ${quantity}\n\nMaterial deductions:\n${lines.join('\n')}`
+
+      void logInteraction(supabase, tenant_id, message, 'create_production_issue', haikuResult.extracted as Record<string, unknown>, 'matched', true, null)
+
+      return respond({
+        status: 'ok',
+        intent: 'create_production_issue',
+        confirm: {
+          status: 'ready',
+          confirm_text: confirmText,
+          confirm_data: {
+            product_id: product.id,
+            product_name: product.name,
+            quantity,
+            bom_lines: bomLines,
+          }
+        }
+      })
+    }
+
+    if (haikuResult.intent === 'create_product_dispatch') {
+      const dispatchItems = haikuResult.extracted.dispatch_items ?? []
+
+      if (dispatchItems.length === 0) {
+        void logInteraction(supabase, tenant_id, message, 'create_product_dispatch', haikuResult.extracted as Record<string, unknown>, null, false, 'no dispatch items')
+        return respond({ status: 'ok', intent: 'create_product_dispatch', confirm: { status: 'blocked', reason: 'Please mention at least one product to dispatch.' } })
+      }
+
+      const materialMap = new Map(context.materials.map(m => [m.id, m]))
+      const stockMap = new Map(context.stockBalances.map(b => [b.raw_material_id, b]))
+
+      const okItems: { product: Product; quantity: number; unit: string; bomLines: BomLine[] }[] = []
+      const blockedReasons: string[] = []
+
+      for (const dispatchItem of dispatchItems) {
+        const productName = dispatchItem.product_name ?? ''
+        const quantity = dispatchItem.quantity ?? 1
+
+        if (!productName.trim()) {
+          blockedReasons.push('No product name was found for one item.')
+          continue
+        }
+
+        const productMatches = findProductMatches(productName, context.products)
+
+        if (productMatches.length === 0) {
+          blockedReasons.push(`Couldn't find a product matching "${productName}".`)
+          continue
+        }
+
+        if (productMatches.length > 1) {
+          const names = productMatches.map(p => p.name).join(', ')
+          blockedReasons.push(`"${productName}" is ambiguous — did you mean ${names}?`)
+          continue
+        }
+
+        const product = productMatches[0]
+
+        const { data: bomRows, error: bomError } = await supabase
+          .from('p2_product_bom')
+          .select('raw_material_id, qty_per_unit, unit')
+          .eq('tenant_id', tenant_id)
+          .eq('product_id', product.id)
+
+        if (bomError) {
+          blockedReasons.push(`Could not fetch BOM for ${product.name}.`)
+          continue
+        }
+
+        if (!bomRows?.length) {
+          blockedReasons.push(`${product.name} cha BOM define nahi aahe. Please products.html madhun BOM add kara.`)
+          continue
+        }
+
+        const exploded = explodeBomQty(bomRows as { raw_material_id: string; qty_per_unit: number; unit: string }[], quantity)
+
+        const bomLines: BomLine[] = exploded.map(row => {
+          const mat = materialMap.get(row.raw_material_id)
+          const stock = stockMap.get(row.raw_material_id)
+          const currentStock = stock?.current_stock ?? 0
+          return {
+            raw_material_id: row.raw_material_id,
+            material_name: mat?.name ?? 'Unknown',
+            material_code: mat?.material_code ?? null,
+            required_qty: row.qty,
+            unit: row.unit,
+            current_stock: currentStock,
+            sufficient: currentStock >= row.qty,
+          }
+        })
+
+        const insufficientLines = bomLines.filter(line => !line.sufficient)
+
+        if (insufficientLines.length > 0) {
+          const shortLines = insufficientLines.map(line => `• ${line.material_name}${codeTag(line.material_code)}: stock ${line.current_stock} ${line.unit}, need ${line.required_qty} ${line.unit}`)
+          blockedReasons.push(`Stock insufficient for ${product.name} × ${quantity}:\n${shortLines.join('\n')}`)
+          continue
+        }
+
+        okItems.push({ product, quantity, unit: product.unit || 'NOS', bomLines })
+      }
+
+      if (blockedReasons.length > 0) {
+        void logInteraction(supabase, tenant_id, message, 'create_product_dispatch', haikuResult.extracted as Record<string, unknown>, null, false, 'blocked')
+        return respond({ status: 'ok', intent: 'create_product_dispatch', confirm: { status: 'blocked', reason: blockedReasons.join('\n\n') } })
+      }
+
+      const confirmLines = okItems.map(it => `• ${it.quantity} × ${it.product.name}${codeTag(it.product.product_code)} (${it.unit})`)
+      const confirmText = `🚚 Product Dispatch\n\nItems:\n${confirmLines.join('\n')}\n\nClient info required after confirm.`
+
+      void logInteraction(supabase, tenant_id, message, 'create_product_dispatch', haikuResult.extracted as Record<string, unknown>, 'matched', true, null)
+
+      return respond({
+        status: 'ok',
+        intent: 'create_product_dispatch',
+        confirm: {
+          status: 'ready',
+          confirm_text: confirmText,
+          confirm_data: {
+            items: okItems.map(it => ({
+              product_id: it.product.id,
+              product_name: it.product.name,
+              quantity: it.quantity,
+              unit: it.unit,
+              bom_lines: it.bomLines.map(l => ({ raw_material_id: l.raw_material_id, qty: l.required_qty })),
+            })),
+          },
+        },
+      })
+    }
+
+    if (haikuResult.intent === 'create_rm_dispatch') {
+      const items = haikuResult.extracted.items ?? []
+
+      if (items.length === 0) {
+        void logInteraction(supabase, tenant_id, message, 'create_rm_dispatch', haikuResult.extracted as Record<string, unknown>, null, false, 'no items')
+        return respond({ status: 'ok', intent: 'create_rm_dispatch', confirm: { status: 'blocked', reason: 'Please mention at least one material to dispatch.' } })
+      }
+
+      const stockMap = new Map(context.stockBalances.map(b => [b.raw_material_id, b]))
+
+      const okItems: { material: RawMaterial; quantity: number; unit: string }[] = []
+      const blockedReasons: string[] = []
+
+      for (const item of items) {
+        if (!item.material_name || !item.material_name.trim()) {
+          blockedReasons.push('No material name was found for one item.')
+          continue
+        }
+
+        const matchResult = matchMaterialName(item.material_name, context.materials)
+
+        if ('error' in matchResult) {
+          blockedReasons.push(matchResult.error)
+          continue
+        }
+
+        const material = matchResult.material
+        const quantity = item.quantity
+
+        if (typeof quantity !== 'number' || !Number.isFinite(quantity) || quantity <= 0) {
+          blockedReasons.push(`No valid quantity was found for ${material.name}.`)
+          continue
+        }
+
+        const currentStock = stockMap.get(material.id)?.current_stock ?? 0
+
+        if (currentStock < quantity) {
+          blockedReasons.push(`${material.name}${codeTag(material.material_code)}: stock ${currentStock} ${material.unit}, need ${quantity} ${material.unit}.`)
+          continue
+        }
+
+        okItems.push({ material, quantity, unit: material.unit })
+      }
+
+      if (blockedReasons.length > 0) {
+        void logInteraction(supabase, tenant_id, message, 'create_rm_dispatch', haikuResult.extracted as Record<string, unknown>, null, false, 'blocked')
+        return respond({ status: 'ok', intent: 'create_rm_dispatch', confirm: { status: 'blocked', reason: blockedReasons.join('\n\n') } })
+      }
+
+      const confirmLines = okItems.map(it => `• ${it.quantity} ${it.unit} of ${it.material.name}${codeTag(it.material.material_code)}`)
+      const confirmText = `🚚 RM Dispatch\n\nMaterials:\n${confirmLines.join('\n')}\n\nClient info required after confirm.`
+
+      void logInteraction(supabase, tenant_id, message, 'create_rm_dispatch', haikuResult.extracted as Record<string, unknown>, 'matched', true, null)
+
+      return respond({
+        status: 'ok',
+        intent: 'create_rm_dispatch',
+        confirm: {
+          status: 'ready',
+          confirm_text: confirmText,
+          confirm_data: {
+            items: okItems.map(it => ({
+              raw_material_id: it.material.id,
+              material_name: it.material.name,
+              material_code: it.material.material_code,
+              quantity: it.quantity,
+              unit: it.unit,
+            })),
+          },
+        },
       })
     }
 

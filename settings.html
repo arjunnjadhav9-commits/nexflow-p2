@@ -163,6 +163,7 @@
         <button id="tab-staff"      class="nx-stab owner-only" data-en="Staff"  data-mr="कर्मचारी">Staff</button>
         <button id="tab-materials"  class="nx-stab" data-en="Raw Materials"    data-mr="कच्चा माल">Raw Materials</button>
         <button id="tab-suppliers"  class="nx-stab" data-en="Suppliers"        data-mr="पुरवठादार">Suppliers</button>
+        <button id="tab-clients"    class="nx-stab" data-en="Clients"          data-mr="क्लायंट">Clients</button>
         <button id="tab-adjustment" class="nx-stab owner-only" data-en="Stock Adjustment" data-mr="साठा दुरुस्ती">Stock Adjustment</button>
         <button id="tab-prices"     class="nx-stab owner-only" data-en="💰 Prices" data-mr="💰 किंमती">💰 Prices</button>
     </div>
@@ -596,6 +597,56 @@
         </div>
     </div>
 
+    <!-- ── CLIENTS ────────────────────────────────────── -->
+    <div id="content-clients" class="tab-panel">
+        <div class="nx-grid-2" style="align-items:start;">
+            <div class="nx-card owner-only">
+                <div class="nx-card-header">
+                    <div class="nx-card-title" data-en="Add Client" data-mr="क्लायंट जोडा">Add Client</div>
+                </div>
+                <form id="add-client-form" class="nx-form">
+                    <div class="nx-form-group">
+                        <label data-en="Client Name" data-mr="क्लायंटचे नाव">Client Name</label>
+                        <input type="text" name="name" class="nx-input" placeholder="Client Name" data-en="Client Name" data-mr="क्लायंटचे नाव">
+                    </div>
+                    <div class="nx-form-group">
+                        <label data-en="Email for challan delivery" data-mr="चलान पाठवण्यासाठी ईमेल">Email for challan delivery</label>
+                        <input type="email" name="email" class="nx-input" placeholder="client@example.com" data-en="Email for challan delivery" data-mr="चलान पाठवण्यासाठी ईमेल">
+                    </div>
+                    <div class="nx-form-group">
+                        <label data-en="Address" data-mr="पत्ता">Address</label>
+                        <textarea name="address" class="nx-input" rows="3" placeholder="Address" data-en="Address" data-mr="पत्ता" style="resize:vertical;"></textarea>
+                    </div>
+                    <div class="nx-form-group">
+                        <label data-en="PO Number" data-mr="पीओ क्रमांक">PO Number</label>
+                        <input type="text" name="po_number" class="nx-input" placeholder="PO Number" data-en="PO Number" data-mr="पीओ क्रमांक">
+                    </div>
+                    <button type="submit" id="client-add-btn" class="nx-btn nx-btn-primary nx-btn-full" data-en="Add Client" data-mr="क्लायंट जोडा">Add Client</button>
+                </form>
+            </div>
+
+            <div class="nx-card">
+                <div class="nx-card-header">
+                    <div class="nx-card-title" data-en="Clients List" data-mr="क्लायंट यादी">Clients List</div>
+                    <span id="clients-count" style="font-size:12px; color:var(--mid);">0</span>
+                </div>
+                <div class="nx-table-wrap">
+                    <table class="nx-table">
+                        <thead>
+                            <tr>
+                                <th data-en="Name"    data-mr="नाव">Name</th>
+                                <th data-en="Email"   data-mr="ईमेल">Email</th>
+                                <th data-en="Address" data-mr="पत्ता">Address</th>
+                                <th class="owner-only" data-en="Actions" data-mr="क्रिया">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="clients-list"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- ── STOCK ADJUSTMENT ───────────────────────────── -->
     <div id="content-adjustment" class="tab-panel owner-only">
         <div class="nx-grid-2" style="align-items:start;">
@@ -844,7 +895,7 @@
     }
 
     // ── TAB SWITCHING ─────────────────────────────────────────────────────────
-    const tabs = ['company','challan','telegram','staff','materials','suppliers','adjustment','prices'];
+    const tabs = ['company','challan','telegram','staff','materials','suppliers','clients','adjustment','prices'];
 
     function switchToTab(activeTab) {
         tabs.forEach(tab => {
@@ -1185,6 +1236,145 @@
         } catch (error) {
             console.error('Error deactivating supplier:', error);
             toast(localStorage.getItem('nexflow_lang')==='mr'?'पुरवठादार निष्क्रिय करण्यात अयशस्वी':'Failed to deactivate supplier','error');
+        }
+    }
+
+    // ── LOAD CLIENTS ──────────────────────────────────────────────────────────
+    let clientsCache = [];
+    const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    const escAttr = (val) => (val || '').replace(/"/g, '&quot;');
+
+    function clientViewRow(client) {
+        const noEmailBadge = !client.email
+            ? `<span style="background:var(--yellow-dim);color:var(--yellow);font-size:11px;padding:2px 6px;border-radius:4px;margin-left:8px;">No email</span>`
+            : '';
+        return `
+            <td class="nx-td-bold">${client.name}${noEmailBadge}</td>
+            <td>${client.email || `<span style="color:var(--mid);">No email</span>`}</td>
+            <td style="font-size:12px; color:var(--mid);">${client.address || ''}</td>
+            <td class="owner-only">
+                <button onclick="editClient('${client.id}')" class="nx-btn nx-btn-ghost nx-btn-sm" data-en="Edit" data-mr="संपादित करा">Edit</button>
+                <button onclick="deleteClient('${client.id}')" class="nx-btn nx-btn-danger nx-btn-sm" data-en="Delete" data-mr="काढा">Delete</button>
+            </td>
+        `;
+    }
+
+    async function loadClients() {
+        try {
+            const { data: { user } } = await window.supabase.auth.getUser();
+            if (!user) return;
+            const { data, error } = await window.supabase.from('p2_clients')
+                .select('*').eq('tenant_id', user.id).order('name');
+            if (error) throw error;
+
+            clientsCache = data || [];
+            const tbody = document.getElementById('clients-list');
+            tbody.innerHTML = '';
+            clientsCache.forEach(client => {
+                const row = document.createElement('tr');
+                row.id = `client-row-${client.id}`;
+                row.innerHTML = clientViewRow(client);
+                tbody.appendChild(row);
+            });
+            const countEl = document.getElementById('clients-count');
+            if (countEl) countEl.textContent = clientsCache.length;
+            const lang = localStorage.getItem('nexflow_lang') || 'en';
+            applyLang(lang);
+            applyRoleVisibility();
+        } catch (error) {
+            console.error('Error loading clients:', error);
+        }
+    }
+
+    document.getElementById('add-client-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const formData  = new FormData(e.target);
+        const name      = formData.get('name')?.trim();
+        const email     = formData.get('email')?.trim();
+        const address   = formData.get('address')?.trim();
+        const po_number = formData.get('po_number')?.trim();
+        const lang      = localStorage.getItem('nexflow_lang') || 'en';
+
+        if (!name) { toast(lang==='mr'?'कृपया क्लायंटचे नाव प्रविष्ट करा':'Please enter client name','error'); return; }
+        if (email && !isValidEmail(email)) { toast(lang==='mr'?'कृपया वैध ईमेल प्रविष्ट करा':'Please enter a valid email address','error'); return; }
+
+        try {
+            const { data: { user } } = await window.supabase.auth.getUser();
+            if (!user) { toast('Not authenticated','error'); return; }
+            const { error } = await window.supabase.from('p2_clients')
+                .insert({ name, email: email || null, address: address || null, po_number: po_number || null, tenant_id: user.id });
+            if (error) throw error;
+            toast(lang==='mr'?'क्लायंट यशस्वीरित्या जोडला':'Client added successfully','success');
+            e.target.reset();
+            loadClients();
+        } catch (error) {
+            console.error('Error adding client:', error);
+            toast(lang==='mr'?'क्लायंट जोडण्यात अयशस्वी':'Failed to add client','error');
+        }
+    });
+
+    function editClient(clientId) {
+        if (window.isDemo) { toast('Demo mode — read only. Contact Arjun to get access.','info'); return; }
+        const client = clientsCache.find(c => c.id === clientId);
+        const row = document.getElementById(`client-row-${clientId}`);
+        if (!client || !row) return;
+        row.innerHTML = `
+            <td><input type="text" class="nx-input" id="edit-name-${clientId}" value="${escAttr(client.name)}"></td>
+            <td><input type="email" class="nx-input" id="edit-email-${clientId}" value="${escAttr(client.email)}"></td>
+            <td>
+                <input type="text" class="nx-input" id="edit-address-${clientId}" value="${escAttr(client.address)}" placeholder="Address" style="margin-bottom:4px;">
+                <input type="text" class="nx-input" id="edit-po-${clientId}" value="${escAttr(client.po_number)}" placeholder="PO Number">
+            </td>
+            <td class="owner-only">
+                <button onclick="saveClient('${clientId}')" class="nx-btn nx-btn-primary nx-btn-sm" data-en="Save" data-mr="जतन करा">Save</button>
+                <button onclick="cancelEditClient('${clientId}')" class="nx-btn nx-btn-ghost nx-btn-sm" data-en="Cancel" data-mr="रद्द करा">Cancel</button>
+            </td>
+        `;
+        applyLang(localStorage.getItem('nexflow_lang') || 'en');
+    }
+
+    function cancelEditClient(clientId) {
+        const client = clientsCache.find(c => c.id === clientId);
+        const row = document.getElementById(`client-row-${clientId}`);
+        if (!client || !row) return;
+        row.innerHTML = clientViewRow(client);
+        applyLang(localStorage.getItem('nexflow_lang') || 'en');
+    }
+
+    async function saveClient(clientId) {
+        const lang    = localStorage.getItem('nexflow_lang') || 'en';
+        const name    = document.getElementById(`edit-name-${clientId}`)?.value.trim();
+        const email   = document.getElementById(`edit-email-${clientId}`)?.value.trim();
+        const address = document.getElementById(`edit-address-${clientId}`)?.value.trim();
+        const po_number = document.getElementById(`edit-po-${clientId}`)?.value.trim();
+
+        if (!name) { toast(lang==='mr'?'कृपया क्लायंटचे नाव प्रविष्ट करा':'Please enter client name','error'); return; }
+        if (email && !isValidEmail(email)) { toast(lang==='mr'?'कृपया वैध ईमेल प्रविष्ट करा':'Please enter a valid email address','error'); return; }
+
+        try {
+            const { error } = await window.supabase.from('p2_clients')
+                .update({ name, email: email || null, address: address || null, po_number: po_number || null })
+                .eq('id', clientId);
+            if (error) throw error;
+            toast(lang==='mr'?'क्लायंट अद्ययावत झाला':'Client updated','success');
+            loadClients();
+        } catch (error) {
+            console.error('Error updating client:', error);
+            toast(lang==='mr'?'क्लायंट अद्ययावत करण्यात अयशस्वी':'Failed to update client','error');
+        }
+    }
+
+    async function deleteClient(clientId) {
+        if (window.isDemo) { toast('Demo mode — read only. Contact Arjun to get access.','info'); return; }
+        const lang = localStorage.getItem('nexflow_lang') || 'en';
+        if (!confirm(lang==='mr'?'या क्लायंटला काढायचे आहे का?':'Are you sure you want to delete this client?')) return;
+        try {
+            const { error } = await window.supabase.from('p2_clients').delete().eq('id', clientId);
+            if (error) throw error;
+            loadClients();
+        } catch (error) {
+            console.error('Error deleting client:', error);
+            toast(lang==='mr'?'क्लायंट काढण्यात अयशस्वी':'Failed to delete client','error');
         }
     }
 
@@ -1965,7 +2155,7 @@
         applyDemoModeToForms();
 
         if (window.isDemo) {
-            ['bulk-import-btn','price-import-btn','btn-print-qr'].forEach(id => {
+            ['bulk-import-btn','price-import-btn','btn-print-qr','client-add-btn'].forEach(id => {
                 const btn = document.getElementById(id);
                 if (btn) {
                     btn.disabled = true; btn.style.opacity = '0.4'; btn.style.cursor = 'not-allowed';
@@ -1978,6 +2168,7 @@
             window.submitProductPrice = () => toast('Demo mode — read only. Contact Arjun to get access.','info');
             window.submitPriceImport = () => toast('Demo mode — read only. Contact Arjun to get access.','info');
             window.openQRModal = () => toast('Demo mode — read only. Contact Arjun to get access.','info');
+            window.submitClient = () => toast('Demo mode — read only. Contact Arjun to get access.','info');
         }
 
         const saved = localStorage.getItem('nexflow_lang') || 'en';
@@ -1995,6 +2186,7 @@
             if (isPro()) document.getElementById('btn-print-qr').style.display = '';
         });
         document.getElementById('tab-suppliers').addEventListener('click',  () => { switchToTab('suppliers');  loadSuppliers(); });
+        document.getElementById('tab-clients').addEventListener('click',    () => { switchToTab('clients');    loadClients(); });
         document.getElementById('tab-adjustment').addEventListener('click', () => { switchToTab('adjustment'); loadAdjustmentMaterials(); loadRecentAdjustments(); });
         document.getElementById('tab-prices').addEventListener('click',     () => { switchToTab('prices');     loadPricesTab(); });
 

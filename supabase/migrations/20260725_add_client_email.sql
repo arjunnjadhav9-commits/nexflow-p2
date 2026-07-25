@@ -1,0 +1,1 @@
+ALTER TABLE p2_clients ADD COLUMN IF NOT EXISTS email text;

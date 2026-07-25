@@ -149,6 +149,9 @@
                     data-en="✏️ Edit Text" data-mr="✏️ मजकूर बदला">
                 ✏️ Edit Text
             </button>
+            <button id="editClientBtn" class="nx-btn nx-btn-secondary" style="display:none;" onclick="openEditClientModal()">
+                👤 Edit Client
+            </button>
             <button id="printBtn" onclick="handlePrint()" class="nx-btn nx-btn-green"
                     data-en="Print Challan" data-mr="चलान प्रिंट करा">
                 🖨️ Print Challan
@@ -339,6 +342,7 @@
 
         function populateChallan(order, items, settings) {
             window.currentSettings = settings;
+            window._challanOrder = order;
 
             const companyHeader = document.getElementById('company-header');
             if (settings && settings.logo_url) {
@@ -360,6 +364,10 @@
 
             document.getElementById('client-details').innerHTML =
                 `<div style="font-weight:700;">${order.client_name || 'N/A'}</div><div>${order.client_address || ''}</div>`;
+
+            if (order.dispatch_type === 'bom_issue' && !order.client_name) {
+                document.getElementById('editClientBtn').style.display = '';
+            }
 
             const rawChallan = order.challan_number || (settings?.challan_sequence || 1000);
             const challanNumber = String(rawChallan).replace(/^CHAL-\d{8}-/, '');
@@ -484,6 +492,93 @@
                     .then(({ error }) => {
                         if (error) console.error('Failed to save challan note:', error);
                     });
+            }
+        }
+
+        function openEditClientModal() {
+            document.getElementById('ec-client-name').value    = window._challanOrder?.client_name || '';
+            document.getElementById('ec-client-address').value = window._challanOrder?.client_address || '';
+            document.getElementById('ec-po-number').value      = window._challanOrder?.po_number || '';
+            document.getElementById('ec-vehicle').value        = window._challanOrder?.vehicle_number || '';
+            document.getElementById('ec-error').style.display  = 'none';
+            document.getElementById('editClientModal').style.display = 'flex';
+            setTimeout(() => document.getElementById('ec-client-name').focus(), 80);
+        }
+
+        function closeEditClientModal() {
+            document.getElementById('editClientModal').style.display = 'none';
+        }
+
+        async function saveClientInfo() {
+            const clientName    = document.getElementById('ec-client-name').value.trim();
+            const clientAddress = document.getElementById('ec-client-address').value.trim();
+            const poNumber      = document.getElementById('ec-po-number').value.trim();
+            const vehicleNumber = document.getElementById('ec-vehicle').value.trim();
+            const errEl         = document.getElementById('ec-error');
+            const saveBtn       = document.getElementById('ec-save-btn');
+
+            if (!clientName) {
+                errEl.textContent = 'Client name is required.';
+                errEl.style.display = 'block';
+                return;
+            }
+
+            saveBtn.disabled = true;
+            saveBtn.textContent = 'Saving...';
+            errEl.style.display = 'none';
+
+            try {
+                const { error } = await window.supabase
+                    .from('p2_dispatch_orders')
+                    .update({
+                        client_name:    clientName,
+                        client_address: clientAddress || null,
+                        po_number:      poNumber      || null,
+                        vehicle_number: vehicleNumber || null,
+                        updated_at:     new Date().toISOString()
+                    })
+                    .eq('id', dispatchOrderId);
+
+                if (error) throw error;
+
+                if (window._challanOrder) {
+                    window._challanOrder.client_name    = clientName;
+                    window._challanOrder.client_address = clientAddress || null;
+                    window._challanOrder.po_number      = poNumber      || null;
+                    window._challanOrder.vehicle_number = vehicleNumber || null;
+                }
+
+                document.getElementById('client-details').innerHTML =
+                    `<div style="font-weight:700;">${clientName}</div><div>${clientAddress || ''}</div>`;
+
+                document.getElementById('po-no').textContent = poNumber || 'N/A';
+
+                document.getElementById('editClientBtn').style.display = 'none';
+
+                // Persist client for future autocomplete suggestions
+                const { data: { user } } = await window.supabase.auth.getUser();
+                if (user && clientName) {
+                    window.supabase.from('p2_clients').upsert(
+                        { tenant_id: user.id, name: clientName, address: clientAddress || null },
+                        { onConflict: 'tenant_id,name' }
+                    ).then(() => {}).catch(() => {});
+
+                    if (poNumber) {
+                        window.supabase.from('p2_client_po_numbers').upsert(
+                            { tenant_id: user.id, client_name: clientName, po_number: poNumber },
+                            { onConflict: 'tenant_id,client_name,po_number' }
+                        ).then(() => {}).catch(() => {});
+                    }
+                }
+
+                closeEditClientModal();
+
+            } catch (err) {
+                errEl.textContent = 'Failed to save: ' + (err.message || 'Unknown error');
+                errEl.style.display = 'block';
+            } finally {
+                saveBtn.disabled = false;
+                saveBtn.textContent = 'Save';
             }
         }
 
@@ -675,5 +770,47 @@
             loadChallan();
         });
     </script>
+
+    <div id="editClientModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.65); z-index:200; align-items:center; justify-content:center; padding:20px;">
+      <div style="background:var(--surface); border:1px solid var(--border2); border-radius:var(--radius-lg, 12px); padding:28px; width:100%; max-width:480px; box-shadow:var(--shadow-md);">
+        <div style="font-family:var(--condensed); font-size:16px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; color:var(--white); margin-bottom:10px;">Edit Client Info</div>
+        <div style="font-size:13px; color:var(--mid); margin-bottom:16px;">Update client details for this production issue challan.</div>
+
+        <div style="display:flex; flex-direction:column; gap:6px; margin-bottom:14px;">
+          <label style="font-size:11px; font-weight:700; color:var(--mid); text-transform:uppercase; letter-spacing:0.5px;">Client Name *</label>
+          <input type="text" id="ec-client-name"
+                 style="width:100%; padding:10px 13px; background:var(--surface3); border:1px solid var(--border2); border-radius:var(--radius,8px); font-size:14px; font-family:var(--font); color:var(--text);"
+                 placeholder="Enter client name" autocomplete="off">
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:6px; margin-bottom:14px;">
+          <label style="font-size:11px; font-weight:700; color:var(--mid); text-transform:uppercase; letter-spacing:0.5px;">Client Address</label>
+          <textarea id="ec-client-address" rows="2"
+                 style="width:100%; padding:10px 13px; background:var(--surface3); border:1px solid var(--border2); border-radius:var(--radius,8px); font-size:14px; font-family:var(--font); color:var(--text); resize:vertical;"></textarea>
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px;">
+          <div style="display:flex; flex-direction:column; gap:6px;">
+            <label style="font-size:11px; font-weight:700; color:var(--mid); text-transform:uppercase; letter-spacing:0.5px;">PO Number</label>
+            <input type="text" id="ec-po-number"
+                   style="width:100%; padding:10px 13px; background:var(--surface3); border:1px solid var(--border2); border-radius:var(--radius,8px); font-size:14px; font-family:var(--font); color:var(--text);"
+                   placeholder="Optional">
+          </div>
+          <div style="display:flex; flex-direction:column; gap:6px;">
+            <label style="font-size:11px; font-weight:700; color:var(--mid); text-transform:uppercase; letter-spacing:0.5px;">Transport</label>
+            <input type="text" id="ec-vehicle"
+                   style="width:100%; padding:10px 13px; background:var(--surface3); border:1px solid var(--border2); border-radius:var(--radius,8px); font-size:14px; font-family:var(--font); color:var(--text);"
+                   placeholder="Optional">
+          </div>
+        </div>
+
+        <div id="ec-error" style="display:none; color:#ef4444; font-size:12px; margin-bottom:10px;"></div>
+
+        <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:4px;">
+          <button class="nx-btn nx-btn-ghost" onclick="closeEditClientModal()">Cancel</button>
+          <button class="nx-btn nx-btn-primary" id="ec-save-btn" onclick="saveClientInfo()">Save</button>
+        </div>
+      </div>
+    </div>
 </body>
 </html>

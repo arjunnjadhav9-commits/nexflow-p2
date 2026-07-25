@@ -106,7 +106,7 @@
       font-family: var(--condensed); font-size: 10px; font-weight: 700; letter-spacing: 1.5px;
       text-transform: uppercase; color: var(--orange); margin-bottom: 8px;
     }
-    .nf-confirm-text { font-size: 14px; color: var(--text); line-height: 1.5; }
+    .nf-confirm-text { font-size: 14px; color: var(--text); line-height: 1.5; white-space: pre-wrap; }
     .nf-confirm-actions { display: flex; gap: 8px; margin-top: 8px; }
     .nf-btn-confirm, .nf-btn-cancel {
       flex: 1; padding: 7px 0; border-radius: var(--radius-sm); border: none; font-size: 13px; font-weight: 600; cursor: pointer; font-family: var(--font);
@@ -202,6 +202,29 @@
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
     .nf-search-result-chip:hover { border-color: var(--orange); color: var(--orange); background: var(--surface3); }
+    .nf-client-sublabel {
+      font-size: 11px; font-weight: 700; color: var(--orange);
+      margin-top: -4px; margin-bottom: 10px; font-family: var(--condensed, var(--font));
+      letter-spacing: 0.5px;
+    }
+    .nf-field-label {
+      font-size: 11px; font-weight: 700; color: var(--mid);
+      text-transform: uppercase; letter-spacing: 0.5px;
+      display: block; margin-bottom: 4px; margin-top: 8px;
+    }
+    .nf-field-label:first-of-type { margin-top: 0; }
+    .nf-field-input, .nf-field-textarea {
+      width: 100%; box-sizing: border-box;
+      background: var(--surface3); border: 1px solid var(--border2, var(--border));
+      color: var(--text); border-radius: var(--radius-sm); padding: 7px 10px;
+      font-size: 13px; font-family: var(--font);
+    }
+    .nf-field-input:focus, .nf-field-textarea:focus { border-color: var(--orange); outline: none; }
+    .nf-field-textarea { resize: vertical; }
+    .nf-field-row { display: flex; gap: 8px; }
+    .nf-field-row > div { flex: 1; min-width: 0; }
+    .nf-field-error { display: none; color: var(--red); font-size: 12px; margin-top: 8px; }
+    .nf-field-error.visible { display: block; }
   `;
   document.head.appendChild(style);
 
@@ -462,6 +485,535 @@
     });
   }
 
+  // Renders a combined create_grn confirm card for 2+ materials extracted
+  // from one message — all items share ONE GRN number via confirm_multi_grn
+  // (single-material messages keep using addConfirmCard/confirm_grn above,
+  // unchanged). On success, chains into addGrnRateCard() so rate/invoice can
+  // be entered immediately.
+  function addMultiGrnConfirmCard(items, supplierId, tenantId) {
+    const lines = items.map(item => {
+      const codeStr = item.data.material_code ? ` [${item.data.material_code}]` : '';
+      return `• ${item.data.material_name}${codeStr} — ${item.data.quantity} ${item.data.unit}`;
+    }).join('\n');
+
+    const supplierLine = items[0]?.data?.supplier_name ? `\nSupplier: ${items[0].data.supplier_name}` : '';
+    const confirmText = `📦 GRN — ${items.length} materials${supplierLine}\n\n${lines}`;
+
+    const card = document.createElement('div');
+    card.className = 'nf-confirm-card nf-msg-enter';
+    card.innerHTML = `
+      <div class="nf-confirm-label">AWAITING CONFIRMATION</div>
+      <div class="nf-confirm-text">${confirmText}</div>
+      <div class="nf-confirm-actions">
+        <button class="nf-btn-confirm">${t('Confirm', 'पुष्टी करा')}</button>
+        <button class="nf-btn-cancel">${t('Cancel', 'रद्द करा')}</button>
+      </div>
+    `;
+    messagesEl.appendChild(card);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+
+    const cancelBtn = card.querySelector('.nf-btn-cancel');
+    const confirmBtn = card.querySelector('.nf-btn-confirm');
+    const confirmBtnLabel = confirmBtn.textContent;
+
+    cancelBtn.addEventListener('click', () => {
+      card.remove();
+      addMessage(t('Cancelled.', 'रद्द केले.'), 'nf-msg-bot');
+    });
+
+    confirmBtn.addEventListener('click', async () => {
+      cancelBtn.disabled = true;
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = '...';
+      try {
+        const res = await fetch(EDGE_FUNCTION_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ANON_KEY}` },
+          body: JSON.stringify({
+            action: 'confirm_multi_grn',
+            tenant_id: tenantId,
+            supplier_id: supplierId ?? null,
+            items: items.map(item => ({
+              material_id: item.data.material_id,
+              quantity: item.data.quantity,
+              unit: item.data.unit,
+              material_name: item.data.material_name,
+              material_code: item.data.material_code ?? null,
+            })),
+          }),
+        });
+        const data = await res.json();
+
+        if (data.confirmed === true) {
+          card.remove();
+          addMessage(
+            t(`✅ GRN ${data.result.grn_no} saved — ${data.result.items.length} materials received.`,
+              `✅ GRN ${data.result.grn_no} जतन केले — ${data.result.items.length} साहित्य प्राप्त.`),
+            'nf-msg-bot'
+          );
+          addGrnRateCard(data.result.grn_no, data.result.items, tenantId);
+        } else if (data.confirmed === false) {
+          card.remove();
+          addMessage(data.error || t('Could not save. Please try again.', 'जतन करता आले नाही. पुन्हा प्रयत्न करा.'), 'nf-msg-error');
+        } else {
+          cancelBtn.disabled = false;
+          confirmBtn.disabled = false;
+          confirmBtn.textContent = confirmBtnLabel;
+          addMessage(t('Something went wrong — check your connection and try again.', 'काहीतरी चूक झाली — कनेक्शन तपासा आणि पुन्हा प्रयत्न करा.'), 'nf-msg-error');
+        }
+      } catch (err) {
+        cancelBtn.disabled = false;
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = confirmBtnLabel;
+        addMessage(t('Something went wrong — check your connection and try again.', 'काहीतरी चूक झाली — कनेक्शन तपासा आणि पुन्हा प्रयत्न करा.'), 'nf-msg-error');
+      }
+    });
+  }
+
+  // Renders the post-multi-GRN "Rate & Invoice" card — one row per material
+  // already saved by addMultiGrnConfirmCard(). Skip/Save semantics mirror
+  // addClientInfoCard(): Skip just dismisses, Save POSTs whatever is filled
+  // (blank fields stay null) via update_grn_rates.
+  function addGrnRateCard(grnNo, items, tenantId) {
+    const rowsHtml = items.map((item, idx) => {
+      const codeStr = item.material_code ? ` [${item.material_code}]` : '';
+      return `
+        <div style="border-bottom: 1px solid var(--border); padding: 10px 0; ${idx === items.length - 1 ? 'border-bottom:none;' : ''}">
+          <div style="font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 6px;">
+            ${item.material_name}${codeStr} — ${item.quantity} ${item.unit}
+          </div>
+          <div class="nf-field-row">
+            <div>
+              <label class="nf-field-label">${t('Rate (₹)', 'दर (₹)')}</label>
+              <input type="number" step="0.01" min="0" class="nf-field-input" data-txn-id="${item.transaction_id}" data-field="rate" placeholder="0.00" />
+            </div>
+            <div>
+              <label class="nf-field-label">${t('Invoice No', 'इनव्हॉइस क्र.')}</label>
+              <input type="text" class="nf-field-input" data-txn-id="${item.transaction_id}" data-field="invoice" placeholder="${t('Optional', 'वैकल्पिक')}" />
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    const card = document.createElement('div');
+    card.className = 'nf-confirm-card nf-msg-enter';
+    card.innerHTML = `
+      <div class="nf-confirm-label">📋 ${t('RATE & INVOICE', 'दर आणि इनव्हॉइस')}</div>
+      <div class="nf-client-sublabel">GRN ${grnNo}</div>
+      ${rowsHtml}
+      <div class="nf-field-error" data-field="error"></div>
+      <div class="nf-confirm-actions">
+        <button class="nf-btn-confirm" data-action="save">${t('Save', 'जतन करा')}</button>
+        <button class="nf-btn-cancel" data-action="skip">${t('Skip', 'वगळा')}</button>
+      </div>
+    `;
+    messagesEl.appendChild(card);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+
+    const saveBtn = card.querySelector('[data-action="save"]');
+    const skipBtn = card.querySelector('[data-action="skip"]');
+    const errorEl = card.querySelector('[data-field="error"]');
+    const saveBtnLabel = saveBtn.textContent;
+
+    skipBtn.addEventListener('click', () => {
+      card.remove();
+      addMessage(t('Skipped — rate and invoice can be updated from GRN history.', 'वगळले — दर आणि इनव्हॉइस GRN history मधून अपडेट करा.'), 'nf-msg-bot');
+    });
+
+    saveBtn.addEventListener('click', async () => {
+      errorEl.classList.remove('visible');
+      errorEl.textContent = '';
+      saveBtn.disabled = true;
+      skipBtn.disabled = true;
+      saveBtn.textContent = '...';
+
+      const updates = items.map(item => {
+        const rateInput = card.querySelector(`[data-txn-id="${item.transaction_id}"][data-field="rate"]`);
+        const invoiceInput = card.querySelector(`[data-txn-id="${item.transaction_id}"][data-field="invoice"]`);
+        const rateVal = rateInput?.value.trim();
+        const invoiceVal = invoiceInput?.value.trim();
+        return {
+          transaction_id: item.transaction_id,
+          rate: rateVal ? parseFloat(rateVal) : null,
+          invoice_no: invoiceVal || null,
+        };
+      });
+
+      try {
+        const res = await fetch(EDGE_FUNCTION_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ANON_KEY}` },
+          body: JSON.stringify({
+            action: 'update_grn_rates',
+            tenant_id: tenantId,
+            updates,
+          }),
+        });
+        const data = await res.json();
+        if (data.status === 'ok' && data.confirmed) {
+          card.remove();
+          addMessage(t('✅ Rate and invoice saved.', '✅ दर आणि इनव्हॉइस जतन केले.'), 'nf-msg-bot');
+        } else {
+          errorEl.textContent = data.error || t('Could not save. Please try again.', 'जतन करता आले नाही. पुन्हा प्रयत्न करा.');
+          errorEl.classList.add('visible');
+          saveBtn.disabled = false;
+          skipBtn.disabled = false;
+          saveBtn.textContent = saveBtnLabel;
+        }
+      } catch (err) {
+        errorEl.textContent = t('Something went wrong — check your connection and try again.', 'काहीतरी चूक झाली — कनेक्शन तपासा आणि पुन्हा प्रयत्न करा.');
+        errorEl.classList.add('visible');
+        saveBtn.disabled = false;
+        skipBtn.disabled = false;
+        saveBtn.textContent = saveBtnLabel;
+      }
+    });
+  }
+
+  // Renders a create_production_issue confirm card. Sends back ONLY IDs +
+  // quantity + the already-matched bom_lines on confirm — server re-fetches
+  // and re-validates everything at write time (mirrors addConfirmCard()).
+  // Unlike the GRN card, a non-success response doesn't always remove the
+  // card: a duplicate rejection (confirmed:false) is a definitive business
+  // outcome (the backend never accepts a force-retry from chat), so it's
+  // treated like GRN's error path — but a true server/network failure keeps
+  // the card and re-enables its buttons so the user can retry without
+  // burning another agent query on re-parsing the same message.
+  function addProductionIssueConfirmCard(confirmText, confirmData, tenantId) {
+    const card = document.createElement('div');
+    card.className = 'nf-confirm-card nf-msg-enter';
+    card.innerHTML = `
+      <div class="nf-confirm-label">AWAITING CONFIRMATION</div>
+      <div class="nf-confirm-text">${confirmText}</div>
+      <div class="nf-confirm-actions">
+        <button class="nf-btn-confirm">${t('Confirm', 'पुष्टी करा')}</button>
+        <button class="nf-btn-cancel">${t('Cancel', 'रद्द करा')}</button>
+      </div>
+    `;
+    messagesEl.appendChild(card);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+
+    const cancelBtn = card.querySelector('.nf-btn-cancel');
+    const confirmBtn = card.querySelector('.nf-btn-confirm');
+    const confirmBtnLabel = confirmBtn.textContent;
+
+    cancelBtn.addEventListener('click', () => {
+      card.remove();
+      addMessage(t('Cancelled.', 'रद्द केले.'), 'nf-msg-bot');
+    });
+
+    confirmBtn.addEventListener('click', async () => {
+      cancelBtn.disabled = true;
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = '...';
+      try {
+        const res = await fetch(EDGE_FUNCTION_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ANON_KEY}` },
+          body: JSON.stringify({
+            action: 'confirm_production_issue',
+            tenant_id: tenantId,
+            product_id: confirmData.product_id,
+            product_name: confirmData.product_name,
+            quantity: confirmData.quantity,
+            bom_lines: confirmData.bom_lines,
+          }),
+        });
+        const data = await res.json();
+
+        if (data.confirmed === true) {
+          card.remove();
+          if (data.next === 'client_info') {
+            addMessage(
+              t(
+                `✅ Challan ${data.result?.challan_number} — ${data.result?.product_name} × ${data.result?.quantity} issued.`,
+                `✅ चलन ${data.result?.challan_number} — ${data.result?.product_name} × ${data.result?.quantity} इश्यू झाले.`
+              ),
+              'nf-msg-bot'
+            );
+            addClientInfoCard(
+              data.result?.order_id,
+              data.result?.challan_number,
+              data.result?.product_name,
+              data.result?.quantity,
+              tenantId
+            );
+          } else {
+            addMessage(
+              t(
+                `✅ Production issue complete!\nChallan: ${data.result.challan_number}\n${data.result.product_name} × ${data.result.quantity} issued.`,
+                `✅ Production issue पूर्ण झाले!\nचलन: ${data.result.challan_number}\n${data.result.product_name} × ${data.result.quantity} इश्यू झाले.`
+              ),
+              'nf-msg-bot'
+            );
+          }
+        } else if (data.confirmed === false) {
+          card.remove();
+          addMessage(data.error || t('Could not save. Please try again.', 'जतन करता आले नाही. पुन्हा प्रयत्न करा.'), 'nf-msg-error');
+        } else {
+          // status === 'error' (or an unexpected shape) — a real failure,
+          // not a business rejection, so keep the card and let the user
+          // retry the same write without re-triggering the parse phase.
+          cancelBtn.disabled = false;
+          confirmBtn.disabled = false;
+          confirmBtn.textContent = confirmBtnLabel;
+          addMessage(t('Something went wrong — check your connection and try again.', 'काहीतरी चूक झाली — कनेक्शन तपासा आणि पुन्हा प्रयत्न करा.'), 'nf-msg-error');
+        }
+      } catch (err) {
+        cancelBtn.disabled = false;
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = confirmBtnLabel;
+        addMessage(t('Something went wrong — check your connection and try again.', 'काहीतरी चूक झाली — कनेक्शन तपासा आणि पुन्हा प्रयत्न करा.'), 'nf-msg-error');
+      }
+    });
+  }
+
+  // Renders a create_product_dispatch / create_rm_dispatch confirm card.
+  // dispatchType is 'product_dispatch' | 'rm_dispatch' so the POST action
+  // builds directly as `confirm_${dispatchType}`. Mirrors
+  // addProductionIssueConfirmCard's confirmed/not-confirmed/real-failure
+  // branching, but the client-info card is ALWAYS shown on success — not
+  // gated on data.next — since it's mandatory for these two intents.
+  function addDispatchConfirmCard(confirmText, confirmData, tenantId, dispatchType) {
+    const card = document.createElement('div');
+    card.className = 'nf-confirm-card nf-msg-enter';
+    card.innerHTML = `
+      <div class="nf-confirm-label">AWAITING CONFIRMATION</div>
+      <div class="nf-confirm-text">${confirmText}</div>
+      <div class="nf-confirm-actions">
+        <button class="nf-btn-confirm">${t('Confirm', 'पुष्टी करा')}</button>
+        <button class="nf-btn-cancel">${t('Cancel', 'रद्द करा')}</button>
+      </div>
+    `;
+    messagesEl.appendChild(card);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+
+    const cancelBtn = card.querySelector('.nf-btn-cancel');
+    const confirmBtn = card.querySelector('.nf-btn-confirm');
+    const confirmBtnLabel = confirmBtn.textContent;
+
+    cancelBtn.addEventListener('click', () => {
+      card.remove();
+      addMessage(t('Cancelled.', 'रद्द केले.'), 'nf-msg-bot');
+    });
+
+    confirmBtn.addEventListener('click', async () => {
+      cancelBtn.disabled = true;
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = '...';
+      try {
+        const res = await fetch(EDGE_FUNCTION_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ANON_KEY}` },
+          body: JSON.stringify({
+            action: `confirm_${dispatchType}`,
+            tenant_id: tenantId,
+            items: confirmData.items,
+          }),
+        });
+        const data = await res.json();
+
+        if (data.confirmed === true) {
+          card.remove();
+          addMessage(
+            t(
+              `✅ Challan ${data.result?.challan_number} created.`,
+              `✅ चलन ${data.result?.challan_number} तयार झाले.`
+            ),
+            'nf-msg-bot'
+          );
+          addClientInfoCard(data.result?.order_id, data.result?.challan_number, null, null, tenantId, true);
+        } else if (data.confirmed === false) {
+          card.remove();
+          addMessage(data.error || t('Could not save. Please try again.', 'जतन करता आले नाही. पुन्हा प्रयत्न करा.'), 'nf-msg-error');
+        } else {
+          // status === 'error' (or an unexpected shape) — a real failure,
+          // not a business rejection, so keep the card and let the user
+          // retry the same write without re-triggering the parse phase.
+          cancelBtn.disabled = false;
+          confirmBtn.disabled = false;
+          confirmBtn.textContent = confirmBtnLabel;
+          addMessage(t('Something went wrong — check your connection and try again.', 'काहीतरी चूक झाली — कनेक्शन तपासा आणि पुन्हा प्रयत्न करा.'), 'nf-msg-error');
+        }
+      } catch (err) {
+        cancelBtn.disabled = false;
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = confirmBtnLabel;
+        addMessage(t('Something went wrong — check your connection and try again.', 'काहीतरी चूक झाली — कनेक्शन तपासा आणि पुन्हा प्रयत्न करा.'), 'nf-msg-error');
+      }
+    });
+  }
+
+  // Populates the PO-number datalist for a given client. Takes card/tenantId/
+  // poListId explicitly (not closed over) so it can be called from the
+  // client-name change handler inside addClientInfoCard without nesting.
+  function loadPOSuggestions(clientName, tenantId, card, poListId) {
+    if (!clientName || !tenantId) return;
+    window.supabase
+      .from('p2_client_po_numbers')
+      .select('po_number')
+      .eq('tenant_id', tenantId)
+      .eq('client_name', clientName)
+      .order('created_at', { ascending: false })
+      .limit(20)
+      .then(({ data }) => {
+        const dl = card.querySelector('#' + CSS.escape(poListId));
+        if (!dl) return;
+        dl.innerHTML = '';
+        (data || []).forEach(row => {
+          const opt = document.createElement('option');
+          opt.value = row.po_number;
+          dl.appendChild(opt);
+        });
+      })
+      .catch(() => {});
+  }
+
+  let clientInfoCardSeq = 0;
+
+  // Renders the post-production-issue "Add Client Info" card. Unlike the
+  // confirm cards above, this has Skip/Save semantics rather than Cancel/
+  // Confirm — Skip just dismisses, Save POSTs to add_production_issue_client.
+  // datalist ids must be document-unique (the browser resolves an <input
+  // list="X"> via getElementById, not DOM proximity), hence the seq counter.
+  function addClientInfoCard(orderId, challanNumber, productName, quantity, tenantId, mandatory = false) {
+    const seq = ++clientInfoCardSeq;
+    const clientListId = `nf-client-suggestions-${seq}`;
+    const poListId = `nf-po-suggestions-${seq}`;
+
+    const card = document.createElement('div');
+    card.className = 'nf-confirm-card nf-msg-enter';
+    card.innerHTML = `
+      <div class="nf-confirm-label">📋 ${t('ADD CLIENT INFO', 'क्लायंट माहिती जोडा')}</div>
+      <div class="nf-client-sublabel">${t('CHALLAN', 'चलन')} ${challanNumber}</div>
+
+      <label class="nf-field-label">${t('Client Name', 'क्लायंटचे नाव')}</label>
+      <input type="text" class="nf-field-input" list="${clientListId}" data-field="client-name" autocomplete="off" />
+      <datalist id="${clientListId}"></datalist>
+
+      <label class="nf-field-label">${t('Client Address', 'क्लायंटचा पत्ता')}</label>
+      <textarea rows="2" class="nf-field-textarea" data-field="client-address"></textarea>
+
+      <div class="nf-field-row">
+        <div>
+          <label class="nf-field-label">${t('PO Number', 'PO क्रमांक')}</label>
+          <input type="text" class="nf-field-input" list="${poListId}" data-field="po-number" autocomplete="off" />
+          <datalist id="${poListId}"></datalist>
+        </div>
+        <div>
+          <label class="nf-field-label">${t('Transport', 'वाहतूक')}</label>
+          <input type="text" class="nf-field-input" data-field="vehicle" autocomplete="off" />
+        </div>
+      </div>
+
+      <div class="nf-field-error" data-field="error"></div>
+
+      <div class="nf-confirm-actions">
+        <button class="nf-btn-confirm" data-action="save">${t('Save', 'जतन करा')}</button>
+        <button class="nf-btn-cancel" data-action="skip">${t('Skip', 'वगळा')}</button>
+      </div>
+    `;
+    messagesEl.appendChild(card);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+
+    const nameInput = card.querySelector('[data-field="client-name"]');
+    const addressInput = card.querySelector('[data-field="client-address"]');
+    const poInput = card.querySelector('[data-field="po-number"]');
+    const vehicleInput = card.querySelector('[data-field="vehicle"]');
+    const errorEl = card.querySelector('[data-field="error"]');
+    const saveBtn = card.querySelector('[data-action="save"]');
+    const skipBtn = card.querySelector('[data-action="skip"]');
+    const saveBtnLabel = saveBtn.textContent;
+
+    if (mandatory) {
+      skipBtn.style.display = 'none';
+    }
+
+    let clientsMap = {};
+    window.supabase
+      .from('p2_clients')
+      .select('name, address')
+      .eq('tenant_id', tenantId)
+      .order('name')
+      .then(({ data }) => {
+        const dl = card.querySelector('#' + CSS.escape(clientListId));
+        (data || []).forEach(c => {
+          clientsMap[c.name.trim().toLowerCase()] = c;
+          const opt = document.createElement('option');
+          opt.value = c.name;
+          dl.appendChild(opt);
+        });
+      })
+      .catch(() => {});
+
+    nameInput.addEventListener('change', () => {
+      const key = nameInput.value.trim().toLowerCase();
+      const match = clientsMap[key];
+      if (match) addressInput.value = match.address || '';
+      if (nameInput.value.trim()) {
+        loadPOSuggestions(nameInput.value.trim(), tenantId, card, poListId);
+      }
+    });
+
+    skipBtn.addEventListener('click', () => {
+      card.remove();
+      addMessage(
+        t(
+          'Skipped — you can add client info from challan.html',
+          'वगळले — challan.html वरून client माहिती नंतर जोडा'
+        ),
+        'nf-msg-bot'
+      );
+    });
+
+    saveBtn.addEventListener('click', async () => {
+      const clientName = nameInput.value.trim();
+      errorEl.classList.remove('visible');
+      errorEl.textContent = '';
+      if (!clientName) {
+        errorEl.textContent = t('Client name is required.', 'क्लायंटचे नाव आवश्यक आहे.');
+        errorEl.classList.add('visible');
+        return;
+      }
+      saveBtn.disabled = true;
+      skipBtn.disabled = true;
+      saveBtn.textContent = '...';
+      try {
+        const res = await fetch(EDGE_FUNCTION_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ANON_KEY}` },
+          body: JSON.stringify({
+            action: 'add_production_issue_client',
+            tenant_id: tenantId,
+            order_id: orderId,
+            client_name: clientName,
+            client_address: addressInput.value.trim(),
+            po_number: poInput.value.trim(),
+            vehicle_number: vehicleInput.value.trim(),
+          }),
+        });
+        const data = await res.json();
+        if (data.status === 'ok' && data.confirmed) {
+          card.remove();
+          addMessage(t('✅ Client info saved.', '✅ क्लायंट माहिती जतन केली.'), 'nf-msg-bot');
+        } else {
+          errorEl.textContent = data.error || t('Could not save. Please try again.', 'जतन करता आले नाही. पुन्हा प्रयत्न करा.');
+          errorEl.classList.add('visible');
+          saveBtn.disabled = false;
+          skipBtn.disabled = false;
+          saveBtn.textContent = saveBtnLabel;
+        }
+      } catch (err) {
+        errorEl.textContent = t('Something went wrong — check your connection and try again.', 'काहीतरी चूक झाली — कनेक्शन तपासा आणि पुन्हा प्रयत्न करा.');
+        errorEl.classList.add('visible');
+        saveBtn.disabled = false;
+        skipBtn.disabled = false;
+        saveBtn.textContent = saveBtnLabel;
+      }
+    });
+  }
+
   async function sendMessage() {
     const message = inputEl.value.trim();
     if (!message) return;
@@ -525,18 +1077,27 @@
         // Informational only — no write, no confirm button needed.
         addMessage(confirm.confirm_text, 'nf-msg-bot');
       } else if (data.intent === 'create_grn') {
-        // Show unresolved items as errors first, then a confirm card per
-        // matched item — one message can report several materials at once.
+        // Show unresolved items as errors first. A single matched material
+        // keeps the existing one-card-per-item flow; multiple materials get
+        // one combined card that shares a single GRN number.
         if (confirm.blocked_items?.length) {
           confirm.blocked_items.forEach(bi => {
             addMessage(bi.reason, 'nf-msg-error');
           });
         }
         if (confirm.items?.length) {
-          confirm.items.forEach(item => {
-            addConfirmCard(item.confirm_text, item.data, tenantId);
-          });
+          if (confirm.items.length === 1) {
+            addConfirmCard(confirm.items[0].confirm_text, confirm.items[0].data, tenantId);
+          } else {
+            addMultiGrnConfirmCard(confirm.items, confirm.supplier_id, tenantId);
+          }
         }
+      } else if (data.intent === 'create_production_issue') {
+        addProductionIssueConfirmCard(confirm.confirm_text, confirm.confirm_data, tenantId);
+      } else if (data.intent === 'create_product_dispatch') {
+        addDispatchConfirmCard(confirm.confirm_text, confirm.confirm_data, tenantId, 'product_dispatch');
+      } else if (data.intent === 'create_rm_dispatch') {
+        addDispatchConfirmCard(confirm.confirm_text, confirm.confirm_data, tenantId, 'rm_dispatch');
       }
     } catch (err) {
       removeTyping();
