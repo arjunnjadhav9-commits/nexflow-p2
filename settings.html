@@ -22,6 +22,10 @@
         .tab-panel { display: none; }
         .tab-panel.active { display: block; }
 
+        /* Agent tab usage bar */
+        .nx-bar-track { background: rgba(255,255,255,0.08); border-radius: 4px; height: 8px; width: 100%; }
+        .nx-bar-fill  { height: 8px; border-radius: 4px; transition: width 0.4s ease; }
+
         /* 4-col price row — collapses to 1 col on mobile */
         .nx-price-row {
             display: grid;
@@ -164,6 +168,7 @@
         <button id="tab-materials"  class="nx-stab" data-en="Raw Materials"    data-mr="कच्चा माल">Raw Materials</button>
         <button id="tab-suppliers"  class="nx-stab" data-en="Suppliers"        data-mr="पुरवठादार">Suppliers</button>
         <button id="tab-clients"    class="nx-stab" data-en="Clients"          data-mr="क्लायंट">Clients</button>
+        <button id="tab-agent"      class="nx-stab" data-en="Agent 🤖"         data-mr="एजंट 🤖">Agent 🤖</button>
         <button id="tab-adjustment" class="nx-stab owner-only" data-en="Stock Adjustment" data-mr="साठा दुरुस्ती">Stock Adjustment</button>
         <button id="tab-prices"     class="nx-stab owner-only" data-en="💰 Prices" data-mr="💰 किंमती">💰 Prices</button>
     </div>
@@ -647,6 +652,44 @@
         </div>
     </div>
 
+    <!-- ── AGENT ──────────────────────────────────────── -->
+    <div id="content-agent" class="tab-panel">
+        <div class="nx-card">
+            <div class="nx-card-header">
+                <div class="nx-card-title" data-en="Agent Status" data-mr="एजंट स्थिती">Agent Status</div>
+            </div>
+            <div style="display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-bottom:14px;">
+                <span id="agent-status-badge" class="nx-badge nx-badge-grey">Disabled</span>
+                <span id="agent-tier-badge" class="nx-badge nx-badge-orange">Standard · 30/day</span>
+            </div>
+            <div id="agent-usage-line" style="font-size:13px; color:var(--light); margin-bottom:6px;">0 / 30 used today</div>
+            <div class="nx-bar-track" style="margin-bottom:10px;">
+                <div id="agent-usage-bar-fill" class="nx-bar-fill" style="width:0%; background:var(--green);"></div>
+            </div>
+            <div style="font-size:12px; color:var(--mid);" data-en="Resets daily at midnight IST" data-mr="दररोज मध्यरात्री IST ला रीसेट होते">Resets daily at midnight IST</div>
+        </div>
+
+        <div class="nx-card">
+            <div class="nx-card-header">
+                <div class="nx-card-title" data-en="CA Export Email" data-mr="CA एक्सपोर्ट ईमेल">CA Export Email</div>
+            </div>
+            <div class="nx-form-group">
+                <label style="color:var(--mid); font-weight:400;" data-en="When set, the agent can email Tally export directly to your CA." data-mr="सेट केल्यास, एजंट टॅली एक्सपोर्ट थेट तुमच्या CA ला ईमेल करू शकतो.">When set, the agent can email Tally export directly to your CA.</label>
+            </div>
+            <div class="nx-form-group" style="display:flex; gap:10px; align-items:flex-end;">
+                <input type="email" id="agent-ca-email" class="nx-input" placeholder="ca@example.com" style="flex:1;">
+                <button type="button" id="agent-ca-email-save" class="nx-btn nx-btn-primary" data-en="Save" data-mr="जतन करा">Save</button>
+            </div>
+        </div>
+
+        <div class="nx-card">
+            <div class="nx-card-header">
+                <div class="nx-card-title" data-en="What can the agent do?" data-mr="एजंट काय करू शकतो?">What can the agent do?</div>
+            </div>
+            <div style="font-size:13px; color:var(--light); line-height:1.6;" data-en="Ask about stock levels, GRN history, consumption, dispatches, suppliers, and more — in Marathi or Hindi. Create GRNs and dispatches by typing. Email challans to clients automatically." data-mr="साठा पातळी, GRN इतिहास, वापर, डिस्पॅच, पुरवठादार आणि बरेच काही मराठी किंवा हिंदीमध्ये विचारा. टाईप करून GRN आणि डिस्पॅच तयार करा. क्लायंटना चलान आपोआप ईमेल करा.">Ask about stock levels, GRN history, consumption, dispatches, suppliers, and more — in Marathi or Hindi. Create GRNs and dispatches by typing. Email challans to clients automatically.</div>
+        </div>
+    </div>
+
     <!-- ── STOCK ADJUSTMENT ───────────────────────────── -->
     <div id="content-adjustment" class="tab-panel owner-only">
         <div class="nx-grid-2" style="align-items:start;">
@@ -895,7 +938,7 @@
     }
 
     // ── TAB SWITCHING ─────────────────────────────────────────────────────────
-    const tabs = ['company','challan','telegram','staff','materials','suppliers','clients','adjustment','prices'];
+    const tabs = ['company','challan','telegram','staff','materials','suppliers','clients','agent','adjustment','prices'];
 
     function switchToTab(activeTab) {
         tabs.forEach(tab => {
@@ -1375,6 +1418,86 @@
         } catch (error) {
             console.error('Error deleting client:', error);
             toast(lang==='mr'?'क्लायंट काढण्यात अयशस्वी':'Failed to delete client','error');
+        }
+    }
+
+    // ── AGENT TAB ─────────────────────────────────────────────────────────────
+    const AGENT_TIER_LIMITS = { standard: 30, power: 100, unlimited: 999999 };
+
+    async function loadAgentTab() {
+        try {
+            const { data: { user } } = await window.supabase.auth.getUser();
+            if (!user) return;
+            const { data, error } = await window.supabase
+                .from('p2_tenant_settings')
+                .select('agent_enabled, agent_tier, agent_interactions_today, agent_reset_date, ca_email')
+                .eq('tenant_id', user.id)
+                .single();
+            if (error && error.code !== 'PGRST116') throw error;
+            if (data) renderAgentTab(data);
+        } catch (error) {
+            console.error('Error loading agent settings:', error);
+        }
+    }
+
+    function renderAgentTab(data) {
+        const lang = localStorage.getItem('nexflow_lang') || 'en';
+        const t = (en, mr) => lang === 'mr' ? mr : en;
+
+        const tier  = data.agent_tier || 'standard';
+        const limit = AGENT_TIER_LIMITS[tier] ?? AGENT_TIER_LIMITS.standard;
+        const used  = data.agent_interactions_today || 0;
+
+        const statusBadge = document.getElementById('agent-status-badge');
+        if (data.agent_enabled) {
+            statusBadge.className = 'nx-badge nx-badge-green';
+            statusBadge.textContent = t('Enabled', 'सक्षम');
+        } else {
+            statusBadge.className = 'nx-badge nx-badge-grey';
+            statusBadge.textContent = t('Disabled', 'अक्षम');
+        }
+
+        const tierLabels = {
+            standard:  t('Standard · 30/day', 'स्टँडर्ड · ३०/दिवस'),
+            power:     t('Power · 100/day', 'पॉवर · १००/दिवस'),
+            unlimited: t('Unlimited', 'अमर्यादित')
+        };
+        document.getElementById('agent-tier-badge').textContent = tierLabels[tier] || tierLabels.standard;
+
+        const usageLine = document.getElementById('agent-usage-line');
+        const barFill    = document.getElementById('agent-usage-bar-fill');
+        if (tier === 'unlimited') {
+            usageLine.textContent = t('Unlimited usage', 'अमर्यादित वापर');
+            barFill.style.width = '100%';
+            barFill.style.background = 'var(--green)';
+        } else {
+            usageLine.textContent = `${used} / ${limit} ${t('used today', 'आज वापरले')}`;
+            const pct = Math.min(100, Math.round((used / limit) * 100));
+            barFill.style.width = `${pct}%`;
+            barFill.style.background = pct < 60 ? 'var(--green)' : (pct < 85 ? 'var(--orange)' : 'var(--red)');
+        }
+
+        const emailInput = document.getElementById('agent-ca-email');
+        if (emailInput && !window.isDemo) emailInput.value = data.ca_email || '';
+    }
+
+    async function saveCaEmail() {
+        if (window.isDemo) { toast('Demo mode — read only. Contact Arjun to get access.', 'info'); return; }
+        const lang = localStorage.getItem('nexflow_lang') || 'en';
+        const email = document.getElementById('agent-ca-email').value.trim();
+        if (email && !isValidEmail(email)) { toast(lang==='mr'?'कृपया वैध ईमेल प्रविष्ट करा':'Please enter a valid email address','error'); return; }
+        try {
+            const { data: { user } } = await window.supabase.auth.getUser();
+            if (!user) { toast('Not authenticated','error'); return; }
+            const { error } = await window.supabase
+                .from('p2_tenant_settings')
+                .update({ ca_email: email || null })
+                .eq('tenant_id', user.id);
+            if (error) throw error;
+            toast(lang==='mr' ? 'CA ईमेल जतन झाला' : 'CA email saved', 'success');
+        } catch (error) {
+            console.error('Error saving CA email:', error);
+            toast(lang==='mr' ? 'जतन करण्यात अयशस्वी' : 'Failed to save', 'error');
         }
     }
 
@@ -2155,7 +2278,7 @@
         applyDemoModeToForms();
 
         if (window.isDemo) {
-            ['bulk-import-btn','price-import-btn','btn-print-qr','client-add-btn'].forEach(id => {
+            ['bulk-import-btn','price-import-btn','btn-print-qr','client-add-btn','agent-ca-email-save'].forEach(id => {
                 const btn = document.getElementById(id);
                 if (btn) {
                     btn.disabled = true; btn.style.opacity = '0.4'; btn.style.cursor = 'not-allowed';
@@ -2169,6 +2292,8 @@
             window.submitPriceImport = () => toast('Demo mode — read only. Contact Arjun to get access.','info');
             window.openQRModal = () => toast('Demo mode — read only. Contact Arjun to get access.','info');
             window.submitClient = () => toast('Demo mode — read only. Contact Arjun to get access.','info');
+            const caEmailInput = document.getElementById('agent-ca-email');
+            if (caEmailInput) { caEmailInput.disabled = true; caEmailInput.style.opacity = '0.4'; caEmailInput.style.cursor = 'not-allowed'; }
         }
 
         const saved = localStorage.getItem('nexflow_lang') || 'en';
@@ -2187,8 +2312,10 @@
         });
         document.getElementById('tab-suppliers').addEventListener('click',  () => { switchToTab('suppliers');  loadSuppliers(); });
         document.getElementById('tab-clients').addEventListener('click',    () => { switchToTab('clients');    loadClients(); });
+        document.getElementById('tab-agent').addEventListener('click',      () => { switchToTab('agent');      loadAgentTab(); });
         document.getElementById('tab-adjustment').addEventListener('click', () => { switchToTab('adjustment'); loadAdjustmentMaterials(); loadRecentAdjustments(); });
         document.getElementById('tab-prices').addEventListener('click',     () => { switchToTab('prices');     loadPricesTab(); });
+        document.getElementById('agent-ca-email-save').addEventListener('click', saveCaEmail);
 
         document.getElementById('btn-minus').addEventListener('click', () => setAdjSign(-1));
         document.getElementById('btn-plus').addEventListener('click',  () => setAdjSign(1));
