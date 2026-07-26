@@ -133,6 +133,8 @@
                     <tbody id="itemsBody"></tbody>
                 </table>
             </div>
+            <button id="pdfBtn" class="nx-btn nx-btn-primary section-gap" onclick="downloadPdf()">⬇ Download Challan (PDF)</button>
+            <button class="nx-btn nx-btn-secondary section-gap" onclick="downloadExcel()">⬇ Download Challan (Excel)</button>
         </div>
 
         <div class="nx-card section-gap">
@@ -152,8 +154,11 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="js/supabase-client.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+<script src="js/challan-pdf.js"></script>
 <script>
 const EDGE_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/receive-dispatch`;
+let currentDispatchData = null;
 
 function showError(message) {
     document.getElementById('loadingState').style.display = 'none';
@@ -163,6 +168,7 @@ function showError(message) {
 }
 
 function renderDispatch(data) {
+    currentDispatchData = data;
     const { dispatch, supplier, items } = data;
 
     document.getElementById('companyName').textContent = supplier.company_name || '';
@@ -193,6 +199,177 @@ function renderDispatch(data) {
 
     document.getElementById('loadingState').style.display = 'none';
     document.getElementById('content').style.display = 'block';
+}
+
+// The only consumer of js/challan-pdf.js — this is where a recipient who
+// arrived by QR scan or by the link in the challan email gets a printable copy.
+// No QR on the PDF on purpose: the visitor just scanned one to reach this page,
+// and receive-dispatch deliberately does not expose plan or dispatch_token.
+async function downloadPdf() {
+    if (!currentDispatchData) return;
+    const { dispatch, supplier, items } = currentDispatchData;
+
+    const btn = document.getElementById('pdfBtn');
+    const original = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '⏳ Building PDF…';
+
+    try {
+        const d = dispatch.dispatch_date ? new Date(dispatch.dispatch_date) : new Date();
+        const dateFormatted = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+
+        const payload = {
+            companyName:  supplier.company_name || '',
+            addressLine1: supplier.address_line1 || '',
+            addressLine2: supplier.address_line2 || '',
+            mobile:       supplier.mobile || '',
+            gstin:        supplier.gstin || '',
+            clientName:   dispatch.client_name || 'N/A',
+            clientAddressLines: (dispatch.client_address || '')
+                .split('\n').map(l => l.trim()).filter(Boolean),
+            challanNumber:         dispatch.challan_number || '-',
+            dispatchDateFormatted: dateFormatted,
+            poNumber: null,
+            items: (items || []).map(item => ({
+                // Mirrors challanDescription() in the Edge Function: a product
+                // dispatch shows the readable name, never an internal SKU code.
+                description: dispatch.dispatch_type === 'product'
+                    ? (item.material_name || '')
+                    : (item.material_code || item.material_name || ''),
+                qty:  String(item.qty_dispatched ?? ''),
+                unit: item.unit || ''
+            })),
+            dispatchToken: null,
+            plan: null
+        };
+
+        const base64 = await buildChallanPdf(payload);
+        downloadChallanPdf(base64, challanPdfFilename(payload.challanNumber, dateFormatted));
+    } catch (err) {
+        console.error('PDF export failed:', err);
+        alert('Could not generate the PDF. Please try the Excel download instead.');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = original;
+    }
+}
+
+async function downloadExcel() {
+    if (!currentDispatchData) return;
+    const { dispatch, supplier, items } = currentDispatchData;
+
+    const companyName = supplier.company_name || '';
+    const companyDetails = [
+        [supplier.address_line1, supplier.address_line2].filter(Boolean).join(', '),
+        supplier.mobile ? `Mobile: ${supplier.mobile}` : null,
+        supplier.gstin ? `GSTIN: ${supplier.gstin}` : null,
+    ].filter(Boolean).join('\n');
+    const challanNo = dispatch.challan_number || '-';
+    const challanDate = dispatch.dispatch_date
+        ? new Date(dispatch.dispatch_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+        : '-';
+    const clientLines = (dispatch.client_address || '').split('\n').map(l => l.trim()).filter(Boolean);
+
+    const workbook = new ExcelJS.Workbook();
+    const ws = workbook.addWorksheet('Challan');
+
+    const thinBorder = {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' },
+    };
+
+    const r1 = ws.addRow(['DELIVERY CHALLAN', '', '', '']);
+    ws.mergeCells(`A${r1.number}:D${r1.number}`);
+    r1.getCell(1).font = { bold: true, size: 13 };
+    r1.getCell(1).alignment = { horizontal: 'center' };
+    r1.getCell(1).border = thinBorder;
+
+    const r2 = ws.addRow([companyName, '', '', '']);
+    ws.mergeCells(`A${r2.number}:D${r2.number}`);
+    r2.getCell(1).font = { bold: true, size: 12 };
+    r2.getCell(1).alignment = { horizontal: 'center' };
+    r2.getCell(1).border = thinBorder;
+
+    const r3 = ws.addRow([companyDetails, '', '', '']);
+    ws.mergeCells(`A${r3.number}:D${r3.number}`);
+    r3.getCell(1).alignment = { horizontal: 'center', wrapText: true };
+    r3.height = 60;
+    r3.getCell(1).border = thinBorder;
+
+    const r4 = ws.addRow(['', '', '', '']);
+    ws.mergeCells(`A${r4.number}:D${r4.number}`);
+    r4.getCell(1).border = thinBorder;
+
+    const toData = [
+        ['TO,', '', 'Challan No.', challanNo],
+        [dispatch.client_name || '', '', 'Date', challanDate],
+        [clientLines[0] || '', '', '', ''],
+    ];
+    toData.forEach(rowData => {
+        const r = ws.addRow(rowData);
+        r.getCell(1).border = thinBorder;
+        r.getCell(2).border = thinBorder;
+        r.getCell(3).border = thinBorder;
+        r.getCell(3).font = { bold: true };
+        r.getCell(4).border = thinBorder;
+    });
+
+    const rHead = ws.addRow(['Sr No.', 'Description', 'Quantity', 'Unit']);
+    rHead.eachCell(cell => {
+        cell.font = { bold: true };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE5E7EB' } };
+        cell.border = thinBorder;
+        cell.alignment = { horizontal: 'center' };
+    });
+
+    let totalQty = 0;
+    (items || []).forEach(item => {
+        const r = ws.addRow([item.material_code || item.material_name || '', item.material_name || '', item.qty_dispatched, item.unit || '']);
+        r.eachCell(cell => { cell.border = thinBorder; });
+        r.getCell(1).alignment = { horizontal: 'center' };
+        r.getCell(3).alignment = { horizontal: 'right' };
+        r.getCell(4).alignment = { horizontal: 'center' };
+        totalQty += Number(item.qty_dispatched || 0);
+    });
+
+    const rTotal = ws.addRow(['', 'TOTAL', totalQty, '']);
+    rTotal.eachCell(cell => { cell.border = thinBorder; });
+    rTotal.getCell(2).font = { bold: true };
+    rTotal.getCell(2).alignment = { horizontal: 'right' };
+    rTotal.getCell(3).font = { bold: true };
+    rTotal.getCell(3).alignment = { horizontal: 'right' };
+
+    ws.addRow(['', '', '', '']);
+
+    const rSig = ws.addRow(['Receivers Signature', '', `For ${companyName}`, '']);
+    ws.mergeCells(`C${rSig.number}:D${rSig.number}`);
+    rSig.getCell(1).border = thinBorder;
+    rSig.getCell(3).border = thinBorder;
+    rSig.getCell(3).font = { bold: true };
+
+    const rAuth = ws.addRow(['', '', 'Authorized Signatory', '']);
+    ws.mergeCells(`C${rAuth.number}:D${rAuth.number}`);
+    rAuth.getCell(3).border = thinBorder;
+
+    ws.getColumn(1).width = 12;
+    ws.getColumn(2).width = 35;
+    ws.getColumn(3).width = 14;
+    ws.getColumn(4).width = 25;
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Challan_${challanNo}_${challanDate}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
 }
 
 async function checkSession() {
