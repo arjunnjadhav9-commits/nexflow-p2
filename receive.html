@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Delivery Receipt — Nexflow</title>
+<link rel="stylesheet" href="css/nexflow-design.css">
+<style>
+    body {
+        min-height: 100vh;
+        padding: 16px;
+    }
+    .receive-wrap {
+        max-width: 480px;
+        margin: 0 auto;
+    }
+    .receive-loading {
+        text-align: center;
+        color: var(--mid);
+        padding: 60px 0;
+        font-size: 13px;
+    }
+    .session-box {
+        background: var(--orange-dim);
+        border: 1px solid var(--orange);
+        border-radius: var(--radius-lg);
+        padding: 14px 16px;
+        margin-bottom: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+    .session-box p {
+        font-size: 12px;
+        color: var(--text);
+        margin: 0;
+    }
+    .supplier-name {
+        font-size: 20px;
+        font-weight: 700;
+        color: var(--text);
+        margin-bottom: 4px;
+    }
+    .supplier-line {
+        font-size: 12px;
+        color: var(--mid);
+        line-height: 1.6;
+    }
+    .challan-meta {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 14px;
+        padding-top: 14px;
+        border-top: 1px solid var(--border);
+    }
+    .challan-meta .label {
+        font-size: 11px;
+        color: var(--mid);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+    .challan-meta .value {
+        font-size: 15px;
+        font-weight: 700;
+        color: var(--orange);
+    }
+    .dispatch-to {
+        font-size: 13px;
+        color: var(--text);
+        margin-bottom: 12px;
+    }
+    .dispatch-to strong { color: var(--orange); }
+    .pitch-line {
+        font-size: 12px;
+        color: var(--mid);
+        line-height: 1.6;
+        margin-bottom: 10px;
+    }
+    .pitch-compare {
+        font-size: 12px;
+        line-height: 1.9;
+        margin: 12px 0 16px;
+    }
+    .pitch-compare .without { color: var(--mid); }
+    .pitch-compare .with { color: var(--green); }
+    .section-gap { margin-top: 16px; }
+</style>
+</head>
+<body>
+
+<div class="receive-wrap">
+
+    <div id="sessionBox" class="session-box" style="display:none;">
+        <p>You're logged into Nexflow — pre-fill this GRN in one tap.</p>
+        <button class="nx-btn nx-btn-primary nx-btn-sm" onclick="console.log('GRN pre-fill — Tier 4 Phase 2')">Auto-fill GRN</button>
+    </div>
+
+    <div id="loadingState" class="receive-loading">Loading delivery details…</div>
+
+    <div id="errorState" class="nx-alert nx-alert-red" style="display:none;">
+        <span class="nx-alert-icon">⚠️</span>
+        <span id="errorMessage">This delivery link is not valid or has expired.</span>
+    </div>
+
+    <div id="content" style="display:none;">
+
+        <div class="nx-card">
+            <div class="supplier-name" id="companyName"></div>
+            <div class="supplier-line" id="companyAddress"></div>
+            <div class="supplier-line" id="companyContact"></div>
+            <div class="challan-meta">
+                <div>
+                    <div class="label">Delivery Challan</div>
+                    <div class="value" id="challanNumber"></div>
+                </div>
+                <div style="text-align:right;">
+                    <div class="label">Date</div>
+                    <div class="value" id="challanDate" style="color: var(--text);"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="nx-card section-gap">
+            <div class="dispatch-to">Dispatched to: <strong id="clientName"></strong></div>
+            <div class="nx-table-wrap">
+                <table class="nx-table">
+                    <thead>
+                        <tr><th>Material</th><th>Code</th><th>Qty</th><th>Unit</th></tr>
+                    </thead>
+                    <tbody id="itemsBody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="nx-card section-gap">
+            <div class="nx-card-title" style="margin-bottom:10px;">How this delivery was created</div>
+            <p class="pitch-line" id="pitchIntro"></p>
+            <p class="pitch-line">If your factory used Nexflow, this would auto-create your GRN in one tap. No manual entry.</p>
+            <div class="pitch-compare">
+                <div class="without">Without Nexflow: receive box → find challan → type GRN manually → ~20 min</div>
+                <div class="with">With Nexflow: scan → confirm → 10 seconds</div>
+            </div>
+            <a class="nx-btn nx-btn-primary nx-btn-full" id="ctaBtn" href="https://wa.me/91XXXXXXXXXX?text=I+want+to+know+more+about+Nexflow" target="_blank" rel="noopener">See how it works →</a>
+        </div>
+
+    </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/supabase-client.js"></script>
+<script>
+const EDGE_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/receive-dispatch`;
+
+function showError(message) {
+    document.getElementById('loadingState').style.display = 'none';
+    document.getElementById('content').style.display = 'none';
+    document.getElementById('errorMessage').textContent = message;
+    document.getElementById('errorState').style.display = 'flex';
+}
+
+function renderDispatch(data) {
+    const { dispatch, supplier, items } = data;
+
+    document.getElementById('companyName').textContent = supplier.company_name || '';
+    document.getElementById('companyAddress').textContent =
+        [supplier.address_line1, supplier.address_line2].filter(Boolean).join(', ');
+    document.getElementById('companyContact').textContent =
+        [supplier.mobile ? `Mobile: ${supplier.mobile}` : null, supplier.gstin ? `GSTIN: ${supplier.gstin}` : null]
+            .filter(Boolean).join(' · ');
+
+    document.getElementById('challanNumber').textContent = dispatch.challan_number || '-';
+    document.getElementById('challanDate').textContent = dispatch.dispatch_date
+        ? new Date(dispatch.dispatch_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+        : '-';
+    document.getElementById('clientName').textContent = dispatch.client_name || '-';
+
+    const tbody = document.getElementById('itemsBody');
+    tbody.innerHTML = (items || []).map(item => `
+        <tr>
+            <td>${item.material_name || ''}</td>
+            <td>${item.material_code || '-'}</td>
+            <td>${item.qty_dispatched}</td>
+            <td>${item.unit || ''}</td>
+        </tr>
+    `).join('');
+
+    document.getElementById('pitchIntro').textContent =
+        `${supplier.company_name || 'This supplier'} sent this automatically via Nexflow.`;
+
+    document.getElementById('loadingState').style.display = 'none';
+    document.getElementById('content').style.display = 'block';
+}
+
+async function checkSession() {
+    try {
+        const { data: { session } } = await window.supabase.auth.getSession();
+        if (session) {
+            document.getElementById('sessionBox').style.display = 'flex';
+        }
+    } catch (e) {
+        // no session — pitch section already covers this case
+    }
+}
+
+async function loadReceipt() {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('token');
+
+    if (!token) {
+        showError('Invalid link.');
+        return;
+    }
+
+    checkSession();
+
+    try {
+        const res = await fetch(`${EDGE_FUNCTION_URL}?token=${encodeURIComponent(token)}`);
+        if (res.status === 404) {
+            showError('This delivery link is not valid or has expired.');
+            return;
+        }
+        if (!res.ok) {
+            showError('Something went wrong loading this delivery. Please try again later.');
+            return;
+        }
+        const data = await res.json();
+        renderDispatch(data);
+    } catch (e) {
+        showError('Something went wrong loading this delivery. Please try again later.');
+    }
+}
+
+document.addEventListener('DOMContentLoaded', loadReceipt);
+</script>
+
+</body>
+</html>

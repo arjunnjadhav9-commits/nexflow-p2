@@ -33,3 +33,6 @@ enable_confirmations = false
 # Edge Functions Configuration
 [functions.check-low-stock]
 verify_jwt = false
+
+[functions.receive-dispatch]
+verify_jwt = false
