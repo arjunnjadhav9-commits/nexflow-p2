@@ -11,6 +11,10 @@
   const EDGE_FUNCTION_URL = 'https://jhqxvpihauvhfclosuxn.supabase.co/functions/v1/agent-query';
   const ANON_KEY = SUPABASE_ANON_KEY;
 
+  // Checked once at init (mirrors window.isDemo set by auth.js/utils.js on
+  // login) — not re-checked per message, per demo-blocking spec.
+  const isDemo = window.isDemo === true;
+
   function t(en, mr) {
     return (localStorage.getItem('nexflow_lang') === 'mr') ? mr : en;
   }
@@ -258,6 +262,15 @@
   const messagesEl = panel.querySelector('#nf-agent-messages');
   const inputEl = panel.querySelector('#nf-agent-input');
 
+  if (isDemo) {
+    inputEl.disabled = true;
+    inputEl.placeholder = 'Demo mode — agent is read-only';
+    const sendBtn = panel.querySelector('#nf-agent-send');
+    sendBtn.disabled = true;
+    sendBtn.style.opacity = '0.4';
+    sendBtn.style.cursor = 'not-allowed';
+  }
+
   let hasShownWelcome = false;
   let isOpen = false;
   let chipsLoaded = false;
@@ -374,13 +387,23 @@
     requestAnimationFrame(() => panel.classList.add('nf-panel-visible'));
     if (!hasShownWelcome) {
       hasShownWelcome = true;
-      addMessage(
-        t(
-          'Hi! Ask me about stock, GRNs, consumption, suppliers, dispatches, or if you have enough stock to produce.',
-          'नमस्कार! स्टॉक, GRN, वापर, पुरवठादार, dispatch किंवा production साठी stock विचारा.'
-        ),
-        'nf-msg-bot'
-      );
+      if (isDemo) {
+        addMessage(
+          t(
+            'This is a read-only demo. Log in with your own account to use the AI Copilot.',
+            'ही फक्त वाचण्यासाठीची डेमो आहे. AI सहाय्यक वापरण्यासाठी तुमच्या स्वतःच्या खात्याने लॉगिन करा.'
+          ),
+          'nf-msg-bot'
+        );
+      } else {
+        addMessage(
+          t(
+            'Hi! Ask me about stock, GRNs, consumption, suppliers, dispatches, or if you have enough stock to produce.',
+            'नमस्कार! स्टॉक, GRN, वापर, पुरवठादार, dispatch किंवा production साठी stock विचारा.'
+          ),
+          'nf-msg-bot'
+        );
+      }
     }
     if (!chipsLoaded) {
       chipsLoaded = true;

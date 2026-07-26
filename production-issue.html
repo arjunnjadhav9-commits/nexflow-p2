@@ -662,6 +662,26 @@ document.addEventListener('DOMContentLoaded', async () => {
   const authed = await checkAuth();
   if (!authed) return;
 
+  applyDemoModeToForms();
+  if (window.isDemo) {
+    const issueBtn = document.getElementById('issueBtn');
+    if (issueBtn) {
+      issueBtn.disabled = true;
+      issueBtn.style.opacity = '0.4';
+      issueBtn.style.cursor = 'not-allowed';
+      issueBtn.title = 'Demo mode — read only. Contact Arjun: arjunjadhav29052006@gmail.com';
+      issueBtn.removeAttribute('onclick');
+    }
+    const actionBar = document.getElementById('actionBar');
+    if (actionBar) {
+      const banner = document.createElement('div');
+      banner.className = 'nx-alert nx-alert-orange';
+      banner.style.margin = '0 0 12px';
+      banner.innerHTML = '<span data-en="Read-only demo — login with your account to issue materials" data-mr="फक्त पाहण्यासाठी डेमो — साहित्य इश्यू करण्यासाठी तुमच्या खात्याने लॉगिन करा">Read-only demo — login with your account to issue materials</span>';
+      actionBar.parentNode.insertBefore(banner, actionBar);
+    }
+  }
+
   const { data: { user } } = await window.supabase.auth.getUser();
   tenantId = user.id;
 
