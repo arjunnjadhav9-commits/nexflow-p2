@@ -1132,6 +1132,10 @@
         // Write intent, but no confirm card — the edge function already
         // executed the send and confirm_text is the plain result message.
         addMessage(confirm.confirm_text, 'nf-msg-bot');
+      } else if (data.intent === 'send_tally_export') {
+        // Write intent, but no confirm card — the edge function already sent
+        // the export and confirm_text is the plain result message.
+        addMessage(confirm.confirm_text, 'nf-msg-bot');
       }
     } catch (err) {
       removeTyping();

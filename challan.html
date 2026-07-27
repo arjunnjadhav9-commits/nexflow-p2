@@ -14,6 +14,7 @@
     <script src="js/auth.js"></script>
     <script src="js/utils.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
     <style>
         .challan-controls {
@@ -123,16 +124,59 @@
                 box-shadow: none;
                 border-radius: 0;
                 margin: 0;
-                padding: 8mm 10mm;
-                font-size: 11px;
+                padding: 5mm 8mm;
+                font-size: 10px;
             }
             #challan-content * { background: #fff !important; color: #000 !important; }
             .ch-items-table thead tr { background-color: #e5e7eb !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
             .ch-items-table th, .ch-items-table td,
             .ch-items-table, .ch-meta-table, .ch-meta-table td,
             .ch-outer { border-color: #000 !important; }
+
+            /* Tighter vertical rhythm in print only — screen layout untouched.
+               .ch-section's base padding only reaches Title/Company/Note;
+               Meta/Items/Footer-note/Signature set their own inline padding
+               and need !important (or an id) to be overridden here. */
+            .ch-section { padding: 6px 14px; }
+            .ch-meta-table td { padding: 4px 8px; }
+
+            /* Header block (company name + address lines under #company-header
+               / #company-details) — #company-details has inline font-size:12px
+               from the static markup, needs !important to shrink for print. */
+            #company-header > div { line-height: 1.3; }
+            #company-details { font-size: 10px !important; line-height: 1.3 !important; }
+
+            /* !important: populateChallan() writes inline padding:10px on each
+               generated item <td>, which a plain class rule can't override. */
+            .ch-items-table th, .ch-items-table td {
+                padding: 3px 6px !important;
+                font-size: 10px;
+                line-height: 1.2;
+            }
+
+            #ch-signature-section { padding: 6px 16px 6px !important; }
+            #ch-signature-section > div { min-height: 40px !important; }
+            #ch-signature-section [style*="margin-top:40px"] { margin-top: 10px !important; }
+
+            #footer-note-section { padding: 4px 16px !important; min-height: 0 !important; }
+
+            .ch-outer { page-break-inside: avoid; }
             tr { page-break-inside: avoid; }
-            @page { margin: 10mm; }
+
+            #qr2-cutout {
+                page-break-inside: avoid;
+                page-break-before: avoid;
+                margin-top: 4px !important;
+                padding: 6px 12px !important;
+                background: #f7f7f7 !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+
+            /* "Powered by Nexflow" wastes space on a printed challan — screen view keeps it. */
+            .ch-footer { display: none; }
+
+            @page { size: A4; margin: 8mm; }
         }
     </style>
 </head>
@@ -201,11 +245,19 @@
                         <div id="client-details"></div>
                     </td>
                     <td style="font-size:12px; border-left:2px solid #000;">
-                        <div style="margin-bottom:4px;"><strong data-en="Challan No:" data-mr="चलान क्रमांक:">Challan No:</strong> <span id="challan-no"></span></div>
-                        <div style="margin-bottom:4px;"><strong data-en="Date:" data-mr="तारीख:">Date:</strong> <span id="challan-date"></span></div>
-                        <div style="display:none;"><strong>Your Challan No:</strong> <span id="client-challan-ref"></span></div>
-                        <div style="margin-bottom:4px;"><strong data-en="Po No:" data-mr="PO क्रमांक:">Po No.</strong> <span id="po-no"></span></div>
-                        <div id="vehicle-number-row" style="display:none; margin-bottom:4px;"><strong data-en="Transport:" data-mr="ट्रान्सपोर्ट:">Transport:</strong> <span id="vehicle-no"></span></div>
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
+                            <div style="flex:1;">
+                                <div style="margin-bottom:4px;"><strong data-en="Challan No:" data-mr="चलान क्रमांक:">Challan No:</strong> <span id="challan-no"></span></div>
+                                <div style="margin-bottom:4px;"><strong data-en="Date:" data-mr="तारीख:">Date:</strong> <span id="challan-date"></span></div>
+                                <div style="display:none;"><strong>Your Challan No:</strong> <span id="client-challan-ref"></span></div>
+                                <div style="margin-bottom:4px;"><strong data-en="Po No:" data-mr="PO क्रमांक:">Po No.</strong> <span id="po-no"></span></div>
+                                <div id="vehicle-number-row" style="display:none; margin-bottom:4px;"><strong data-en="Transport:" data-mr="ट्रान्सपोर्ट:">Transport:</strong> <span id="vehicle-no"></span></div>
+                            </div>
+                            <div id="qr1-block" style="display:none; text-align:center; flex-shrink:0;">
+                                <div id="qr1-canvas" style="width:80px; height:80px;"></div>
+                                <div style="font-size:8px; color:#666; margin-top:2px; width:80px;" data-en="Scan to verify delivery" data-mr="डिलिव्हरी तपासण्यासाठी स्कॅन करा">Scan to verify delivery</div>
+                            </div>
+                        </div>
                     </td>
                 </tr>
             </table>
@@ -255,7 +307,7 @@
         </div>
 
         <!-- 6. Signature -->
-        <div class="ch-section" style="margin-top:0; padding:20px 20px 36px;">
+        <div id="ch-signature-section" class="ch-section" style="margin-top:0; padding:20px 20px 36px;">
             <div style="display:flex; justify-content:space-between; align-items:flex-end; min-height:100px;">
                 <div style="text-align:left;">
                     <div style="border-top:1px solid #000; padding-top:6px; font-size:11px;" data-en="Receivers Signature" data-mr="प्राप्तकर्त्याची स्वाक्षरी">Receivers Signature</div>
@@ -269,6 +321,19 @@
         </div>
 
       </div><!-- end ch-outer -->
+
+        <!-- QR Code 2 — cut-out section for delivery box sticker -->
+        <div id="qr2-cutout" style="display:none; margin-top:16px; padding:16px 20px; border-top:2px dashed #000; background:#f7f7f7;">
+            <div style="text-align:center; font-size:10px; font-weight:700; color:#333; margin-bottom:10px;" data-en="✂ Cut and paste on delivery box" data-mr="✂ कापून डिलिव्हरी बॉक्सवर चिकटवा">✂ Cut and paste on delivery box</div>
+            <div style="display:flex; align-items:center; justify-content:center; gap:16px; flex-wrap:wrap;">
+                <div id="qr2-canvas" style="width:80px; height:80px;"></div>
+                <div style="font-size:12px; line-height:1.6;">
+                    <div><strong data-en="Challan No:" data-mr="चलान क्रमांक:">Challan No:</strong> <span id="qr2-challan-no"></span></div>
+                    <div><strong data-en="Dispatched by:" data-mr="पाठवणारा:">Dispatched by:</strong> <span id="qr2-company-name"></span></div>
+                </div>
+            </div>
+            <div style="text-align:center; font-size:9px; color:#666; margin-top:8px;">Scan to verify delivery | nexflowautomations.in</div>
+        </div>
 
         <!-- Footer -->
         <div class="ch-footer">
@@ -315,6 +380,7 @@
                 if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
 
                 populateChallan(dispatchOrder, dispatchItems, tenantSettings);
+                renderQrSections(dispatchOrder, tenantSettings);
 
                 // Restore saved note and footer if they exist in DB
                 if (dispatchOrder.challan_note) {
@@ -424,6 +490,26 @@
                     backBtn.textContent = '← Back to Issue';
                 }
             }
+        }
+
+        function renderQrSections(order, settings) {
+            // Reads settings.plan (fresh from loadChallan()'s DB fetch) rather than
+            // isPro() — isPro() reads localStorage, which checkAuth() only refreshes
+            // on login/auth-state-change, so it can go stale after a direct plan change.
+            if (settings?.plan !== 'pro' && settings?.plan !== 'founder') return;
+            if (!order.dispatch_token) return;  // guard for NOT NULL column, hide silently
+
+            const receiveUrl = `https://nexflowautomations.in/receive?token=${order.dispatch_token}`;
+
+            document.getElementById('qr1-canvas').innerHTML = '';
+            new QRCode(document.getElementById('qr1-canvas'), { text: receiveUrl, width: 80, height: 80 });
+            document.getElementById('qr1-block').style.display = 'block';
+
+            document.getElementById('qr2-canvas').innerHTML = '';
+            new QRCode(document.getElementById('qr2-canvas'), { text: receiveUrl, width: 80, height: 80 });
+            document.getElementById('qr2-challan-no').textContent = document.getElementById('challan-no').textContent;
+            document.getElementById('qr2-company-name').textContent = settings?.company_name || '';
+            document.getElementById('qr2-cutout').style.display = 'block';
         }
 
         function handleLogoError() {
