@@ -8,6 +8,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import Anthropic from 'https://esm.sh/@anthropic-ai/sdk@0.32.0'
 import XLSX from 'https://esm.sh/xlsx-js-style@1.2.0?bundle'
+import ExcelJS from 'https://esm.sh/exceljs@4.3.0'
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -170,6 +171,7 @@ type HaikuIntent =
   | 'dispatch_detail'
   | 'issue_detail'
   | 'send_challan'
+  | 'send_tally_export'
   | 'bom_detail'
   | 'top_supplier'
   | 'unknown'
@@ -194,6 +196,8 @@ interface HaikuResult {
     product_name?: string // stock_check_product, product_code_lookup, bom_detail
     quantity?: number // stock_check_product — how many units to produce
     top_n?: number // top_consumption, top_received — how many to show, default 5
+    date_from?: string // send_tally_export only — YYYY-MM-DD, absent means all-time
+    date_to?: string // send_tally_export only — YYYY-MM-DD; if date_from is set but this isn't, defaults to today
   }
   error?: string
 }
@@ -925,8 +929,11 @@ async function callHaiku(
   // those are for matchEntities() to resolve against the real rows later.
   const materialNames = context.materials.map((m) => m.name)
   const productNames = context.products.map((p) => p.name)
+  const todayIST = getISTDateRange(0).since.split('T')[0]
 
   const systemPrompt = `You classify a factory owner's message into one of the following intents. You do not match names to a database — extract text exactly as the user wrote it.
+
+Today's date (IST): ${todayIST}
 
 Known raw materials (for context only, do not require an exact match):
 ${JSON.stringify(materialNames)}
@@ -1099,6 +1106,24 @@ Classify the message as one of:
   - "4325 challan email kar" -> { "challan_number": "4325", "recipient_name": null }
   - "Challan 4325 pathav" -> { "challan_number": "4325", "recipient_name": null }
   IMPORTANT: This EMAILS an already-confirmed challan by number. Do not confuse with create_product_dispatch/create_rm_dispatch, which create a NEW dispatch.
+- "send_tally_export" — user wants the GST/Tally CA export emailed to the CA.
+  extracted fields: { "date_from"?: string (YYYY-MM-DD), "date_to"?: string (YYYY-MM-DD) }
+  Rules:
+  - Both fields are optional — omit both when the user gives no period at all, which means "all data".
+  - If the user names an explicit date range, extract date_from and date_to directly.
+  - If the user names a bare month ("July cha", "July madhla"), use the year from
+    "Today's date" above and extract the full calendar month (1st to last day).
+  - If the user says "last month", extract the full previous calendar month relative to "Today's date" above.
+  - If the user says "aaj"/"today", set both date_from and date_to to today's date (from "Today's date" above).
+  Examples (assuming Today's date above is 2026-07-27):
+  - "CA la export pathav" -> {}
+  - "CA la report pathav" -> {}
+  - "Export CA la email kar" -> {}
+  - "CA la CSV pathav" -> {}
+  - "CA la 1st July te 31st July export pathav" -> { "date_from": "2026-07-01", "date_to": "2026-07-31" }
+  - "CA la July cha export pathav" -> { "date_from": "2026-07-01", "date_to": "2026-07-31" }
+  - "CA la last month cha report pathav" -> { "date_from": "2026-06-01", "date_to": "2026-06-30" }
+  - "CA la aaj cha export pathav" -> { "date_from": "2026-07-27", "date_to": "2026-07-27" }
 - "bom_detail" — user asks what the bill of materials is for a specific product.
   extracted fields: { "product_name": string }
   Examples:
@@ -1156,7 +1181,7 @@ Examples of correct create_grn extraction from mixed Hinglish/Marathi messages:
 - Message: "steel sheet 200 kg Sharma Traders ne bheja" -> extracted: { "items": [{ "material_name": "steel sheet", "quantity": 200, "unit": "kg" }], "supplier_name": "Sharma Traders" }
 
 Respond with ONLY valid JSON, no markdown code fences, no preamble, no explanation. The response must match exactly this shape:
-{ "intent": "check_stock" | "create_grn" | "create_production_issue" | "create_product_dispatch" | "create_rm_dispatch" | "recent_grn" | "consumption_summary" | "supplier_history" | "low_stock_list" | "grn_detail" | "pending_dispatches" | "grn_summary" | "top_consumption" | "material_list" | "stock_check_product" | "zero_stock_list" | "dispatch_summary" | "supplier_delivery_check" | "challan_detail" | "issue_summary" | "product_code_lookup" | "top_received" | "product_list" | "supplier_list" | "dispatch_detail" | "issue_detail" | "send_challan" | "bom_detail" | "top_supplier" | "unknown", "extracted": { ...fields... } }`
+{ "intent": "check_stock" | "create_grn" | "create_production_issue" | "create_product_dispatch" | "create_rm_dispatch" | "recent_grn" | "consumption_summary" | "supplier_history" | "low_stock_list" | "grn_detail" | "pending_dispatches" | "grn_summary" | "top_consumption" | "material_list" | "stock_check_product" | "zero_stock_list" | "dispatch_summary" | "supplier_delivery_check" | "challan_detail" | "issue_summary" | "product_code_lookup" | "top_received" | "product_list" | "supplier_list" | "dispatch_detail" | "issue_detail" | "send_challan" | "send_tally_export" | "bom_detail" | "top_supplier" | "unknown", "extracted": { ...fields... } }`
 
   try {
     const response = await anthropicClient.messages.create({
@@ -1301,6 +1326,16 @@ interface AddProductionIssueClientRequest {
   vehicle_number?: string
 }
 
+// Tier 4 Phase 2 — public receive.html "Auto-fill GRN" button. Unlike every
+// other confirm_* action, recipient_tenant_id comes from a public page and
+// must be verified against the caller's real JWT (see confirmReceiveGrn),
+// not just trusted like the rest of this file trusts tenant_id.
+interface ConfirmReceiveGrnRequest {
+  action: 'confirm_receive_grn'
+  dispatch_token: string
+  recipient_tenant_id: string
+}
+
 type MatchEntitiesResult = MatchEntitiesResultStock | MatchEntitiesResultGrn
 
 // Case-insensitive substring match in either direction (extracted text is
@@ -1408,9 +1443,16 @@ interface DispatchOrderForChallan {
   status: string
   dispatch_date: string | null
   po_number: string | null
+  dispatch_token: string | null
+  dispatch_type: string | null
 }
 
 interface DispatchItemForChallan {
+  // Null for product-dispatch rows at the raw DB level — neither write path
+  // (dispatch.html, confirmProductDispatch) denormalises a name onto
+  // p2_dispatch_items for those. By the time a DispatchItemForChallan exists,
+  // sendChallanIntent has already resolved it from p2_products, so it reads
+  // as non-optional to every consumer (challanDescription, buildChallanWorkbook).
   material_name: string
   material_code: string | null
   qty_dispatched: number
@@ -1430,6 +1472,12 @@ interface SendChallanResult {
   text: string
   success: boolean
   matchStatus: string | null
+  errorReason: string | null
+}
+
+interface SendTallyExportResult {
+  text: string
+  success: boolean
   errorReason: string | null
 }
 
@@ -2389,8 +2437,22 @@ async function executeQuery(
   return 'Unrecognized query.'
 }
 
-// send_challan only — builds the styled challan workbook, returned as a
-// base64 xlsx string ready for a Resend attachment. Pure formatting, no I/O.
+// Mirrors the description rule in challan.html's populateChallan(): internal
+// material codes are fine on an Issue Materials or RM Dispatch challan, but a
+// Product Dispatch goes to an external client and must always show a readable
+// product name, never an internal SKU code.
+function challanDescription(dispatchType: string | null, item: DispatchItemForChallan): string {
+  if (dispatchType === 'product') return item.material_name || ''
+  return item.material_code || item.material_name || ''
+}
+
+// Builds the styled challan workbook as a base64 xlsx string. Pure formatting,
+// no I/O.
+//
+// Currently UNCALLED and kept on purpose — send_challan stopped attaching the
+// Excel once the /receive link took over, but the recipient still downloads a
+// workbook from that page and this is the server-side layout of record. Do not
+// delete it as dead code; if a second layout is ever needed, extend this one.
 function buildChallanWorkbook(params: {
   companyName: string
   addressLine1: string | null
@@ -2403,6 +2465,7 @@ function buildChallanWorkbook(params: {
   dispatchDateFormatted: string
   poNumber: string | null
   items: DispatchItemForChallan[]
+  dispatchType: string | null
 }): string {
   const rows: (string | number)[][] = []
   rows.push(['DELIVERY CHALLAN', '', '', '']) // row 1
@@ -2416,7 +2479,7 @@ function buildChallanWorkbook(params: {
   rows.push(['Please receive the following material in good condition', '', '', '']) // row 9
   rows.push(['Sr.No.', 'Description', 'Quantity', 'Unit']) // header row (row 10)
   params.items.forEach((item, i) => {
-    rows.push([i + 1, item.material_code || item.material_name, item.qty_dispatched, item.unit])
+    rows.push([i + 1, challanDescription(params.dispatchType, item), item.qty_dispatched, item.unit])
   })
   const totalQty = params.items.reduce((sum, it) => sum + Number(it.qty_dispatched || 0), 0)
   rows.push(['TOTAL', '', totalQty, ''])
@@ -2477,8 +2540,18 @@ function buildChallanWorkbook(params: {
   return XLSX.write(wb, { type: 'base64', bookType: 'xlsx', cellStyles: true }) as string
 }
 
+// Company and client names are owner-entered free text and go straight into an
+// HTML email body — escaped so a stray & or < cannot break the markup.
+function escapeHtml(value: string): string {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
 // send_challan only — sends the challan email via Resend. Mirrors
 // check-low-stock-instant's sendTelegramMessage guard/fetch/catch shape.
+//
+// No attachment, deliberately. The /receive link carries the full challan plus
+// its own Excel and PDF downloads, so an attached copy adds nothing and costs
+// deliverability.
 async function sendChallanEmail(params: {
   toEmail: string
   clientName: string
@@ -2487,22 +2560,32 @@ async function sendChallanEmail(params: {
   companyName: string
   mobile: string | null
   replyToEmail: string | null
-  excelBase64: string
-  fileNameDateDDMMYYYY: string
+  // Tier 4 /receive page for this dispatch. Null only when the order predates
+  // dispatch_token — the link is then omitted rather than pointing nowhere.
+  receiveUrl: string | null
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   if (!RESEND_API_KEY) {
     console.error('[sendChallanEmail] RESEND_API_KEY not configured')
     return { ok: false, error: 'RESEND_API_KEY not configured' }
   }
 
+  const linkBlock = params.receiveUrl
+    ? `<p style="margin-top:16px;">
+    <a href="${params.receiveUrl}" style="color:#ff5c1a; font-weight:600;">
+      View &amp; verify this delivery online →
+    </a>
+  </p>`
+    : ''
+
   const body: Record<string, unknown> = {
     from: 'Nexflow <challans@nexflowautomations.in>',
     to: [params.toEmail],
     subject: `Delivery Challan ${params.challanNumber} — ${params.companyName}`,
-    text: `Dear ${params.clientName},\n\nPlease find attached Delivery Challan ${params.challanNumber} dated ${params.dispatchDateFormatted}.\n\nRegards,\n${params.companyName}\n${params.mobile ?? ''}`,
-    attachments: [
-      { filename: `Challan_${params.challanNumber}_${params.fileNameDateDDMMYYYY}.xlsx`, content: params.excelBase64 },
-    ],
+    text: `Dear ${params.clientName},\n\nDelivery Challan ${params.challanNumber} dated ${params.dispatchDateFormatted} has been dispatched to you.\n${params.receiveUrl ? `\nView & verify this delivery online: ${params.receiveUrl}\n` : ''}\nRegards,\n${params.companyName}\n${params.mobile ?? ''}`,
+    html: `<p>Dear ${escapeHtml(params.clientName)},</p>
+<p>Delivery Challan ${escapeHtml(params.challanNumber)} dated ${params.dispatchDateFormatted} has been dispatched to you.</p>
+${linkBlock}
+<p style="margin-top:16px;">Regards,<br>${escapeHtml(params.companyName)}<br>${escapeHtml(params.mobile ?? '')}</p>`,
   }
   if (params.replyToEmail && params.replyToEmail.trim()) {
     body.reply_to = params.replyToEmail
@@ -2531,6 +2614,9 @@ async function sendChallanEmail(params: {
   }
 }
 
+const CHALLAN_ORDER_COLUMNS =
+  'id, challan_number, client_name, client_address, status, dispatch_date, po_number, dispatch_token, dispatch_type'
+
 // send_challan orchestrator — finds the confirmed challan, resolves the
 // recipient client + email, builds the Excel, and sends it. Executes
 // immediately, no confirm gate (this intent never writes to the DB).
@@ -2546,7 +2632,7 @@ async function sendChallanIntent(
 
   let { data: orders, error: orderError } = await supabaseClient
     .from('p2_dispatch_orders')
-    .select('id, challan_number, client_name, client_address, status, dispatch_date, po_number')
+    .select(CHALLAN_ORDER_COLUMNS)
     .eq('tenant_id', tenantId)
     .eq('challan_number', challanNumber)
     .limit(1)
@@ -2558,7 +2644,7 @@ async function sendChallanIntent(
   if (!orders?.length) {
     const { data: likeOrders, error: likeError } = await supabaseClient
       .from('p2_dispatch_orders')
-      .select('id, challan_number, client_name, client_address, status, dispatch_date, po_number')
+      .select(CHALLAN_ORDER_COLUMNS)
       .eq('tenant_id', tenantId)
       .ilike('challan_number', `%${challanNumber}`)
       .limit(5)
@@ -2591,7 +2677,7 @@ async function sendChallanIntent(
 
   const { data: items, error: itemsError } = await supabaseClient
     .from('p2_dispatch_items')
-    .select('material_name, material_code, qty_dispatched, unit')
+    .select('material_name, material_code, qty_dispatched, unit, product_id')
     .eq('tenant_id', tenantId)
     .eq('dispatch_order_id', order.id)
 
@@ -2606,7 +2692,63 @@ async function sendChallanIntent(
       errorReason: 'no_items',
     }
   }
-  const dispatchItems = items as DispatchItemForChallan[]
+
+  type DispatchItemRow = {
+    material_name: string | null
+    material_code: string | null
+    qty_dispatched: number
+    unit: string
+    product_id: string | null
+  }
+  const itemRows = items as DispatchItemRow[]
+
+  // Same gap and same fix as receive-dispatch: a product dispatch stores only
+  // product_id on p2_dispatch_items, so material_name/material_code are null
+  // at the row level and challanDescription() would render blank. One batched
+  // .in() against p2_products for whatever's missing, not a query per row.
+  //
+  // Currently prep-only: buildChallanWorkbook() (the sole consumer of the
+  // DispatchItemForChallan[] this produces) is not called anywhere in this
+  // function — send_challan stopped attaching the Excel once the /receive
+  // link took over. This resolution has to happen here regardless, since it
+  // needs tenantId and the raw rows that are only in scope inside
+  // sendChallanIntent. Whoever rewires the workbook call back in should use
+  // `dispatchItems` below, not `items`.
+  const missingProductIds = [
+    ...new Set(
+      itemRows
+        .filter((it) => !it.material_name && it.product_id)
+        .map((it) => it.product_id as string)
+    ),
+  ]
+
+  const productsById = new Map<string, { name: string | null; product_code: string | null }>()
+
+  if (missingProductIds.length) {
+    const { data: products, error: productsError } = await supabaseClient
+      .from('p2_products')
+      .select('id, name, product_code')
+      .eq('tenant_id', tenantId)
+      .in('id', missingProductIds)
+
+    if (productsError) {
+      return { text: 'Product details load karta aale nahi.', success: false, matchStatus: null, errorReason: productsError.message }
+    }
+
+    for (const p of (products ?? []) as { id: string; name: string | null; product_code: string | null }[]) {
+      productsById.set(p.id, { name: p.name, product_code: p.product_code })
+    }
+  }
+
+  const dispatchItems: DispatchItemForChallan[] = itemRows.map((it) => {
+    const product = it.product_id ? productsById.get(it.product_id) : undefined
+    return {
+      material_name: it.material_name ?? product?.name ?? '',
+      material_code: it.material_code ?? product?.product_code ?? null,
+      qty_dispatched: it.qty_dispatched,
+      unit: it.unit,
+    }
+  })
 
   const { data: clients, error: clientsError } = await supabaseClient
     .from('p2_clients')
@@ -2656,36 +2798,12 @@ async function sendChallanIntent(
   const mm = String(dispatchDateObj.getMonth() + 1).padStart(2, '0')
   const yyyy = dispatchDateObj.getFullYear()
   const dispatchDateFormatted = `${dd}/${mm}/${yyyy}`
-  const fileNameDateDDMMYYYY = `${dd}${mm}${yyyy}`
 
-  const clientAddressLines = (order.client_address ?? '')
-    .split('\n')
-    .map((l) => l.trim())
-    .filter(Boolean)
-
-  let excelBase64: string
-  try {
-    excelBase64 = buildChallanWorkbook({
-      companyName: tenantSettings.company_name ?? '',
-      addressLine1: tenantSettings.address_line1,
-      addressLine2: tenantSettings.address_line2,
-      gstin: tenantSettings.gstin,
-      mobile: tenantSettings.mobile,
-      clientName: order.client_name,
-      clientAddressLines,
-      challanNumber: order.challan_number,
-      dispatchDateFormatted,
-      poNumber: order.po_number,
-      items: dispatchItems,
-    })
-  } catch (err) {
-    return {
-      text: 'Excel banata error aala.',
-      success: false,
-      matchStatus: 'matched',
-      errorReason: err instanceof Error ? err.message : String(err),
-    }
-  }
+  // Not plan-gated. Verifying a delivery is utility, not a Pro feature — every
+  // recipient gets the link, whatever their supplier pays us.
+  const receiveUrl = order.dispatch_token
+    ? `https://nexflowautomations.in/receive?token=${order.dispatch_token}`
+    : null
 
   const emailResult = await sendChallanEmail({
     toEmail: client.email,
@@ -2695,8 +2813,7 @@ async function sendChallanIntent(
     companyName: tenantSettings.company_name ?? '',
     mobile: tenantSettings.mobile,
     replyToEmail: tenantSettings.email,
-    excelBase64,
-    fileNameDateDDMMYYYY,
+    receiveUrl,
   })
 
   if (!emailResult.ok) {
@@ -2712,6 +2829,287 @@ async function sendChallanIntent(
     text: `✅ Challan ${order.challan_number} ${client.name} la pathavla (${client.email})`,
     success: true,
     matchStatus: 'matched',
+    errorReason: null,
+  }
+}
+
+// btoa() throws on any character outside Latin1, and only accepts a binary
+// string anyway — never pass raw UTF-8 text to it. Chunked so spreading a
+// large Uint8Array into String.fromCharCode in one call can't stack-overflow.
+function encodeBase64(bytes: Uint8Array): string {
+  let binary = ''
+  const chunkSize = 0x8000
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize))
+  }
+  return btoa(binary)
+}
+
+function formatDDMMYYYY(dateStr: string): string {
+  const d = new Date(dateStr)
+  const dd = String(d.getDate()).padStart(2, '0')
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const yyyy = d.getFullYear()
+  return `${dd}/${mm}/${yyyy}`
+}
+
+interface TallyExportRawMaterialJoin {
+  name: string
+  material_code: string | null
+  hsn_sac: string | null
+  gst_rate: number | null
+  unit: string
+}
+
+interface TallyExportTxnRow {
+  transaction_date: string
+  quantity: number
+  rate: number | null
+  notes: string | null
+  p2_raw_materials: TallyExportRawMaterialJoin
+}
+
+const TALLY_EXPORT_JOIN_COLUMNS =
+  'transaction_date, quantity, rate, notes, p2_raw_materials!inner(name, material_code, hsn_sac, gst_rate, unit)'
+
+const TALLY_EXPORT_DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+
+function monthAbbr(d: Date): string {
+  return d.toLocaleDateString('en-IN', { month: 'short' })
+}
+
+// send_tally_export orchestrator — builds the 17-column GST workbook (GRN,
+// consumption, opening stock), optionally scoped to a date range, and emails
+// it as an XLSX attachment to ca_email. Executes immediately, no confirm
+// gate. Not in READ_ONLY_INTENTS on purpose (mirrors sendChallanIntent) —
+// this is a write (sends an email) even though it never touches the DB
+// beyond reading.
+async function sendTallyExportIntent(
+  supabaseClient: ReturnType<typeof createClient>,
+  tenantId: string,
+  context: AgentContext,
+  dateFrom?: string,
+  dateTo?: string
+): Promise<SendTallyExportResult> {
+  const { data: settings, error: settingsError } = await supabaseClient
+    .from('p2_tenant_settings')
+    .select('ca_email, company_name, email')
+    .eq('tenant_id', tenantId)
+    .single()
+
+  if (settingsError || !settings) {
+    return { text: 'Tenant settings load karta aale nahi.', success: false, errorReason: settingsError?.message ?? 'no settings row' }
+  }
+
+  const tenantSettings = settings as { ca_email: string | null; company_name: string | null; email: string | null }
+
+  if (!tenantSettings.ca_email || !tenantSettings.ca_email.trim()) {
+    return { text: '❌ CA email set nahi aahe. Settings madhe CA email add karo.', success: false, errorReason: 'no_ca_email' }
+  }
+
+  // Haiku output isn't trusted as-is — an unparseable date is treated as
+  // absent rather than handed to a Postgres date filter.
+  const validFrom = dateFrom && TALLY_EXPORT_DATE_RE.test(dateFrom) ? dateFrom : undefined
+  const validTo = dateTo && TALLY_EXPORT_DATE_RE.test(dateTo) ? dateTo : undefined
+  const todayISO = getISTDateRange(0).since.split('T')[0]
+  // dateFrom alone means "from then to today" — dateTo alone (no dateFrom)
+  // is not a supported combination, so it's dropped rather than guessed at.
+  const effectiveFrom = validFrom
+  const effectiveTo = validFrom ? (validTo ?? todayISO) : undefined
+
+  const applyRange = <T extends { gte: (...args: unknown[]) => T; lte: (...args: unknown[]) => T }>(query: T): T => {
+    let q = query
+    if (effectiveFrom) q = q.gte('transaction_date', effectiveFrom)
+    if (effectiveTo) q = q.lte('transaction_date', effectiveTo)
+    return q
+  }
+
+  const [grnResult, consumptionResult, openingResult] = await Promise.all([
+    applyRange(
+      supabaseClient
+        .from('p2_stock_transactions')
+        .select(TALLY_EXPORT_JOIN_COLUMNS)
+        .eq('tenant_id', tenantId)
+        .eq('transaction_type', 'grn')
+    ),
+    applyRange(
+      supabaseClient
+        .from('p2_stock_transactions')
+        .select(TALLY_EXPORT_JOIN_COLUMNS)
+        .eq('tenant_id', tenantId)
+        .eq('transaction_type', 'consumption')
+    ),
+    applyRange(
+      supabaseClient
+        .from('p2_stock_transactions')
+        .select(TALLY_EXPORT_JOIN_COLUMNS)
+        .eq('tenant_id', tenantId)
+        .eq('transaction_type', 'adjustment')
+        .eq('notes', 'Opening Stock')
+    ),
+  ])
+
+  if (grnResult.error || consumptionResult.error || openingResult.error) {
+    return {
+      text: '❌ Export tayar karta aala nahi.',
+      success: false,
+      errorReason:
+        grnResult.error?.message ?? consumptionResult.error?.message ?? openingResult.error?.message ?? 'unknown query error',
+    }
+  }
+
+  type TaggedRow = { type: 'grn' | 'consumption' | 'opening'; row: TallyExportTxnRow }
+  const allRows: TaggedRow[] = [
+    ...((grnResult.data ?? []) as unknown as TallyExportTxnRow[]).map((row) => ({ type: 'grn' as const, row })),
+    ...((consumptionResult.data ?? []) as unknown as TallyExportTxnRow[]).map((row) => ({ type: 'consumption' as const, row })),
+    ...((openingResult.data ?? []) as unknown as TallyExportTxnRow[]).map((row) => ({ type: 'opening' as const, row })),
+  ]
+
+  allRows.sort((a, b) => a.row.transaction_date.localeCompare(b.row.transaction_date))
+
+  const workbook = new ExcelJS.Workbook()
+  const worksheet = workbook.addWorksheet('CA Export')
+
+  worksheet.columns = [
+    { header: 'Date', key: 'date', width: 14 },
+    { header: 'Material', key: 'material', width: 35 },
+    { header: 'Material Code', key: 'materialCode', width: 16 },
+    { header: 'HSN/SAC', key: 'hsnSac', width: 12 },
+    { header: 'Transaction Type', key: 'transactionType', width: 20 },
+    { header: 'Quantity', key: 'quantity', width: 12, numFmt: '#,##0.##' },
+    { header: 'Unit', key: 'unit', width: 8 },
+    { header: 'Rate', key: 'rate', width: 12, numFmt: '#,##0.##' },
+    { header: 'Amount', key: 'amount', width: 14, numFmt: '#,##0.00' },
+    { header: 'CGST Rate (%)', key: 'cgstRate', width: 14 },
+    { header: 'CGST Amount', key: 'cgstAmount', width: 14, numFmt: '#,##0.00' },
+    { header: 'SGST Rate (%)', key: 'sgstRate', width: 14 },
+    { header: 'SGST Amount', key: 'sgstAmount', width: 14, numFmt: '#,##0.00' },
+    { header: 'IGST Rate (%)', key: 'igstRate', width: 14 },
+    { header: 'IGST Amount', key: 'igstAmount', width: 14 },
+    { header: 'Total GST Amount', key: 'totalGst', width: 16, numFmt: '#,##0.00' },
+    { header: 'Invoice Total', key: 'invoiceTotal', width: 14, numFmt: '#,##0.00' },
+  ]
+
+  worksheet.getRow(1).eachCell((cell: any) => {
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFF5C1A' } }
+    cell.alignment = { horizontal: 'center', vertical: 'middle' }
+  })
+
+  for (const { type, row } of allRows) {
+    const rm = row.p2_raw_materials
+    const date = formatDDMMYYYY(row.transaction_date)
+    const materialCode = rm.material_code ?? ''
+    const hsnSac = rm.hsn_sac ?? ''
+
+    if (type === 'grn') {
+      const rate = row.rate ?? 0
+      const qty = row.quantity
+      const amount = qty * rate
+      const gstRate = rm.gst_rate ?? 0
+      const cgstRate = gstRate / 2
+      const sgstRate = gstRate / 2
+      const cgstAmount = (amount * cgstRate) / 100
+      const sgstAmount = (amount * sgstRate) / 100
+      const totalGst = cgstAmount + sgstAmount
+      const invoiceTotal = amount + totalGst
+
+      worksheet.addRow({
+        date, material: rm.name, materialCode, hsnSac, transactionType: 'GRN (Purchase)',
+        quantity: qty, unit: rm.unit, rate, amount,
+        cgstRate, cgstAmount, sgstRate, sgstAmount, igstRate: '', igstAmount: '',
+        totalGst, invoiceTotal,
+      })
+    } else if (type === 'consumption') {
+      worksheet.addRow({
+        date, material: rm.name, materialCode, hsnSac, transactionType: 'Consumption (Issue)',
+        quantity: Math.abs(row.quantity), unit: rm.unit, rate: '', amount: '',
+        cgstRate: '', cgstAmount: '', sgstRate: '', sgstAmount: '', igstRate: '', igstAmount: '',
+        totalGst: '', invoiceTotal: '',
+      })
+    } else {
+      worksheet.addRow({
+        date, material: rm.name, materialCode, hsnSac, transactionType: 'Opening Stock',
+        quantity: row.quantity, unit: rm.unit, rate: '', amount: '',
+        cgstRate: '', cgstAmount: '', sgstRate: '', sgstAmount: '', igstRate: '', igstAmount: '',
+        totalGst: '', invoiceTotal: '',
+      })
+    }
+  }
+
+  worksheet.views = [{ state: 'frozen', ySplit: 1 }]
+
+  const buffer = await workbook.xlsx.writeBuffer()
+  const base64 = encodeBase64(new Uint8Array(buffer))
+
+  const today = new Date()
+  const dd = String(today.getDate()).padStart(2, '0')
+  const mm = String(today.getMonth() + 1).padStart(2, '0')
+  const yyyy = today.getFullYear()
+
+  let filename: string
+  let periodText: string | null = null
+
+  if (!effectiveFrom && !effectiveTo) {
+    filename = `CA_Export_${dd}${mm}${yyyy}.xlsx`
+  } else {
+    const fromStr = effectiveFrom ?? effectiveTo!
+    const toStr = effectiveTo ?? effectiveFrom!
+    const fromDate = new Date(fromStr)
+    const toDate = new Date(toStr)
+    periodText = `${formatDDMMYYYY(fromStr)} – ${formatDDMMYYYY(toStr)}`
+
+    const sameMonth = fromDate.getFullYear() === toDate.getFullYear() && fromDate.getMonth() === toDate.getMonth()
+    if (sameMonth) {
+      filename = `CA_Export_${monthAbbr(fromDate)}${fromDate.getFullYear()}.xlsx`
+    } else {
+      const fromDD = String(fromDate.getDate()).padStart(2, '0')
+      const toDD = String(toDate.getDate()).padStart(2, '0')
+      filename = `CA_Export_${fromDD}${monthAbbr(fromDate)}_${toDD}${monthAbbr(toDate)}${toDate.getFullYear()}.xlsx`
+    }
+  }
+
+  if (!RESEND_API_KEY) {
+    console.error('[sendTallyExportIntent] RESEND_API_KEY not configured')
+    return { text: '❌ Email pathavayala error aala. Please try again.', success: false, errorReason: 'RESEND_API_KEY not configured' }
+  }
+
+  const body: Record<string, unknown> = {
+    from: 'Nexflow <challans@nexflowautomations.in>',
+    to: [tenantSettings.ca_email],
+    subject: `Nexflow CA Export — ${tenantSettings.company_name ?? ''} (${dd}/${mm}/${yyyy})`,
+    html: `<p>Please find the CA export attached. Generated from Nexflow P2.</p>`,
+    attachments: [{ filename, content: base64 }],
+  }
+  if (tenantSettings.email && tenantSettings.email.trim()) {
+    body.reply_to = tenantSettings.email
+  }
+
+  try {
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    })
+
+    if (!response.ok) {
+      const errText = await response.text()
+      console.error('[sendTallyExportIntent] Resend API error:', errText)
+      return { text: '❌ Email pathavayala error aala. Please try again.', success: false, errorReason: errText || `Resend API returned ${response.status}` }
+    }
+  } catch (err) {
+    console.error('[sendTallyExportIntent] Failed to send:', err)
+    return { text: '❌ Email pathavayala error aala. Please try again.', success: false, errorReason: err instanceof Error ? err.message : String(err) }
+  }
+
+  return {
+    text: periodText
+      ? `✅ CA export pathavla ${tenantSettings.ca_email} la. Period: ${periodText}. File: ${filename}`
+      : `✅ CA export pathavla ${tenantSettings.ca_email} la. File: ${filename}`,
+    success: true,
     errorReason: null,
   }
 }
@@ -2741,6 +3139,194 @@ async function logInteraction(
   }
 }
 
+// Tier 4 Phase 2 — receive.html "Auto-fill GRN". Called from a PUBLIC page,
+// so unlike every other confirm_* handler in this file, recipient_tenant_id
+// cannot be trusted from the body alone: it's verified against the real
+// caller identity via the Authorization header (same auth.getUser(token)
+// pattern used in invite-staff/index.ts and get-user-email/index.ts).
+// Everything else re-fetches at write time, same discipline as the other
+// confirm_* handlers above.
+async function confirmReceiveGrn(
+  supabaseClient: ReturnType<typeof createClient>,
+  req: Request,
+  body: Partial<ConfirmReceiveGrnRequest>
+): Promise<Response> {
+  const { dispatch_token, recipient_tenant_id } = body
+
+  if (!dispatch_token || !recipient_tenant_id) {
+    return respond({ status: 'error', error: 'dispatch_token and recipient_tenant_id are required' }, 400)
+  }
+
+  const authHeader = req.headers.get('Authorization') ?? ''
+  const token = authHeader.replace('Bearer ', '')
+  const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token)
+
+  if (userError || !user || user.id !== recipient_tenant_id) {
+    return respond({ status: 'error', error: 'Unauthorized' }, 401)
+  }
+
+  const { data: order, error: orderError } = await supabaseClient
+    .from('p2_dispatch_orders')
+    .select('id, tenant_id, challan_number, status')
+    .eq('dispatch_token', dispatch_token)
+    .limit(1)
+    .maybeSingle()
+
+  if (orderError || !order || order.status !== 'confirmed') {
+    return respond({ status: 'error', error: 'Delivery not found or not confirmed' }, 404)
+  }
+
+  const { data: existing, error: existingError } = await supabaseClient
+    .from('p2_stock_transactions')
+    .select('id')
+    .eq('tenant_id', recipient_tenant_id)
+    .eq('transaction_type', 'grn')
+    .ilike('notes', `%dispatch_token:${dispatch_token}%`)
+    .limit(1)
+
+  if (existingError) {
+    return respond({ status: 'error', error: existingError.message }, 500)
+  }
+
+  if (existing && existing.length > 0) {
+    return respond({ status: 'already_done' })
+  }
+
+  const { data: senderSettings } = await supabaseClient
+    .from('p2_tenant_settings')
+    .select('company_name')
+    .eq('tenant_id', order.tenant_id)
+    .maybeSingle()
+
+  const senderCompanyName = (senderSettings as { company_name: string | null } | null)?.company_name ?? ''
+
+  const { data: items, error: itemsError } = await supabaseClient
+    .from('p2_dispatch_items')
+    .select('material_name, qty_dispatched, product_id')
+    .eq('dispatch_order_id', order.id)
+    .eq('tenant_id', order.tenant_id)
+
+  if (itemsError) {
+    return respond({ status: 'error', error: itemsError.message }, 500)
+  }
+
+  type ReceiveGrnItemRow = { material_name: string | null; qty_dispatched: number; product_id: string | null }
+  const itemRows = (items ?? []) as ReceiveGrnItemRow[]
+
+  // Same product-name resolution as receive-dispatch/index.ts — duplicated
+  // inline since Edge Functions don't share code and that file isn't
+  // touched here. Product dispatches leave material_name null at the DB
+  // level; the name only exists on p2_products.
+  const missingProductIds = [
+    ...new Set(
+      itemRows
+        .filter((it) => !it.material_name && it.product_id)
+        .map((it) => it.product_id as string)
+    ),
+  ]
+
+  const productNameById = new Map<string, string | null>()
+
+  if (missingProductIds.length) {
+    const { data: products } = await supabaseClient
+      .from('p2_products')
+      .select('id, name')
+      .eq('tenant_id', order.tenant_id)
+      .in('id', missingProductIds)
+
+    for (const p of (products ?? []) as { id: string; name: string | null }[]) {
+      productNameById.set(p.id, p.name)
+    }
+  }
+
+  const resolvedItems = itemRows.map((it) => ({
+    material_name: it.material_name ?? (it.product_id ? productNameById.get(it.product_id) ?? null : null),
+    qty_dispatched: it.qty_dispatched,
+  }))
+
+  // Supplier match is best-effort — no match just means supplier_id stays
+  // null on the inserted rows, it never blocks the GRN.
+  const { data: recipientSuppliers } = await supabaseClient
+    .from('p2_suppliers')
+    .select('id, name')
+    .eq('tenant_id', recipient_tenant_id)
+    .eq('is_active', true)
+
+  const matchedSupplier = matchSupplierName(senderCompanyName, (recipientSuppliers ?? []) as Supplier[])
+
+  const { data: recipientMaterials } = await supabaseClient
+    .from('p2_raw_materials')
+    .select('id, name, unit, min_stock_level, material_code')
+    .eq('tenant_id', recipient_tenant_id)
+    .eq('is_active', true)
+
+  const matchedItems: { raw_material_id: string; quantity: number }[] = []
+  const unmatchedItems: string[] = []
+
+  for (const item of resolvedItems) {
+    const name = item.material_name ?? ''
+    if (!name.trim()) {
+      unmatchedItems.push('(unnamed item)')
+      continue
+    }
+    // matchMaterialName treats an ambiguous match as an error too — we
+    // never guess which material to credit, so ambiguous falls into
+    // unmatched just like no-match.
+    const matchResult = matchMaterialName(name, (recipientMaterials ?? []) as RawMaterial[])
+    if ('error' in matchResult) {
+      unmatchedItems.push(name)
+    } else {
+      matchedItems.push({ raw_material_id: matchResult.material.id, quantity: item.qty_dispatched })
+    }
+  }
+
+  if (matchedItems.length === 0) {
+    void logInteraction(supabaseClient, recipient_tenant_id, '', 'receive_grn', { dispatch_token }, 'no_match', false, 'no materials matched')
+    return respond({ status: 'ok', grn_number: null, matched_count: 0, unmatched_items: unmatchedItems })
+  }
+
+  const { data: grnNo, error: grnError } = await supabaseClient
+    .rpc('get_next_grn_number', { p_tenant_id: recipient_tenant_id })
+
+  if (grnError || !grnNo) {
+    void logInteraction(supabaseClient, recipient_tenant_id, '', 'receive_grn', { dispatch_token }, null, false, grnError?.message ?? 'no grn number returned')
+    return respond({ status: 'error', error: grnError?.message ?? 'Could not generate GRN number' }, 500)
+  }
+
+  const today = getISTDateRange(0).since.split('T')[0]
+  const notes = `Auto GRN via Nexflow receive | dispatch_token:${dispatch_token} | Challan ${order.challan_number} | Supplier: ${senderCompanyName}`
+
+  const { error: insertError } = await supabaseClient
+    .from('p2_stock_transactions')
+    .insert(matchedItems.map((m) => ({
+      tenant_id: recipient_tenant_id,
+      raw_material_id: m.raw_material_id,
+      transaction_type: 'grn',
+      quantity: m.quantity,
+      transaction_date: today,
+      notes,
+      grn_no: grnNo,
+      supplier_id: matchedSupplier?.id ?? null,
+      supplier_name: matchedSupplier?.name ?? null,
+      rate: null,
+      reference_id: null,
+    })))
+
+  if (insertError) {
+    void logInteraction(supabaseClient, recipient_tenant_id, '', 'receive_grn', { dispatch_token, grn_no: grnNo }, null, false, insertError.message)
+    return respond({ status: 'error', error: insertError.message }, 500)
+  }
+
+  void logInteraction(supabaseClient, recipient_tenant_id, '', 'receive_grn', { dispatch_token, grn_no: grnNo, matched_count: matchedItems.length }, null, true, null)
+
+  return respond({
+    status: 'ok',
+    grn_number: grnNo,
+    matched_count: matchedItems.length,
+    unmatched_items: unmatchedItems,
+  })
+}
+
 Deno.serve(async (req) => {
   // CORS preflight
   if (req.method === 'OPTIONS') {
@@ -2763,10 +3349,15 @@ Deno.serve(async (req) => {
       Partial<Omit<ConfirmRmDispatchRequest, 'action'>> &
       Partial<Omit<ConfirmMultiGrnRequest, 'action'>> &
       Partial<Omit<UpdateGrnRatesRequest, 'action'>> &
-      { action?: 'confirm_grn' | 'confirm_production_issue' | 'add_production_issue_client' | 'confirm_product_dispatch' | 'confirm_rm_dispatch' | 'confirm_multi_grn' | 'update_grn_rates' } = await req.json()
+      Partial<Omit<ConfirmReceiveGrnRequest, 'action'>> &
+      { action?: 'confirm_grn' | 'confirm_production_issue' | 'add_production_issue_client' | 'confirm_product_dispatch' | 'confirm_rm_dispatch' | 'confirm_multi_grn' | 'update_grn_rates' | 'confirm_receive_grn' } = await req.json()
 
     if (body.action === 'confirm_grn') {
       return await confirmGrn(supabase, body as Partial<ConfirmGrnRequest>)
+    }
+
+    if (body.action === 'confirm_receive_grn') {
+      return await confirmReceiveGrn(supabase, req, body as Partial<ConfirmReceiveGrnRequest>)
     }
 
     if (body.action === 'confirm_multi_grn') {
@@ -2873,6 +3464,25 @@ Deno.serve(async (req) => {
       return respond({
         status: 'ok',
         intent: 'send_challan',
+        confirm: { status: 'ready', confirm_text: result.text },
+      })
+    }
+
+    // Not in READ_ONLY_INTENTS on purpose — this is a write (sends an
+    // email) even though it executes immediately with no confirm gate.
+    if (haikuResult.intent === 'send_tally_export') {
+      const result = await sendTallyExportIntent(
+        supabase, tenant_id, context,
+        haikuResult.extracted?.date_from,
+        haikuResult.extracted?.date_to
+      )
+      void logInteraction(
+        supabase, tenant_id, message, 'send_tally_export',
+        haikuResult.extracted as Record<string, unknown>, null, result.success, result.errorReason
+      )
+      return respond({
+        status: 'ok',
+        intent: 'send_tally_export',
         confirm: { status: 'ready', confirm_text: result.text },
       })
     }

@@ -95,7 +95,7 @@
 
     <div id="sessionBox" class="session-box" style="display:none;">
         <p>You're logged into Nexflow — pre-fill this GRN in one tap.</p>
-        <button class="nx-btn nx-btn-primary nx-btn-sm" onclick="console.log('GRN pre-fill — Tier 4 Phase 2')">Auto-fill GRN</button>
+        <button id="autoFillBtn" class="nx-btn nx-btn-primary nx-btn-sm" onclick="startAutoFillGrn()">Auto-fill GRN</button>
     </div>
 
     <div id="loadingState" class="receive-loading">Loading delivery details…</div>
@@ -158,7 +158,16 @@
 <script src="js/challan-pdf.js"></script>
 <script>
 const EDGE_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/receive-dispatch`;
+const AGENT_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/agent-query`;
 let currentDispatchData = null;
+let dispatchToken = null;
+let currentSession = null;
+
+function escapeHtml(str) {
+    return String(str ?? '').replace(/[&<>"']/g, (c) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+}
 
 function showError(message) {
     document.getElementById('loadingState').style.display = 'none';
@@ -376,6 +385,7 @@ async function checkSession() {
     try {
         const { data: { session } } = await window.supabase.auth.getSession();
         if (session) {
+            currentSession = session;
             document.getElementById('sessionBox').style.display = 'flex';
         }
     } catch (e) {
@@ -386,6 +396,7 @@ async function checkSession() {
 async function loadReceipt() {
     const params = new URLSearchParams(window.location.search);
     const token = params.get('token');
+    dispatchToken = token;
 
     if (!token) {
         showError('Invalid link.');
@@ -408,6 +419,162 @@ async function loadReceipt() {
         renderDispatch(data);
     } catch (e) {
         showError('Something went wrong loading this delivery. Please try again later.');
+    }
+}
+
+async function startAutoFillGrn() {
+    const btn = document.getElementById('autoFillBtn');
+    const original = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Checking…';
+
+    try {
+        const { data: existing, error } = await window.supabase
+            .from('p2_stock_transactions')
+            .select('id')
+            .eq('transaction_type', 'grn')
+            .ilike('notes', `%dispatch_token:${dispatchToken}%`)
+            .limit(1);
+
+        if (error) throw error;
+
+        if (existing && existing.length > 0) {
+            document.getElementById('sessionBox').innerHTML =
+                '<p>✅ GRN already created for this delivery</p>';
+            return;
+        }
+
+        renderPrefillCard();
+    } catch (e) {
+        console.error('GRN duplicate check failed:', e);
+        btn.disabled = false;
+        btn.textContent = original;
+        alert('Could not check GRN status. Please try again.');
+    }
+}
+
+function renderPrefillCard() {
+    document.getElementById('sessionBox').style.display = 'none';
+
+    const { dispatch, supplier, items } = currentDispatchData;
+    const today = new Date();
+    const dateStr = `${String(today.getDate()).padStart(2, '0')}/${String(today.getMonth() + 1).padStart(2, '0')}/${today.getFullYear()}`;
+
+    const card = document.createElement('div');
+    card.id = 'prefillCard';
+    card.className = 'nx-card section-gap';
+    card.innerHTML = `
+        <div class="nx-card-title" style="margin-bottom:10px;">Confirm GRN</div>
+        <div class="supplier-line">Supplier: <strong>${escapeHtml(supplier.company_name || '')}</strong></div>
+        <div class="supplier-line">Date: <strong>${dateStr}</strong></div>
+        <div class="supplier-line">Reference: <strong>Challan ${escapeHtml(dispatch.challan_number || '')}</strong></div>
+        <div class="nx-table-wrap section-gap">
+            <table class="nx-table">
+                <thead><tr><th>Material</th><th>Qty</th><th>Unit</th></tr></thead>
+                <tbody>${(items || []).map(item => `
+                    <tr>
+                        <td>${escapeHtml(item.material_name || '')}</td>
+                        <td>${item.qty_dispatched}</td>
+                        <td>${escapeHtml(item.unit || '')}</td>
+                    </tr>
+                `).join('')}</tbody>
+            </table>
+        </div>
+        <button id="confirmGrnBtn" class="nx-btn nx-btn-primary nx-btn-full section-gap" onclick="confirmReceiveGrn()">Confirm GRN</button>
+        <div class="section-gap" style="text-align:center;">
+            <a href="#" onclick="cancelPrefillCard(); return false;" style="font-size:12px; color: var(--mid);">Cancel</a>
+        </div>
+        <div id="grnResultBox"></div>
+    `;
+    document.getElementById('sessionBox').insertAdjacentElement('afterend', card);
+}
+
+function cancelPrefillCard() {
+    const card = document.getElementById('prefillCard');
+    if (card) card.remove();
+
+    const btn = document.getElementById('autoFillBtn');
+    btn.disabled = false;
+    btn.textContent = 'Auto-fill GRN';
+    document.getElementById('sessionBox').style.display = 'flex';
+}
+
+function renderUnmatchedAlert(unmatchedItems) {
+    if (!unmatchedItems || unmatchedItems.length === 0) return '';
+    return `
+        <div class="nx-alert nx-alert-orange section-gap">
+            <span class="nx-alert-icon">⚠️</span>
+            <span>Not matched to your inventory — add manually: ${unmatchedItems.map(escapeHtml).join(', ')}</span>
+        </div>
+    `;
+}
+
+async function confirmReceiveGrn() {
+    const btn = document.getElementById('confirmGrnBtn');
+    const resultBox = document.getElementById('grnResultBox');
+    btn.disabled = true;
+    btn.textContent = 'Creating…';
+    resultBox.innerHTML = '';
+
+    try {
+        const res = await fetch(AGENT_FUNCTION_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${currentSession.access_token}`,
+            },
+            body: JSON.stringify({
+                action: 'confirm_receive_grn',
+                dispatch_token: dispatchToken,
+                recipient_tenant_id: currentSession.user.id,
+            }),
+        });
+        const data = await res.json();
+
+        if (data.status === 'already_done') {
+            resultBox.innerHTML = `
+                <div class="nx-alert nx-alert-green">
+                    <span class="nx-alert-icon">✅</span>
+                    <span>GRN already created for this delivery</span>
+                </div>
+            `;
+            btn.style.display = 'none';
+            return;
+        }
+
+        if (data.status === 'ok' && data.grn_number) {
+            resultBox.innerHTML = `
+                <div class="nx-alert nx-alert-green">
+                    <span class="nx-alert-icon">✅</span>
+                    <span>GRN ${escapeHtml(data.grn_number)} created — ${data.matched_count} item(s) added to stock.</span>
+                </div>
+            ` + renderUnmatchedAlert(data.unmatched_items);
+            btn.style.display = 'none';
+            return;
+        }
+
+        if (data.status === 'ok' && !data.grn_number) {
+            resultBox.innerHTML = `
+                <div class="nx-alert nx-alert-orange">
+                    <span class="nx-alert-icon">⚠️</span>
+                    <span>None of these materials matched your inventory. Please add this GRN manually.</span>
+                </div>
+            ` + renderUnmatchedAlert(data.unmatched_items);
+            btn.style.display = 'none';
+            return;
+        }
+
+        throw new Error(data.error || 'Unknown error');
+    } catch (e) {
+        console.error('confirm_receive_grn failed:', e);
+        resultBox.innerHTML = `
+            <div class="nx-alert nx-alert-red">
+                <span class="nx-alert-icon">❌</span>
+                <span>GRN creation failed. Please create manually.</span>
+            </div>
+        `;
+        btn.disabled = false;
+        btn.textContent = 'Confirm GRN';
     }
 }
 
