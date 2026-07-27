@@ -470,23 +470,71 @@ function renderPrefillCard() {
         <div class="supplier-line">Reference: <strong>Challan ${escapeHtml(dispatch.challan_number || '')}</strong></div>
         <div class="nx-table-wrap section-gap">
             <table class="nx-table">
-                <thead><tr><th>Material</th><th>Qty</th><th>Unit</th></tr></thead>
-                <tbody>${(items || []).map(item => `
+                <thead><tr><th>Material</th><th>Qty</th><th>Unit</th><th>Rate (₹)</th></tr></thead>
+                <tbody>${(items || []).map((item, i) => `
                     <tr>
                         <td>${escapeHtml(item.material_name || '')}</td>
                         <td>${item.qty_dispatched}</td>
                         <td>${escapeHtml(item.unit || '')}</td>
+                        <td><input type="number" min="0" step="0.01" placeholder="0.00" id="rate_${i}" class="nx-input" style="width:80px;"></td>
                     </tr>
                 `).join('')}</tbody>
             </table>
         </div>
-        <button id="confirmGrnBtn" class="nx-btn nx-btn-primary nx-btn-full section-gap" onclick="confirmReceiveGrn()">Confirm GRN</button>
-        <div class="section-gap" style="text-align:center;">
-            <a href="#" onclick="cancelPrefillCard(); return false;" style="font-size:12px; color: var(--mid);">Cancel</a>
+        <div class="section-gap">
+            <label style="font-size:12px; color: var(--mid); display:block; margin-bottom:4px;">Invoice No</label>
+            <input type="text" id="invoiceNo" class="nx-input" placeholder="Invoice number (optional)">
         </div>
+        <div id="grnActionArea">${grnActionButtonsHtml()}</div>
         <div id="grnResultBox"></div>
     `;
     document.getElementById('sessionBox').insertAdjacentElement('afterend', card);
+}
+
+function grnActionButtonsHtml() {
+    return `
+        <button id="confirmGrnBtn" class="nx-btn nx-btn-primary nx-btn-full section-gap" onclick="handleConfirmGrnClick()">Confirm GRN</button>
+        <div class="section-gap" style="text-align:center;">
+            <a href="#" onclick="cancelPrefillCard(); return false;" style="font-size:12px; color: var(--mid);">Cancel</a>
+        </div>
+    `;
+}
+
+function restoreGrnActions() {
+    document.getElementById('grnActionArea').innerHTML = grnActionButtonsHtml();
+}
+
+function handleConfirmGrnClick() {
+    const items = currentDispatchData.items || [];
+    const allRatesEmpty = items.every((_, i) => {
+        const val = parseFloat(document.getElementById('rate_' + i)?.value || '0');
+        return isNaN(val) || val <= 0;
+    });
+    const invoiceEmpty = !(document.getElementById('invoiceNo')?.value || '').trim();
+
+    let warning = null;
+    if (allRatesEmpty && invoiceEmpty) {
+        warning = '⚠️ No rates and no invoice number entered.';
+    } else if (allRatesEmpty) {
+        warning = '⚠️ No rates entered.';
+    } else if (invoiceEmpty) {
+        warning = '⚠️ No invoice number entered.';
+    }
+
+    if (!warning) {
+        confirmReceiveGrn();
+        return;
+    }
+
+    document.getElementById('grnActionArea').innerHTML = `
+        <div class="nx-alert nx-alert-orange section-gap">
+            <span>${warning}<br>Stock will be updated without this information.<br>You can add it manually in GRN afterward.<br>Proceed anyway?</span>
+        </div>
+        <button id="confirmGrnBtn" class="nx-btn nx-btn-primary nx-btn-full section-gap" onclick="confirmReceiveGrn()">Yes, confirm GRN</button>
+        <div class="section-gap" style="text-align:center;">
+            <a href="#" onclick="restoreGrnActions(); return false;" style="font-size:12px; color: var(--mid);">Go back</a>
+        </div>
+    `;
 }
 
 function cancelPrefillCard() {
@@ -516,6 +564,12 @@ async function confirmReceiveGrn() {
     btn.textContent = 'Creating…';
     resultBox.innerHTML = '';
 
+    const rates = currentDispatchData.items.map((_, i) => {
+        const val = parseFloat(document.getElementById('rate_' + i)?.value || '0');
+        return isNaN(val) || val <= 0 ? null : val;
+    });
+    const invoiceNo = document.getElementById('invoiceNo')?.value || '';
+
     try {
         const res = await fetch(AGENT_FUNCTION_URL, {
             method: 'POST',
@@ -527,6 +581,8 @@ async function confirmReceiveGrn() {
                 action: 'confirm_receive_grn',
                 dispatch_token: dispatchToken,
                 recipient_tenant_id: currentSession.user.id,
+                invoice_no: invoiceNo.trim() || null,
+                item_rates: rates,
             }),
         });
         const data = await res.json();

@@ -1334,6 +1334,8 @@ interface ConfirmReceiveGrnRequest {
   action: 'confirm_receive_grn'
   dispatch_token: string
   recipient_tenant_id: string
+  invoice_no?: string | null
+  item_rates?: (number | null)[]
 }
 
 type MatchEntitiesResult = MatchEntitiesResultStock | MatchEntitiesResultGrn
@@ -3151,11 +3153,13 @@ async function confirmReceiveGrn(
   req: Request,
   body: Partial<ConfirmReceiveGrnRequest>
 ): Promise<Response> {
-  const { dispatch_token, recipient_tenant_id } = body
+  const { dispatch_token, recipient_tenant_id, invoice_no, item_rates } = body
 
   if (!dispatch_token || !recipient_tenant_id) {
     return respond({ status: 'error', error: 'dispatch_token and recipient_tenant_id are required' }, 400)
   }
+
+  const invoiceNo = typeof invoice_no === 'string' && invoice_no.trim() ? invoice_no.trim() : null
 
   const authHeader = req.headers.get('Authorization') ?? ''
   const token = authHeader.replace('Bearer ', '')
@@ -3260,10 +3264,11 @@ async function confirmReceiveGrn(
     .eq('tenant_id', recipient_tenant_id)
     .eq('is_active', true)
 
-  const matchedItems: { raw_material_id: string; quantity: number }[] = []
+  const matchedItems: { raw_material_id: string; quantity: number; rate: number | null }[] = []
   const unmatchedItems: string[] = []
 
-  for (const item of resolvedItems) {
+  for (let i = 0; i < resolvedItems.length; i++) {
+    const item = resolvedItems[i]
     const name = item.material_name ?? ''
     if (!name.trim()) {
       unmatchedItems.push('(unnamed item)')
@@ -3276,7 +3281,9 @@ async function confirmReceiveGrn(
     if ('error' in matchResult) {
       unmatchedItems.push(name)
     } else {
-      matchedItems.push({ raw_material_id: matchResult.material.id, quantity: item.qty_dispatched })
+      const rawRate = item_rates?.[i]
+      const rate = typeof rawRate === 'number' && isFinite(rawRate) && rawRate > 0 ? rawRate : null
+      matchedItems.push({ raw_material_id: matchResult.material.id, quantity: item.qty_dispatched, rate })
     }
   }
 
@@ -3294,7 +3301,9 @@ async function confirmReceiveGrn(
   }
 
   const today = getISTDateRange(0).since.split('T')[0]
-  const notes = `Auto GRN via Nexflow receive | dispatch_token:${dispatch_token} | Challan ${order.challan_number} | Supplier: ${senderCompanyName}`
+  const notes = invoiceNo
+    ? `Auto GRN via Nexflow receive | dispatch_token:${dispatch_token} | Challan ${order.challan_number} | Supplier: ${senderCompanyName} | Invoice: ${invoiceNo}`
+    : `Auto GRN via Nexflow receive | dispatch_token:${dispatch_token} | Challan ${order.challan_number} | Supplier: ${senderCompanyName}`
 
   const { error: insertError } = await supabaseClient
     .from('p2_stock_transactions')
@@ -3307,8 +3316,8 @@ async function confirmReceiveGrn(
       notes,
       grn_no: grnNo,
       supplier_id: matchedSupplier?.id ?? null,
-      supplier_name: matchedSupplier?.name ?? null,
-      rate: null,
+      supplier_name: senderCompanyName,
+      rate: m.rate,
       reference_id: null,
     })))
 
