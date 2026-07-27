@@ -55,9 +55,10 @@
         .mat-clear-btn.visible{display:block;}
         .mat-dropdown{
             position:fixed;
+            min-width:300px;
             background:var(--surface);border:1px solid var(--border2);
             border-radius:var(--radius-sm);z-index:9999;
-            max-height:220px;overflow-y:auto;
+            max-height:220px;overflow-y:auto;overflow-x:hidden;
             box-shadow:0 8px 28px rgba(0,0,0,0.45);display:none;
         }
         .mat-dropdown.open{display:block;}
@@ -71,10 +72,17 @@
         .mat-dropdown-item:hover,.mat-dropdown-item.kbd-active{background:var(--surface2);}
         .mat-dropdown-item:hover .mat-item-name,
         .mat-dropdown-item.kbd-active .mat-item-name{color:var(--orange);}
-        .mat-item-name{font-weight:500;flex:1;}
+        .mat-item-name{font-weight:500;flex:1;white-space:normal;word-break:break-word;}
         .mat-item-unit{font-size:11px;color:var(--mid);font-family:monospace;
             background:var(--surface3);padding:1px 6px;border-radius:3px;flex-shrink:0;}
+        .mat-item-code{font-size:11px;font-weight:700;color:#fff;font-family:monospace;
+            background:var(--orange);padding:2px 6px;border-radius:3px;flex-shrink:0;}
         .mat-dropdown-empty{padding:12px;font-size:12px;color:var(--mid);text-align:center;}
+        .mat-selected-info{
+            display:none;margin-top:4px;font-size:12px;color:var(--text);
+            align-items:center;gap:6px;flex-wrap:wrap;
+        }
+        .mat-selected-info.visible{display:flex;}
 
         /* Modal */
         .nx-modal-overlay{
@@ -360,12 +368,15 @@
             inner.appendChild(icon); inner.appendChild(input); inner.appendChild(clearBtn);
             var dd = document.createElement('div');
             dd.className = 'mat-dropdown';
-            wrap.appendChild(inner); wrap.appendChild(dd);
+            var selectedInfo = document.createElement('div');
+            selectedInfo.className = 'mat-selected-info';
+            wrap.appendChild(inner); wrap.appendChild(dd); wrap.appendChild(selectedInfo);
 
             var selId='', selUnit='', kbdIdx=-1;
 
             function getId(m){ return m.raw_material_id || m.id || ''; }
             function esc(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+            function stripQuotes(s){ return (s||'').replace(/^["'“”‘’]+|["'“”‘’]+$/g,'').trim(); }
 
             function filter(term){
                 var t=(term||'').toLowerCase().trim();
@@ -386,14 +397,15 @@
                 res.forEach(function(m){
                     var d=document.createElement('div');
                     d.className='mat-dropdown-item';
-                    d.dataset.id=getId(m); d.dataset.unit=m.unit||''; d.dataset.name=m.name;
-                    d.innerHTML='<span class="mat-item-name">'+esc(m.name)+'</span>'+
+                    var cleanName = stripQuotes(m.name);
+                    d.dataset.id=getId(m); d.dataset.unit=m.unit||''; d.dataset.name=cleanName; d.dataset.code=m.material_code||'';
+                    d.innerHTML='<span class="mat-item-name">'+esc(cleanName)+'</span>'+
                                  '<span style="display:flex;gap:4px;align-items:center;flex-shrink:0;">'+
-                                 (m.material_code ? '<span class="mat-item-unit" style="color:var(--orange);border-color:rgba(255,92,26,0.3);">'+esc(m.material_code)+'</span>' : '')+
+                                 (m.material_code ? '<span class="mat-item-code">'+esc(m.material_code)+'</span>' : '')+
                                  '<span class="mat-item-unit">'+esc(m.unit||'')+'</span>'+
                                  '</span>';
                     d.addEventListener('mousedown',function(e){
-                        e.preventDefault(); sel(this.dataset.id,this.dataset.name,this.dataset.unit);
+                        e.preventDefault(); sel(this.dataset.id,this.dataset.name,this.dataset.unit,this.dataset.code);
                     });
                     dd.appendChild(d);
                 });
@@ -401,17 +413,22 @@
 
             function positionDd(){
                 var r = inner.getBoundingClientRect();
+                var w = Math.max(300, r.width);
+                var left = Math.min(r.left, window.innerWidth - w - 8);
+                if (left < 8) left = 8;
                 dd.style.top   = (r.bottom + 4) + 'px';
-                dd.style.left  = r.left + 'px';
-                dd.style.width = r.width + 'px';
+                dd.style.left  = left + 'px';
+                dd.style.width = w + 'px';
             }
 
-            function sel(id,name,unit){
+            function sel(id,name,unit,code){
                 selId=id; selUnit=unit;
                 input.value=name;
                 input.classList.add('mat-selected');
                 clearBtn.classList.add('visible');
                 dd.classList.remove('open');
+                selectedInfo.innerHTML = esc(name) + (code ? ' <span class="mat-item-code">'+esc(code)+'</span>' : '');
+                selectedInfo.classList.add('visible');
                 onSelect(id,name,unit);
             }
 
@@ -421,6 +438,8 @@
                 input.classList.remove('mat-selected');
                 clearBtn.classList.remove('visible');
                 dd.classList.remove('open');
+                selectedInfo.innerHTML='';
+                selectedInfo.classList.remove('visible');
                 onSelect('','','');
             }
 
@@ -447,7 +466,7 @@
                     e.preventDefault();
                     if(kbdIdx>=0&&items[kbdIdx]){
                         var el=items[kbdIdx];
-                        sel(el.dataset.id,el.dataset.name,el.dataset.unit);
+                        sel(el.dataset.id,el.dataset.name,el.dataset.unit,el.dataset.code);
                     }
                 } else if(e.key==='Escape'){ dd.classList.remove('open'); }
             });
@@ -479,7 +498,7 @@
             });
             if (row.material_id) {
                 var mat = materials.find(function(m){ return m.id === row.material_id; });
-                if (mat) ta.setValue(mat.id, mat.name, mat.unit || '');
+                if (mat) ta.setValue(mat.id, mat.name, mat.unit || '', mat.material_code || '');
             }
             return ta.element;
         }
