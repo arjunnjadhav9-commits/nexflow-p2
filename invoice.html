@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Invoice — Nexflow</title>
+<link rel="stylesheet" href="css/nexflow-design.css">
+<style>
+    body {
+        min-height: 100vh;
+        padding: 16px;
+    }
+    .invoice-wrap {
+        max-width: 480px;
+        margin: 0 auto;
+    }
+    .invoice-loading {
+        text-align: center;
+        color: var(--mid);
+        padding: 60px 0;
+        font-size: 13px;
+    }
+    .supplier-name {
+        font-size: 20px;
+        font-weight: 700;
+        color: var(--text);
+        margin-bottom: 4px;
+    }
+    .supplier-line {
+        font-size: 12px;
+        color: var(--mid);
+        line-height: 1.6;
+    }
+    .invoice-meta {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 14px;
+        padding-top: 14px;
+        border-top: 1px solid var(--border);
+    }
+    .invoice-meta .label {
+        font-size: 11px;
+        color: var(--mid);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+    .invoice-meta .value {
+        font-size: 15px;
+        font-weight: 700;
+        color: var(--orange);
+    }
+    .invoice-period {
+        font-size: 12px;
+        color: var(--mid);
+        margin-top: 6px;
+        text-align: right;
+    }
+    .bill-to {
+        font-size: 13px;
+        color: var(--text);
+        margin-bottom: 12px;
+    }
+    .bill-to strong { color: var(--orange); }
+    .totals-row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 13px;
+        padding: 4px 0;
+    }
+    .totals-row.grand {
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--orange);
+        border-top: 1px solid var(--border);
+        margin-top: 6px;
+        padding-top: 10px;
+    }
+    .amount-words {
+        font-size: 11px;
+        color: var(--mid);
+        font-style: italic;
+        margin-top: 6px;
+    }
+    .section-gap { margin-top: 16px; }
+</style>
+</head>
+<body>
+
+<div class="invoice-wrap">
+
+    <div id="loadingState" class="invoice-loading">Loading invoice…</div>
+
+    <div id="errorState" class="nx-alert nx-alert-red" style="display:none;">
+        <span class="nx-alert-icon">⚠️</span>
+        <span id="errorMessage">This invoice link is not valid or has expired.</span>
+    </div>
+
+    <div id="content" style="display:none;">
+
+        <div class="nx-card">
+            <div class="supplier-name" id="companyName"></div>
+            <div class="supplier-line" id="companyAddress"></div>
+            <div class="supplier-line" id="companyContact"></div>
+            <div class="invoice-meta">
+                <div>
+                    <div class="label">Invoice No</div>
+                    <div class="value" id="invoiceNumber"></div>
+                </div>
+                <div style="text-align:right;">
+                    <div class="label">Date</div>
+                    <div class="value" id="invoiceDate" style="color: var(--text);"></div>
+                </div>
+            </div>
+            <div class="invoice-period" id="invoicePeriod" style="display:none;"></div>
+        </div>
+
+        <div class="nx-card section-gap">
+            <div class="bill-to">Bill To: <strong id="clientName"></strong></div>
+            <div class="supplier-line" id="clientAddress"></div>
+            <div class="supplier-line" id="clientGstin"></div>
+        </div>
+
+        <div class="nx-card section-gap">
+            <div class="nx-table-wrap">
+                <table class="nx-table" id="itemsTable">
+                    <thead id="itemsHead">
+                        <tr><th>Description</th><th>Qty</th><th>Unit</th><th>Rate</th><th>Amount</th></tr>
+                    </thead>
+                    <tbody id="itemsBody"></tbody>
+                </table>
+            </div>
+            <div class="section-gap">
+                <div class="totals-row"><span>Subtotal</span><span id="rowSubtotal"></span></div>
+                <div id="gstRows"></div>
+                <div class="totals-row grand"><span>Total</span><span id="rowTotal"></span></div>
+            </div>
+            <div class="amount-words" id="amountWords"></div>
+            <button id="pdfBtn" class="nx-btn nx-btn-primary section-gap nx-btn-full" onclick="downloadPdf()">⬇ Download Invoice (PDF)</button>
+        </div>
+
+        <div class="nx-card section-gap" id="bankCard" style="display:none;">
+            <div class="nx-card-title" style="margin-bottom:8px;">Bank Details</div>
+            <div class="supplier-line" id="bankName"></div>
+            <div class="supplier-line" id="bankAccount"></div>
+            <div class="supplier-line" id="bankIfsc"></div>
+        </div>
+
+    </div>
+
+</div>
+
+<script src="js/invoice-pdf.js"></script>
+<script>
+const SUPABASE_URL = 'https://jhqxvpihauvhfclosuxn.supabase.co';
+const EDGE_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/invoice-view`;
+let currentInvoiceData = null;
+
+function escapeHtml(str) {
+    return String(str ?? '').replace(/[&<>"']/g, (c) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+}
+
+function fmtMoney(n) {
+    const v = Number(n) || 0;
+    return '₹' + v.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function fmtDate(iso) {
+    if (!iso) return '-';
+    return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function showError(message) {
+    document.getElementById('loadingState').style.display = 'none';
+    document.getElementById('content').style.display = 'none';
+    document.getElementById('errorMessage').textContent = message;
+    document.getElementById('errorState').style.display = 'flex';
+}
+
+function renderInvoice(data) {
+    currentInvoiceData = data;
+    const { invoice, tenant } = data;
+    const items = Array.isArray(invoice.items) ? invoice.items : [];
+    const isConsolidated = invoice.invoice_mode === 'consolidated';
+
+    document.getElementById('companyName').textContent = tenant.company_name || '';
+    document.getElementById('companyAddress').textContent =
+        [tenant.address_line1, tenant.address_line2].filter(Boolean).join(', ');
+    document.getElementById('companyContact').textContent =
+        [tenant.mobile ? `Mobile: ${tenant.mobile}` : null, tenant.gstin ? `GSTIN: ${tenant.gstin}` : null]
+            .filter(Boolean).join(' · ');
+
+    document.getElementById('invoiceNumber').textContent = invoice.invoice_number || '-';
+    document.getElementById('invoiceDate').textContent = fmtDate(invoice.invoice_date);
+
+    if (isConsolidated && invoice.date_from && invoice.date_to) {
+        document.getElementById('invoicePeriod').style.display = 'block';
+        document.getElementById('invoicePeriod').textContent =
+            `Period: ${fmtDate(invoice.date_from)} – ${fmtDate(invoice.date_to)}`;
+    }
+
+    document.getElementById('clientName').textContent = invoice.client_name || '-';
+    document.getElementById('clientAddress').textContent = invoice.client_address || '';
+    document.getElementById('clientGstin').textContent = invoice.client_gstin ? `GSTIN: ${invoice.client_gstin}` : '';
+
+    const headRow = isConsolidated
+        ? '<tr><th>Challan No</th><th>Date</th><th>Description</th><th>Qty</th><th>Unit</th><th>Rate</th><th>Amount</th></tr>'
+        : '<tr><th>Description</th><th>Qty</th><th>Unit</th><th>Rate</th><th>Amount</th></tr>';
+    document.getElementById('itemsHead').innerHTML = headRow;
+
+    document.getElementById('itemsBody').innerHTML = items.map(item => isConsolidated ? `
+        <tr>
+            <td>${escapeHtml(item.challan_number || '-')}</td>
+            <td>${escapeHtml(item.dispatch_date ? fmtDate(item.dispatch_date) : '-')}</td>
+            <td>${escapeHtml(item.description || '')}</td>
+            <td>${escapeHtml(item.qty)}</td>
+            <td>${escapeHtml(item.unit)}</td>
+            <td>${fmtMoney(item.rate)}</td>
+            <td>${fmtMoney(item.amount)}</td>
+        </tr>
+    ` : `
+        <tr>
+            <td>${escapeHtml(item.description || '')}</td>
+            <td>${escapeHtml(item.qty)}</td>
+            <td>${escapeHtml(item.unit)}</td>
+            <td>${fmtMoney(item.rate)}</td>
+            <td>${fmtMoney(item.amount)}</td>
+        </tr>
+    `).join('');
+
+    document.getElementById('rowSubtotal').textContent = fmtMoney(invoice.amount_subtotal);
+    document.getElementById('rowTotal').textContent = fmtMoney(invoice.amount_total);
+
+    const gstRowsEl = document.getElementById('gstRows');
+    if (invoice.gst_type === 'cgst_sgst') {
+        const half = (Number(invoice.amount_gst) || 0) / 2;
+        gstRowsEl.innerHTML = `
+            <div class="totals-row"><span>CGST @ 9%</span><span>${fmtMoney(half)}</span></div>
+            <div class="totals-row"><span>SGST @ 9%</span><span>${fmtMoney(half)}</span></div>
+        `;
+    } else if (invoice.gst_type === 'igst') {
+        gstRowsEl.innerHTML = `<div class="totals-row"><span>IGST @ 18%</span><span>${fmtMoney(invoice.amount_gst)}</span></div>`;
+    } else {
+        gstRowsEl.innerHTML = '';
+    }
+
+    document.getElementById('amountWords').textContent =
+        'Amount in Words: ' + window.invoiceAmountInWords(invoice.amount_total);
+
+    if (tenant.bank_name || tenant.bank_account || tenant.bank_ifsc) {
+        document.getElementById('bankCard').style.display = 'block';
+        document.getElementById('bankName').textContent = tenant.bank_name ? `Bank Name: ${tenant.bank_name}` : '';
+        document.getElementById('bankAccount').textContent = tenant.bank_account ? `Account No: ${tenant.bank_account}` : '';
+        document.getElementById('bankIfsc').textContent = tenant.bank_ifsc ? `IFSC Code: ${tenant.bank_ifsc}` : '';
+    }
+
+    document.getElementById('loadingState').style.display = 'none';
+    document.getElementById('content').style.display = 'block';
+}
+
+async function downloadPdf() {
+    if (!currentInvoiceData) return;
+    const { invoice, tenant } = currentInvoiceData;
+    const items = Array.isArray(invoice.items) ? invoice.items : [];
+
+    const btn = document.getElementById('pdfBtn');
+    const original = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '⏳ Building PDF…';
+
+    try {
+        const payload = {
+            companyName:  tenant.company_name || '',
+            addressLine1: tenant.address_line1 || '',
+            addressLine2: tenant.address_line2 || '',
+            mobile:       tenant.mobile || '',
+            gstin:        tenant.gstin || '',
+            invoiceNumber: invoice.invoice_number || '-',
+            invoiceDateFormatted: fmtDate(invoice.invoice_date),
+            invoiceMode: invoice.invoice_mode || 'single',
+            periodFromFormatted: invoice.date_from ? fmtDate(invoice.date_from) : null,
+            periodToFormatted: invoice.date_to ? fmtDate(invoice.date_to) : null,
+            clientName: invoice.client_name || 'N/A',
+            clientAddress: invoice.client_address || '',
+            clientGstin: invoice.client_gstin || '',
+            items: items.map(item => ({
+                challanNumber: item.challan_number || null,
+                dispatchDateFormatted: item.dispatch_date ? fmtDate(item.dispatch_date) : null,
+                description: item.description || '',
+                qty: item.qty,
+                unit: item.unit,
+                rate: item.rate,
+                amount: item.amount,
+            })),
+            gstType: invoice.gst_type || 'cgst_sgst',
+            amountSubtotal: invoice.amount_subtotal,
+            amountGst: invoice.amount_gst,
+            amountTotal: invoice.amount_total,
+            bankName: tenant.bank_name || '',
+            bankAccount: tenant.bank_account || '',
+            bankIfsc: tenant.bank_ifsc || '',
+        };
+
+        const base64 = await buildInvoicePdf(payload);
+        downloadInvoicePdf(base64, invoicePdfFilename(payload.invoiceNumber));
+    } catch (err) {
+        console.error('Invoice PDF export failed:', err);
+        alert('Could not generate the PDF. Please try again.');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = original;
+    }
+}
+
+async function loadInvoice() {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('token');
+
+    if (!token) {
+        showError('Invalid link.');
+        return;
+    }
+
+    try {
+        const res = await fetch(`${EDGE_FUNCTION_URL}?token=${encodeURIComponent(token)}`);
+        if (res.status === 404) {
+            showError('This invoice link is not valid or has expired.');
+            return;
+        }
+        if (!res.ok) {
+            showError('Something went wrong loading this invoice. Please try again later.');
+            return;
+        }
+        const data = await res.json();
+        renderInvoice(data);
+    } catch (e) {
+        showError('Something went wrong loading this invoice. Please try again later.');
+    }
+}
+
+document.addEventListener('DOMContentLoaded', loadInvoice);
+</script>
+
+</body>
+</html>
