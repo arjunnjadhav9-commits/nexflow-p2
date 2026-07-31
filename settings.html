@@ -202,6 +202,20 @@
                         <input type="text" id="gstin" name="gstin" class="nx-input" placeholder="Enter GSTIN" data-en="Enter GSTIN" data-mr="जीएसटी नंबर प्रविष्ट करा">
                     </div>
                 </div>
+                <div class="nx-form-group">
+                    <label data-en="Bank Name" data-mr="बँकेचे नाव">Bank Name</label>
+                    <input type="text" id="bank-name" name="bank_name" class="nx-input" placeholder="Enter bank name" data-en="Enter bank name" data-mr="बँकेचे नाव प्रविष्ट करा">
+                </div>
+                <div class="nx-form-row">
+                    <div class="nx-form-group">
+                        <label data-en="Account No" data-mr="खाते क्रमांक">Account No</label>
+                        <input type="text" id="bank-account" name="bank_account" class="nx-input" placeholder="Enter account number" data-en="Enter account number" data-mr="खाते क्रमांक प्रविष्ट करा">
+                    </div>
+                    <div class="nx-form-group">
+                        <label data-en="IFSC Code" data-mr="आयएफएससी कोड">IFSC Code</label>
+                        <input type="text" id="bank-ifsc" name="bank_ifsc" class="nx-input" placeholder="Enter IFSC code" data-en="Enter IFSC code" data-mr="आयएफएससी कोड प्रविष्ट करा">
+                    </div>
+                </div>
                 <div style="position:relative; display:inline-block; width:100%;">
                     <button type="submit" id="saveCompanyBtn" class="nx-btn nx-btn-primary nx-btn-full" data-en="Save Company Details" data-mr="कंपनी तपशील साठवा">
                         Save Company Details
@@ -626,6 +640,10 @@
                         <label data-en="PO Number" data-mr="पीओ क्रमांक">PO Number</label>
                         <input type="text" name="po_number" class="nx-input" placeholder="PO Number" data-en="PO Number" data-mr="पीओ क्रमांक">
                     </div>
+                    <div class="nx-form-group">
+                        <label data-en="GSTIN" data-mr="जीएसटी नंबर">GSTIN</label>
+                        <input type="text" name="gstin" class="nx-input" placeholder="GSTIN" data-en="GSTIN" data-mr="जीएसटी नंबर">
+                    </div>
                     <button type="submit" id="client-add-btn" class="nx-btn nx-btn-primary nx-btn-full" data-en="Add Client" data-mr="क्लायंट जोडा">Add Client</button>
                 </form>
             </div>
@@ -642,6 +660,7 @@
                                 <th data-en="Name"    data-mr="नाव">Name</th>
                                 <th data-en="Email"   data-mr="ईमेल">Email</th>
                                 <th data-en="Address" data-mr="पत्ता">Address</th>
+                                <th data-en="GSTIN"   data-mr="जीएसटी नंबर">GSTIN</th>
                                 <th class="owner-only" data-en="Actions" data-mr="क्रिया">Actions</th>
                             </tr>
                         </thead>
@@ -996,6 +1015,9 @@
                 document.getElementById('address-line2').value  = data.address_line2 || '';
                 document.getElementById('mobile').value         = data.mobile || '';
                 document.getElementById('gstin').value          = data.gstin || '';
+                document.getElementById('bank-name').value       = data.bank_name || '';
+                document.getElementById('bank-account').value    = data.bank_account || '';
+                document.getElementById('bank-ifsc').value       = data.bank_ifsc || '';
                 document.getElementById('challan-sequence').value  = data.challan_sequence || 1001;
                 document.getElementById('grn-sequence').value      = data.grn_sequence || '';
                 document.getElementById('telegram-chat-id').value  = data.telegram_chat_id || '';
@@ -1018,6 +1040,9 @@
         const addressLine2 = document.getElementById('address-line2').value.trim();
         const mobile       = document.getElementById('mobile').value.trim();
         const gstin        = document.getElementById('gstin').value.trim();
+        const bankName     = document.getElementById('bank-name').value.trim();
+        const bankAccount  = document.getElementById('bank-account').value.trim();
+        const bankIfsc     = document.getElementById('bank-ifsc').value.trim();
 
         try {
             const { data: { user } } = await window.supabase.auth.getUser();
@@ -1027,7 +1052,8 @@
             const { error } = await window.supabase.from('p2_tenant_settings').upsert({
                 tenant_id: tenantId, company_name: companyName,
                 address_line1: addressLine1, address_line2: addressLine2,
-                mobile: mobile, gstin: gstin
+                mobile: mobile, gstin: gstin,
+                bank_name: bankName, bank_account: bankAccount, bank_ifsc: bankIfsc
             }, { onConflict: 'tenant_id' });
 
             if (error) throw error;
@@ -1295,6 +1321,7 @@
             <td class="nx-td-bold">${client.name}${noEmailBadge}</td>
             <td>${client.email || `<span style="color:var(--mid);">No email</span>`}</td>
             <td style="font-size:12px; color:var(--mid);">${client.address || ''}</td>
+            <td style="font-size:12px; color:var(--mid);">${client.gstin || ''}</td>
             <td class="owner-only">
                 <button onclick="editClient('${client.id}')" class="nx-btn nx-btn-ghost nx-btn-sm" data-en="Edit" data-mr="संपादित करा">Edit</button>
                 <button onclick="deleteClient('${client.id}')" class="nx-btn nx-btn-danger nx-btn-sm" data-en="Delete" data-mr="काढा">Delete</button>
@@ -1336,6 +1363,7 @@
         const email     = formData.get('email')?.trim();
         const address   = formData.get('address')?.trim();
         const po_number = formData.get('po_number')?.trim();
+        const gstin     = formData.get('gstin')?.trim();
         const lang      = localStorage.getItem('nexflow_lang') || 'en';
 
         if (!name) { toast(lang==='mr'?'कृपया क्लायंटचे नाव प्रविष्ट करा':'Please enter client name','error'); return; }
@@ -1345,7 +1373,7 @@
             const { data: { user } } = await window.supabase.auth.getUser();
             if (!user) { toast('Not authenticated','error'); return; }
             const { error } = await window.supabase.from('p2_clients')
-                .insert({ name, email: email || null, address: address || null, po_number: po_number || null, tenant_id: user.id });
+                .insert({ name, email: email || null, address: address || null, po_number: po_number || null, gstin: gstin || null, tenant_id: user.id });
             if (error) throw error;
             toast(lang==='mr'?'क्लायंट यशस्वीरित्या जोडला':'Client added successfully','success');
             e.target.reset();
@@ -1368,6 +1396,7 @@
                 <input type="text" class="nx-input" id="edit-address-${clientId}" value="${escAttr(client.address)}" placeholder="Address" style="margin-bottom:4px;">
                 <input type="text" class="nx-input" id="edit-po-${clientId}" value="${escAttr(client.po_number)}" placeholder="PO Number">
             </td>
+            <td><input type="text" class="nx-input" id="edit-gstin-${clientId}" value="${escAttr(client.gstin)}" placeholder="GSTIN"></td>
             <td class="owner-only">
                 <button onclick="saveClient('${clientId}')" class="nx-btn nx-btn-primary nx-btn-sm" data-en="Save" data-mr="जतन करा">Save</button>
                 <button onclick="cancelEditClient('${clientId}')" class="nx-btn nx-btn-ghost nx-btn-sm" data-en="Cancel" data-mr="रद्द करा">Cancel</button>
@@ -1390,13 +1419,14 @@
         const email   = document.getElementById(`edit-email-${clientId}`)?.value.trim();
         const address = document.getElementById(`edit-address-${clientId}`)?.value.trim();
         const po_number = document.getElementById(`edit-po-${clientId}`)?.value.trim();
+        const gstin = document.getElementById(`edit-gstin-${clientId}`)?.value.trim();
 
         if (!name) { toast(lang==='mr'?'कृपया क्लायंटचे नाव प्रविष्ट करा':'Please enter client name','error'); return; }
         if (email && !isValidEmail(email)) { toast(lang==='mr'?'कृपया वैध ईमेल प्रविष्ट करा':'Please enter a valid email address','error'); return; }
 
         try {
             const { error } = await window.supabase.from('p2_clients')
-                .update({ name, email: email || null, address: address || null, po_number: po_number || null })
+                .update({ name, email: email || null, address: address || null, po_number: po_number || null, gstin: gstin || null })
                 .eq('id', clientId);
             if (error) throw error;
             toast(lang==='mr'?'क्लायंट अद्ययावत झाला':'Client updated','success');

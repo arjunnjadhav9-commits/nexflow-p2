@@ -362,7 +362,6 @@
         </div>
     </div>
 
-    
     <!-- AMENDMENT MODAL -->
     <div id="amendModal" class="nx-modal-overlay" style="display:none;z-index:9999;">
         <div class="nx-modal" style="max-width:440px;">
@@ -617,7 +616,7 @@
         async function loadClients() {
             const { data, error } = await window.supabase
                 .from('p2_clients')
-                .select('name, address')
+                .select('name, address, email, gstin')
                 .eq('tenant_id', tenantId)
                 .order('name');
 

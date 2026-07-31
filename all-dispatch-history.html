@@ -179,6 +179,7 @@
                     <tbody id="detailModalBody"></tbody>
                 </table>
             </div>
+            <div id="detailInvoiceSection" style="margin-bottom:16px;"></div>
             <div style="display:flex; gap:10px; flex-wrap:wrap;">
                 <button id="detailPrintBtn" class="nx-btn nx-btn-green" style="flex:1;">View Challan</button>
                 <button id="detailCsvBtn" class="nx-btn nx-btn-secondary" style="flex:1;">↓ CSV</button>
@@ -221,10 +222,52 @@
         </div>
     </div>
 
+    <!-- GENERATE INVOICE MODAL -->
+    <div id="invoiceModal" class="nx-modal-overlay" style="display:none;">
+        <div class="nx-modal" style="max-width:560px;">
+            <div class="nx-modal-title" style="color:var(--orange);">Generate Invoice</div>
+            <div id="invoiceModalClient" style="font-size:13px; color:var(--mid); margin-bottom:16px;"></div>
+
+            <div class="nx-table-wrap" style="max-height:260px; overflow-y:auto; margin-bottom:16px;">
+                <table class="nx-table" style="font-size:13px;">
+                    <thead>
+                        <tr>
+                            <th>Item</th>
+                            <th style="text-align:right;">Qty</th>
+                            <th>Unit</th>
+                            <th style="text-align:right;">Rate (₹)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="invoiceModalItems"></tbody>
+                </table>
+            </div>
+
+            <div class="nx-form-group" style="margin-bottom:16px;">
+                <label>GST Type</label>
+                <select id="invoiceGstType" class="nx-input">
+                    <option value="cgst_sgst" selected>CGST + SGST</option>
+                    <option value="igst">IGST</option>
+                    <option value="none">None</option>
+                </select>
+            </div>
+
+            <div id="invoiceModalError" class="nx-alert nx-alert-red" style="display:none; margin-bottom:16px;">
+                <span class="nx-alert-icon">⚠</span>
+                <div id="invoiceModalErrorText"></div>
+            </div>
+
+            <div style="display:flex; gap:10px;">
+                <button id="invoiceModalConfirm" class="nx-btn nx-btn-green" style="flex:1;">Generate Invoice</button>
+                <button id="invoiceModalCancel" class="nx-btn nx-btn-ghost" style="flex:1;">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         let tenantId  = null;
         let allOrders = [];
         let filtered  = [];
+        let canInvoice = false; // Pro/Founder gate, fresh-fetched — never isPro()/localStorage. Used by the Detail modal's invoice section.
 
         document.addEventListener('DOMContentLoaded', async () => {
             try {
@@ -232,9 +275,20 @@
                 if (!authed) return;
                 const { data: { user } } = await window.supabase.auth.getUser();
                 tenantId = user.id;
+
+                // Fresh fetch, never isPro()/localStorage — plan can change and
+                // localStorage only refreshes on login/auth-state-change.
+                const { data: settingsData } = await window.supabase
+                    .from('p2_tenant_settings')
+                    .select('plan')
+                    .eq('tenant_id', tenantId)
+                    .maybeSingle();
+                canInvoice = !!settingsData && (settingsData.plan === 'pro' || settingsData.plan === 'founder');
+
                 setDefaultDates();
                 await loadHistory();
                 setupEventHandlers();
+                setupInvoiceModalHandlers();
                 document.getElementById('loadingSpinner').style.display = 'none';
                 document.getElementById('mainContent').style.display    = 'block';
                 document.getElementById('mainContent').classList.add('nx-fade-in');
@@ -301,6 +355,7 @@
             });
 
             allOrders = orders.map(o => ({ ...o, items: itemMap[o.id] || [] }));
+
             applyClientFilter(client);
         }
 
@@ -393,7 +448,7 @@
         }
 
         // ── DETAIL MODAL ──────────────────────────────────────────────
-        function openDetail(orderId) {
+        async function openDetail(orderId) {
             const order = allOrders.find(o => o.id === orderId);
             if (!order) return;
 
@@ -464,6 +519,50 @@
             }
 
             document.getElementById('detailModal').style.display = 'flex';
+
+            // Invoice section — only meaningful for confirmed, non-cancelled dispatches.
+            const invoiceSection = document.getElementById('detailInvoiceSection');
+            if (isDraft || isCancelled) {
+                invoiceSection.innerHTML = '';
+            } else {
+                await refreshDetailInvoiceSection(orderId);
+            }
+        }
+
+        // On-demand existing-invoice lookup — fires only when a Detail modal is opened
+        // for a confirmed dispatch, never on page load (replaces the old batched
+        // page-load query that used to back the list-row invoice button).
+        async function refreshDetailInvoiceSection(orderId) {
+            const invoiceSection = document.getElementById('detailInvoiceSection');
+            invoiceSection.innerHTML = '<div style="font-size:12px; color:var(--mid);">Checking invoice…</div>';
+
+            try {
+                const { data: existingInvoice } = await window.supabase
+                    .from('p2_invoices')
+                    .select('invoice_token, invoice_number, status')
+                    .eq('tenant_id', tenantId)
+                    .eq('dispatch_order_id', orderId)
+                    .eq('invoice_mode', 'single')
+                    .maybeSingle();
+
+                if (existingInvoice) {
+                    invoiceSection.innerHTML = `
+                        <button class="nx-btn nx-btn-ghost" style="width:100%; color:var(--orange);"
+                            onclick="window.open('/invoice.html?token=${existingInvoice.invoice_token}','_blank')">View Invoice →</button>
+                        <div style="font-size:11px; color:var(--mid); margin-top:6px; text-align:center;">
+                            Invoice ${escapeHtml(existingInvoice.invoice_number || '')} · ${escapeHtml(existingInvoice.status || '')}
+                        </div>`;
+                } else if (canInvoice) {
+                    invoiceSection.innerHTML = `
+                        <button class="nx-btn nx-btn-secondary" style="width:100%;"
+                            onclick="openInvoiceModal('${orderId}')">Generate Invoice</button>`;
+                } else {
+                    invoiceSection.innerHTML = '';
+                }
+            } catch (err) {
+                console.error('refreshDetailInvoiceSection:', err);
+                invoiceSection.innerHTML = '';
+            }
         }
 
         window.cancelChallanRow = async (orderId, challanNumber) => {
@@ -496,6 +595,171 @@
             const btn = e.target.closest('.detail-btn');
             if (btn) openDetail(btn.dataset.orderId);
         });
+
+        // ── GENERATE INVOICE MODAL ────────────────────────────────────
+        // Unlike dispatch-history.html (product-only), this page lists all
+        // three dispatch_type values, so rate pre-fill branches per order:
+        // product/bom_issue items carry product_id (rate from
+        // p2_product_prices), raw_material items carry raw_material_id
+        // (rate from p2_material_prices).
+        let invoiceModalOrderId = null;
+        let invoiceModalItems   = []; // [{dispatch_item_id, description, qty, unit, rate}]
+
+        window.openInvoiceModal = async (orderId) => {
+            const order = allOrders.find(o => o.id === orderId);
+            if (!order) return;
+
+            invoiceModalOrderId = orderId;
+            invoiceModalItems = [];
+
+            document.getElementById('invoiceModalClient').textContent = order.client_name || '—';
+            document.getElementById('invoiceGstType').value = 'cgst_sgst';
+            document.getElementById('invoiceModalError').style.display = 'none';
+            document.getElementById('invoiceModalItems').innerHTML =
+                '<tr><td colspan="4" style="text-align:center; color:var(--mid); padding:16px;">Loading...</td></tr>';
+            document.getElementById('invoiceModal').style.display = 'flex';
+
+            try {
+                // Fresh fetch — the preloaded order.items lacks the row `id`
+                // needed as dispatch_item_id, and raw_material_id needed for
+                // rate lookup.
+                const { data: items, error } = await window.supabase
+                    .from('p2_dispatch_items')
+                    .select('id, material_name, material_code, product_id, raw_material_id, qty_dispatched, unit, p2_products(name)')
+                    .eq('dispatch_order_id', orderId)
+                    .eq('tenant_id', tenantId);
+                if (error) throw error;
+                if (!items || items.length === 0) {
+                    document.getElementById('invoiceModalItems').innerHTML =
+                        '<tr><td colspan="4" style="text-align:center; color:var(--mid); padding:16px;">No items found.</td></tr>';
+                    return;
+                }
+
+                // Rate pre-fill — latest price by effective_date, from the
+                // price table matching this order's dispatch_type.
+                const usesProductPricing = order.dispatch_type === 'product' || order.dispatch_type === 'bom_issue';
+                const priceById = new Map();
+                if (usesProductPricing) {
+                    const productIds = [...new Set(items.map(it => it.product_id).filter(Boolean))];
+                    if (productIds.length) {
+                        const { data: prices } = await window.supabase
+                            .from('p2_product_prices')
+                            .select('product_id, price, effective_date')
+                            .eq('tenant_id', tenantId)
+                            .in('product_id', productIds)
+                            .order('effective_date', { ascending: false });
+                        (prices || []).forEach(p => {
+                            if (!priceById.has(p.product_id)) priceById.set(p.product_id, p.price);
+                        });
+                    }
+                } else {
+                    const materialIds = [...new Set(items.map(it => it.raw_material_id).filter(Boolean))];
+                    if (materialIds.length) {
+                        const { data: prices } = await window.supabase
+                            .from('p2_material_prices')
+                            .select('raw_material_id, price_per_unit, effective_date')
+                            .eq('tenant_id', tenantId)
+                            .in('raw_material_id', materialIds)
+                            .order('effective_date', { ascending: false });
+                        (prices || []).forEach(p => {
+                            if (!priceById.has(p.raw_material_id)) priceById.set(p.raw_material_id, p.price_per_unit);
+                        });
+                    }
+                }
+
+                invoiceModalItems = items.map(it => {
+                    const key = usesProductPricing ? it.product_id : it.raw_material_id;
+                    return {
+                        dispatch_item_id: it.id,
+                        description: it.product_id ? (it.p2_products?.name || 'Unknown Item') : (it.material_name || it.material_code || 'Unknown Item'),
+                        qty: it.qty_dispatched,
+                        unit: it.unit,
+                        rate: key ? (priceById.get(key) ?? '') : ''
+                    };
+                });
+
+                const tbody = document.getElementById('invoiceModalItems');
+                tbody.innerHTML = '';
+                invoiceModalItems.forEach((item, idx) => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td class="nx-td-bold">${escapeHtml(item.description)}</td>
+                        <td style="text-align:right; font-family:monospace;">${item.qty}</td>
+                        <td style="color:var(--mid);">${item.unit}</td>
+                        <td style="text-align:right;">
+                            <input type="number" step="0.01" min="0" class="nx-input invoice-rate-input"
+                                data-idx="${idx}" value="${item.rate}"
+                                style="width:100px; text-align:right; height:32px; font-size:13px;">
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } catch (err) {
+                console.error('openInvoiceModal:', err);
+                document.getElementById('invoiceModalItems').innerHTML =
+                    '<tr><td colspan="4" style="text-align:center; color:#ef4444; padding:16px;">Could not load items.</td></tr>';
+            }
+        };
+
+        function showInvoiceModalError(msg) {
+            document.getElementById('invoiceModalErrorText').textContent = msg;
+            document.getElementById('invoiceModalError').style.display = 'flex';
+        }
+
+        function setupInvoiceModalHandlers() {
+            document.getElementById('invoiceModalCancel').addEventListener('click', () => {
+                document.getElementById('invoiceModal').style.display = 'none';
+            });
+            document.getElementById('invoiceModal').addEventListener('click', e => {
+                if (e.target.id === 'invoiceModal') e.target.style.display = 'none';
+            });
+
+            document.getElementById('invoiceModalConfirm').addEventListener('click', async () => {
+                if (!invoiceModalOrderId) return;
+                document.getElementById('invoiceModalError').style.display = 'none';
+
+                const itemRates = [];
+                document.querySelectorAll('.invoice-rate-input').forEach(input => {
+                    const idx = Number(input.dataset.idx);
+                    const item = invoiceModalItems[idx];
+                    if (!item) return;
+                    itemRates.push({
+                        dispatch_item_id: item.dispatch_item_id,
+                        rate: Number(input.value) || 0
+                    });
+                });
+
+                const btn = document.getElementById('invoiceModalConfirm');
+                btn.disabled = true;
+                btn.textContent = 'Generating…';
+
+                try {
+                    const res = await fetch(`${SUPABASE_URL}/functions/v1/agent-query`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
+                        body: JSON.stringify({
+                            action: 'confirm_generate_invoice',
+                            tenant_id: tenantId,
+                            dispatch_order_id: invoiceModalOrderId,
+                            item_rates: itemRates,
+                            gst_type: document.getElementById('invoiceGstType').value
+                        })
+                    });
+                    const data = await res.json();
+                    if (data.status !== 'ok') throw new Error(data.error || 'Unknown error');
+
+                    document.getElementById('invoiceModal').style.display = 'none';
+                    window.open(data.invoice_url, '_blank');
+                    await refreshDetailInvoiceSection(invoiceModalOrderId);
+                } catch (err) {
+                    console.error('confirm_generate_invoice:', err);
+                    showInvoiceModalError(err.message || 'Could not generate invoice.');
+                } finally {
+                    btn.disabled = false;
+                    btn.textContent = 'Generate Invoice';
+                }
+            });
+        }
 
         // ── PER-CHALLAN CSV EXPORT ──────────────────────────────────────────
         // Mirrors the printed challan format:

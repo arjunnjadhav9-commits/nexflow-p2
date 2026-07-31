@@ -83,6 +83,125 @@
         margin-top: 6px;
     }
     .section-gap { margin-top: 16px; }
+
+    /* Print-only elements: no counterpart in the screen layout at all
+       (INVOICE title, signature block, SR column, footer note) — hidden
+       here, only ever shown inside @media print below. */
+    .print-only { display: none; }
+    .print-only-cell { display: none; }
+
+    @media print {
+        @page { size: A4; margin: 10mm; }
+
+        html, body {
+            background: #fff !important;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+
+        /* Hide everything except the invoice wrapper */
+        body > *:not(.invoice-wrap) { display: none !important; }
+        .no-print { display: none !important; }
+
+        /* Full page width, single outer border like the PDF's doc.rect() frame */
+        .invoice-wrap {
+            max-width: 100% !important;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            border: 1.5px solid #000 !important;
+        }
+        #content { display: block !important; width: 100% !important; }
+
+        /* Flatten every element to plain black-on-white, strip card chrome */
+        #content * {
+            color: #000 !important;
+            background: #fff !important;
+            background-color: #fff !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+        }
+
+        /* Each .nx-card becomes a flush section with a divider line, not a floating card */
+        #content .nx-card {
+            border: none !important;
+            border-bottom: 1px solid #000 !important;
+            padding: 8px 12px !important;
+            margin: 0 !important;
+        }
+        #content .nx-card:last-of-type { border-bottom: none !important; }
+
+        /* Table: full width, collapsed grid borders, no wrapper radius */
+        #content .nx-table-wrap { border: none !important; }
+        #content table, #content .nx-table {
+            width: 100% !important;
+            border-collapse: collapse !important;
+            border: 1px solid #000 !important;
+        }
+        #content table th, #content table td {
+            border: 1px solid #000 !important;
+            padding: 4px 8px !important;
+        }
+
+        /* Grey table header must survive print */
+        #content thead tr, #content thead th {
+            background: #e5e7eb !important;
+            background-color: #e5e7eb !important;
+            font-weight: bold !important;
+        }
+
+        tr { page-break-inside: avoid !important; }
+
+        /* Company header centered, matching the PDF */
+        #companyName, #companyAddress, #companyContact { text-align: center !important; }
+
+        /* Reveal the print-only nodes (INVOICE title, SR column, signature
+           block, footer note) that stay hidden on screen. */
+        .print-only { display: block !important; }
+        .print-only-cell { display: table-cell !important; }
+
+        /* Belt-and-suspenders: #content * already forces black, but pin
+           these specific elements (and any inline style="color:...") too,
+           in case a more specific screen rule is still winning on them. */
+        #invoiceNumber, #companyAddress, #clientAddress, #clientGstin, #bankIfsc,
+        .invoice-meta .label, .invoice-meta .value,
+        [style*="color"] {
+            color: #000 !important;
+        }
+
+        /* Nuclear option for inline styles */
+        #content *[style] {
+            color: #000 !important;
+        }
+
+        /* Target specific elements by ID that JS populates */
+        #itemsBody td,
+        #itemsBody tr,
+        #itemsBody span,
+        #companyAddress,
+        #companyContact,
+        #clientAddress,
+        #clientGstin,
+        #rowSubtotal,
+        #rowTotal,
+        #amountWords,
+        #bankName,
+        #bankAccount,
+        #bankIfsc {
+            color: #000 !important;
+        }
+
+        /* Any element with orange or themed color class */
+        [class*="orange"],
+        [class*="accent"],
+        [class*="primary"],
+        .text-orange,
+        .nx-orange {
+            color: #000 !important;
+        }
+    }
 </style>
 </head>
 <body>
@@ -102,6 +221,11 @@
             <div class="supplier-name" id="companyName"></div>
             <div class="supplier-line" id="companyAddress"></div>
             <div class="supplier-line" id="companyContact"></div>
+            <div class="print-only" id="invoiceTitleBlock"
+                 style="text-align:center; font-size:20px; font-weight:800; letter-spacing:2px;
+                        margin:10px 0; padding:8px 0; border-top:1px solid #000; border-bottom:1px solid #000;">
+                INVOICE
+            </div>
             <div class="invoice-meta">
                 <div>
                     <div class="label">Invoice No</div>
@@ -136,7 +260,15 @@
                 <div class="totals-row grand"><span>Total</span><span id="rowTotal"></span></div>
             </div>
             <div class="amount-words" id="amountWords"></div>
-            <button id="pdfBtn" class="nx-btn nx-btn-primary section-gap nx-btn-full" onclick="downloadPdf()">⬇ Download Invoice (PDF)</button>
+            <div class="section-gap no-print" style="display:flex; gap:8px;">
+                <button onclick="goBack()" class="nx-btn nx-btn-danger">✕ Close</button>
+                <button id="pdfBtn" class="nx-btn nx-btn-primary" style="flex:1;" onclick="downloadPdf()">⬇ Download Invoice (PDF)</button>
+                <button id="printBtn" class="nx-btn nx-btn-secondary" style="flex:1;" onclick="handlePrint()">🖨 Print Invoice</button>
+            </div>
+            <div id="mobilePrintMsg" class="no-print" style="display:none; margin-top:10px; font-size:12px; color: var(--mid); text-align:center;">
+                <p>On mobile: use your browser's Share button → Print</p>
+                <p>Tap the menu (⋮) in your browser and select Share or Print</p>
+            </div>
         </div>
 
         <div class="nx-card section-gap" id="bankCard" style="display:none;">
@@ -144,6 +276,24 @@
             <div class="supplier-line" id="bankName"></div>
             <div class="supplier-line" id="bankAccount"></div>
             <div class="supplier-line" id="bankIfsc"></div>
+        </div>
+
+        <div class="nx-card section-gap print-only" id="invoiceSignatureSection">
+            <div style="display:flex; justify-content:space-between; align-items:flex-end; min-height:70px;">
+                <div style="text-align:left;">
+                    <div style="border-top:1px solid #000; padding-top:6px; font-size:11px;">Receiver's Signature</div>
+                </div>
+                <div style="text-align:right;">
+                    <div style="font-size:12px;">For</div>
+                    <div id="invoiceSigCompany" style="font-weight:700; font-size:14px;"></div>
+                    <div style="margin-top:30px; border-top:1px solid #000; padding-top:6px; font-size:11px;">Authorised Signatory</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="print-only" id="invoiceFooterNote"
+             style="text-align:center; font-size:9px; font-style:italic; margin-top:10px;">
+            This is a computer-generated invoice.
         </div>
 
     </div>
@@ -191,6 +341,7 @@ function renderInvoice(data) {
     document.getElementById('companyContact').textContent =
         [tenant.mobile ? `Mobile: ${tenant.mobile}` : null, tenant.gstin ? `GSTIN: ${tenant.gstin}` : null]
             .filter(Boolean).join(' · ');
+    document.getElementById('invoiceSigCompany').textContent = tenant.company_name || '';
 
     document.getElementById('invoiceNumber').textContent = invoice.invoice_number || '-';
     document.getElementById('invoiceDate').textContent = fmtDate(invoice.invoice_date);
@@ -206,12 +357,13 @@ function renderInvoice(data) {
     document.getElementById('clientGstin').textContent = invoice.client_gstin ? `GSTIN: ${invoice.client_gstin}` : '';
 
     const headRow = isConsolidated
-        ? '<tr><th>Challan No</th><th>Date</th><th>Description</th><th>Qty</th><th>Unit</th><th>Rate</th><th>Amount</th></tr>'
-        : '<tr><th>Description</th><th>Qty</th><th>Unit</th><th>Rate</th><th>Amount</th></tr>';
+        ? '<tr><th class="print-only-cell">Sr</th><th>Challan No</th><th>Date</th><th>Description</th><th>Qty</th><th>Unit</th><th>Rate</th><th>Amount</th></tr>'
+        : '<tr><th class="print-only-cell">Sr</th><th>Description</th><th>Qty</th><th>Unit</th><th>Rate</th><th>Amount</th></tr>';
     document.getElementById('itemsHead').innerHTML = headRow;
 
-    document.getElementById('itemsBody').innerHTML = items.map(item => isConsolidated ? `
+    document.getElementById('itemsBody').innerHTML = items.map((item, i) => isConsolidated ? `
         <tr>
+            <td class="print-only-cell">${i + 1}</td>
             <td>${escapeHtml(item.challan_number || '-')}</td>
             <td>${escapeHtml(item.dispatch_date ? fmtDate(item.dispatch_date) : '-')}</td>
             <td>${escapeHtml(item.description || '')}</td>
@@ -222,6 +374,7 @@ function renderInvoice(data) {
         </tr>
     ` : `
         <tr>
+            <td class="print-only-cell">${i + 1}</td>
             <td>${escapeHtml(item.description || '')}</td>
             <td>${escapeHtml(item.qty)}</td>
             <td>${escapeHtml(item.unit)}</td>
@@ -258,6 +411,12 @@ function renderInvoice(data) {
 
     document.getElementById('loadingState').style.display = 'none';
     document.getElementById('content').style.display = 'block';
+}
+
+function goBack() {
+    if (!window.close()) {
+        window.location.href = '/invoices.html';
+    }
 }
 
 async function downloadPdf() {
@@ -311,6 +470,19 @@ async function downloadPdf() {
     } finally {
         btn.disabled = false;
         btn.textContent = original;
+    }
+}
+
+// "Print Invoice" prints invoice.html itself via the @media print stylesheet
+// (same pattern as challan.html's handlePrint()) — no PDF blob, no new tab, so
+// there is nothing to "return from" after print/cancel; the user is already
+// still on this page.
+function handlePrint() {
+    if (/Mobi|Android/i.test(navigator.userAgent)) {
+        document.getElementById('printBtn').style.display = 'none';
+        document.getElementById('mobilePrintMsg').style.display = 'block';
+    } else {
+        window.print();
     }
 }
 

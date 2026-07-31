@@ -20,6 +20,7 @@
         { href: 'grn.html',              en: 'GRN',         mr: 'GRN'         },
         { href: 'production-issue.html', en: 'Issue',       mr: 'इश्यू'       },
         { href: 'dispatch.html',         en: 'Dispatch',    mr: 'डिस्पॅच'    },
+        { href: 'invoices.html',         en: 'Invoices',    mr: 'इनव्हॉइस'   },
         { href: 'rm-dispatch.html',      en: 'RM Dispatch', mr: 'RM डिस्पॅच' },
         { href: 'products.html',         en: 'Products',    mr: 'उत्पादने'    },
         { href: 'reports.html',          en: 'Reports',     mr: 'अहवाल'       },

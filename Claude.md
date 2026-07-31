@@ -34,7 +34,8 @@ Mobile-first: owners use phones. Must work on mobile browser.
 ## Database Tables (all with p2_ prefix)
 - p2_tenant_settings — company name, address, logo_url, challan_sequence, GSTIN,
   challan_mode, agent_tier, agent_interactions_today, agent_reset_date, ca_email, agent_enabled,
-  email (used as reply_to for challan emails — tell owners to fill this in Settings)
+  email (used as reply_to for challan emails — tell owners to fill this in Settings),
+  invoice_sequence, bank_name, bank_account, bank_ifsc (added July 30 — invoice feature)
 - p2_raw_materials — raw material master (name, unit, min_stock_level, is_active, material_code)
 - p2_suppliers — supplier master (is_active — CSV-imported suppliers default to
   is_active=false, invisible in dropdowns/matching unless checked)
@@ -56,11 +57,36 @@ Mobile-first: owners use phones. Must work on mobile browser.
   IMPORTANT: product dispatches have NULL material_name at DB level — product name must be
   resolved from p2_products via product_id in any code that displays dispatch items.
 - p2_clients — client master. Columns: id, tenant_id, name, address, email, created_at,
-  updated_at, po_number. NO is_active column. email added July 25 — used for send_challan.
-- p2_material_prices — price history. Columns: id, tenant_id, raw_material_id, price_per_unit,
-  effective_date, supplier_name, notes, created_at.
-  Valuation rate = latest price_per_unit by effective_date (used in CA report, export).
+  updated_at, po_number, gstin (added July 30). NO is_active column. email added July 25 —
+  used for send_challan.
+- p2_material_prices — raw material price history. Columns: id, tenant_id, raw_material_id,
+  price_per_unit, effective_date, supplier_name, notes, created_at.
+  Valuation rate = latest price_per_unit by effective_date (used in CA report, export, invoices).
   p2_stock_transactions.rate is NOT the valuation rate — it's the GRN-specific paid rate.
+- p2_product_prices — finished-goods selling price history (previously undocumented here,
+  but real and actively used — settings.html "Prices" tab, ca-report.html). Columns: id,
+  tenant_id, product_id, price, effective_date, notes, created_at. Same "latest by
+  effective_date" idiom as p2_material_prices — order by effective_date desc, keep first
+  hit per id. Note the column is `price`, not `price_per_unit` (unlike p2_material_prices).
+- p2_invoices — client billing invoice (proforma, NOT a GST filing document — see GST
+  Scope below). Columns: id, tenant_id, invoice_number, dispatch_order_id (single mode only,
+  NULL for consolidated), client_id, client_name/client_address/client_gstin (frozen snapshot,
+  same philosophy as challan's client fields), items jsonb (frozen line-item snapshot —
+  [{challan_number, dispatch_date, description, qty, unit, rate, amount}] — invoice-view and
+  invoice-pdf.js read ONLY this, never re-join p2_dispatch_items/price tables at view time, so
+  a later price change can never drift a PDF from the totals already emailed), amount_subtotal,
+  amount_gst, amount_total, gst_type ('cgst_sgst' | 'igst' | 'none' — flat 18% split, not
+  per-material gst_rate, deliberate simplification per GST Scope lock below), invoice_mode
+  ('single' | 'consolidated'), date_from/date_to (consolidated only), dispatch_order_ids
+  uuid[] (audit trail only — rendering never re-joins through it), invoice_token (public
+  lookup key, unique index), status ('draft' until the email actually succeeds, then 'sent'),
+  created_at. RLS: tenant_own only (tenant_id = auth.uid()) — deliberately NO public/anon
+  SELECT policy; invoice-view reads via SB_SECRET_KEY service role, which bypasses RLS, so a
+  public policy would only leak all tenants' invoices to anyone holding the anon key.
+  Unique index on dispatch_order_id enforces one single-mode invoice per dispatch — NULL
+  values (consolidated rows) are exempt since Postgres doesn't enforce uniqueness across NULLs.
+  get_next_invoice_number(tenant_id) RPC — same row-locked-counter shape as get_next_grn_number,
+  format INV-YYYYMM-NNN.
 
 ## Key Business Rules
 - Stock balance = SUM of all p2_stock_transactions for that material — never store
@@ -154,11 +180,14 @@ Revised July 25, 2026. All plans include AMC + retainer bundled — no separate 
 - add_production_issue_client — client info for production issue challan
 - confirm_product_dispatch — product dispatch, BOM explosion
 - confirm_rm_dispatch — raw material dispatch
+- confirm_generate_invoice — dispatch-page "Generate Invoice" modal, always single-mode. Only
+  `rate` is client-supplied per item; qty/unit/description always re-fetched server-side from
+  p2_dispatch_items (never trust client-sent quantities for a billing amount).
 - send_challan has NO body.action — handled inline in message router, no confirm card
 
-### All intents live (32 total)
+### All intents live (33 total)
 check_stock, create_grn, create_production_issue, create_product_dispatch, create_rm_dispatch,
-send_challan, send_tally_export, recent_grn, consumption_summary, supplier_history, low_stock_list, grn_detail,
+send_challan, send_tally_export, send_invoice, recent_grn, consumption_summary, supplier_history, low_stock_list, grn_detail,
 pending_dispatches, grn_summary, top_consumption, material_list, stock_check_product,
 zero_stock_list, dispatch_summary, supplier_delivery_check, challan_detail, issue_summary,
 product_code_lookup, top_received, product_list, supplier_list, dispatch_detail, issue_detail,
@@ -228,6 +257,52 @@ bom_detail, top_supplier
 - Success message includes "Period: DD/MM/YYYY – DD/MM/YYYY" when a range was resolved
 - reply_to set to tenantSettings.email only if truthy — same as send_challan
 
+### send_invoice — critical implementation notes
+- NO confirm card — executes and sends immediately, same pattern as send_challan/send_tally_export
+- NOT in READ_ONLY_INTENTS (Edge Function) — it's a write (creates a p2_invoices row, sends email)
+- NOT in READ_ONLY_TEXT_INTENTS (agent-chat.js) — same reason; needs its own else-if branch
+- Haiku extracts: { client_name: string, challan_number?: string, date_from?: string (YYYY-MM-DD),
+  date_to?: string (YYYY-MM-DD) }. Same "Today's date (IST)" system-prompt anchor as
+  send_tally_export for resolving bare month names/"last month"/relative ranges.
+- **Two modes**, selected in sendInvoiceIntent by which fields Haiku returned:
+  1. date_from + date_to both present/valid → **consolidated** — every confirmed dispatch for
+     that client across ALL dispatch_types within the range, merged into one invoice.
+  2. Else challan_number present → **single**, that specific dispatch.
+  3. Else → **single**, client's latest confirmed dispatch.
+  Consolidated mode is agent-only — the dispatch-page UI modal (confirm_generate_invoice) is
+  always single-mode, since it's tied to one confirmed dispatch on one page.
+- date_from/date_to re-validated against TALLY_EXPORT_DATE_RE before use (reused from
+  send_tally_export) — unparseable Haiku output is treated as absent, never hits Postgres.
+- matchClientName() is now generic (`<T extends {name:string}>`) so both ClientRow (send_challan)
+  and InvoiceClientRow (send_invoice — needs address/gstin too) can share it without a duplicate.
+- p2_dispatch_orders has no client_id FK — client matching for "latest dispatch"/consolidated
+  range queries is by exact client_name string equality, same convention already used in
+  rm-dispatch.html/production-issue.html's own client queries.
+- Rate resolution in the agent flow (buildInvoiceItemsForOrder): p2_product_prices for product
+  dispatch items, p2_material_prices for raw_material/bom_issue items, both "latest by
+  effective_date". **No price row found → rate 0, amount 0 — NEVER block or error.** Blocking a
+  whole invoice (especially consolidated, covering several dispatches) over one unpriced material
+  would make the feature useless for any client with even one unpriced item — the current state
+  of SS Engineering. This zero-fallback is agent-flow only; the Step 4 UI modal shows an empty
+  rate input instead and lets the owner fill it in before submitting.
+- Duplicate check: single mode keys on dispatch_order_id (backed by a DB unique index);
+  consolidated mode keys on exact tenant_id + date_from + date_to + client_id match (not an
+  overlap check). Either hit → resendExistingInvoice() re-sends the existing invoice_token's
+  link, no new insert, no invoice_sequence bump.
+- Cross-mode double-billing guard (consolidated only): before creating a consolidated invoice,
+  checks whether any matched dispatch already has a single-mode invoice against it. If so,
+  blocks the WHOLE consolidated invoice (never silently drops just those dispatches) and names
+  the offending challan numbers in the error message.
+- p2_invoices.status starts unset (DB default 'draft') at insert time and is only flipped to
+  'sent' via a follow-up UPDATE after the Resend call actually succeeds — never set 'sent' in
+  the same insert as the email send, or a Resend failure leaves a row falsely marked delivered.
+- sendInvoiceEmail() mirrors sendChallanEmail()'s shape (orange link button, reply_to only if
+  tenantSettings.email is truthy) but points at /invoice?token=... instead of /receive.
+- confirmGenerateInvoice (UI path) and sendInvoiceIntent (agent path) share buildInvoiceTotals()
+  (flat 18% GST split) and createAndSendInvoice()'s insert+email tail, but do NOT share item
+  resolution — the UI path trusts client-supplied rates (matched by dispatch_item_id, qty/unit/
+  description always re-fetched server-side), the agent path resolves rates from price tables.
+
 ### Critical agent gotchas
 - Adding new intent: MUST update BOTH READ_ONLY_INTENTS (Edge Function) AND
   READ_ONLY_TEXT_INTENTS (agent-chat.js) for read intents — missing either = silent blank response.
@@ -250,6 +325,9 @@ bom_detail, top_supplier
 - send_tally_export: neither in READ_ONLY_INTENTS nor READ_ONLY_TEXT_INTENTS — write intent (sends
   email), same pattern as send_challan. Needs its own agent-chat.js else-if branch (not a generic
   fallback) or the result is silently swallowed — there is no catch-all in that if/else chain.
+- send_invoice: same as above — neither in READ_ONLY_INTENTS nor READ_ONLY_TEXT_INTENTS, own
+  agent-chat.js else-if branch required. confirm_generate_invoice (the UI-modal action) is a
+  separate code path entirely — routed via body.action before the Haiku/message flow even runs.
 - First message after cold start sometimes fails with "Failed to load raw materials" — known Deno cold start issue, not a code bug, second attempt always works.
 - isPro() reads localStorage — can return stale plan value. Always read plan from DB-fetched settings object directly for gating logic.
 - Test tenant agent_tier MUST stay 'unlimited' at all times. Never reset or change via
@@ -311,6 +389,45 @@ Reset via: UPDATE p2_tenant_settings SET agent_interactions_today=0, agent_reset
 - Supabase plan: Pro ($25/month) — upgraded July 26 for CPU headroom
 - 20260527_dispatch_tables.sql is STALE — do not use as schema reference
 
+## Client Invoice Generation (shipped July 30, 2026)
+Proforma/billing invoice — "here's what you owe" — sent after a dispatch is confirmed. NOT a
+GST tax invoice for filing (see GST Scope lock below); the flat 18% CGST+SGST/IGST split is a
+deliberate simplification for that reason.
+
+- **Schema**: p2_invoices table, plus bank_name/bank_account/bank_ifsc on p2_tenant_settings and
+  gstin on p2_clients — see Database Tables section above for full column detail.
+- **invoice-view Edge Function**: public (verify_jwt=false in config.toml), GET ?token=uuid,
+  service role via SB_SECRET_KEY, UUID regex guard. Returns `{ invoice, tenant }` — no
+  dispatch_items/price-table joins at all, since `invoice.items` is a frozen jsonb snapshot
+  (see p2_invoices in Database Tables). This is deliberately simpler than receive-dispatch,
+  which does need to resolve product names live.
+- **invoice.html**: public page (root level, no navbar/auth), same three-state shape as
+  receive.html (no token → "Invalid link"; 404 → "not valid or expired"; other failure →
+  generic retry). PDF-only download (no Excel) — the codebase already has one too many
+  Excel reimplementations of the challan layout per js/challan-pdf.js's own doc comment;
+  not repeating that mistake for invoices.
+- **js/invoice-pdf.js**: sibling to js/challan-pdf.js, NOT an extension of it (same reasoning:
+  a fourth challan-layout reimplementation is explicitly discouraged, but an invoice is a
+  different document anyway — rate/amount columns, GST rows, amount-in-words, bank details, no
+  signature block, no QR). Duplicates challan-pdf.js's `loadPdfLibs`/`sanitize` primitives since
+  there's no shared module system. `window.invoiceAmountInWords` is exported separately from
+  `buildInvoicePdf` — it's synchronous with no jsPDF dependency, so invoice.html can call it
+  immediately on render without triggering the lazy jsPDF load just to show the words line.
+  Mode-aware item columns: single = Sr|Description|Qty|Unit|Rate|Amount; consolidated adds
+  Challan No|Date columns — one column-config function, not two separate table layouts.
+- **Dispatch-page UI**: "Generate Invoice" button + modal on ALL THREE dispatch pages —
+  dispatch.html (product), rm-dispatch.html (raw_material), production-issue.html (bom_issue),
+  not just dispatch.html — a job-work/contractor dispatch can also need billing. Plan-gated:
+  `settings?.plan === 'pro' || settings?.plan === 'founder'`, fetched fresh into a module-level
+  `tenantSettings` variable on page load (NEVER isPro() — stale localStorage). Modal rate
+  pre-fill: p2_product_prices for product dispatch, p2_material_prices for raw_material/
+  bom_issue, both "latest by effective_date" — blank (not zero) if no price row, since a human
+  is reviewing this one before it goes out.
+- **Agent side**: see "send_invoice — critical implementation notes" and
+  "confirm_generate_invoice" above for the full write-path breakdown (two invoice modes,
+  zero-fallback rates in the agent flow only, cross-mode double-billing guard, duplicate/resend
+  handling, status flips to 'sent' only after the email actually succeeds).
+
 ## Rules for this session
 - Direct, zero sugarcoating, brutal verdict on design/scope/pricing decisions.
 - PowerShell: never use &&, separate git commands on their own lines.
@@ -356,6 +473,70 @@ Reset via: UPDATE p2_tenant_settings SET agent_interactions_today=0, agent_reset
 - grn.html material search fix: dropdown min-width 300px, names no longer truncated, material
   code badge now orange bg / white text, selected material name + code shown in info line
   below input after selection.
+
+## Shipped July 30, 2026
+- Client Invoice Generation — see the "Client Invoice Generation" section above for full detail.
+  New: p2_invoices table + get_next_invoice_number RPC (migration:
+  20260730_create_invoices_table.sql), bank_name/bank_account/bank_ifsc on p2_tenant_settings
+  (migration: 20260730_add_invoice_bank_details.sql), gstin on p2_clients (migration:
+  20260730_add_client_gstin.sql), invoice-view Edge Function, invoice.html, js/invoice-pdf.js,
+  "Generate Invoice" button + modal on dispatch.html/rm-dispatch.html/production-issue.html,
+  confirm_generate_invoice action + send_invoice agent intent (single + consolidated modes) in
+  agent-query, matchClientName() made generic to share between send_challan and send_invoice.
+- settings.html: Bank Name/Account No/IFSC fields on Company Details tab; GSTIN field on
+  Clients tab (add form, list column, inline edit row).
+- CLAUDE.md: documented p2_product_prices (was real but previously undocumented here).
+- **Invoice print, invoices.html, and dispatch-history invoice status** (follow-up pass):
+  - invoice.html: @media print block modeled on challan.html's (force white bg/black text
+    since nexflow-design.css is dark-themed, print-color-adjust:exact to keep .nx-table
+    thead's grey background, @page A4 10mm). "Print Invoice" button added next to "Download
+    PDF" (both wrapped `.no-print`, hidden in the print block) — calls window.print()
+    directly, no mobile-detection dance like challan.html's handlePrint().
+  - invoices.html (new page, root level): lists all of a tenant's p2_invoices, Pro/Founder
+    plan-gated (fresh `p2_tenant_settings.plan` fetch, never isPro()/localStorage — whole
+    page content is gated, not just a button; Lite tenants see an upgrade notice instead of
+    the table). Columns: Invoice No | Date | Client | Mode | Period | Amount | Status |
+    Actions. "View / Print" opens invoice.html?token=... in a new tab. "Resend" POSTs
+    `{action:'resend_invoice', invoice_id, tenant_id}` to agent-query. Added to
+    js/navbar.js's NAV_LINKS, right after Dispatch.
+  - agent-query: new `resend_invoice` body.action handler (`resendInvoiceAction()`) — looks
+    up the p2_invoices row by id+tenant_id, resolves the client via `p2_invoices.client_id`
+    (a real FK, simpler than confirm_generate_invoice's client_name string-match), and reuses
+    the existing `resendExistingInvoice()` helper (previously only reachable from the Haiku
+    message-path duplicate-invoice check) to send the email — no new email template code.
+    Flips status to 'sent' unconditionally on success, same idempotent pattern
+    confirm_generate_invoice uses. NOT in READ_ONLY_INTENTS (only relevant to Haiku-derived
+    HaikuIntent, not body.action), NOT in agent-chat.js (UI-driven action, not a chat intent)
+    — same reasoning as confirm_generate_invoice.
+  - dispatch.html / rm-dispatch.html / production-issue.html: each dispatch-history loader
+    (`loadRecentDispatches()` / `loadRecentIssues()`) now does one batched
+    `p2_invoices` query per page load (`.in('dispatch_order_id', orderIds)`,
+    `invoice_mode='single'`) instead of a per-row query, builds a
+    `Map<dispatch_order_id, invoice>`, and swaps the row's action button: "View Invoice"
+    (opens invoice.html?token=...) if an invoice already exists, else the existing
+    "Generate Invoice" modal button (unchanged, Pro/Founder gated as before).
+  - challan.html untouched — it has no dispatch-history table (single-challan print/view
+    page only, driven by `?id=`); the history tables live on the three dispatch pages above.
+
+## Shipped July 31, 2026
+- all-dispatch-history.html invoice button relocated from list rows into the Detail modal.
+  This page (unlike dispatch.html/rm-dispatch.html/production-issue.html, which each keep
+  their own row-level invoice button per the July 30 entry above) has no separate detail
+  page — clicking "Detail" opens an in-page modal (`#detailModal` / `openDetail()`), which
+  is where the invoice affordance now lives instead.
+  - Removed: `invoiceByOrder` batch `p2_invoices` query that used to run on every
+    `loadHistory()` page load, plus the row-level invoice button. Actions column is back
+    to Detail | Challan | Cancel.
+  - Added: `#detailInvoiceSection` inside `#detailModal`, populated by
+    `refreshDetailInvoiceSection(orderId)` — a per-dispatch, on-demand `p2_invoices` lookup
+    that only fires when a user opens that dispatch's Detail modal (never on page load).
+    Shows "View Invoice →" + invoice number/status if one exists; "Generate Invoice"
+    (opens the existing rate/GST modal, unchanged internals) if Pro/Founder (`canInvoice`,
+    fetched once at page load, reused here — never `isPro()`); nothing for Lite or for
+    draft/cancelled dispatches.
+  - `openDetail()` is now async. On successful invoice generation, the rate/GST modal's
+    success handler calls `refreshDetailInvoiceSection()` directly instead of the old
+    `loadHistory()` reload — the still-open Detail modal flips to "View Invoice →" in place.
 
 ## GST Scope — PERMANENTLY LOCKED
 Nexflow P2 is operational software only. No GST filing, no GSTR generation, no financial reporting layer.

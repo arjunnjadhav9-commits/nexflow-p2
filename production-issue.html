@@ -1347,7 +1347,7 @@ let clientsMap = {};
 async function fetchClients() {
   const { data } = await window.supabase
     .from('p2_clients')
-    .select('name, address')
+    .select('name, address, email, gstin')
     .eq('tenant_id', tenantId)
     .order('name');
 

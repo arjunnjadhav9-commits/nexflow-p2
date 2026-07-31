@@ -90,6 +90,56 @@ interface UpdateGrnRatesRequest {
   }>
 }
 
+// Dispatch-page "Generate Invoice" modal — always single-mode, one dispatch.
+// Only `rate` is client-supplied per item; qty/unit/description are always
+// re-fetched server-side from p2_dispatch_items (never trust client-sent
+// quantities for a billing amount).
+interface ConfirmGenerateInvoiceRequest {
+  action: 'confirm_generate_invoice'
+  tenant_id: string
+  dispatch_order_id: string
+  item_rates: Array<{ dispatch_item_id: string; rate: number }>
+  gst_type: string
+}
+
+// invoices.html "Resend" button — re-sends an existing invoice's email,
+// never creates a new row (no invoice_sequence bump).
+interface ResendInvoiceRequest {
+  action: 'resend_invoice'
+  tenant_id: string
+  invoice_id: string
+}
+
+// invoices.html "+ New Consolidated Invoice" modal — merges every confirmed
+// dispatch for one client within [date_from, date_to] into one invoice.
+// Unlike ConfirmGenerateInvoiceRequest, rates are NOT client-supplied here
+// (the modal has no per-item review step) — resolved server-side from
+// p2_material_prices/p2_product_prices via buildInvoiceItemsForOrder, same
+// as the Haiku-driven sendInvoiceConsolidated path.
+interface ConfirmConsolidatedInvoiceRequest {
+  action: 'confirm_consolidated_invoice'
+  tenant_id: string
+  client_id: string
+  client_name: string
+  date_from: string
+  date_to: string
+  gst_type: string
+}
+
+// Frozen line-item snapshot stored in p2_invoices.items — challan_number/
+// dispatch_date are always present (even in single mode) so single and
+// consolidated invoices share one shape; invoice-view and invoice-pdf.js
+// just don't render those two columns outside consolidated mode.
+interface InvoiceItem {
+  challan_number: string | null
+  dispatch_date: string | null
+  description: string
+  qty: number
+  unit: string
+  rate: number
+  amount: number
+}
+
 interface RawMaterial {
   id: string
   name: string
@@ -172,6 +222,7 @@ type HaikuIntent =
   | 'issue_detail'
   | 'send_challan'
   | 'send_tally_export'
+  | 'send_invoice'
   | 'bom_detail'
   | 'top_supplier'
   | 'unknown'
@@ -196,8 +247,9 @@ interface HaikuResult {
     product_name?: string // stock_check_product, product_code_lookup, bom_detail
     quantity?: number // stock_check_product — how many units to produce
     top_n?: number // top_consumption, top_received — how many to show, default 5
-    date_from?: string // send_tally_export only — YYYY-MM-DD, absent means all-time
-    date_to?: string // send_tally_export only — YYYY-MM-DD; if date_from is set but this isn't, defaults to today
+    date_from?: string // send_tally_export, send_invoice — YYYY-MM-DD, absent means all-time / single-dispatch mode
+    date_to?: string // send_tally_export, send_invoice — YYYY-MM-DD; if date_from is set but this isn't, defaults to today (send_tally_export only)
+    client_name?: string // send_invoice only
   }
   error?: string
 }
@@ -1124,6 +1176,20 @@ Classify the message as one of:
   - "CA la July cha export pathav" -> { "date_from": "2026-07-01", "date_to": "2026-07-31" }
   - "CA la last month cha report pathav" -> { "date_from": "2026-06-01", "date_to": "2026-06-30" }
   - "CA la aaj cha export pathav" -> { "date_from": "2026-07-27", "date_to": "2026-07-27" }
+- "send_invoice" — user wants a client invoice (bill) generated and emailed. NOT a delivery challan (send_challan) — an invoice is what the client owes, sent after a challan already went out.
+  extracted fields: { "client_name": string, "challan_number"?: string, "date_from"?: string (YYYY-MM-DD), "date_to"?: string (YYYY-MM-DD) }
+  Rules:
+  - "client_name" is required — extract exactly as the user said it.
+  - "challan_number" — only if the user names a specific challan. Triggers a single-dispatch invoice for that challan.
+  - "date_from"/"date_to" — only if the user names a date range (a period, not a single challan). Triggers a consolidated invoice covering every confirmed dispatch for that client in the range. Same date resolution rules as send_tally_export: bare month names and "last month" resolve to a full calendar range using "Today's date" above; do not set these for a plain "send the invoice" request with no period mentioned.
+  - Never set both challan_number and a date range — if the user names a specific challan, that alone determines single mode.
+  - If neither challan_number nor a date range is given, omit both — the system falls back to that client's latest confirmed dispatch.
+  Examples (assuming Today's date above is 2026-07-30):
+  - "KPML la invoice pathav" -> { "client_name": "KPML" }
+  - "Last dispatch cha invoice pathav KPML la" -> { "client_name": "KPML" }
+  - "Invoice 4325 challan sathi pathav KPML la" -> { "client_name": "KPML", "challan_number": "4325" }
+  - "KPML la May 10 te 15 cha invoice pathav" -> { "client_name": "KPML", "date_from": "2026-05-10", "date_to": "2026-05-15" }
+  - "KPML la July cha invoice pathav" -> { "client_name": "KPML", "date_from": "2026-07-01", "date_to": "2026-07-31" }
 - "bom_detail" — user asks what the bill of materials is for a specific product.
   extracted fields: { "product_name": string }
   Examples:
@@ -1181,7 +1247,7 @@ Examples of correct create_grn extraction from mixed Hinglish/Marathi messages:
 - Message: "steel sheet 200 kg Sharma Traders ne bheja" -> extracted: { "items": [{ "material_name": "steel sheet", "quantity": 200, "unit": "kg" }], "supplier_name": "Sharma Traders" }
 
 Respond with ONLY valid JSON, no markdown code fences, no preamble, no explanation. The response must match exactly this shape:
-{ "intent": "check_stock" | "create_grn" | "create_production_issue" | "create_product_dispatch" | "create_rm_dispatch" | "recent_grn" | "consumption_summary" | "supplier_history" | "low_stock_list" | "grn_detail" | "pending_dispatches" | "grn_summary" | "top_consumption" | "material_list" | "stock_check_product" | "zero_stock_list" | "dispatch_summary" | "supplier_delivery_check" | "challan_detail" | "issue_summary" | "product_code_lookup" | "top_received" | "product_list" | "supplier_list" | "dispatch_detail" | "issue_detail" | "send_challan" | "send_tally_export" | "bom_detail" | "top_supplier" | "unknown", "extracted": { ...fields... } }`
+{ "intent": "check_stock" | "create_grn" | "create_production_issue" | "create_product_dispatch" | "create_rm_dispatch" | "recent_grn" | "consumption_summary" | "supplier_history" | "low_stock_list" | "grn_detail" | "pending_dispatches" | "grn_summary" | "top_consumption" | "material_list" | "stock_check_product" | "zero_stock_list" | "dispatch_summary" | "supplier_delivery_check" | "challan_detail" | "issue_summary" | "product_code_lookup" | "top_received" | "product_list" | "supplier_list" | "dispatch_detail" | "issue_detail" | "send_challan" | "send_tally_export" | "send_invoice" | "bom_detail" | "top_supplier" | "unknown", "extracted": { ...fields... } }`
 
   try {
     const response = await anthropicClient.messages.create({
@@ -1483,14 +1549,31 @@ interface SendTallyExportResult {
   errorReason: string | null
 }
 
+interface SendInvoiceResult {
+  text: string
+  success: boolean
+  errorReason: string | null
+}
+
+// send_invoice + confirm_generate_invoice — client row shape needs gstin/
+// address on top of ClientRow's id/name/email, so it's its own type rather
+// than widening ClientRow (which send_challan also uses, unmodified).
+interface InvoiceClientRow {
+  id: string
+  name: string
+  address: string | null
+  gstin: string | null
+  email: string | null
+}
+
 // Resolves extracted.recipient_name (or order.client_name as fallback)
 // against p2_clients. Unlike matchSupplierName, this is a required/blocking
 // match (mirrors matchMaterialName's 3-way result shape) — a missing or
 // ambiguous client must stop the send, not silently fall through.
-function matchClientName(
+function matchClientName<T extends { name: string }>(
   clientName: string,
-  clients: ClientRow[]
-): { client: ClientRow } | { error: string; errorKind: 'no_match' | 'ambiguous' } {
+  clients: T[]
+): { client: T } | { error: string; errorKind: 'no_match' | 'ambiguous' } {
   const matches = findMatches(clientName, clients)
 
   if (matches.length === 0) {
@@ -2871,6 +2954,19 @@ interface TallyExportTxnRow {
   p2_raw_materials: TallyExportRawMaterialJoin
 }
 
+interface TallyExportInvoiceRow {
+  invoice_number: string
+  created_at: string
+  client_name: string | null
+  invoice_mode: string
+  date_from: string | null
+  date_to: string | null
+  amount_subtotal: number
+  amount_gst: number
+  amount_total: number
+  gst_type: string
+}
+
 const TALLY_EXPORT_JOIN_COLUMNS =
   'transaction_date, quantity, rate, notes, p2_raw_materials!inner(name, material_code, hsn_sac, gst_rate, unit)'
 
@@ -2926,7 +3022,19 @@ async function sendTallyExportIntent(
     return q
   }
 
-  const [grnResult, consumptionResult, openingResult] = await Promise.all([
+  // p2_invoices has no transaction_date column — only created_at (a
+  // timestamptz) — so it needs its own range helper with an IST offset
+  // rather than reusing applyRange(). Same conditional shape: no range
+  // resolved means no filter, so an all-time export still gets every
+  // invoice, matching the other three sheets' all-time fallback.
+  const applyInvoiceRange = <T extends { gte: (...args: unknown[]) => T; lte: (...args: unknown[]) => T }>(query: T): T => {
+    let q = query
+    if (effectiveFrom) q = q.gte('created_at', effectiveFrom + 'T00:00:00+05:30')
+    if (effectiveTo) q = q.lte('created_at', effectiveTo + 'T23:59:59+05:30')
+    return q
+  }
+
+  const [grnResult, consumptionResult, openingResult, invoiceResult] = await Promise.all([
     applyRange(
       supabaseClient
         .from('p2_stock_transactions')
@@ -2949,14 +3057,21 @@ async function sendTallyExportIntent(
         .eq('transaction_type', 'adjustment')
         .eq('notes', 'Opening Stock')
     ),
+    applyInvoiceRange(
+      supabaseClient
+        .from('p2_invoices')
+        .select('invoice_number, created_at, client_name, invoice_mode, date_from, date_to, amount_subtotal, amount_gst, amount_total, gst_type')
+        .eq('tenant_id', tenantId)
+        .order('created_at', { ascending: true })
+    ),
   ])
 
-  if (grnResult.error || consumptionResult.error || openingResult.error) {
+  if (grnResult.error || consumptionResult.error || openingResult.error || invoiceResult.error) {
     return {
       text: '❌ Export tayar karta aala nahi.',
       success: false,
       errorReason:
-        grnResult.error?.message ?? consumptionResult.error?.message ?? openingResult.error?.message ?? 'unknown query error',
+        grnResult.error?.message ?? consumptionResult.error?.message ?? openingResult.error?.message ?? invoiceResult.error?.message ?? 'unknown query error',
     }
   }
 
@@ -3041,6 +3156,57 @@ async function sendTallyExportIntent(
 
   worksheet.views = [{ state: 'frozen', ySplit: 1 }]
 
+  const invoiceSheet = workbook.addWorksheet('Invoices')
+
+  invoiceSheet.columns = [
+    { header: 'Invoice No', key: 'invoiceNo', width: 18 },
+    { header: 'Date', key: 'date', width: 14 },
+    { header: 'Client', key: 'client', width: 28 },
+    { header: 'Mode', key: 'mode', width: 14 },
+    { header: 'Period From', key: 'periodFrom', width: 14 },
+    { header: 'Period To', key: 'periodTo', width: 14 },
+    { header: 'Subtotal (₹)', key: 'subtotal', width: 14, numFmt: '#,##0.00' },
+    { header: 'CGST (₹)', key: 'cgst', width: 12, numFmt: '#,##0.00' },
+    { header: 'SGST (₹)', key: 'sgst', width: 12, numFmt: '#,##0.00' },
+    { header: 'IGST (₹)', key: 'igst', width: 12, numFmt: '#,##0.00' },
+    { header: 'Total (₹)', key: 'total', width: 14, numFmt: '#,##0.00' },
+  ]
+
+  invoiceSheet.getRow(1).eachCell((cell: any) => {
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFF5C1A' } }
+    cell.alignment = { horizontal: 'center', vertical: 'middle' }
+  })
+
+  for (const inv of (invoiceResult.data ?? []) as unknown as TallyExportInvoiceRow[]) {
+    const isConsolidated = inv.invoice_mode === 'consolidated'
+    const gstAmount = Number(inv.amount_gst) || 0
+    let cgst: number | string = ''
+    let sgst: number | string = ''
+    let igst: number | string = ''
+    if (inv.gst_type === 'cgst_sgst') {
+      cgst = gstAmount / 2
+      sgst = gstAmount / 2
+    } else if (inv.gst_type === 'igst') {
+      igst = gstAmount
+    }
+    // 'none' — all three stay blank
+
+    invoiceSheet.addRow({
+      invoiceNo: inv.invoice_number,
+      date: formatDDMMYYYY(inv.created_at),
+      client: inv.client_name ?? '',
+      mode: isConsolidated ? 'Consolidated' : 'Single',
+      periodFrom: isConsolidated && inv.date_from ? formatDDMMYYYY(inv.date_from) : '',
+      periodTo: isConsolidated && inv.date_to ? formatDDMMYYYY(inv.date_to) : '',
+      subtotal: Number(inv.amount_subtotal) || 0,
+      cgst, sgst, igst,
+      total: Number(inv.amount_total) || 0,
+    })
+  }
+
+  invoiceSheet.views = [{ state: 'frozen', ySplit: 1 }]
+
   const buffer = await workbook.xlsx.writeBuffer()
   const base64 = encodeBase64(new Uint8Array(buffer))
 
@@ -3114,6 +3280,544 @@ async function sendTallyExportIntent(
     success: true,
     errorReason: null,
   }
+}
+
+// Flat 18% GST split — cgst_sgst divides it 9+9, igst keeps it whole, none
+// drops it. This is a proforma/billing document, not a GST filing document
+// (GST scope is permanently locked to zero filing/GSTR features), so the
+// flat rate is a deliberate simplification, not a stand-in for per-material
+// gst_rate (which p2_raw_materials already has, used elsewhere for Tally).
+function buildInvoiceTotals(items: InvoiceItem[], gstType: string): { subtotal: number; gst: number; total: number } {
+  const subtotal = items.reduce((sum, it) => sum + it.amount, 0)
+  const gst = gstType === 'none' ? 0 : subtotal * 0.18
+  return { subtotal, gst, total: subtotal + gst }
+}
+
+// Mirrors sendChallanEmail()'s shape (orange link button, reply_to only if
+// truthy) for the invoice-view link instead of receive.html.
+async function sendInvoiceEmail(params: {
+  toEmail: string
+  clientName: string
+  invoiceNumber: string
+  companyName: string
+  total: number
+  replyToEmail: string | null
+  invoiceUrl: string
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!RESEND_API_KEY) {
+    console.error('[sendInvoiceEmail] RESEND_API_KEY not configured')
+    return { ok: false, error: 'RESEND_API_KEY not configured' }
+  }
+
+  const totalFormatted = params.total.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+  const body: Record<string, unknown> = {
+    from: 'Nexflow <challans@nexflowautomations.in>',
+    to: [params.toEmail],
+    subject: `Invoice ${params.invoiceNumber} — ${params.companyName}`,
+    text: `Dear ${params.clientName},\n\nPlease find your invoice ${params.invoiceNumber} for Rs. ${totalFormatted}.\n\nView and download: ${params.invoiceUrl}\n\nRegards,\n${params.companyName}`,
+    html: `<p>Dear ${escapeHtml(params.clientName)},</p>
+<p>Please find your invoice ${escapeHtml(params.invoiceNumber)} for ₹${totalFormatted}.</p>
+<p style="margin-top:16px;">
+  <a href="${params.invoiceUrl}" style="color:#ff5c1a; font-weight:600;">
+    View &amp; download this invoice →
+  </a>
+</p>
+<p style="margin-top:16px;">Regards,<br>${escapeHtml(params.companyName)}</p>`,
+  }
+  if (params.replyToEmail && params.replyToEmail.trim()) {
+    body.reply_to = params.replyToEmail
+  }
+
+  try {
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+
+    if (!response.ok) {
+      const errText = await response.text()
+      console.error(`[sendInvoiceEmail] Resend API error for ${params.toEmail}:`, errText)
+      return { ok: false, error: errText || `Resend API returned ${response.status}` }
+    }
+
+    return { ok: true }
+  } catch (err) {
+    console.error(`[sendInvoiceEmail] Failed to send to ${params.toEmail}:`, err)
+    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+interface InvoiceOrderRow {
+  id: string
+  challan_number: string
+  client_name: string
+  client_address: string | null
+  status: string
+  dispatch_date: string | null
+}
+
+const INVOICE_ORDER_COLUMNS = 'id, challan_number, client_name, client_address, status, dispatch_date'
+
+// Resolves one dispatch order's items into InvoiceItem[] for the agent flow
+// (send_invoice) — rates come from p2_material_prices/p2_product_prices
+// (latest by effective_date), NOT from user input (that's only the Step 4 UI
+// modal's path, handled separately in confirmGenerateInvoice).
+//
+// No price row found -> rate 0, amount 0 for that item. Never block or error
+// — blocking a whole invoice (especially a consolidated one covering several
+// dispatches) over one unpriced material would make this feature useless for
+// any client with even one unpriced item, which is the current state of SS
+// Engineering. The owner sees the zero-rate line on the invoice and follows
+// up manually.
+async function buildInvoiceItemsForOrder(
+  supabaseClient: ReturnType<typeof createClient>,
+  tenantId: string,
+  order: Pick<InvoiceOrderRow, 'id' | 'challan_number' | 'dispatch_date'>
+): Promise<{ items: InvoiceItem[] } | { error: string }> {
+  const { data: items, error: itemsError } = await supabaseClient
+    .from('p2_dispatch_items')
+    .select('material_name, material_code, qty_dispatched, unit, raw_material_id, product_id')
+    .eq('tenant_id', tenantId)
+    .eq('dispatch_order_id', order.id)
+
+  if (itemsError) {
+    return { error: 'Challan items load karta aale nahi.' }
+  }
+  if (!items?.length) {
+    return { error: `Challan ${order.challan_number} madhe items nahit — invoice pathavta yet nahi` }
+  }
+
+  type ItemRow = {
+    material_name: string | null
+    material_code: string | null
+    qty_dispatched: number
+    unit: string
+    raw_material_id: string | null
+    product_id: string | null
+  }
+  const itemRows = items as ItemRow[]
+
+  // Same batched p2_products lookup as receive-dispatch/sendChallanIntent —
+  // product dispatch items have NULL material_name at the DB level.
+  const missingProductIds = [
+    ...new Set(itemRows.filter((it) => !it.material_name && it.product_id).map((it) => it.product_id as string)),
+  ]
+  const productsById = new Map<string, { name: string | null }>()
+  if (missingProductIds.length) {
+    const { data: products, error: productsError } = await supabaseClient
+      .from('p2_products')
+      .select('id, name')
+      .eq('tenant_id', tenantId)
+      .in('id', missingProductIds)
+    if (productsError) {
+      return { error: 'Product details load karta aale nahi.' }
+    }
+    for (const p of (products ?? []) as { id: string; name: string | null }[]) {
+      productsById.set(p.id, { name: p.name })
+    }
+  }
+
+  const materialIds = [...new Set(itemRows.map((it) => it.raw_material_id).filter(Boolean))] as string[]
+  const materialPriceById = new Map<string, number>()
+  if (materialIds.length) {
+    const { data: prices } = await supabaseClient
+      .from('p2_material_prices')
+      .select('raw_material_id, price_per_unit, effective_date')
+      .eq('tenant_id', tenantId)
+      .in('raw_material_id', materialIds)
+      .order('effective_date', { ascending: false })
+    for (const p of (prices ?? []) as { raw_material_id: string; price_per_unit: number }[]) {
+      if (!materialPriceById.has(p.raw_material_id)) materialPriceById.set(p.raw_material_id, p.price_per_unit)
+    }
+  }
+
+  const productIds = [...new Set(itemRows.map((it) => it.product_id).filter(Boolean))] as string[]
+  const productPriceById = new Map<string, number>()
+  if (productIds.length) {
+    const { data: prices } = await supabaseClient
+      .from('p2_product_prices')
+      .select('product_id, price, effective_date')
+      .eq('tenant_id', tenantId)
+      .in('product_id', productIds)
+      .order('effective_date', { ascending: false })
+    for (const p of (prices ?? []) as { product_id: string; price: number }[]) {
+      if (!productPriceById.has(p.product_id)) productPriceById.set(p.product_id, p.price)
+    }
+  }
+
+  const invoiceItems: InvoiceItem[] = itemRows.map((it) => {
+    const product = it.product_id ? productsById.get(it.product_id) : undefined
+    const qty = Number(it.qty_dispatched) || 0
+    const rate = it.product_id
+      ? Number(productPriceById.get(it.product_id) ?? 0)
+      : it.raw_material_id
+        ? Number(materialPriceById.get(it.raw_material_id) ?? 0)
+        : 0
+    return {
+      challan_number: order.challan_number,
+      dispatch_date: order.dispatch_date,
+      description: it.material_name ?? product?.name ?? it.material_code ?? 'Unknown Item',
+      qty,
+      unit: it.unit,
+      rate,
+      amount: qty * rate,
+    }
+  })
+
+  return { items: invoiceItems }
+}
+
+// Shared insert+email tail for both send_invoice modes (and reused nowhere
+// else — confirmGenerateInvoice, the UI-modal path, has its own inline
+// version since its item-building differs, but the totals/insert/email
+// shape is identical, factored here to avoid duplicating that part).
+async function createAndSendInvoice(
+  supabaseClient: ReturnType<typeof createClient>,
+  tenantId: string,
+  params: {
+    client: InvoiceClientRow
+    invoiceMode: 'single' | 'consolidated'
+    dispatchOrderId: string | null
+    dispatchOrderIds: string[]
+    items: InvoiceItem[]
+    gstType: string
+    dateFrom: string | null
+    dateTo: string | null
+  }
+): Promise<SendInvoiceResult> {
+  const { subtotal, gst, total } = buildInvoiceTotals(params.items, params.gstType)
+
+  const { data: invoiceNumber, error: invNoError } = await supabaseClient
+    .rpc('get_next_invoice_number', { p_tenant_id: tenantId })
+
+  if (invNoError || !invoiceNumber) {
+    return { text: '❌ Invoice pathavayala error — invoice number generate karta aala nahi', success: false, errorReason: invNoError?.message ?? 'no invoice number returned' }
+  }
+
+  const { data: invoiceRow, error: insertError } = await supabaseClient
+    .from('p2_invoices')
+    .insert({
+      tenant_id: tenantId,
+      invoice_number: invoiceNumber,
+      dispatch_order_id: params.dispatchOrderId,
+      client_id: params.client.id,
+      client_name: params.client.name,
+      client_address: params.client.address,
+      client_gstin: params.client.gstin,
+      items: params.items,
+      amount_subtotal: subtotal,
+      amount_gst: gst,
+      amount_total: total,
+      gst_type: params.gstType,
+      invoice_mode: params.invoiceMode,
+      date_from: params.dateFrom,
+      date_to: params.dateTo,
+      dispatch_order_ids: params.dispatchOrderIds,
+      status: 'sent',
+    })
+    .select('invoice_token')
+    .single()
+
+  if (insertError || !invoiceRow) {
+    return { text: '❌ Invoice pathavayala error — save karta aala nahi', success: false, errorReason: insertError?.message ?? 'invoice insert failed' }
+  }
+
+  const { data: tenantSettingsRow } = await supabaseClient
+    .from('p2_tenant_settings')
+    .select('company_name, email')
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+
+  const invoiceUrl = `https://nexflowautomations.in/invoice?token=${invoiceRow.invoice_token}`
+
+  const emailResult = await sendInvoiceEmail({
+    toEmail: params.client.email as string,
+    clientName: params.client.name,
+    invoiceNumber,
+    companyName: tenantSettingsRow?.company_name ?? '',
+    total,
+    replyToEmail: tenantSettingsRow?.email ?? null,
+    invoiceUrl,
+  })
+
+  if (!emailResult.ok) {
+    return { text: `❌ Invoice pathavayala error — ${emailResult.error}`, success: false, errorReason: emailResult.error }
+  }
+
+  const totalFormatted = total.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const periodSuffix = params.dateFrom && params.dateTo
+    ? ` — Period: ${formatDDMMYYYY(params.dateFrom)} – ${formatDDMMYYYY(params.dateTo)}`
+    : ''
+
+  return {
+    text: `✅ Invoice ${invoiceNumber} ${params.client.name} la pathavla — ₹${totalFormatted}${periodSuffix}`,
+    success: true,
+    errorReason: null,
+  }
+}
+
+// An invoice already exists for this dispatch/period — resend its link
+// rather than creating a duplicate (no new insert, no invoice_sequence bump).
+async function resendExistingInvoice(
+  supabaseClient: ReturnType<typeof createClient>,
+  tenantId: string,
+  client: InvoiceClientRow,
+  existing: { invoice_number: string; invoice_token: string; amount_total: number }
+): Promise<SendInvoiceResult> {
+  const { data: tenantSettingsRow } = await supabaseClient
+    .from('p2_tenant_settings')
+    .select('company_name, email')
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+
+  const invoiceUrl = `https://nexflowautomations.in/invoice?token=${existing.invoice_token}`
+
+  const emailResult = await sendInvoiceEmail({
+    toEmail: client.email as string,
+    clientName: client.name,
+    invoiceNumber: existing.invoice_number,
+    companyName: tenantSettingsRow?.company_name ?? '',
+    total: existing.amount_total,
+    replyToEmail: tenantSettingsRow?.email ?? null,
+    invoiceUrl,
+  })
+
+  if (!emailResult.ok) {
+    return { text: `❌ Invoice pathavayala error — ${emailResult.error}`, success: false, errorReason: emailResult.error }
+  }
+
+  return {
+    text: `Invoice ${existing.invoice_number} already exists — resent to ${client.email}`,
+    success: true,
+    errorReason: null,
+  }
+}
+
+// Single mode: one dispatch, by challan number or "latest confirmed for this
+// client" (p2_dispatch_orders has no client_id FK — client_name is the only
+// link, same convention rm-dispatch.html/production-issue.html already use).
+async function sendInvoiceSingle(
+  supabaseClient: ReturnType<typeof createClient>,
+  tenantId: string,
+  client: InvoiceClientRow,
+  challanNumber: string
+): Promise<SendInvoiceResult> {
+  let orders: InvoiceOrderRow[] | null = null
+
+  if (challanNumber) {
+    const { data: exact, error } = await supabaseClient
+      .from('p2_dispatch_orders')
+      .select(INVOICE_ORDER_COLUMNS)
+      .eq('tenant_id', tenantId)
+      .eq('challan_number', challanNumber)
+      .limit(1)
+    if (error) return { text: 'Could not fetch challan details.', success: false, errorReason: error.message }
+    orders = exact as InvoiceOrderRow[] | null
+
+    if (!orders?.length) {
+      const { data: likeOrders, error: likeError } = await supabaseClient
+        .from('p2_dispatch_orders')
+        .select(INVOICE_ORDER_COLUMNS)
+        .eq('tenant_id', tenantId)
+        .ilike('challan_number', `%${challanNumber}`)
+        .limit(5)
+      if (likeError) return { text: 'Could not fetch challan details.', success: false, errorReason: likeError.message }
+      orders = likeOrders as InvoiceOrderRow[] | null
+    }
+
+    if (!orders?.length) {
+      return { text: `Challan ${challanNumber} sapadla nahi`, success: false, errorReason: 'challan_not_found' }
+    }
+    if (orders.length > 1) {
+      const nums = orders.map((o) => o.challan_number).join(', ')
+      return { text: `Multiple challans match "${challanNumber}": ${nums}. Please be more specific.`, success: false, errorReason: 'challan_ambiguous' }
+    }
+  } else {
+    const { data: latest, error } = await supabaseClient
+      .from('p2_dispatch_orders')
+      .select(INVOICE_ORDER_COLUMNS)
+      .eq('tenant_id', tenantId)
+      .eq('client_name', client.name)
+      .eq('status', 'confirmed')
+      .order('dispatch_date', { ascending: false })
+      .limit(1)
+    if (error) return { text: 'Could not fetch dispatch details.', success: false, errorReason: error.message }
+    if (!latest?.length) {
+      return { text: `${client.name} sathi konti confirmed dispatch sapadli nahi`, success: false, errorReason: 'dispatch_not_found' }
+    }
+    orders = latest as InvoiceOrderRow[]
+  }
+
+  const order = orders[0]
+
+  if (order.status !== 'confirmed') {
+    return { text: 'He challan confirmed nahi — invoice pathavta yet nahi', success: false, errorReason: 'not_confirmed' }
+  }
+
+  const { data: existingInvoice, error: existingError } = await supabaseClient
+    .from('p2_invoices')
+    .select('invoice_number, invoice_token, amount_total')
+    .eq('dispatch_order_id', order.id)
+    .maybeSingle()
+
+  if (existingError) {
+    return { text: 'Invoice status check karta aala nahi.', success: false, errorReason: existingError.message }
+  }
+  if (existingInvoice) {
+    return await resendExistingInvoice(supabaseClient, tenantId, client, existingInvoice as { invoice_number: string; invoice_token: string; amount_total: number })
+  }
+
+  const itemsResult = await buildInvoiceItemsForOrder(supabaseClient, tenantId, order)
+  if ('error' in itemsResult) {
+    return { text: itemsResult.error, success: false, errorReason: 'items_error' }
+  }
+
+  return await createAndSendInvoice(supabaseClient, tenantId, {
+    client,
+    invoiceMode: 'single',
+    dispatchOrderId: order.id,
+    dispatchOrderIds: [order.id],
+    items: itemsResult.items,
+    gstType: 'cgst_sgst',
+    dateFrom: null,
+    dateTo: null,
+  })
+}
+
+// Consolidated mode: every confirmed dispatch for this client across all
+// dispatch_types within [dateFrom, dateTo] inclusive, merged into one invoice.
+async function sendInvoiceConsolidated(
+  supabaseClient: ReturnType<typeof createClient>,
+  tenantId: string,
+  client: InvoiceClientRow,
+  dateFrom: string,
+  dateTo: string
+): Promise<SendInvoiceResult> {
+  const { data: orders, error } = await supabaseClient
+    .from('p2_dispatch_orders')
+    .select(INVOICE_ORDER_COLUMNS)
+    .eq('tenant_id', tenantId)
+    .eq('client_name', client.name)
+    .eq('status', 'confirmed')
+    .gte('dispatch_date', dateFrom)
+    .lte('dispatch_date', dateTo)
+    .order('dispatch_date', { ascending: true })
+
+  if (error) {
+    return { text: 'Dispatch details load karta aale nahi.', success: false, errorReason: error.message }
+  }
+  if (!orders?.length) {
+    return { text: `❌ Ya period madhe ${client.name} sathi konti confirmed dispatch nahi`, success: false, errorReason: 'no_dispatches_in_range' }
+  }
+
+  const orderRows = orders as InvoiceOrderRow[]
+  const orderIds = orderRows.map((o) => o.id)
+
+  // Duplicate check: exact tenant + date_from + date_to + client_id match
+  // (not an overlap check) — resend rather than recreate.
+  const { data: existingInvoice, error: existingError } = await supabaseClient
+    .from('p2_invoices')
+    .select('invoice_number, invoice_token, amount_total')
+    .eq('tenant_id', tenantId)
+    .eq('client_id', client.id)
+    .eq('date_from', dateFrom)
+    .eq('date_to', dateTo)
+    .maybeSingle()
+
+  if (existingError) {
+    return { text: 'Invoice status check karta aala nahi.', success: false, errorReason: existingError.message }
+  }
+  if (existingInvoice) {
+    return await resendExistingInvoice(supabaseClient, tenantId, client, existingInvoice as { invoice_number: string; invoice_token: string; amount_total: number })
+  }
+
+  // Cross-mode double-billing guard: block the whole consolidated invoice
+  // (not a silent partial exclusion) if any matched dispatch was already
+  // billed individually via a single-mode invoice.
+  const { data: singleInvoices, error: singleError } = await supabaseClient
+    .from('p2_invoices')
+    .select('dispatch_order_id')
+    .eq('invoice_mode', 'single')
+    .in('dispatch_order_id', orderIds)
+
+  if (singleError) {
+    return { text: 'Invoice status check karta aala nahi.', success: false, errorReason: singleError.message }
+  }
+  if (singleInvoices?.length) {
+    const billedIds = new Set(singleInvoices.map((i) => i.dispatch_order_id as string))
+    const billedChallans = orderRows.filter((o) => billedIds.has(o.id)).map((o) => o.challan_number).join(', ')
+    return {
+      text: `❌ Ya dispatches paikee kahi already individually billed aahit — ${billedChallans}. Consolidated invoice create karu nahi shaknar.`,
+      success: false,
+      errorReason: 'already_billed_individually',
+    }
+  }
+
+  const allItems: InvoiceItem[] = []
+  for (const order of orderRows) {
+    const itemsResult = await buildInvoiceItemsForOrder(supabaseClient, tenantId, order)
+    if ('error' in itemsResult) {
+      return { text: itemsResult.error, success: false, errorReason: 'items_error' }
+    }
+    allItems.push(...itemsResult.items)
+  }
+
+  return await createAndSendInvoice(supabaseClient, tenantId, {
+    client,
+    invoiceMode: 'consolidated',
+    dispatchOrderId: null,
+    dispatchOrderIds: orderIds,
+    items: allItems,
+    gstType: 'cgst_sgst',
+    dateFrom,
+    dateTo,
+  })
+}
+
+// send_invoice orchestrator — mode selection: a valid date range means
+// consolidated, else a challan number (or the client's latest confirmed
+// dispatch) means single. Executes immediately, no confirm gate (same shape
+// as sendChallanIntent/sendTallyExportIntent) — not in READ_ONLY_INTENTS on
+// purpose, this is a write (creates an invoice row, sends an email).
+async function sendInvoiceIntent(
+  supabaseClient: ReturnType<typeof createClient>,
+  tenantId: string,
+  extracted: HaikuResult['extracted']
+): Promise<SendInvoiceResult> {
+  const clientName = (extracted.client_name ?? '').trim()
+  if (!clientName) {
+    return { text: 'Please provide a client name.', success: false, errorReason: 'no client name' }
+  }
+
+  const { data: clients, error: clientsError } = await supabaseClient
+    .from('p2_clients')
+    .select('id, name, address, gstin, email')
+    .eq('tenant_id', tenantId)
+
+  if (clientsError) {
+    return { text: 'Client list load karta aali nahi.', success: false, errorReason: clientsError.message }
+  }
+
+  const clientMatch = matchClientName(clientName, (clients ?? []) as InvoiceClientRow[])
+  if ('error' in clientMatch) {
+    return { text: clientMatch.error, success: false, errorReason: clientMatch.errorKind }
+  }
+  const client = clientMatch.client
+
+  if (!client.email || !client.email.trim()) {
+    return { text: `${client.name} cha email Settings > Clients madhe add kara`, success: false, errorReason: 'client_no_email' }
+  }
+
+  const challanNumber = (extracted.challan_number ?? '').trim()
+  const validFrom = extracted.date_from && TALLY_EXPORT_DATE_RE.test(extracted.date_from) ? extracted.date_from : undefined
+  const validTo = extracted.date_to && TALLY_EXPORT_DATE_RE.test(extracted.date_to) ? extracted.date_to : undefined
+
+  if (validFrom && validTo) {
+    return await sendInvoiceConsolidated(supabaseClient, tenantId, client, validFrom, validTo)
+  }
+  return await sendInvoiceSingle(supabaseClient, tenantId, client, challanNumber)
 }
 
 async function logInteraction(
@@ -3336,6 +4040,413 @@ async function confirmReceiveGrn(
   })
 }
 
+// Dispatch-page "Generate Invoice" modal (Step 4 UI) — always single-mode,
+// one dispatch. Only `rate` is client-supplied per item; qty/unit/description
+// are always re-fetched server-side from p2_dispatch_items here (never trust
+// client-sent quantities for a billing amount). Rates are NOT resolved from
+// price tables in this path — the owner has already confirmed/edited them in
+// the modal, unlike sendInvoiceIntent's agent flow which has no UI to review
+// rates in and falls back to price-table lookups (zero if none found).
+async function confirmGenerateInvoice(
+  supabaseClient: ReturnType<typeof createClient>,
+  body: Partial<ConfirmGenerateInvoiceRequest>
+): Promise<Response> {
+  const { tenant_id, dispatch_order_id, item_rates, gst_type } = body
+
+  if (!tenant_id || !dispatch_order_id || !item_rates?.length) {
+    return respond({ status: 'error', error: 'tenant_id, dispatch_order_id, and item_rates are required' }, 400)
+  }
+  const gstType = gst_type === 'igst' || gst_type === 'none' ? gst_type : 'cgst_sgst'
+
+  const { data: order, error: orderError } = await supabaseClient
+    .from('p2_dispatch_orders')
+    .select('id, challan_number, dispatch_date, client_name, status')
+    .eq('id', dispatch_order_id)
+    .eq('tenant_id', tenant_id)
+    .single()
+
+  if (orderError || !order) {
+    return respond({ status: 'error', error: 'Dispatch order not found' }, 404)
+  }
+  if (order.status !== 'confirmed') {
+    return respond({ status: 'error', error: 'Dispatch is not confirmed yet' }, 400)
+  }
+
+  const { data: client, error: clientError } = await supabaseClient
+    .from('p2_clients')
+    .select('id, name, address, gstin, email')
+    .eq('tenant_id', tenant_id)
+    .eq('name', order.client_name)
+    .maybeSingle()
+
+  if (clientError) {
+    return respond({ status: 'error', error: clientError.message }, 500)
+  }
+  // Client email is NOT required here — this UI path no longer emails the
+  // invoice (see confirmGenerateInvoice's comment at insert time below), so
+  // an invoice must be creatable regardless of whether the client has an
+  // email on file. Only existence of the client record is required.
+  if (!client) {
+    return respond({ status: 'error', error: `${order.client_name} client record not found — check Settings > Clients` }, 404)
+  }
+
+  // App-layer duplicate guard, mirrors the DB unique index on dispatch_order_id.
+  const { data: existingInvoice } = await supabaseClient
+    .from('p2_invoices')
+    .select('id')
+    .eq('dispatch_order_id', dispatch_order_id)
+    .maybeSingle()
+
+  if (existingInvoice) {
+    return respond({ status: 'error', error: 'Invoice already generated for this dispatch' }, 400)
+  }
+
+  const { data: items, error: itemsError } = await supabaseClient
+    .from('p2_dispatch_items')
+    .select('id, material_name, material_code, qty_dispatched, unit, product_id')
+    .eq('dispatch_order_id', dispatch_order_id)
+    .eq('tenant_id', tenant_id)
+
+  if (itemsError || !items?.length) {
+    return respond({ status: 'error', error: itemsError?.message ?? 'No dispatch items found' }, 400)
+  }
+
+  type ItemRow = { id: string; material_name: string | null; material_code: string | null; qty_dispatched: number; unit: string; product_id: string | null }
+  const itemRows = items as ItemRow[]
+
+  // Same batched p2_products lookup as receive-dispatch/sendChallanIntent —
+  // product dispatch items have NULL material_name at the DB level.
+  const missingProductIds = [
+    ...new Set(itemRows.filter((it) => !it.material_name && it.product_id).map((it) => it.product_id as string)),
+  ]
+  const productsById = new Map<string, { name: string | null }>()
+  if (missingProductIds.length) {
+    const { data: products, error: productsError } = await supabaseClient
+      .from('p2_products')
+      .select('id, name')
+      .eq('tenant_id', tenant_id)
+      .in('id', missingProductIds)
+    if (productsError) {
+      return respond({ status: 'error', error: productsError.message }, 500)
+    }
+    for (const p of (products ?? []) as { id: string; name: string | null }[]) {
+      productsById.set(p.id, { name: p.name })
+    }
+  }
+
+  const rateById = new Map(item_rates.map((r) => [r.dispatch_item_id, r.rate]))
+
+  const invoiceItems: InvoiceItem[] = itemRows.map((it) => {
+    const product = it.product_id ? productsById.get(it.product_id) : undefined
+    const qty = Number(it.qty_dispatched) || 0
+    const rate = Number(rateById.get(it.id)) || 0
+    return {
+      challan_number: order.challan_number,
+      dispatch_date: order.dispatch_date,
+      description: it.material_name ?? product?.name ?? it.material_code ?? 'Unknown Item',
+      qty,
+      unit: it.unit,
+      rate,
+      amount: qty * rate,
+    }
+  })
+
+  const { subtotal, gst, total } = buildInvoiceTotals(invoiceItems, gstType)
+
+  const { data: invoiceNumber, error: invNoError } = await supabaseClient
+    .rpc('get_next_invoice_number', { p_tenant_id: tenant_id })
+
+  if (invNoError || !invoiceNumber) {
+    void logInteraction(supabaseClient, tenant_id, '', 'send_invoice', {}, null, false, invNoError?.message ?? 'no invoice number returned')
+    return respond({ status: 'error', error: invNoError?.message ?? 'Could not generate invoice number' }, 500)
+  }
+
+  const { data: invoiceRow, error: insertError } = await supabaseClient
+    .from('p2_invoices')
+    .insert({
+      tenant_id,
+      invoice_number: invoiceNumber,
+      dispatch_order_id,
+      client_id: client.id,
+      client_name: client.name,
+      client_address: client.address,
+      client_gstin: client.gstin,
+      items: invoiceItems,
+      amount_subtotal: subtotal,
+      amount_gst: gst,
+      amount_total: total,
+      gst_type: gstType,
+      invoice_mode: 'single',
+      dispatch_order_ids: [dispatch_order_id],
+      // status left at its 'draft' default. This UI path no longer emails
+      // the invoice (email generation is agent-only now, via
+      // sendInvoiceIntent's send_invoice) — the owner reviews the link and
+      // shares it manually, or sends it later via invoices.html's "Resend".
+    })
+    .select('invoice_token')
+    .single()
+
+  if (insertError || !invoiceRow) {
+    void logInteraction(supabaseClient, tenant_id, '', 'send_invoice', {}, null, false, insertError?.message ?? 'invoice insert failed')
+    return respond({ status: 'error', error: insertError?.message ?? 'Could not save invoice' }, 500)
+  }
+
+  const invoiceUrl = `https://nexflowautomations.in/invoice?token=${invoiceRow.invoice_token}`
+
+  void logInteraction(supabaseClient, tenant_id, '', 'send_invoice', {}, 'matched', true, null)
+
+  return respond({ status: 'ok', invoice_number: invoiceNumber, invoice_url: invoiceUrl, total })
+}
+
+// invoices.html "+ New Consolidated Invoice" modal — merges every confirmed
+// dispatch for one client within a date range into one invoice. Mirrors
+// confirmGenerateInvoice's conventions (respond() shape, draft-then-flip
+// status) but reuses the consolidated-mode guards and rate resolution
+// already proven in sendInvoiceConsolidated/buildInvoiceItemsForOrder.
+// Unlike the single-mode UI modal, there's no per-item rate review step
+// here, so rates come from price tables with zero-fallback (never blocks
+// on a missing price) — same as the Haiku-driven send_invoice path.
+async function confirmConsolidatedInvoice(
+  supabaseClient: ReturnType<typeof createClient>,
+  body: Partial<ConfirmConsolidatedInvoiceRequest>
+): Promise<Response> {
+  const { tenant_id, client_id, date_from, date_to, gst_type } = body
+
+  if (!tenant_id || !client_id || !date_from || !date_to || !gst_type) {
+    return respond({ status: 'error', error: 'tenant_id, client_id, date_from, date_to, and gst_type are required' }, 400)
+  }
+  const gstType = gst_type === 'igst' || gst_type === 'none' ? gst_type : 'cgst_sgst'
+
+  // Client is resolved server-side from client_id, not trusted from the
+  // request's client_name — same "never trust client input for billing"
+  // posture confirmGenerateInvoice takes with item_rates' qty/description.
+  const { data: client, error: clientError } = await supabaseClient
+    .from('p2_clients')
+    .select('id, name, address, gstin, email')
+    .eq('id', client_id)
+    .eq('tenant_id', tenant_id)
+    .maybeSingle()
+
+  if (clientError) {
+    return respond({ status: 'error', error: clientError.message }, 500)
+  }
+  if (!client) {
+    return respond({ status: 'error', error: 'Client not found' }, 404)
+  }
+
+  const { data: orders, error: ordersError } = await supabaseClient
+    .from('p2_dispatch_orders')
+    .select(INVOICE_ORDER_COLUMNS)
+    .eq('tenant_id', tenant_id)
+    .eq('client_name', client.name)
+    .eq('status', 'confirmed')
+    .gte('dispatch_date', date_from)
+    .lte('dispatch_date', date_to)
+    .order('dispatch_date', { ascending: true })
+
+  if (ordersError) {
+    return respond({ status: 'error', error: ordersError.message }, 500)
+  }
+  if (!orders?.length) {
+    return respond({ status: 'error', error: 'Ya period madhe koi confirmed dispatch nahi' }, 400)
+  }
+
+  const orderRows = orders as InvoiceOrderRow[]
+  const orderIds = orderRows.map((o) => o.id)
+
+  // Consolidated duplicate check: exact tenant + client + date range match
+  // (not an overlap check) — resend rather than recreate. Same query shape
+  // and ordering as sendInvoiceConsolidated (checked before the cross-mode
+  // guard below, since a resend doesn't need to re-validate billing state).
+  const { data: existingInvoice, error: existingError } = await supabaseClient
+    .from('p2_invoices')
+    .select('invoice_number, invoice_token, amount_total')
+    .eq('tenant_id', tenant_id)
+    .eq('client_id', client_id)
+    .eq('date_from', date_from)
+    .eq('date_to', date_to)
+    .maybeSingle()
+
+  if (existingError) {
+    return respond({ status: 'error', error: existingError.message }, 500)
+  }
+  if (existingInvoice) {
+    return respond({
+      status: 'ok',
+      invoice_number: existingInvoice.invoice_number,
+      invoice_token: existingInvoice.invoice_token,
+      invoice_url: `https://nexflowautomations.in/invoice?token=${existingInvoice.invoice_token}`,
+      total: existingInvoice.amount_total,
+      already_exists: true,
+    })
+  }
+
+  // Cross-mode double-billing guard: block the whole consolidated invoice
+  // (not a silent partial exclusion) if any matched dispatch was already
+  // billed individually via a single-mode invoice.
+  const { data: singleInvoices, error: singleError } = await supabaseClient
+    .from('p2_invoices')
+    .select('dispatch_order_id')
+    .eq('invoice_mode', 'single')
+    .in('dispatch_order_id', orderIds)
+
+  if (singleError) {
+    return respond({ status: 'error', error: singleError.message }, 500)
+  }
+  if (singleInvoices?.length) {
+    const billedIds = new Set(singleInvoices.map((i: { dispatch_order_id: string | null }) => i.dispatch_order_id as string))
+    const billedChallans = orderRows.filter((o) => billedIds.has(o.id)).map((o) => o.challan_number).join(', ')
+    return respond({
+      status: 'error',
+      error: `Ya dispatches paikee kahi already individually billed aahit — ${billedChallans}. Consolidated invoice create karu nahi shaknar.`,
+    }, 400)
+  }
+
+  const allItems: InvoiceItem[] = []
+  for (const order of orderRows) {
+    const itemsResult = await buildInvoiceItemsForOrder(supabaseClient, tenant_id, order)
+    if ('error' in itemsResult) {
+      return respond({ status: 'error', error: itemsResult.error }, 400)
+    }
+    allItems.push(...itemsResult.items)
+  }
+
+  const { subtotal, gst, total } = buildInvoiceTotals(allItems, gstType)
+
+  const { data: invoiceNumber, error: invNoError } = await supabaseClient
+    .rpc('get_next_invoice_number', { p_tenant_id: tenant_id })
+
+  if (invNoError || !invoiceNumber) {
+    void logInteraction(supabaseClient, tenant_id, '', 'confirm_consolidated_invoice', {}, null, false, invNoError?.message ?? 'no invoice number returned')
+    return respond({ status: 'error', error: invNoError?.message ?? 'Could not generate invoice number' }, 500)
+  }
+
+  const { data: invoiceRow, error: insertError } = await supabaseClient
+    .from('p2_invoices')
+    .insert({
+      tenant_id,
+      invoice_number: invoiceNumber,
+      dispatch_order_id: null,
+      dispatch_order_ids: orderIds,
+      client_id: client.id,
+      client_name: client.name,
+      client_address: client.address,
+      client_gstin: client.gstin,
+      items: allItems,
+      amount_subtotal: subtotal,
+      amount_gst: gst,
+      amount_total: total,
+      gst_type: gstType,
+      invoice_mode: 'consolidated',
+      date_from,
+      date_to,
+      // status left at its 'draft' default — only flipped to 'sent' after
+      // the email actually succeeds below (or skipped entirely if the
+      // client has no email on file), same failure-safety as
+      // confirmGenerateInvoice.
+    })
+    .select('invoice_token')
+    .single()
+
+  if (insertError || !invoiceRow) {
+    void logInteraction(supabaseClient, tenant_id, '', 'confirm_consolidated_invoice', {}, null, false, insertError?.message ?? 'invoice insert failed')
+    return respond({ status: 'error', error: insertError?.message ?? 'Could not save invoice' }, 500)
+  }
+
+  const invoiceUrl = `https://nexflowautomations.in/invoice?token=${invoiceRow.invoice_token}`
+
+  if (!client.email || !client.email.trim()) {
+    // No email on file — invoice still created, status stays 'draft'.
+    // Recoverable later via the existing "Resend" button on invoices.html.
+    void logInteraction(supabaseClient, tenant_id, '', 'confirm_consolidated_invoice', {}, 'matched', true, null)
+    return respond({ status: 'ok', invoice_number: invoiceNumber, invoice_token: invoiceRow.invoice_token, invoice_url: invoiceUrl, total, already_exists: false })
+  }
+
+  const { data: tenantSettingsRow } = await supabaseClient
+    .from('p2_tenant_settings')
+    .select('company_name, email')
+    .eq('tenant_id', tenant_id)
+    .maybeSingle()
+
+  const emailResult = await sendInvoiceEmail({
+    toEmail: client.email,
+    clientName: client.name,
+    invoiceNumber,
+    companyName: tenantSettingsRow?.company_name ?? '',
+    total,
+    replyToEmail: tenantSettingsRow?.email ?? null,
+    invoiceUrl,
+  })
+
+  if (!emailResult.ok) {
+    void logInteraction(supabaseClient, tenant_id, '', 'confirm_consolidated_invoice', {}, 'matched', false, emailResult.error)
+    return respond({ status: 'error', error: emailResult.error }, 500)
+  }
+
+  void supabaseClient.from('p2_invoices').update({ status: 'sent' }).eq('invoice_token', invoiceRow.invoice_token)
+  void logInteraction(supabaseClient, tenant_id, '', 'confirm_consolidated_invoice', {}, 'matched', true, null)
+
+  return respond({ status: 'ok', invoice_number: invoiceNumber, invoice_token: invoiceRow.invoice_token, invoice_url: invoiceUrl, total, already_exists: false })
+}
+
+// invoices.html "Resend" button — re-sends an existing invoice's email via
+// the same resendExistingInvoice() helper the Haiku message-path duplicate
+// check already uses. No new p2_invoices row, no invoice_sequence bump.
+async function resendInvoiceAction(
+  supabaseClient: ReturnType<typeof createClient>,
+  body: Partial<ResendInvoiceRequest>
+): Promise<Response> {
+  const { tenant_id, invoice_id } = body
+
+  if (!tenant_id || !invoice_id) {
+    return respond({ status: 'error', error: 'tenant_id and invoice_id are required' }, 400)
+  }
+
+  const { data: invoice, error: invoiceError } = await supabaseClient
+    .from('p2_invoices')
+    .select('id, invoice_number, invoice_token, amount_total, client_id')
+    .eq('id', invoice_id)
+    .eq('tenant_id', tenant_id)
+    .maybeSingle()
+
+  if (invoiceError) {
+    return respond({ status: 'error', error: invoiceError.message }, 500)
+  }
+  if (!invoice) {
+    return respond({ status: 'error', error: 'Invoice not found' }, 404)
+  }
+
+  const { data: client, error: clientError } = await supabaseClient
+    .from('p2_clients')
+    .select('id, name, address, gstin, email')
+    .eq('id', invoice.client_id)
+    .maybeSingle()
+
+  if (clientError) {
+    return respond({ status: 'error', error: clientError.message }, 500)
+  }
+  if (!client?.email || !client.email.trim()) {
+    return respond({ status: 'error', error: `${client?.name ?? 'Client'} cha email Settings > Clients madhe add kara` }, 400)
+  }
+
+  const result = await resendExistingInvoice(supabaseClient, tenant_id, client as InvoiceClientRow, {
+    invoice_number: invoice.invoice_number,
+    invoice_token: invoice.invoice_token,
+    amount_total: invoice.amount_total,
+  })
+
+  void logInteraction(supabaseClient, tenant_id, '', 'resend_invoice', {}, null, result.success, result.errorReason)
+
+  if (!result.success) {
+    return respond({ status: 'error', error: result.errorReason ?? 'Could not resend invoice' }, 500)
+  }
+
+  void supabaseClient.from('p2_invoices').update({ status: 'sent' }).eq('id', invoice_id)
+
+  const invoiceUrl = `https://nexflowautomations.in/invoice?token=${invoice.invoice_token}`
+  return respond({ status: 'ok', invoice_number: invoice.invoice_number, invoice_url: invoiceUrl })
+}
+
 Deno.serve(async (req) => {
   // CORS preflight
   if (req.method === 'OPTIONS') {
@@ -3359,10 +4470,25 @@ Deno.serve(async (req) => {
       Partial<Omit<ConfirmMultiGrnRequest, 'action'>> &
       Partial<Omit<UpdateGrnRatesRequest, 'action'>> &
       Partial<Omit<ConfirmReceiveGrnRequest, 'action'>> &
-      { action?: 'confirm_grn' | 'confirm_production_issue' | 'add_production_issue_client' | 'confirm_product_dispatch' | 'confirm_rm_dispatch' | 'confirm_multi_grn' | 'update_grn_rates' | 'confirm_receive_grn' } = await req.json()
+      Partial<Omit<ConfirmGenerateInvoiceRequest, 'action'>> &
+      Partial<Omit<ResendInvoiceRequest, 'action'>> &
+      Partial<Omit<ConfirmConsolidatedInvoiceRequest, 'action'>> &
+      { action?: 'confirm_grn' | 'confirm_production_issue' | 'add_production_issue_client' | 'confirm_product_dispatch' | 'confirm_rm_dispatch' | 'confirm_multi_grn' | 'update_grn_rates' | 'confirm_receive_grn' | 'confirm_generate_invoice' | 'resend_invoice' | 'confirm_consolidated_invoice' } = await req.json()
 
     if (body.action === 'confirm_grn') {
       return await confirmGrn(supabase, body as Partial<ConfirmGrnRequest>)
+    }
+
+    if (body.action === 'confirm_generate_invoice') {
+      return await confirmGenerateInvoice(supabase, body as Partial<ConfirmGenerateInvoiceRequest>)
+    }
+
+    if (body.action === 'resend_invoice') {
+      return await resendInvoiceAction(supabase, body as Partial<ResendInvoiceRequest>)
+    }
+
+    if (body.action === 'confirm_consolidated_invoice') {
+      return await confirmConsolidatedInvoice(supabase, body as Partial<ConfirmConsolidatedInvoiceRequest>)
     }
 
     if (body.action === 'confirm_receive_grn') {
@@ -3492,6 +4618,22 @@ Deno.serve(async (req) => {
       return respond({
         status: 'ok',
         intent: 'send_tally_export',
+        confirm: { status: 'ready', confirm_text: result.text },
+      })
+    }
+
+    // Not in READ_ONLY_INTENTS on purpose — this is a write (creates a
+    // p2_invoices row, sends an email) even though it executes immediately
+    // with no confirm gate, same shape as send_challan/send_tally_export.
+    if (haikuResult.intent === 'send_invoice') {
+      const result = await sendInvoiceIntent(supabase, tenant_id, haikuResult.extracted)
+      void logInteraction(
+        supabase, tenant_id, message, 'send_invoice',
+        haikuResult.extracted as Record<string, unknown>, null, result.success, result.errorReason
+      )
+      return respond({
+        status: 'ok',
+        intent: 'send_invoice',
         confirm: { status: 'ready', confirm_text: result.text },
       })
     }

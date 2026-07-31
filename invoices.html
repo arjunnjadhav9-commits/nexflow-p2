@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Invoices | Nexflow P2</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%230c0e14'/><text y='.9em' font-size='80' x='10' fill='%23ff5c1a'>N</text></svg>">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800;900&family=Barlow+Condensed:wght@500;600;700;800;900&display=swap">
+    <link rel="stylesheet" href="css/nexflow-design.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/supabase-client.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/navbar.js"></script>
+
+    <style>
+        #loadingSpinner { display: flex; align-items: center; justify-content: center; padding: 60px 20px; }
+        #errorState { display: none; }
+        #upgradeState { display: none; }
+        #invoicesContent { display: none; }
+
+        /* Modal — not in shared stylesheet (css/nexflow-design.css only adds the
+           entrance animation for .nx-modal-overlay, not positioning/backdrop),
+           mirrors dispatch-history.html / all-dispatch-history.html pattern */
+        .nx-modal-overlay {
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.65);
+            z-index: 500;
+            display: flex; align-items: center; justify-content: center;
+            padding: 20px;
+        }
+        .nx-modal {
+            background: var(--surface);
+            border: 1px solid var(--border2);
+            border-radius: var(--radius-lg);
+            padding: 28px; width: 100%; max-width: 520px;
+            box-shadow: var(--shadow-md);
+        }
+        .nx-modal-title {
+            font-family: var(--condensed); font-weight: 800; font-size: 16px;
+            color: var(--white); text-transform: uppercase; letter-spacing: 0.5px;
+            margin-bottom: 20px;
+        }
+
+        /* Filter bar — same pattern as dispatch-history.html's .dh-filters */
+        .dh-filters {
+            display: flex;
+            gap: 12px;
+            align-items: flex-end;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+        .dh-filters .nx-form-group {
+            margin: 0;
+            min-width: 160px;
+        }
+        .dh-filters label {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--mid);
+            display: block;
+            margin-bottom: 6px;
+        }
+        .dh-filters .nx-input {
+            height: 38px;
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+    <div id="navbar-container"></div>
+
+    <div class="nx-main">
+        <div class="nx-page">
+
+            <!-- PAGE HEADER -->
+            <div class="nx-page-header">
+                <div>
+                    <div class="nx-eyebrow">Billing</div>
+                    <div class="nx-page-title" data-en="Invoices" data-mr="इनव्हॉइस">
+                        Invoices
+                    </div>
+                    <div class="nx-page-sub">All generated client invoices — view, print, resend</div>
+                </div>
+                <!-- Hidden until the Pro/Founder gate resolves in init() — this header
+                     renders before that check, unlike #invoicesContent below it. -->
+                <div id="newInvoiceHeaderActions" style="display:none;">
+                    <button id="newConsolidatedInvoiceBtn" onclick="openConsolidatedModal()" class="nx-btn nx-btn-primary">+ New Consolidated Invoice</button>
+                </div>
+            </div>
+
+            <!-- LOADING -->
+            <div id="loadingSpinner">
+                <div class="nx-logo-loader">
+                    <div class="nx-logo-loader-mark"></div>
+                    <div class="nx-logo-loader-text">Loading...</div>
+                </div>
+            </div>
+
+            <!-- ERROR STATE -->
+            <div id="errorState" class="nx-alert nx-alert-red nx-mb-24">
+                <span class="nx-alert-icon">⚠</span>
+                <div>
+                    <div class="nx-bold" data-en="Could not load data" data-mr="डेटा लोड करू शकला नाही">Could not load data</div>
+                    <div data-en="Check your connection and refresh the page." data-mr="तुमचे कनेक्शन तपासा आणि पृष्ठ रीफ्रेश करा.">Check your connection and refresh the page.</div>
+                </div>
+            </div>
+
+            <!-- UPGRADE STATE (Lite plan) -->
+            <div id="upgradeState" class="nx-alert nx-alert-orange nx-mb-24">
+                <span class="nx-alert-icon">🔒</span>
+                <div>
+                    <div class="nx-bold">Invoices is a Pro / Founder feature</div>
+                    <div>Upgrade your plan to generate and manage client invoices.</div>
+                </div>
+            </div>
+
+            <!-- INVOICES CONTENT -->
+            <div id="invoicesContent">
+
+                <!-- SUMMARY STAT CARDS -->
+                <div class="nx-stat-grid nx-mb-24">
+                    <div class="nx-stat">
+                        <div class="nx-stat-label">Total Invoices</div>
+                        <div class="nx-stat-value" id="statTotalCount">—</div>
+                        <div class="nx-stat-unit" id="statTotalCountUnit">—</div>
+                    </div>
+                    <div class="nx-stat">
+                        <div class="nx-stat-label">Total Billed</div>
+                        <div class="nx-stat-value orange" id="statTotalAmount">—</div>
+                        <div class="nx-stat-unit">sum of matched invoices</div>
+                    </div>
+                </div>
+
+                <!-- FILTERS -->
+                <div class="dh-filters">
+                    <div class="nx-form-group">
+                        <label>Client</label>
+                        <select id="filterClient" class="nx-input">
+                            <option value="">All</option>
+                        </select>
+                    </div>
+                    <div class="nx-form-group">
+                        <label>Mode</label>
+                        <select id="filterMode" class="nx-input">
+                            <option value="">All</option>
+                            <option value="single">Single</option>
+                            <option value="consolidated">Consolidated</option>
+                        </select>
+                    </div>
+                    <div class="nx-form-group">
+                        <label>Status</label>
+                        <select id="filterStatus" class="nx-input">
+                            <option value="">All</option>
+                            <option value="draft">Draft</option>
+                            <option value="sent">Sent</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- TABLE -->
+                <div class="nx-card">
+                    <div class="nx-table-wrap">
+                        <table class="nx-table">
+                            <thead>
+                                <tr>
+                                    <th>Invoice No</th>
+                                    <th>Date</th>
+                                    <th>Client</th>
+                                    <th>Mode</th>
+                                    <th>Period</th>
+                                    <th style="text-align:right;">Amount (₹)</th>
+                                    <th>Status</th>
+                                    <th style="text-align:center;">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="invoicesBody"></tbody>
+                        </table>
+                    </div>
+
+                    <div id="emptyState" style="display:none;" class="nx-empty-state">
+                        <div class="nx-empty-icon">🧾</div>
+                        <div>No invoices match the selected filters.</div>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+    </div>
+
+    <!-- NEW CONSOLIDATED INVOICE MODAL -->
+    <div id="consolidatedInvoiceModal" class="nx-modal-overlay" style="display:none;">
+        <div class="nx-modal" style="max-width:480px;">
+            <div class="nx-modal-title" style="color:var(--orange);">New Consolidated Invoice</div>
+
+            <div class="nx-form-group" style="margin-bottom:14px;">
+                <label>Client</label>
+                <select id="consInvoiceClient" class="nx-input">
+                    <option value="">Select client...</option>
+                </select>
+            </div>
+
+            <div style="display:flex; gap:12px; margin-bottom:14px;">
+                <div class="nx-form-group" style="flex:1; margin:0;">
+                    <label>Date From</label>
+                    <input type="date" id="consInvoiceFrom" class="nx-input">
+                </div>
+                <div class="nx-form-group" style="flex:1; margin:0;">
+                    <label>Date To</label>
+                    <input type="date" id="consInvoiceTo" class="nx-input">
+                </div>
+            </div>
+
+            <div class="nx-form-group" style="margin-bottom:16px;">
+                <label>GST Type</label>
+                <select id="consInvoiceGstType" class="nx-input">
+                    <option value="cgst_sgst" selected>CGST + SGST</option>
+                    <option value="igst">IGST</option>
+                    <option value="none">None</option>
+                </select>
+            </div>
+
+            <div id="consInvoiceError" class="nx-alert nx-alert-red" style="display:none; margin-bottom:16px;">
+                <span class="nx-alert-icon">⚠</span>
+                <div id="consInvoiceErrorText"></div>
+            </div>
+
+            <div style="display:flex; gap:10px;">
+                <button id="consInvoiceConfirm" class="nx-btn nx-btn-green" style="flex:1;">Generate Invoice</button>
+                <button id="consInvoiceCancel" class="nx-btn nx-btn-ghost" style="flex:1;">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let tenantId = null;
+        let allInvoices = [];
+        let filtered = [];
+        let canInvoice = false;
+
+        document.addEventListener('DOMContentLoaded', init);
+
+        function escInvHtml(str) {
+            return String(str ?? '').replace(/[&<>"']/g, (c) => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            }[c]));
+        }
+
+        function fmtMoney(n) {
+            const v = Number(n) || 0;
+            return '₹' + v.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        function fmtDate(iso) {
+            if (!iso) return '-';
+            return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+        }
+
+        async function init() {
+            const loadingSpinner = document.getElementById('loadingSpinner');
+            const errorState = document.getElementById('errorState');
+            const upgradeState = document.getElementById('upgradeState');
+            const invoicesContent = document.getElementById('invoicesContent');
+
+            try {
+                const authed = await checkAuth();
+                if (!authed) return;
+                const { data: { user } } = await window.supabase.auth.getUser();
+                tenantId = user.id;
+
+                // Fresh fetch, never isPro()/localStorage — plan can change and
+                // localStorage only refreshes on login/auth-state-change.
+                const { data: settingsData } = await window.supabase
+                    .from('p2_tenant_settings')
+                    .select('plan')
+                    .eq('tenant_id', tenantId)
+                    .maybeSingle();
+                canInvoice = !!settingsData && (settingsData.plan === 'pro' || settingsData.plan === 'founder');
+
+                loadingSpinner.style.display = 'none';
+
+                if (!canInvoice) {
+                    upgradeState.style.display = 'flex';
+                    return;
+                }
+
+                document.getElementById('newInvoiceHeaderActions').style.display = 'flex';
+                invoicesContent.style.display = 'block';
+                setupFilterHandlers();
+                setupConsolidatedModalHandlers();
+                await loadInvoices();
+            } catch (err) {
+                console.error('invoices.html init error:', err);
+                loadingSpinner.style.display = 'none';
+                errorState.style.display = 'flex';
+            }
+        }
+
+        async function loadInvoices() {
+            const { data, error } = await window.supabase
+                .from('p2_invoices')
+                .select('*')
+                .eq('tenant_id', tenantId)
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+
+            allInvoices = data || [];
+            populateClientFilterOptions();
+            applyFilters();
+        }
+
+        function populateClientFilterOptions() {
+            const select = document.getElementById('filterClient');
+            const clients = [...new Set(allInvoices.map(inv => inv.client_name).filter(Boolean))].sort();
+            select.innerHTML = '<option value="">All</option>' +
+                clients.map(name => `<option value="${escInvHtml(name)}">${escInvHtml(name)}</option>`).join('');
+        }
+
+        function setupFilterHandlers() {
+            ['filterClient', 'filterMode', 'filterStatus'].forEach(id => {
+                document.getElementById(id).addEventListener('change', applyFilters);
+            });
+        }
+
+        function applyFilters() {
+            const client = document.getElementById('filterClient').value;
+            const mode = document.getElementById('filterMode').value;
+            const status = document.getElementById('filterStatus').value;
+
+            filtered = allInvoices.filter(inv => {
+                if (client && inv.client_name !== client) return false;
+                if (mode && inv.invoice_mode !== mode) return false;
+                if (status && inv.status !== status) return false;
+                return true;
+            });
+
+            renderInvoices();
+        }
+
+        function renderInvoices() {
+            const tbody = document.getElementById('invoicesBody');
+            const empty = document.getElementById('emptyState');
+            tbody.innerHTML = '';
+
+            const totalAmount = filtered.reduce((sum, inv) => sum + (Number(inv.amount_total) || 0), 0);
+            document.getElementById('statTotalCount').textContent = filtered.length;
+            document.getElementById('statTotalCountUnit').textContent = filtered.length === 1 ? 'invoice' : 'invoices';
+            document.getElementById('statTotalAmount').textContent = fmtMoney(totalAmount);
+
+            if (filtered.length === 0) {
+                empty.style.display = 'block';
+                return;
+            }
+            empty.style.display = 'none';
+
+            filtered.forEach(inv => {
+                const isConsolidated = inv.invoice_mode === 'consolidated';
+                const modeBadge = isConsolidated
+                    ? `<span class="nx-badge nx-badge-orange">Consolidated</span>`
+                    : `<span class="nx-badge nx-badge-grey">Single</span>`;
+                const period = isConsolidated
+                    ? `${fmtDate(inv.date_from)} – ${fmtDate(inv.date_to)}`
+                    : '';
+                const statusBadge = inv.status === 'sent'
+                    ? `<span class="nx-badge nx-badge-green">Sent</span>`
+                    : `<span class="nx-badge nx-badge-yellow">Draft</span>`;
+
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="nx-td-mono">${escInvHtml(inv.invoice_number)}</td>
+                    <td>${fmtDate(inv.created_at)}</td>
+                    <td class="nx-td-bold">${escInvHtml(inv.client_name || '-')}</td>
+                    <td>${modeBadge}</td>
+                    <td>${period}</td>
+                    <td style="text-align:right;">${fmtMoney(inv.amount_total)}</td>
+                    <td>${statusBadge}</td>
+                    <td style="text-align:center;">
+                        <button onclick="window.open('/invoice.html?token=${inv.invoice_token}','_blank')" class="nx-btn nx-btn-ghost nx-btn-sm">View / Print</button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        // ── NEW CONSOLIDATED INVOICE MODAL ─────────────────────────────
+        window.openConsolidatedModal = async () => {
+            document.getElementById('consInvoiceError').style.display = 'none';
+            document.getElementById('consInvoiceFrom').value = '';
+            document.getElementById('consInvoiceTo').value = '';
+            document.getElementById('consInvoiceGstType').value = 'cgst_sgst';
+
+            const select = document.getElementById('consInvoiceClient');
+            select.innerHTML = '<option value="">Loading...</option>';
+            document.getElementById('consolidatedInvoiceModal').style.display = 'flex';
+
+            try {
+                const { data: clients, error } = await window.supabase
+                    .from('p2_clients')
+                    .select('id, name, email')
+                    .eq('tenant_id', tenantId)
+                    .order('name', { ascending: true });
+                if (error) throw error;
+
+                select.innerHTML = '<option value="">Select client...</option>' +
+                    (clients || []).map(c => `<option value="${escInvHtml(c.id)}">${escInvHtml(c.name)}</option>`).join('');
+            } catch (err) {
+                console.error('openConsolidatedModal clients load:', err);
+                select.innerHTML = '<option value="">Could not load clients</option>';
+            }
+        };
+
+        function showConsInvoiceError(msg) {
+            document.getElementById('consInvoiceErrorText').textContent = msg;
+            document.getElementById('consInvoiceError').style.display = 'flex';
+        }
+
+        function setupConsolidatedModalHandlers() {
+            document.getElementById('consInvoiceCancel').addEventListener('click', () => {
+                document.getElementById('consolidatedInvoiceModal').style.display = 'none';
+            });
+            document.getElementById('consolidatedInvoiceModal').addEventListener('click', e => {
+                if (e.target.id === 'consolidatedInvoiceModal') e.target.style.display = 'none';
+            });
+
+            document.getElementById('consInvoiceConfirm').addEventListener('click', async () => {
+                document.getElementById('consInvoiceError').style.display = 'none';
+
+                const clientSelect = document.getElementById('consInvoiceClient');
+                const clientId = clientSelect.value;
+                const clientName = clientSelect.options[clientSelect.selectedIndex]?.text || '';
+                const dateFrom = document.getElementById('consInvoiceFrom').value;
+                const dateTo = document.getElementById('consInvoiceTo').value;
+                const gstType = document.getElementById('consInvoiceGstType').value;
+
+                if (!clientId) { showConsInvoiceError('Please select a client.'); return; }
+                if (!dateFrom || !dateTo) { showConsInvoiceError('Please select both a from and to date.'); return; }
+
+                const btn = document.getElementById('consInvoiceConfirm');
+                btn.disabled = true;
+                btn.textContent = 'Generating…';
+
+                try {
+                    const res = await fetch(`${SUPABASE_URL}/functions/v1/agent-query`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
+                        body: JSON.stringify({
+                            action: 'confirm_consolidated_invoice',
+                            tenant_id: tenantId,
+                            client_id: clientId,
+                            client_name: clientName,
+                            date_from: dateFrom,
+                            date_to: dateTo,
+                            gst_type: gstType
+                        })
+                    });
+                    const data = await res.json();
+                    if (data.status !== 'ok') throw new Error(data.error || 'Unknown error');
+
+                    document.getElementById('consolidatedInvoiceModal').style.display = 'none';
+                    window.open(data.invoice_url, '_blank');
+                    if (data.already_exists) alert('Invoice already exists — opened.');
+                    await loadInvoices();
+                } catch (err) {
+                    console.error('confirm_consolidated_invoice:', err);
+                    showConsInvoiceError(err.message || 'Could not generate invoice.');
+                } finally {
+                    btn.disabled = false;
+                    btn.textContent = 'Generate Invoice';
+                }
+            });
+        }
+    </script>
+</body>
+</html>

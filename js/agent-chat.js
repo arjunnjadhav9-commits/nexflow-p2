@@ -1136,6 +1136,10 @@
         // Write intent, but no confirm card — the edge function already sent
         // the export and confirm_text is the plain result message.
         addMessage(confirm.confirm_text, 'nf-msg-bot');
+      } else if (data.intent === 'send_invoice') {
+        // Write intent, but no confirm card — the edge function already
+        // created/sent the invoice and confirm_text is the plain result message.
+        addMessage(confirm.confirm_text, 'nf-msg-bot');
       }
     } catch (err) {
       removeTyping();
