@@ -181,8 +181,21 @@
 
         tr { page-break-inside: avoid !important; }
 
-        #invoiceSignatureSection { page-break-before: avoid !important; page-break-inside: avoid !important; }
-        #invoiceFooterNote { page-break-inside: avoid !important; }
+        #invoiceSignatureSection { page-break-before: avoid !important; page-break-inside: avoid !important; margin-top: 16px !important; }
+        #invoiceFooterNote { page-break-inside: avoid !important; page-break-before: avoid !important; margin-top: 8px !important; padding: 6px !important; }
+
+        /* Trim vertical space in the bank details card — it sits outside
+           #content so it doesn't get that block's flattened 8px/12px
+           padding, and still carries screen-sized .nx-card padding in print. */
+        #bankCard { padding: 8px 12px !important; page-break-inside: avoid !important; }
+        #bankCard .supplier-line { margin: 1px 0 !important; }
+
+        /* Compress the whole invoice proportionally so bank details + the
+           signature block are more likely to land on the same page as the
+           items table, without touching layout/positions. */
+        body, #content {
+            font-size: 11px !important;
+        }
 
         /* Company header centered, matching the PDF */
         #companyName, #companyAddress, #companyContact { text-align: center !important; }
