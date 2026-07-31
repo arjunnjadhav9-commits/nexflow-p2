@@ -235,6 +235,20 @@
                     <div id="desktopURL" style="font-size:11px; color:var(--orange); word-break:break-all;"></div>
                 </div>
 
+                <!-- GRN Delivery Header (receive mode only — shared supplier/date for whole delivery) -->
+                <div id="grnDeliveryHeader" class="nx-form">
+                    <div class="nx-form-group">
+                        <label data-en="Supplier (optional)" data-mr="पुरवठादार (पर्यायी)">Supplier (optional)</label>
+                        <select id="grnSupplier" class="nx-input">
+                            <option value="" data-en="Select Supplier" data-mr="पुरवठादार निवडा">Select Supplier</option>
+                        </select>
+                    </div>
+                    <div class="nx-form-group">
+                        <label data-en="Date" data-mr="तारीख">Date</label>
+                        <input type="date" id="grnDate" class="nx-input">
+                    </div>
+                </div>
+
                 <!-- Camera Viewfinder -->
                 <div id="cameraViewfinder">
                     <video id="cameraFeed" autoplay muted playsinline></video>
@@ -274,7 +288,8 @@
 
                     <!-- Entry Form -->
                     <div class="nx-form">
-                        <div class="nx-form-group">
+                        <!-- Issue-mode-only date (receive mode uses the shared #grnDate above the viewfinder) -->
+                        <div id="issueDateGroup" class="nx-form-group" style="display:none;">
                             <label data-en="Date" data-mr="तारीख">Date</label>
                             <input type="date" id="entryDate" class="nx-input">
                         </div>
@@ -288,12 +303,6 @@
 
                         <!-- GRN-only fields -->
                         <div id="grnFields">
-                            <div class="nx-form-group">
-                                <label data-en="Supplier (optional)" data-mr="पुरवठादार (पर्यायी)">Supplier (optional)</label>
-                                <select id="entrySupplier" class="nx-input">
-                                    <option value="" data-en="Select Supplier" data-mr="पुरवठादार निवडा">Select Supplier</option>
-                                </select>
-                            </div>
                             <div class="nx-form-group">
                                 <label data-en="Rate ₹ (optional)" data-mr="दर ₹ (पर्यायी)">Rate ₹ (optional)</label>
                                 <input type="number" id="entryRate" min="0" step="0.01" placeholder="0.00" class="nx-input">
@@ -313,13 +322,19 @@
                         </div>
 
                         <div style="display:flex; gap:10px; margin-top:4px;">
-                            <button onclick="submitEntry()" id="submitBtn" class="nx-btn nx-btn-primary" style="flex:1;" data-en="✅ Submit GRN Entry" data-mr="✅ GRN नोंद सबमिट करा">
-                                ✅ Submit GRN Entry
+                            <button onclick="submitEntry()" id="submitBtn" class="nx-btn nx-btn-primary" style="flex:1;" data-en="➕ Add to GRN" data-mr="➕ GRN मध्ये जोडा">
+                                ➕ Add to GRN
                             </button>
                             <button onclick="cancelScan()" class="nx-btn nx-btn-ghost" style="width:48px; padding:0;">✖</button>
                         </div>
                     </div>
                 </div>
+
+                <!-- Pending GRN List (receive mode only, in-memory until Confirm GRN) -->
+                <div id="pendingList" class="nx-card" style="display:none;"></div>
+                <button id="confirmGrnBtn" onclick="confirmGRN()" class="nx-btn nx-btn-primary nx-btn-full" style="display:none; margin-bottom:14px;" data-en="✅ Confirm GRN" data-mr="✅ GRN निश्चित करा">
+                    ✅ Confirm GRN
+                </button>
 
                 <!-- Recent Entries -->
                 <div class="nx-card">
@@ -344,6 +359,7 @@
         let barcodeDetector = null;
         let scanLoop = null;
         let sessionEntries = [];
+        let pendingItems = []; // receive mode only: [{ materialId, materialName, materialCode, unit, qty, rate, invoiceNo }]
 
         // ─── LANGUAGE ─────────────────────────────────────────────────────────
         function applyLang(lang) {
@@ -381,7 +397,9 @@
 
             await loadSuppliers();
 
-            document.getElementById('entryDate').value = new Date().toISOString().split('T')[0];
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('entryDate').value = today;
+            document.getElementById('grnDate').value   = today;
 
             document.getElementById('loadingSpinner').style.display = 'none';
             document.getElementById('mainContent').style.display = 'block';
@@ -392,6 +410,15 @@
 
         // ─── MODE TOGGLE ──────────────────────────────────────────────────────
         function setMode(mode) {
+            if (mode !== 'receive' && currentMode === 'receive' && pendingItems.length > 0) {
+                const ok = confirm(t(
+                    `Discard ${pendingItems.length} unsaved GRN item(s)?`,
+                    `${pendingItems.length} न जतन केलेल्या GRN नोंदी रद्द करायच्या का?`
+                ));
+                if (!ok) return;
+                pendingItems = [];
+            }
+
             currentMode = mode;
             cancelScan();
 
@@ -401,16 +428,22 @@
             if (mode === 'receive') {
                 receiveBtn.classList.add('active');
                 issueBtn.classList.remove('active');
-                document.getElementById('grnFields').style.display   = 'block';
-                document.getElementById('issueFields').style.display = 'none';
-                document.getElementById('submitBtn').textContent = t('✅ Submit GRN Entry', '✅ GRN नोंद सबमिट करा');
+                document.getElementById('grnFields').style.display        = 'block';
+                document.getElementById('issueFields').style.display      = 'none';
+                document.getElementById('grnDeliveryHeader').style.display = 'block';
+                document.getElementById('issueDateGroup').style.display   = 'none';
+                document.getElementById('submitBtn').textContent = t('➕ Add to GRN', '➕ GRN मध्ये जोडा');
             } else {
                 issueBtn.classList.add('active');
                 receiveBtn.classList.remove('active');
-                document.getElementById('grnFields').style.display   = 'none';
-                document.getElementById('issueFields').style.display = 'block';
+                document.getElementById('grnFields').style.display        = 'none';
+                document.getElementById('issueFields').style.display      = 'block';
+                document.getElementById('grnDeliveryHeader').style.display = 'none';
+                document.getElementById('issueDateGroup').style.display   = 'block';
                 document.getElementById('submitBtn').textContent = t('✅ Submit Issue Entry', '✅ जारी नोंद सबमिट करा');
             }
+
+            renderPendingList();
         }
 
         // ─── CAMERA / SCANNER ─────────────────────────────────────────────────
@@ -558,7 +591,7 @@
             if (error) return;
             suppliers = data || [];
 
-            const select = document.getElementById('entrySupplier');
+            const select = document.getElementById('grnSupplier');
             select.innerHTML = `<option value="">${t('Select Supplier','पुरवठादार निवडा')}</option>`;
             suppliers.forEach(s => {
                 const opt = document.createElement('option');
@@ -572,13 +605,23 @@
         async function submitEntry() {
             if (!scannedMaterial) return;
 
-            const qty  = parseFloat(document.getElementById('entryQty').value);
-            const date = document.getElementById('entryDate').value;
+            const qty = parseFloat(document.getElementById('entryQty').value);
 
             if (!qty || qty <= 0) {
                 toast(t('Please enter a valid quantity greater than 0.','कृपया 0 पेक्षा जास्त वैध परिमाण टाका.'), 'error');
                 return;
             }
+
+            if (currentMode === 'receive') {
+                const rate      = document.getElementById('entryRate').value;
+                const invoiceNo = document.getElementById('entryInvoice').value.trim() || null;
+
+                addToPendingList(scannedMaterial, qty, rate !== '' ? parseFloat(rate) : null, invoiceNo);
+                cancelScan();
+                return;
+            }
+
+            const date = document.getElementById('entryDate').value;
             if (!date) {
                 toast(t('Please select a date.','कृपया तारीख निवडा.'), 'error');
                 return;
@@ -589,67 +632,38 @@
             btn.textContent = t('Saving...','जतन होत आहे...');
 
             try {
-                if (currentMode === 'receive') {
-                    const supplierId = document.getElementById('entrySupplier').value || null;
-                    const rate       = document.getElementById('entryRate').value;
-                    const invoiceNo  = document.getElementById('entryInvoice').value.trim() || null;
+                const { data: txData } = await window.supabase
+                    .from('p2_stock_transactions')
+                    .select('quantity')
+                    .eq('raw_material_id', scannedMaterial.id)
+                    .eq('tenant_id', tenantId);
 
-                    const selectedSupplier = suppliers.find(s => s.id === supplierId);
-                    const supplierName = selectedSupplier ? selectedSupplier.name : null;
+                const currentStockQty = txData ? txData.reduce((sum, t) => sum + Number(t.quantity), 0) : 0;
 
-                    const { error } = await window.supabase
-                        .from('p2_stock_transactions')
-                        .insert({
-                            tenant_id: tenantId,
-                            raw_material_id: scannedMaterial.id,
-                            transaction_type: 'grn',
-                            quantity: qty,
-                            rate: rate !== '' ? parseFloat(rate) : null,
-                            supplier_id: supplierId,
-                            supplier_name: supplierName,
-                            transaction_date: date,
-                            invoice_no: invoiceNo
-                        });
-
-                    if (error) throw error;
-
-                    addSessionEntry('GRN', scannedMaterial.name, qty, scannedMaterial.unit, supplierName);
-                    showToast(`✅ ${t('GRN saved:','GRN जतन झाले:')} ${qty} ${scannedMaterial.unit} ${t('of','चे')} ${scannedMaterial.name}`);
-
-                } else {
-                    const { data: txData } = await window.supabase
-                        .from('p2_stock_transactions')
-                        .select('quantity')
-                        .eq('raw_material_id', scannedMaterial.id)
-                        .eq('tenant_id', tenantId);
-
-                    const currentStockQty = txData ? txData.reduce((sum, t) => sum + Number(t.quantity), 0) : 0;
-
-                    if (qty > currentStockQty) {
-                        toast(`${t('Insufficient stock.','अपुरा साठा.')} ${t('Available:','उपलब्ध:')} ${formatNumber(currentStockQty)} ${scannedMaterial.unit}, ${t('Requested:','मागितले:')} ${formatNumber(qty)} ${scannedMaterial.unit}`, 'error');
-                        btn.disabled = false;
-                        btn.textContent = t('✅ Submit Issue Entry','✅ जारी नोंद सबमिट करा');
-                        return;
-                    }
-
-                    const ref = document.getElementById('entryRef').value.trim() || null;
-
-                    const { error } = await window.supabase
-                        .from('p2_stock_transactions')
-                        .insert({
-                            tenant_id: tenantId,
-                            raw_material_id: scannedMaterial.id,
-                            transaction_type: 'consumption',
-                            quantity: -qty,
-                            transaction_date: date,
-                            invoice_no: ref
-                        });
-
-                    if (error) throw error;
-
-                    addSessionEntry('Issue', scannedMaterial.name, qty, scannedMaterial.unit, ref || '—');
-                    showToast(`✅ ${t('Stock issued:','साठा जारी:')} ${qty} ${scannedMaterial.unit} ${t('of','चे')} ${scannedMaterial.name}`);
+                if (qty > currentStockQty) {
+                    toast(`${t('Insufficient stock.','अपुरा साठा.')} ${t('Available:','उपलब्ध:')} ${formatNumber(currentStockQty)} ${scannedMaterial.unit}, ${t('Requested:','मागितले:')} ${formatNumber(qty)} ${scannedMaterial.unit}`, 'error');
+                    btn.disabled = false;
+                    btn.textContent = t('✅ Submit Issue Entry','✅ जारी नोंद सबमिट करा');
+                    return;
                 }
+
+                const ref = document.getElementById('entryRef').value.trim() || null;
+
+                const { error } = await window.supabase
+                    .from('p2_stock_transactions')
+                    .insert({
+                        tenant_id: tenantId,
+                        raw_material_id: scannedMaterial.id,
+                        transaction_type: 'consumption',
+                        quantity: -qty,
+                        transaction_date: date,
+                        invoice_no: ref
+                    });
+
+                if (error) throw error;
+
+                addSessionEntry('Issue', scannedMaterial.name, qty, scannedMaterial.unit, ref || '—');
+                showToast(`✅ ${t('Stock issued:','साठा जारी:')} ${qty} ${scannedMaterial.unit} ${t('of','चे')} ${scannedMaterial.name}`);
 
                 cancelScan();
 
@@ -658,7 +672,115 @@
                 toast(t('Error saving entry: ','नोंद जतन करताना त्रुटी: ') + err.message, 'error');
             } finally {
                 btn.disabled = false;
-                btn.textContent = currentMode === 'receive' ? t('✅ Submit GRN Entry','✅ GRN नोंद सबमिट करा') : t('✅ Submit Issue Entry','✅ जारी नोंद सबमिट करा');
+                btn.textContent = t('✅ Submit Issue Entry','✅ जारी नोंद सबमिट करा');
+            }
+        }
+
+        // ─── PENDING GRN LIST (receive mode) ─────────────────────────────────
+        function addToPendingList(material, qty, rate, invoiceNo) {
+            pendingItems.push({
+                materialId: material.id,
+                materialName: material.name,
+                materialCode: material.code,
+                unit: material.unit,
+                qty,
+                rate,
+                invoiceNo
+            });
+            renderPendingList();
+        }
+
+        function removePendingItem(index) {
+            pendingItems.splice(index, 1);
+            renderPendingList();
+        }
+
+        function renderPendingList() {
+            const listEl = document.getElementById('pendingList');
+            const btnEl  = document.getElementById('confirmGrnBtn');
+
+            if (currentMode !== 'receive' || pendingItems.length === 0) {
+                listEl.style.display = 'none';
+                btnEl.style.display  = 'none';
+                listEl.innerHTML = '';
+                return;
+            }
+
+            listEl.style.display = 'block';
+            btnEl.style.display  = 'block';
+
+            listEl.innerHTML = `
+                <div class="nx-card-header">
+                    <div class="nx-card-title">${t('Pending GRN Items','प्रलंबित GRN नोंदी')} (${pendingItems.length})</div>
+                </div>
+            ` + pendingItems.map((item, i) => `
+                <div class="entry-row">
+                    <div>
+                        <span style="color:var(--white);">${item.materialName}</span>
+                        <span class="nx-text-mid" style="font-size:11px; margin-left:6px;">
+                            ${formatNumber(item.qty)} ${item.unit}${item.rate != null ? ' · ₹' + formatNumber(item.rate) : ''}
+                        </span>
+                    </div>
+                    <button type="button" class="nx-btn nx-btn-danger nx-btn-sm" onclick="removePendingItem(${i})">✖</button>
+                </div>
+            `).join('');
+        }
+
+        async function confirmGRN() {
+            if (pendingItems.length === 0) return;
+
+            const grnDateVal = document.getElementById('grnDate').value;
+            if (!grnDateVal) {
+                toast(t('Please select a date.','कृपया तारीख निवडा.'), 'error');
+                return;
+            }
+
+            const supplierId = document.getElementById('grnSupplier').value || null;
+            const selectedSupplier = suppliers.find(s => s.id === supplierId);
+            const supplierName = selectedSupplier ? selectedSupplier.name : null;
+
+            const btn = document.getElementById('confirmGrnBtn');
+            btn.disabled = true;
+            btn.textContent = t('Confirming...','निश्चित होत आहे...');
+
+            try {
+                const { data: grnNo, error: grnErr } = await window.supabase
+                    .rpc('get_next_grn_number', { p_tenant_id: tenantId });
+                if (grnErr) throw grnErr;
+
+                const transactions = pendingItems.map(item => ({
+                    tenant_id: tenantId,
+                    raw_material_id: item.materialId,
+                    transaction_type: 'grn',
+                    quantity: item.qty,
+                    rate: item.rate,
+                    supplier_id: supplierId,
+                    supplier_name: supplierName,
+                    transaction_date: grnDateVal,
+                    invoice_no: item.invoiceNo,
+                    grn_no: grnNo
+                }));
+
+                const { error } = await window.supabase.from('p2_stock_transactions').insert(transactions);
+                if (error) throw error;
+
+                pendingItems.forEach(item => {
+                    addSessionEntry('GRN', item.materialName, item.qty, item.unit, grnNo + (supplierName ? ' · ' + supplierName : ''));
+                });
+
+                showToast(`✅ ${grnNo} ${t('confirmed —','निश्चित —')} ${pendingItems.length} ${t('material(s) received','साहित्य प्राप्त झाले')}`);
+
+                pendingItems = [];
+                document.getElementById('grnSupplier').value = '';
+                document.getElementById('grnDate').value = new Date().toISOString().split('T')[0];
+                renderPendingList();
+
+            } catch (err) {
+                console.error('Confirm GRN error:', err);
+                toast(t('Failed to confirm GRN: ','GRN निश्चित करण्यात अयशस्वी: ') + err.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = t('✅ Confirm GRN','✅ GRN निश्चित करा');
             }
         }
 
