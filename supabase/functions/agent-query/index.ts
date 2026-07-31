@@ -3530,7 +3530,7 @@ async function createAndSendInvoice(
     .eq('tenant_id', tenantId)
     .maybeSingle()
 
-  const invoiceUrl = `https://nexflowautomations.in/invoice?token=${invoiceRow.invoice_token}`
+  const invoiceUrl = `https://nexflowautomations.in/invoice.html?token=${invoiceRow.invoice_token}`
 
   const emailResult = await sendInvoiceEmail({
     toEmail: params.client.email as string,
@@ -3572,7 +3572,7 @@ async function resendExistingInvoice(
     .eq('tenant_id', tenantId)
     .maybeSingle()
 
-  const invoiceUrl = `https://nexflowautomations.in/invoice?token=${existing.invoice_token}`
+  const invoiceUrl = `https://nexflowautomations.in/invoice.html?token=${existing.invoice_token}`
 
   const emailResult = await sendInvoiceEmail({
     toEmail: client.email as string,
@@ -4101,6 +4101,32 @@ async function confirmGenerateInvoice(
     return respond({ status: 'error', error: 'Invoice already generated for this dispatch' }, 400)
   }
 
+  // Cross-mode double-billing guard (reverse direction): block if this challan
+  // is already inside a consolidated invoice's items jsonb snapshot. Mirrors
+  // confirmConsolidatedInvoice's single-mode guard below in the opposite
+  // direction — consolidated invoices have dispatch_order_id NULL, so the
+  // only way to detect this challan's presence is jsonb containment on
+  // items, not a dispatch_order_id match.
+  if (order.challan_number) {
+    const { data: consolidatedMatch, error: consolidatedMatchError } = await supabaseClient
+      .from('p2_invoices')
+      .select('invoice_number')
+      .eq('tenant_id', tenant_id)
+      .is('dispatch_order_id', null)
+      .filter('items', 'cs', JSON.stringify([{ challan_number: order.challan_number }]))
+      .maybeSingle()
+
+    if (consolidatedMatchError) {
+      return respond({ status: 'error', error: consolidatedMatchError.message }, 500)
+    }
+    if (consolidatedMatch) {
+      return respond({
+        status: 'error',
+        error: `This challan has already been billed as part of consolidated invoice ${consolidatedMatch.invoice_number}`,
+      }, 400)
+    }
+  }
+
   const { data: items, error: itemsError } = await supabaseClient
     .from('p2_dispatch_items')
     .select('id, material_name, material_code, qty_dispatched, unit, product_id')
@@ -4191,7 +4217,7 @@ async function confirmGenerateInvoice(
     return respond({ status: 'error', error: insertError?.message ?? 'Could not save invoice' }, 500)
   }
 
-  const invoiceUrl = `https://nexflowautomations.in/invoice?token=${invoiceRow.invoice_token}`
+  const invoiceUrl = `https://nexflowautomations.in/invoice.html?token=${invoiceRow.invoice_token}`
 
   void logInteraction(supabaseClient, tenant_id, '', 'send_invoice', {}, 'matched', true, null)
 
@@ -4275,7 +4301,7 @@ async function confirmConsolidatedInvoice(
       status: 'ok',
       invoice_number: existingInvoice.invoice_number,
       invoice_token: existingInvoice.invoice_token,
-      invoice_url: `https://nexflowautomations.in/invoice?token=${existingInvoice.invoice_token}`,
+      invoice_url: `https://nexflowautomations.in/invoice.html?token=${existingInvoice.invoice_token}`,
       total: existingInvoice.amount_total,
       already_exists: true,
     })
@@ -4353,7 +4379,7 @@ async function confirmConsolidatedInvoice(
     return respond({ status: 'error', error: insertError?.message ?? 'Could not save invoice' }, 500)
   }
 
-  const invoiceUrl = `https://nexflowautomations.in/invoice?token=${invoiceRow.invoice_token}`
+  const invoiceUrl = `https://nexflowautomations.in/invoice.html?token=${invoiceRow.invoice_token}`
 
   if (!client.email || !client.email.trim()) {
     // No email on file — invoice still created, status stays 'draft'.
@@ -4443,7 +4469,7 @@ async function resendInvoiceAction(
 
   void supabaseClient.from('p2_invoices').update({ status: 'sent' }).eq('id', invoice_id)
 
-  const invoiceUrl = `https://nexflowautomations.in/invoice?token=${invoice.invoice_token}`
+  const invoiceUrl = `https://nexflowautomations.in/invoice.html?token=${invoice.invoice_token}`
   return respond({ status: 'ok', invoice_number: invoice.invoice_number, invoice_url: invoiceUrl })
 }
 
