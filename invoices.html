@@ -158,6 +158,7 @@
                             <option value="">All</option>
                             <option value="draft">Draft</option>
                             <option value="sent">Sent</option>
+                            <option value="cancelled">Cancelled</option>
                         </select>
                     </div>
                 </div>
@@ -367,9 +368,14 @@
                 const period = isConsolidated
                     ? `${fmtDate(inv.date_from)} – ${fmtDate(inv.date_to)}`
                     : '';
-                const statusBadge = inv.status === 'sent'
+                const statusBadge = inv.status === 'cancelled'
+                    ? `<span class="nx-badge nx-badge-red">Cancelled</span>`
+                    : inv.status === 'sent'
                     ? `<span class="nx-badge nx-badge-green">Sent</span>`
                     : `<span class="nx-badge nx-badge-yellow">Draft</span>`;
+                const cancelBtn = inv.status === 'cancelled'
+                    ? ''
+                    : `<button onclick="cancelInvoice('${inv.id}')" class="nx-btn nx-btn-ghost nx-btn-sm" style="color:var(--red);">Cancel</button>`;
 
                 const row = document.createElement('tr');
                 row.innerHTML = `
@@ -380,13 +386,36 @@
                     <td>${period}</td>
                     <td style="text-align:right;">${fmtMoney(inv.amount_total)}</td>
                     <td>${statusBadge}</td>
-                    <td style="text-align:center;">
+                    <td style="text-align:center; display:flex; gap:6px; justify-content:center;">
                         <button onclick="window.open('/invoice.html?token=${inv.invoice_token}','_blank')" class="nx-btn nx-btn-ghost nx-btn-sm">View / Print</button>
+                        ${cancelBtn}
                     </td>
                 `;
                 tbody.appendChild(row);
             });
         }
+
+        // ── CANCEL INVOICE ──────────────────────────────────────────────
+        window.cancelInvoice = async (id) => {
+            const inv = allInvoices.find(i => i.id === id);
+            if (!inv) return;
+            if (!confirm(`Cancel invoice ${inv.invoice_number}? This cannot be undone.`)) return;
+
+            try {
+                const { error } = await window.supabase
+                    .from('p2_invoices')
+                    .update({ status: 'cancelled' })
+                    .eq('id', id)
+                    .eq('tenant_id', tenantId);
+                if (error) throw error;
+
+                inv.status = 'cancelled';
+                applyFilters();
+            } catch (err) {
+                console.error('cancelInvoice:', err);
+                alert('Could not cancel the invoice. Please try again.');
+            }
+        };
 
         // ── NEW CONSOLIDATED INVOICE MODAL ─────────────────────────────
         window.openConsolidatedModal = async () => {

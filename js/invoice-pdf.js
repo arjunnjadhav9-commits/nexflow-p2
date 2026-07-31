@@ -208,6 +208,23 @@
         return y + h;
     }
 
+    /** Diagonal, low-opacity red stamp on every page — mirrors invoice.html's
+     *  #cancelledWatermark. jsPDF 2.5.1's GState opacity API, no new dependency. */
+    function drawCancelledStamp(doc) {
+        const totalPages = doc.getNumberOfPages();
+        for (let i = 1; i <= totalPages; i++) {
+            doc.setPage(i);
+            doc.saveGraphicsState();
+            doc.setGState(new doc.GState({ opacity: 0.25 }));
+            doc.setTextColor(220, 38, 38);
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(70);
+            doc.text('CANCELLED', PAGE_W / 2, PAGE_H / 2, { align: 'center', angle: 45 });
+            doc.restoreGraphicsState();
+            doc.setTextColor(0);
+        }
+    }
+
     // ── public builder ───────────────────────────────────────────────────────
 
     /**
@@ -235,6 +252,7 @@
      * @param {string} [p.bankName]
      * @param {string} [p.bankAccount]
      * @param {string} [p.bankIfsc]
+     * @param {boolean} [p.isCancelled]
      * @returns {Promise<string>} base64 PDF, no data-URI prefix
      */
     async function buildInvoicePdf(p) {
@@ -422,10 +440,15 @@
         y += 6.5;
 
         // 7 ── amount in words
+        // Tracks whether this or the bank-details section below needed their
+        // own page break — the sig block below uses this to tell "genuinely
+        // full page" apart from "only the sig block itself doesn't fit".
+        let bottomSectionsOverflowed = false;
         doc.setFont('helvetica', 'italic');
         doc.setFontSize(8.5);
         const wordsLines = doc.splitTextToSize('Amount in Words: ' + amountInWords(p.amountTotal), CW - 8);
         if (y + wordsLines.length * LINE_H > rowsBottom) {
+            bottomSectionsOverflowed = true;
             pageNo += 1;
             doc.addPage();
             drawPageFrame(doc, pageNo);
@@ -445,6 +468,7 @@
         ].filter(Boolean);
         if (bankLines.length) {
             if (y + (bankLines.length + 1) * LINE_H > rowsBottom) {
+                bottomSectionsOverflowed = true;
                 pageNo += 1;
                 doc.addPage();
                 drawPageFrame(doc, pageNo);
@@ -465,13 +489,27 @@
         // 8.5 ── signature block
         const sigBlockH = 26;
         const sigLineW = 55;
+        let sigY = y;
+        let sigPinned = false;
         if (y + sigBlockH > rowsBottom) {
-            pageNo += 1;
-            doc.addPage();
-            drawPageFrame(doc, pageNo);
-            y = M;
+            if (bottomSectionsOverflowed) {
+                // Amount-in-words or bank details already forced their own
+                // break — the page is genuinely full, not just short by the
+                // sig block's own height. Hard break, same as before.
+                pageNo += 1;
+                doc.addPage();
+                drawPageFrame(doc, pageNo);
+                y = M;
+                sigY = y;
+            } else {
+                // Common case: everything else fit, only the sig block
+                // doesn't. Pin it to the bottom margin instead of forcing a
+                // near-empty page 2 — keeps low-item invoices on one page.
+                sigY = rowsBottom - 10 - (sigBlockH - 6);
+                sigPinned = true;
+            }
         }
-        const sigLineY = y + sigBlockH - 6;
+        const sigLineY = sigY + sigBlockH - 6;
 
         doc.setDrawColor(0);
         doc.setLineWidth(0.3);
@@ -482,16 +520,16 @@
 
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(8);
-        doc.text('For', M + CW - 4, y + 4, { align: 'right' });
+        doc.text('For', M + CW - 4, sigY + 4, { align: 'right' });
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(9.5);
-        doc.text(sanitize(p.companyName || ''), M + CW - 4, y + 8.5, { align: 'right' });
+        doc.text(sanitize(p.companyName || ''), M + CW - 4, sigY + 8.5, { align: 'right' });
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(8.5);
         doc.line(M + CW - 4 - sigLineW, sigLineY, M + CW - 4, sigLineY);
         doc.text('Authorised Signatory', M + CW - 4, sigLineY + 4, { align: 'right' });
 
-        y += sigBlockH;
+        y = sigPinned ? sigLineY + 4 : sigY + sigBlockH;
 
         // 9 ── footer note
         doc.setFont('helvetica', 'italic');
@@ -506,6 +544,10 @@
         y += LINE_H;
         doc.text('This is a computer-generated invoice.', PAGE_W / 2, y, { align: 'center' });
         doc.setTextColor(0);
+
+        if (p.isCancelled) {
+            drawCancelledStamp(doc);
+        }
 
         const uri = doc.output('datauristring');
         return uri.substring(uri.indexOf('base64,') + 7);

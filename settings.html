@@ -351,6 +351,27 @@
                 </div>
             </form>
             <div id="challan-status" class="nx-status-msg"></div>
+
+            <!-- ── INVOICE STARTING NUMBER ── standalone, own save button:
+                 the below-current-sequence guard needs a fresh DB read at
+                 save time, so it's kept out of the combined challan-form
+                 submit above (same reasoning as the Prices tab's single
+                 material/product price mini-sections). ──────────────── -->
+            <div style="background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-top:20px;">
+                <div class="nx-section-head" data-en="Invoice Starting Number" data-mr="इनव्हॉइस सुरुवातीचा क्रमांक">Invoice Starting Number</div>
+                <div class="nx-form-group" style="margin-bottom:10px;">
+                    <input type="number" id="invoice-sequence" class="nx-input"
+                           placeholder="e.g. 1"
+                           data-en="e.g. 1" data-mr="उदा. १">
+                    <div style="font-size:11px; color:var(--mid); margin-top:6px;"
+                         data-en="The next invoice generated will use this number. Cannot be set below the current sequence."
+                         data-mr="पुढील इनव्हॉइस या क्रमांकासह तयार होईल. सध्याच्या क्रमांकापेक्षा कमी सेट करता येणार नाही.">
+                        The next invoice generated will use this number. Cannot be set below the current sequence.
+                    </div>
+                </div>
+                <button type="button" id="save-invoice-sequence-btn" class="nx-btn nx-btn-primary" data-en="Save Invoice Starting Number" data-mr="इनव्हॉइस क्रमांक साठवा">Save Invoice Starting Number</button>
+                <div id="invoice-sequence-status" class="nx-status-msg"></div>
+            </div>
         </div>
     </div>
 
@@ -936,6 +957,9 @@
         localStorage.setItem('nexflow_lang', lang);
     }
 
+    // ── INVOICE SEQUENCE (last-used number, per get_next_invoice_number RPC) ──
+    let currentInvoiceSequence = 0;
+
     // ── STOCK ADJUSTMENT SIGN ─────────────────────────────────────────────────
     let adjSign = 1;
 
@@ -1021,6 +1045,8 @@
                 document.getElementById('challan-sequence').value  = data.challan_sequence || 1001;
                 document.getElementById('grn-sequence').value      = data.grn_sequence || '';
                 document.getElementById('telegram-chat-id').value  = data.telegram_chat_id || '';
+                currentInvoiceSequence = data.invoice_sequence || 0;
+                document.getElementById('invoice-sequence').value  = currentInvoiceSequence + 1;
                 // Challan mode toggle
                 const savedMode = data.challan_mode || 'split';
                 const modeRadio = document.querySelector(`input[name="challan_mode"][value="${savedMode}"]`);
@@ -1082,6 +1108,52 @@
         } catch (error) {
             console.error('Error saving challan settings:', error);
             showStatus('challan-status','error','Failed to save challan settings','चलान सेटिंग्ज साठवण्यात अयशस्वी');
+        }
+    });
+
+    // ── SAVE INVOICE STARTING NUMBER ──────────────────────────────────────────
+    // Field displays/accepts the NEXT invoice number (task spec: type 50 -> next
+    // invoice is INV-...-050). get_next_invoice_number() does sequence+1, so the
+    // stored column must be (typed value - 1) — deliberately NOT a direct save
+    // like challan_sequence/grn_sequence above.
+    document.getElementById('save-invoice-sequence-btn').addEventListener('click', async () => {
+        const typed = parseInt(document.getElementById('invoice-sequence').value, 10);
+        if (!Number.isInteger(typed) || typed < 1) {
+            showStatus('invoice-sequence-status','error','Enter a valid starting number','वैध सुरुवातीचा क्रमांक प्रविष्ट करा');
+            return;
+        }
+        try {
+            const { data: { user } } = await window.supabase.auth.getUser();
+            if (!user) { showStatus('invoice-sequence-status','error','Not authenticated','प्रमाणित नाही'); return; }
+
+            // Re-check the live value — the page-load snapshot can be stale if an
+            // invoice was generated (by this user, staff, or the agent) since load.
+            const { data: fresh, error: fetchError } = await window.supabase
+                .from('p2_tenant_settings')
+                .select('invoice_sequence')
+                .eq('tenant_id', user.id)
+                .single();
+            if (fetchError) throw fetchError;
+
+            const liveSequence = fresh?.invoice_sequence || 0;
+            if (typed <= liveSequence) {
+                showStatus('invoice-sequence-status','error',
+                    'Cannot set below current sequence — would create duplicate invoice numbers',
+                    'सध्याच्या क्रमांकापेक्षा कमी सेट करता येणार नाही — डुप्लिकेट इनव्हॉइस क्रमांक तयार होतील');
+                return;
+            }
+
+            const { error } = await window.supabase.from('p2_tenant_settings')
+                .update({ invoice_sequence: typed - 1 })
+                .eq('tenant_id', user.id);
+            if (error) throw error;
+
+            currentInvoiceSequence = typed - 1;
+            document.getElementById('invoice-sequence').value = typed;
+            showStatus('invoice-sequence-status','success','Invoice starting number saved!','इनव्हॉइस सुरुवातीचा क्रमांक साठवला!');
+        } catch (error) {
+            console.error('Error saving invoice sequence:', error);
+            showStatus('invoice-sequence-status','error','Failed to save invoice starting number','इनव्हॉइस क्रमांक साठवण्यात अयशस्वी');
         }
     });
 

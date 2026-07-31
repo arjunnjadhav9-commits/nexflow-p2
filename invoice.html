@@ -13,6 +13,33 @@
     .invoice-wrap {
         max-width: 480px;
         margin: 0 auto;
+        position: relative;
+    }
+    /* Cancelled watermark — deliberately a sibling of #content, not a
+       descendant, so the print block's `#content * { color:#000 !important }`
+       nuclear rule (further down) can never strip the red. Shown/hidden by
+       JS only; no @media print rule touches it, so it survives print as-is. */
+    #cancelledWatermark {
+        display: none;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%) rotate(-30deg);
+        font-size: 64px;
+        font-weight: 900;
+        letter-spacing: 4px;
+        text-transform: uppercase;
+        white-space: nowrap;
+        color: rgba(220, 38, 38, 0.35);
+        border: 6px solid rgba(220, 38, 38, 0.35);
+        padding: 6px 24px;
+        pointer-events: none;
+        z-index: 50;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    @media (max-width: 480px) {
+        #cancelledWatermark { font-size: 40px; border-width: 4px; padding: 4px 14px; }
     }
     .invoice-loading {
         text-align: center;
@@ -154,6 +181,9 @@
 
         tr { page-break-inside: avoid !important; }
 
+        #invoiceSignatureSection { page-break-before: avoid !important; page-break-inside: avoid !important; }
+        #invoiceFooterNote { page-break-inside: avoid !important; }
+
         /* Company header centered, matching the PDF */
         #companyName, #companyAddress, #companyContact { text-align: center !important; }
 
@@ -214,6 +244,8 @@
         <span class="nx-alert-icon">⚠️</span>
         <span id="errorMessage">This invoice link is not valid or has expired.</span>
     </div>
+
+    <div id="cancelledWatermark">CANCELLED</div>
 
     <div id="content" style="display:none;">
 
@@ -409,6 +441,10 @@ function renderInvoice(data) {
         document.getElementById('bankIfsc').textContent = tenant.bank_ifsc ? `IFSC Code: ${tenant.bank_ifsc}` : '';
     }
 
+    if (invoice.status === 'cancelled') {
+        document.getElementById('cancelledWatermark').style.display = 'block';
+    }
+
     document.getElementById('loadingState').style.display = 'none';
     document.getElementById('content').style.display = 'block';
 }
@@ -460,6 +496,7 @@ async function downloadPdf() {
             bankName: tenant.bank_name || '',
             bankAccount: tenant.bank_account || '',
             bankIfsc: tenant.bank_ifsc || '',
+            isCancelled: invoice.status === 'cancelled',
         };
 
         const base64 = await buildInvoicePdf(payload);

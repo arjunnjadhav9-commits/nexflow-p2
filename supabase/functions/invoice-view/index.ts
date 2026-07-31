@@ -46,7 +46,7 @@ Deno.serve(async (req) => {
       .select(`
         invoice_number, invoice_date:created_at, client_name, client_address,
         client_gstin, items, amount_subtotal, amount_gst, amount_total,
-        gst_type, invoice_mode, date_from, date_to, tenant_id
+        gst_type, invoice_mode, date_from, date_to, status, tenant_id
       `)
       .eq('invoice_token', token)
       .limit(1)
