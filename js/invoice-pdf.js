@@ -177,8 +177,7 @@
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(7.5);
         doc.setTextColor(120);
-        doc.text('Powered by Nexflow Automations', PAGE_W / 2, PAGE_H - M, { align: 'center' });
-        doc.text('Page ' + pageNo, PAGE_W - M, PAGE_H - M, { align: 'right' });
+        doc.text(`Powered by Nexflow Automations · Page ${pageNo}`, PAGE_W / 2, PAGE_H - M, { align: 'center' });
         doc.setTextColor(0);
     }
 
@@ -258,10 +257,12 @@
         let cy = y + 6.5;
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(9);
-        [p.addressLine1, p.addressLine2,
-         p.mobile ? 'Mobile: ' + p.mobile : null,
-         p.gstin  ? 'GSTIN: '  + p.gstin  : null
-        ].filter(Boolean).forEach((line) => {
+        const addressLine = [p.addressLine1, p.addressLine2].filter(Boolean).join(', ');
+        const contactLine = [
+            p.mobile ? 'Mobile: ' + p.mobile : null,
+            p.gstin  ? 'GSTIN: '  + p.gstin  : null,
+        ].filter(Boolean).join(' · ');
+        [addressLine, contactLine].filter(Boolean).forEach((line) => {
             cy += LINE_H;
             doc.text(sanitize(line), PAGE_W / 2, cy, { align: 'center' });
         });
@@ -358,8 +359,8 @@
                 date: item.dispatchDateFormatted || '—',
                 qty: sanitize(item.qty),
                 unit: sanitize(item.unit),
-                rate: fmtAmount(item.rate),
-                amount: fmtAmount(item.amount),
+                rate: 'Rs. ' + fmtAmount(item.rate),
+                amount: 'Rs. ' + fmtAmount(item.amount),
             };
             columns.forEach((c) => {
                 if (c.key === 'desc') return;
@@ -397,26 +398,28 @@
             doc.setFont('helvetica', 'normal');
             doc.setFontSize(9);
             doc.text(label, summaryX, y + 4.6);
-            doc.text(fmtAmount(value), M + CW - 3, y + 4.6, { align: 'right' });
+            doc.text('Rs. ' + fmtAmount(value), M + CW - 3, y + 4.6, { align: 'right' });
             y += rowH;
         });
 
-        const totalH = 8;
-        if (y + totalH > rowsBottom) {
+        const totalBoxH = 9;
+        if (y + totalBoxH > rowsBottom) {
             pageNo += 1;
             doc.addPage();
             drawPageFrame(doc, pageNo);
             y = M;
         }
+        doc.setFillColor(229, 231, 235);
+        doc.rect(summaryX, y, M + CW - summaryX, totalBoxH, 'F');
         doc.setDrawColor(0);
         doc.setLineWidth(0.4);
         doc.line(summaryX, y, M + CW, y);
-        y += 5.5;
+        y += totalBoxH - 2.5;
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(10.5);
-        doc.text('TOTAL', summaryX, y + 1.5);
-        doc.text('Rs. ' + fmtAmount(p.amountTotal), M + CW - 3, y + 1.5, { align: 'right' });
-        y += 8;
+        doc.setFontSize(12.5);
+        doc.text('TOTAL', summaryX + 2, y);
+        doc.text('Rs. ' + fmtAmount(p.amountTotal), M + CW - 3, y, { align: 'right' });
+        y += 6.5;
 
         // 7 ── amount in words
         doc.setFont('helvetica', 'italic');
@@ -458,6 +461,37 @@
             });
             y += 3;
         }
+
+        // 8.5 ── signature block
+        const sigBlockH = 26;
+        const sigLineW = 55;
+        if (y + sigBlockH > rowsBottom) {
+            pageNo += 1;
+            doc.addPage();
+            drawPageFrame(doc, pageNo);
+            y = M;
+        }
+        const sigLineY = y + sigBlockH - 6;
+
+        doc.setDrawColor(0);
+        doc.setLineWidth(0.3);
+        doc.line(M + 4, sigLineY, M + 4 + sigLineW, sigLineY);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8.5);
+        doc.text("Receiver's Signature", M + 4, sigLineY + 4);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        doc.text('For', M + CW - 4, y + 4, { align: 'right' });
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9.5);
+        doc.text(sanitize(p.companyName || ''), M + CW - 4, y + 8.5, { align: 'right' });
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8.5);
+        doc.line(M + CW - 4 - sigLineW, sigLineY, M + CW - 4, sigLineY);
+        doc.text('Authorised Signatory', M + CW - 4, sigLineY + 4, { align: 'right' });
+
+        y += sigBlockH;
 
         // 9 ── footer note
         doc.setFont('helvetica', 'italic');
