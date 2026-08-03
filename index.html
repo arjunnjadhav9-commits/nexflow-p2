@@ -344,7 +344,7 @@
                 const { data: { user } } = await window.supabase.auth.getUser();
                 if (!user) throw new Error('User not authenticated');
 
-                const tenantId = user.id || localStorage.getItem('nexflow_tenant_id');
+                const tenantId = user.user_metadata?.tenant_id || user.id || localStorage.getItem('nexflow_tenant_id');
                 if (!tenantId) throw new Error('Tenant ID not found');
 
                 // Update eyebrow with company name if available
