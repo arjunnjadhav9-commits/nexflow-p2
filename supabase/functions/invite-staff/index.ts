@@ -33,14 +33,7 @@ serve(async (req) => {
     const { email, tenant_id, role, inviter_id } = await req.json();
 
     // Verify that the inviter is an owner of this tenant
-    const { data: inviterRole, error: roleCheckError } = await supabaseAdmin
-      .from("p2_user_roles")
-      .select("role")
-      .eq("user_id", inviter_id)
-      .eq("tenant_id", tenant_id)
-      .single();
-
-    if (roleCheckError || inviterRole?.role !== "owner") {
+    if (inviter_id !== tenant_id) {
       throw new Error("Only owners can invite staff members");
     }
 

@@ -11,6 +11,7 @@
     <link rel="stylesheet" href="css/nexflow-design.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="js/supabase-client.js"></script>
+    <script src="js/roles.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/utils.js"></script>
     <script src="js/navbar.js"></script>
@@ -70,7 +71,7 @@
                        data-en="↓ Export List" data-mr="↓ यादी निर्यात करा">↓ Export List</button>
                     <a href="export.html" class="nx-btn nx-btn-secondary"
                        data-en="↓ Export for CA" data-mr="↓ CA साठी निर्यात">↓ Export for CA</a>
-                    <a href="grn.html" class="nx-btn nx-btn-primary"
+                    <a href="grn.html" id="grnEntryBtn" class="nx-btn nx-btn-primary"
                        data-en="+ GRN Entry" data-mr="+ GRN नोंद">+ GRN Entry</a>
                 </div>
             </div>
@@ -88,7 +89,7 @@
                         Complete your setup to get started.
                     </div>
                 </div>
-                <a href="settings.html" class="nx-btn nx-btn-primary nx-btn-sm"
+                <a href="settings.html" id="welcomeSettingsLink" class="nx-btn nx-btn-primary nx-btn-sm"
                    data-en="Go to Settings →" data-mr="सेटिंग्जवर जा →">Go to Settings →</a>
             </div>
 
@@ -205,7 +206,7 @@
                          data-mr="अद्याप कोणतेही साहित्य जोडलेले नाही. साहित्य जोडण्यासाठी सेटिंग्जवर जा.">
                         No materials added yet. Go to Settings to add materials.
                     </div>
-                    <a href="settings.html" class="nx-btn nx-btn-primary" style="margin-top:16px;"
+                    <a href="settings.html" id="emptySettingsLink" class="nx-btn nx-btn-primary" style="margin-top:16px;"
                        data-en="Go to Settings →" data-mr="सेटिंग्जवर जा →">Go to Settings →</a>
                 </div>
             </div>
@@ -669,6 +670,14 @@
         async function initPage() {
             const authed = await checkAuth();
             if (!authed) return;
+
+            const role = getUserRole();
+            if (role === 'storekeeper' || role === 'staff') {
+                document.getElementById('grnEntryBtn')?.style.setProperty('display', 'none');
+                document.getElementById('welcomeSettingsLink')?.style.setProperty('display', 'none');
+                document.getElementById('emptySettingsLink')?.style.setProperty('display', 'none');
+            }
+
             await checkFirstLogin();
             await fetchStockLevels();
         }

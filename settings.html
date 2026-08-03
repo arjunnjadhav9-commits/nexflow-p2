@@ -13,6 +13,7 @@
     <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script src="js/supabase-client.js"></script>
+    <script src="js/roles.js"></script>
     <script src="js/utils.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/navbar.js"></script>
@@ -440,8 +441,11 @@
                     <div class="nx-form-group">
                         <label data-en="Role" data-mr="भूमिका">Role</label>
                         <select name="role" class="nx-input" required>
-                            <option value="staff" data-en="Staff (Can do GRN, view dashboard)" data-mr="कर्मचारी (GRN करू शकतो, डॅशबोर्ड पाहू शकतो)">Staff (Can do GRN, view dashboard)</option>
                             <option value="owner" data-en="Owner (Full access)" data-mr="मालक (पूर्ण प्रवेश)">Owner (Full access)</option>
+                            <option value="supervisor" data-en="Supervisor (Full access except settings)" data-mr="सुपरवायझर (सेटिंग्ज वगळता पूर्ण प्रवेश)">Supervisor (Full access except settings)</option>
+                            <option value="storekeeper" data-en="Storekeeper (GRN, Scanner, Dashboard)" data-mr="स्टोअरकीपर (GRN, स्कॅनर, डॅशबोर्ड)">Storekeeper (GRN, Scanner, Dashboard)</option>
+                            <option value="operator" data-en="Operator (Issue, Dispatch, RM Dispatch, Products, Reports)" data-mr="ऑपरेटर (इश्यू, डिस्पॅच, RM डिस्पॅच, उत्पादने, अहवाल)">Operator (Issue, Dispatch, RM Dispatch, Products, Reports)</option>
+                            <option value="accountant" data-en="Accountant (Reports, Invoices view, CA Export)" data-mr="अकाउंटंट (अहवाल, इनव्हॉइस पाहणे, CA एक्सपोर्ट)">Accountant (Reports, Invoices view, CA Export)</option>
                         </select>
                     </div>
                     <button type="submit" class="nx-btn nx-btn-primary nx-btn-full" data-en="Send Invite" data-mr="आमंत्रण पाठवा">Send Invite</button>
@@ -1620,7 +1624,7 @@
                 const userEmail = await getUserEmail(role.user_id);
                 row.innerHTML = `
                     <td>${userEmail}</td>
-                    <td><span class="nx-badge ${role.role==='owner'?'nx-badge-orange':'nx-badge-grey'}">${role.role}</span></td>
+                    <td><span class="nx-badge ${role.role==='owner'?'nx-badge-orange':'nx-badge-grey'}">${getRoleLabel(role.role)}</span></td>
                     <td class="owner-only">
                         ${role.user_id !== user.id
                             ? `<button onclick="removeStaff('${role.id}')" class="nx-btn nx-btn-danger nx-btn-sm" data-en="Remove" data-mr="काढा">Remove</button>`
@@ -2375,7 +2379,11 @@
     document.addEventListener('DOMContentLoaded', async () => {
         const authed = await checkAuth();
         if (!authed) return;
-        requireOwner();
+        const role = getUserRole();
+        if (role !== 'owner') {
+            window.location.href = 'index.html';
+            return;
+        }
 
         applyDemoModeToForms();
 

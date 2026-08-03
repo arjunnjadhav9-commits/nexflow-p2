@@ -225,6 +225,8 @@ type HaikuIntent =
   | 'send_invoice'
   | 'bom_detail'
   | 'top_supplier'
+  | 'invoice_total'
+  | 'invoice_detail'
   | 'unknown'
 
 interface GrnItem {
@@ -247,9 +249,10 @@ interface HaikuResult {
     product_name?: string // stock_check_product, product_code_lookup, bom_detail
     quantity?: number // stock_check_product — how many units to produce
     top_n?: number // top_consumption, top_received — how many to show, default 5
-    date_from?: string // send_tally_export, send_invoice — YYYY-MM-DD, absent means all-time / single-dispatch mode
-    date_to?: string // send_tally_export, send_invoice — YYYY-MM-DD; if date_from is set but this isn't, defaults to today (send_tally_export only)
-    client_name?: string // send_invoice only
+    date_from?: string // send_tally_export, send_invoice, invoice_total — YYYY-MM-DD, absent means all-time / single-dispatch mode
+    date_to?: string // send_tally_export, send_invoice, invoice_total — YYYY-MM-DD; if date_from is set but this isn't, defaults to today (send_tally_export only)
+    client_name?: string // send_invoice, invoice_total
+    invoice_number?: string // invoice_detail only
   }
   error?: string
 }
@@ -1190,6 +1193,24 @@ Classify the message as one of:
   - "Invoice 4325 challan sathi pathav KPML la" -> { "client_name": "KPML", "challan_number": "4325" }
   - "KPML la May 10 te 15 cha invoice pathav" -> { "client_name": "KPML", "date_from": "2026-05-10", "date_to": "2026-05-15" }
   - "KPML la July cha invoice pathav" -> { "client_name": "KPML", "date_from": "2026-07-01", "date_to": "2026-07-31" }
+- "invoice_total" — user asks for the total amount billed/invoiced to a specific client, optionally for a period. This is a READ — it only reports a number, it does not send or generate anything (do not confuse with send_invoice).
+  extracted fields: { "client_name": string, "date_from"?: string (YYYY-MM-DD), "date_to"?: string (YYYY-MM-DD) }
+  Rules:
+  - "client_name" is required — extract exactly as the user said it.
+  - "date_from"/"date_to" — only if the user names a period. Same date resolution rules as send_invoice/send_tally_export: bare month names ("July"), "this month", "last month" resolve to a full calendar range using "Today's date" above. Omit both for an all-time total.
+  Examples (assuming Today's date above is 2026-08-01):
+  - "KPML cha is month total bill kitna?" -> { "client_name": "KPML", "date_from": "2026-08-01", "date_to": "2026-08-31" }
+  - "This month KPML la kitna billed kela?" -> { "client_name": "KPML", "date_from": "2026-08-01", "date_to": "2026-08-31" }
+  - "Srushti Chavan cha July total invoice amount?" -> { "client_name": "Srushti Chavan", "date_from": "2026-07-01", "date_to": "2026-07-31" }
+  - "KPML cha total billing kitna aajparyant?" -> { "client_name": "KPML" }
+- "invoice_detail" — user asks what's inside a specific invoice, by invoice number.
+  extracted fields: { "invoice_number": string }
+  Rules:
+  - Extract exactly as said — full ("INV-202607-003") or partial ("003") are both valid; exact-match-then-fuzzy-match happens server-side, same as challan_detail.
+  Examples:
+  - "INV-202607-003 madhe kay hota?" -> { "invoice_number": "INV-202607-003" }
+  - "Invoice 003 cha amount kitna?" -> { "invoice_number": "003" }
+  - "INV-202607-003 detail dakav" -> { "invoice_number": "INV-202607-003" }
 - "bom_detail" — user asks what the bill of materials is for a specific product.
   extracted fields: { "product_name": string }
   Examples:
@@ -1247,7 +1268,7 @@ Examples of correct create_grn extraction from mixed Hinglish/Marathi messages:
 - Message: "steel sheet 200 kg Sharma Traders ne bheja" -> extracted: { "items": [{ "material_name": "steel sheet", "quantity": 200, "unit": "kg" }], "supplier_name": "Sharma Traders" }
 
 Respond with ONLY valid JSON, no markdown code fences, no preamble, no explanation. The response must match exactly this shape:
-{ "intent": "check_stock" | "create_grn" | "create_production_issue" | "create_product_dispatch" | "create_rm_dispatch" | "recent_grn" | "consumption_summary" | "supplier_history" | "low_stock_list" | "grn_detail" | "pending_dispatches" | "grn_summary" | "top_consumption" | "material_list" | "stock_check_product" | "zero_stock_list" | "dispatch_summary" | "supplier_delivery_check" | "challan_detail" | "issue_summary" | "product_code_lookup" | "top_received" | "product_list" | "supplier_list" | "dispatch_detail" | "issue_detail" | "send_challan" | "send_tally_export" | "send_invoice" | "bom_detail" | "top_supplier" | "unknown", "extracted": { ...fields... } }`
+{ "intent": "check_stock" | "create_grn" | "create_production_issue" | "create_product_dispatch" | "create_rm_dispatch" | "recent_grn" | "consumption_summary" | "supplier_history" | "low_stock_list" | "grn_detail" | "pending_dispatches" | "grn_summary" | "top_consumption" | "material_list" | "stock_check_product" | "zero_stock_list" | "dispatch_summary" | "supplier_delivery_check" | "challan_detail" | "issue_summary" | "product_code_lookup" | "top_received" | "product_list" | "supplier_list" | "dispatch_detail" | "issue_detail" | "send_challan" | "send_tally_export" | "send_invoice" | "bom_detail" | "top_supplier" | "invoice_total" | "invoice_detail" | "unknown", "extracted": { ...fields... } }`
 
   try {
     const response = await anthropicClient.messages.create({
@@ -1901,6 +1922,60 @@ async function executeQuery(
     return `Last 5 GRNs from ${supplier.name}:\n\n${lines.join('\n')}`
   }
 
+  if (intent === 'invoice_total') {
+    const clientName = (extracted.client_name ?? '').trim()
+    if (!clientName) return 'Please provide a client name.'
+
+    const { data: clients, error: clientsError } = await supabaseClient
+      .from('p2_clients')
+      .select('id, name')
+      .eq('tenant_id', tenantId)
+    if (clientsError) return 'Could not fetch client list.'
+
+    const clientMatch = matchClientName(clientName, (clients ?? []) as { id: string; name: string }[])
+    if ('error' in clientMatch) return clientMatch.error
+    const client = clientMatch.client
+
+    const validFrom = extracted.date_from && TALLY_EXPORT_DATE_RE.test(extracted.date_from) ? extracted.date_from : undefined
+    const validTo = extracted.date_to && TALLY_EXPORT_DATE_RE.test(extracted.date_to) ? extracted.date_to : undefined
+
+    let invoiceTotalQuery = supabaseClient
+      .from('p2_invoices')
+      .select('amount_total')
+      .eq('tenant_id', tenantId)
+      .eq('client_id', client.id)
+      .neq('status', 'cancelled')
+
+    if (validFrom) invoiceTotalQuery = invoiceTotalQuery.gte('created_at', validFrom + 'T00:00:00+05:30')
+    if (validTo) invoiceTotalQuery = invoiceTotalQuery.lte('created_at', validTo + 'T23:59:59+05:30')
+
+    const { data, error } = await invoiceTotalQuery
+    if (error) return 'Could not fetch invoice totals.'
+
+    // Same "full calendar month" detection drives the header label as the
+    // query range itself — not a clean month means a raw date range, no
+    // range at all means the suffix is omitted entirely.
+    let periodLabel = ''
+    if (validFrom && validTo) {
+      const from = new Date(validFrom + 'T00:00:00+05:30')
+      const to = new Date(validTo + 'T00:00:00+05:30')
+      const lastDayOfMonth = new Date(from.getFullYear(), from.getMonth() + 1, 0).getDate()
+      const isFullMonth = from.getDate() === 1 && to.getDate() === lastDayOfMonth &&
+        to.getMonth() === from.getMonth() && to.getFullYear() === from.getFullYear()
+      periodLabel = isFullMonth
+        ? ` — ${from.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}`
+        : ` — ${formatDDMMYYYY(validFrom)} – ${formatDDMMYYYY(validTo)}`
+    }
+
+    const rows = (data ?? []) as { amount_total: number }[]
+    if (!rows.length) return `💰 ${client.name}${periodLabel}\nNo invoices found.`
+
+    const total = rows.reduce((sum, r) => sum + (Number(r.amount_total) || 0), 0)
+    const totalFormatted = total.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+    return `💰 ${client.name}${periodLabel}\nTotal Billed: ₹${totalFormatted}\nInvoices: ${rows.length}`
+  }
+
   if (intent === 'low_stock_list') {
     // Reuses context.stockBalances/context.materials already fetched by
     // buildContext() instead of re-querying v_p2_stock_balance — also
@@ -2228,6 +2303,86 @@ async function executeQuery(
     const typeLabel = r.dispatch_type === 'bom_issue' ? 'Production Issue' : r.dispatch_type === 'raw_material' ? 'RM Dispatch' : 'Product Dispatch'
 
     return `Challan ${r.challan_number}\nClient: ${r.client_name}\nType: ${typeLabel}\nStatus: ${statusLabel}\nCreated: ${createdDate}${confirmedLine}`
+  }
+
+  if (intent === 'invoice_detail') {
+    const invoiceNumber = (extracted.invoice_number ?? '').trim()
+    if (!invoiceNumber) return 'Please provide an invoice number.'
+
+    const invoiceDetailColumns =
+      'invoice_number, client_name, created_at, invoice_mode, status, items, amount_subtotal, amount_gst, amount_total, gst_type'
+
+    let { data, error } = await supabaseClient
+      .from('p2_invoices')
+      .select(invoiceDetailColumns)
+      .eq('tenant_id', tenantId)
+      .eq('invoice_number', invoiceNumber)
+      .limit(1)
+
+    if (error) return 'Could not fetch invoice details.'
+
+    if (!data?.length) {
+      const { data: likeData, error: likeError } = await supabaseClient
+        .from('p2_invoices')
+        .select(invoiceDetailColumns)
+        .eq('tenant_id', tenantId)
+        .ilike('invoice_number', `%${invoiceNumber}`)
+        .limit(5)
+
+      if (likeError) return 'Could not fetch invoice details.'
+      data = likeData
+    }
+
+    if (!data?.length) return `Invoice "${invoiceNumber}" not found.`
+    if (data.length > 1) {
+      const nums = (data as { invoice_number: string }[]).map((r) => r.invoice_number).join(', ')
+      return `Multiple invoices match "${invoiceNumber}": ${nums}. Please be more specific.`
+    }
+
+    const inv = data[0] as {
+      invoice_number: string
+      client_name: string | null
+      created_at: string
+      invoice_mode: string
+      status: string
+      items: InvoiceItem[]
+      amount_subtotal: number
+      amount_gst: number
+      amount_total: number
+      gst_type: string
+    }
+
+    const createdDate = new Date(inv.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+    const modeLabel = inv.invoice_mode === 'consolidated' ? 'Consolidated' : 'Single'
+    const statusLabel = inv.status === 'cancelled' ? 'Cancelled' : inv.status === 'sent' ? 'Sent' : 'Draft'
+
+    const fmtAmt = (n: number) => (Number(n) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+    const itemLines = (inv.items ?? []).map(
+      (it) => `${it.description} × ${it.qty} ${it.unit} — ₹${fmtAmt(it.amount)}`
+    )
+
+    const gstAmount = Number(inv.amount_gst) || 0
+    const gstLines: string[] = []
+    if (inv.gst_type === 'cgst_sgst') {
+      gstLines.push(`CGST 9%: ₹${fmtAmt(gstAmount / 2)}`, `SGST 9%: ₹${fmtAmt(gstAmount / 2)}`)
+    } else if (inv.gst_type === 'igst') {
+      gstLines.push(`IGST 18%: ₹${fmtAmt(gstAmount)}`)
+    }
+
+    return [
+      `🧾 ${inv.invoice_number}`,
+      `Client: ${inv.client_name ?? '-'}`,
+      `Date: ${createdDate}`,
+      `Mode: ${modeLabel}`,
+      `Status: ${statusLabel}`,
+      `─────────────────`,
+      ...itemLines,
+      `─────────────────`,
+      `Subtotal: ₹${fmtAmt(inv.amount_subtotal)}`,
+      ...gstLines,
+      `Total: ₹${fmtAmt(inv.amount_total)}`,
+    ].join('\n')
   }
 
   if (intent === 'issue_summary') {
@@ -4599,6 +4754,8 @@ Deno.serve(async (req) => {
       'issue_detail',
       'bom_detail',
       'top_supplier',
+      'invoice_total',
+      'invoice_detail',
     ]
 
     if (READ_ONLY_INTENTS.includes(haikuResult.intent)) {

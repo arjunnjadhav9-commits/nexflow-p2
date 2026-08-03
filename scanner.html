@@ -12,6 +12,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script src="js/supabase-client.js"></script>
+    <script src="js/roles.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/utils.js"></script>
     <script src="js/navbar.js"></script>
@@ -22,36 +23,6 @@
             max-width: 440px;
             margin: 0 auto;
             padding: 28px 16px 60px;
-        }
-
-        /* Mode toggle */
-        .mode-toggle {
-            display: flex;
-            background: var(--surface2);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            padding: 4px;
-            gap: 4px;
-            margin-bottom: 16px;
-        }
-        .mode-btn {
-            flex: 1;
-            padding: 9px 12px;
-            border: none;
-            border-radius: var(--radius-sm);
-            font-family: var(--font);
-            font-size: 12px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.4px;
-            cursor: pointer;
-            transition: all 0.15s;
-            background: transparent;
-            color: var(--mid);
-        }
-        .mode-btn.active {
-            background: var(--orange);
-            color: #fff;
         }
 
         /* Camera viewfinder */
@@ -158,9 +129,7 @@
         }
         .entry-row:last-child { border-bottom: none; }
         .entry-type-grn   { color: var(--green); font-weight: 700; font-size: 10px; text-transform: uppercase; margin-right: 8px; }
-        .entry-type-issue { color: var(--yellow); font-weight: 700; font-size: 10px; text-transform: uppercase; margin-right: 8px; }
         .entry-qty-grn    { color: var(--green);  font-weight: 700; }
-        .entry-qty-issue  { color: var(--red);    font-weight: 700; }
 
         /* Pro gate */
         #proGateError {
@@ -195,7 +164,7 @@
                 <div class="nx-page-title" style="font-size:22px; justify-content:center;">
                     <span data-en="📷 QR " data-mr="📷 QR ">📷 QR </span><span data-en="Scanner" data-mr="स्कॅनर">Scanner</span>
                 </div>
-                <div class="nx-page-sub" style="margin-top:4px;" data-en="Scan material QR code to receive or issue stock" data-mr="साठा प्राप्त किंवा जारी करण्यासाठी साहित्याचा QR कोड स्कॅन करा">Scan material QR code to receive or issue stock</div>
+                <div class="nx-page-sub" style="margin-top:4px;" data-en="Scan material QR code to receive stock" data-mr="साठा प्राप्त करण्यासाठी साहित्याचा QR कोड स्कॅन करा">Scan material QR code to receive stock</div>
             </div>
 
             <!-- LOADING -->
@@ -216,12 +185,6 @@
 
             <!-- MAIN CONTENT -->
             <div id="mainContent" style="display:none;">
-
-                <!-- Mode Toggle -->
-                <div class="mode-toggle" id="modeToggleRow">
-                    <button id="modeReceive" class="mode-btn active" onclick="setMode('receive')" data-en="📥 Receive (GRN)" data-mr="📥 प्राप्त (GRN)">📥 Receive (GRN)</button>
-                    <button id="modeIssue"   class="mode-btn"        onclick="setMode('issue')" data-en="📤 Issue (Consumption)" data-mr="📤 जारी (वापर)">📤 Issue (Consumption)</button>
-                </div>
 
                 <!-- Desktop Fallback -->
                 <div id="desktopFallback" style="display:none;">
@@ -288,11 +251,6 @@
 
                     <!-- Entry Form -->
                     <div class="nx-form">
-                        <!-- Issue-mode-only date (receive mode uses the shared #grnDate above the viewfinder) -->
-                        <div id="issueDateGroup" class="nx-form-group" style="display:none;">
-                            <label data-en="Date" data-mr="तारीख">Date</label>
-                            <input type="date" id="entryDate" class="nx-input">
-                        </div>
                         <div class="nx-form-group">
                             <label data-en="Quantity" data-mr="परिमाण">Quantity</label>
                             <div style="display:flex; align-items:center; gap:10px;">
@@ -310,14 +268,6 @@
                             <div class="nx-form-group">
                                 <label data-en="Invoice No (optional)" data-mr="इनव्हॉइस क्र. (पर्यायी)">Invoice No (optional)</label>
                                 <input type="text" id="entryInvoice" data-en="e.g. INV-001" data-mr="उदा. INV-001" placeholder="e.g. INV-001" class="nx-input">
-                            </div>
-                        </div>
-
-                        <!-- Issue-only fields -->
-                        <div id="issueFields" style="display:none;">
-                            <div class="nx-form-group">
-                                <label data-en="Reference / Work Order (optional)" data-mr="संदर्भ / कार्य आदेश (पर्यायी)">Reference / Work Order (optional)</label>
-                                <input type="text" id="entryRef" data-en="e.g. WO-045" data-mr="उदा. WO-045" placeholder="e.g. WO-045" class="nx-input">
                             </div>
                         </div>
 
@@ -353,7 +303,6 @@
     <script>
         // ─── STATE ────────────────────────────────────────────────────────────
         let tenantId = null;
-        let currentMode = 'receive'; // 'receive' | 'issue'
         let scannedMaterial = null;  // { id, tid, name, unit, code }
         let suppliers = [];
         let barcodeDetector = null;
@@ -386,6 +335,12 @@
             const authed = await checkAuth();
             if (!authed) return;
 
+            const role = getUserRole();
+            if (!canAccess(role, 'scanner')) {
+                window.location.href = 'index.html?denied=1';
+                return;
+            }
+
             if (!isPro()) {
                 document.getElementById('loadingSpinner').style.display = 'none';
                 document.getElementById('proGateError').style.display = 'block';
@@ -398,7 +353,6 @@
             await loadSuppliers();
 
             const today = new Date().toISOString().split('T')[0];
-            document.getElementById('entryDate').value = today;
             document.getElementById('grnDate').value   = today;
 
             document.getElementById('loadingSpinner').style.display = 'none';
@@ -408,50 +362,11 @@
             startCamera();
         });
 
-        // ─── MODE TOGGLE ──────────────────────────────────────────────────────
-        function setMode(mode) {
-            if (mode !== 'receive' && currentMode === 'receive' && pendingItems.length > 0) {
-                const ok = confirm(t(
-                    `Discard ${pendingItems.length} unsaved GRN item(s)?`,
-                    `${pendingItems.length} न जतन केलेल्या GRN नोंदी रद्द करायच्या का?`
-                ));
-                if (!ok) return;
-                pendingItems = [];
-            }
-
-            currentMode = mode;
-            cancelScan();
-
-            const receiveBtn = document.getElementById('modeReceive');
-            const issueBtn   = document.getElementById('modeIssue');
-
-            if (mode === 'receive') {
-                receiveBtn.classList.add('active');
-                issueBtn.classList.remove('active');
-                document.getElementById('grnFields').style.display        = 'block';
-                document.getElementById('issueFields').style.display      = 'none';
-                document.getElementById('grnDeliveryHeader').style.display = 'block';
-                document.getElementById('issueDateGroup').style.display   = 'none';
-                document.getElementById('submitBtn').textContent = t('➕ Add to GRN', '➕ GRN मध्ये जोडा');
-            } else {
-                issueBtn.classList.add('active');
-                receiveBtn.classList.remove('active');
-                document.getElementById('grnFields').style.display        = 'none';
-                document.getElementById('issueFields').style.display      = 'block';
-                document.getElementById('grnDeliveryHeader').style.display = 'none';
-                document.getElementById('issueDateGroup').style.display   = 'block';
-                document.getElementById('submitBtn').textContent = t('✅ Submit Issue Entry', '✅ जारी नोंद सबमिट करा');
-            }
-
-            renderPendingList();
-        }
-
         // ─── CAMERA / SCANNER ─────────────────────────────────────────────────
         async function startCamera() {
             if (!('BarcodeDetector' in window)) {
                 document.getElementById('cameraViewfinder').style.display = 'none';
                 document.getElementById('desktopFallback').style.display  = 'block';
-                document.getElementById('modeToggleRow').style.display    = 'none';
 
                 const scannerURL = window.location.href;
                 document.getElementById('desktopURL').textContent = scannerURL;
@@ -558,7 +473,6 @@
             document.getElementById('entryQty').value     = '';
             document.getElementById('entryRate').value    = '';
             document.getElementById('entryInvoice').value = '';
-            document.getElementById('entryRef').value     = '';
             setScanStatus(t('Point camera at QR code','QR कोडवर कॅमेरा ठेवा'), 'idle');
             if (scanLoop) cancelAnimationFrame(scanLoop);
             scanLoop = requestAnimationFrame(detectFrame);
@@ -602,7 +516,7 @@
         }
 
         // ─── SUBMIT ───────────────────────────────────────────────────────────
-        async function submitEntry() {
+        function submitEntry() {
             if (!scannedMaterial) return;
 
             const qty = parseFloat(document.getElementById('entryQty').value);
@@ -612,68 +526,11 @@
                 return;
             }
 
-            if (currentMode === 'receive') {
-                const rate      = document.getElementById('entryRate').value;
-                const invoiceNo = document.getElementById('entryInvoice').value.trim() || null;
+            const rate      = document.getElementById('entryRate').value;
+            const invoiceNo = document.getElementById('entryInvoice').value.trim() || null;
 
-                addToPendingList(scannedMaterial, qty, rate !== '' ? parseFloat(rate) : null, invoiceNo);
-                cancelScan();
-                return;
-            }
-
-            const date = document.getElementById('entryDate').value;
-            if (!date) {
-                toast(t('Please select a date.','कृपया तारीख निवडा.'), 'error');
-                return;
-            }
-
-            const btn = document.getElementById('submitBtn');
-            btn.disabled = true;
-            btn.textContent = t('Saving...','जतन होत आहे...');
-
-            try {
-                const { data: txData } = await window.supabase
-                    .from('p2_stock_transactions')
-                    .select('quantity')
-                    .eq('raw_material_id', scannedMaterial.id)
-                    .eq('tenant_id', tenantId);
-
-                const currentStockQty = txData ? txData.reduce((sum, t) => sum + Number(t.quantity), 0) : 0;
-
-                if (qty > currentStockQty) {
-                    toast(`${t('Insufficient stock.','अपुरा साठा.')} ${t('Available:','उपलब्ध:')} ${formatNumber(currentStockQty)} ${scannedMaterial.unit}, ${t('Requested:','मागितले:')} ${formatNumber(qty)} ${scannedMaterial.unit}`, 'error');
-                    btn.disabled = false;
-                    btn.textContent = t('✅ Submit Issue Entry','✅ जारी नोंद सबमिट करा');
-                    return;
-                }
-
-                const ref = document.getElementById('entryRef').value.trim() || null;
-
-                const { error } = await window.supabase
-                    .from('p2_stock_transactions')
-                    .insert({
-                        tenant_id: tenantId,
-                        raw_material_id: scannedMaterial.id,
-                        transaction_type: 'consumption',
-                        quantity: -qty,
-                        transaction_date: date,
-                        invoice_no: ref
-                    });
-
-                if (error) throw error;
-
-                addSessionEntry('Issue', scannedMaterial.name, qty, scannedMaterial.unit, ref || '—');
-                showToast(`✅ ${t('Stock issued:','साठा जारी:')} ${qty} ${scannedMaterial.unit} ${t('of','चे')} ${scannedMaterial.name}`);
-
-                cancelScan();
-
-            } catch (err) {
-                console.error('Submit error:', err);
-                toast(t('Error saving entry: ','नोंद जतन करताना त्रुटी: ') + err.message, 'error');
-            } finally {
-                btn.disabled = false;
-                btn.textContent = t('✅ Submit Issue Entry','✅ जारी नोंद सबमिट करा');
-            }
+            addToPendingList(scannedMaterial, qty, rate !== '' ? parseFloat(rate) : null, invoiceNo);
+            cancelScan();
         }
 
         // ─── PENDING GRN LIST (receive mode) ─────────────────────────────────
@@ -699,7 +556,7 @@
             const listEl = document.getElementById('pendingList');
             const btnEl  = document.getElementById('confirmGrnBtn');
 
-            if (currentMode !== 'receive' || pendingItems.length === 0) {
+            if (pendingItems.length === 0) {
                 listEl.style.display = 'none';
                 btnEl.style.display  = 'none';
                 listEl.innerHTML = '';
@@ -800,12 +657,12 @@
             container.innerHTML = sessionEntries.slice(0, 10).map(e => `
                 <div class="entry-row">
                     <div>
-                        <span class="${e.type === 'GRN' ? 'entry-type-grn' : 'entry-type-issue'}">${e.type}</span>
+                        <span class="entry-type-grn">${e.type}</span>
                         <span style="color:var(--white);">${e.name}</span>
                         ${e.ref && e.ref !== '—' ? `<span class="nx-text-mid" style="font-size:11px; margin-left:4px;">(${e.ref})</span>` : ''}
                     </div>
-                    <span class="${e.type === 'GRN' ? 'entry-qty-grn' : 'entry-qty-issue'}">
-                        ${e.type === 'GRN' ? '+' : '-'}${formatNumber(e.qty)} ${e.unit}
+                    <span class="entry-qty-grn">
+                        +${formatNumber(e.qty)} ${e.unit}
                     </span>
                 </div>
             `).join('');

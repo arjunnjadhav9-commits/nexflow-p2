@@ -11,33 +11,41 @@ async function checkAuth() {
         return false;
     }
 
-    const tenantId = user.id;
+    // tenant_id = user's own id for an owner, but for an invited staff member their
+    // own auth user_id is NOT the tenant — the owner's id was stamped into their JWT
+    // user_metadata at invite time (see invite-staff Edge Function).
+    const tenantId = user.user_metadata?.tenant_id || user.id;
     localStorage.setItem('nexflow_tenant_id', tenantId);
     localStorage.setItem('supabase_tenant_id', tenantId); //
 
-    // Fetch role and plan from DB
-    const { data: roleData, error: roleError } = await window.supabase
-        .from('p2_user_roles')
-        .select('role')
-        .eq('user_id', user.id)
-        .single();
+    await fetchUserRole(user.id, tenantId);
 
-    const { data: settingsData, error: settingsError } = await window.supabase
+    const { data: settingsData } = await window.supabase
         .from('p2_tenant_settings')
         .select('plan')
         .eq('tenant_id', tenantId)
         .single();
 
-    // Role: if no row found, treat as owner (existing clients won't break)
-    const role = roleData?.role || 'owner';
     // Plan: if no row found, default to founder (SS Engineering won't break)
     const plan = settingsData?.plan || 'founder';
-
-    localStorage.setItem('user_role', role);
     localStorage.setItem('nexflow_plan', plan);
+
+    // Demo-mode flag, read by js/utils.js into window.isDemo (used by agent-chat.js).
+    try {
+        const { data: tenantData } = await window.supabase
+            .from('p2_tenants')
+            .select('is_demo')
+            .eq('id', tenantId)
+            .single();
+        sessionStorage.setItem('nexflow_is_demo', tenantData?.is_demo ? 'true' : 'false');
+    } catch (e) {
+        sessionStorage.setItem('nexflow_is_demo', 'false');
+    }
 
     window.supabase.auth.onAuthStateChange((event, session) => {
         if (event === 'SIGNED_OUT' || !session) {
+            sessionStorage.removeItem('nexflow_is_demo');
+            sessionStorage.removeItem('nexflow_role');
             window.location.href = 'login.html';
         }
     });
@@ -46,7 +54,7 @@ async function checkAuth() {
 }
 
 function getUserRole() {
-    return localStorage.getItem('user_role') || 'owner';
+    return sessionStorage.getItem('nexflow_role') || 'owner';
 }
 
 function isOwner() {
@@ -65,14 +73,14 @@ function isPro() {
 // Call at top of every Pro-gated page after checkAuth()
 function requirePro() {
     if (!isPro()) {
-        window.location.href = 'dashboard.html?upgrade=true';
+        window.location.href = 'index.html?upgrade=true';
     }
 }
 
 // Call at top of owner-only pages after checkAuth()
 function requireOwner() {
     if (!isOwner()) {
-        window.location.href = 'dashboard.html?unauthorized=true';
+        window.location.href = 'index.html?unauthorized=true';
     }
 }
 

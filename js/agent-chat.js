@@ -4,9 +4,23 @@
 // Guard flag prevents double-render if included on a page twice (same
 // pattern as navbar.js's window._nexflowNavbarDone).
 
-(function () {
+(async function () {
   if (window._nexflowAgentChatDone) return;
   window._nexflowAgentChatDone = true;
+
+  // Agent FAB is owner/supervisor only. Resolves its own role (doesn't wait on the
+  // page's own checkAuth(), which may not have run yet at this point in page load).
+  try {
+    if (window.supabase && typeof fetchUserRole === 'function' && typeof canAccess === 'function') {
+      const { data: { user } } = await window.supabase.auth.getUser();
+      if (!user) return;
+      const tenantId = user.user_metadata?.tenant_id || user.id;
+      const role = await fetchUserRole(user.id, tenantId);
+      if (!canAccess(role, 'agent')) return;
+    }
+  } catch (_) {
+    return;
+  }
 
   const EDGE_FUNCTION_URL = 'https://jhqxvpihauvhfclosuxn.supabase.co/functions/v1/agent-query';
   const ANON_KEY = SUPABASE_ANON_KEY;
@@ -1101,7 +1115,8 @@
         'zero_stock_list', 'dispatch_summary', 'supplier_delivery_check',
         'challan_detail', 'issue_summary', 'product_code_lookup',
         'top_received', 'product_list', 'supplier_list', 'dispatch_detail',
-        'issue_detail', 'bom_detail', 'top_supplier'
+        'issue_detail', 'bom_detail', 'top_supplier',
+        'invoice_total', 'invoice_detail'
       ];
       if (READ_ONLY_TEXT_INTENTS.includes(data.intent)) {
         // Informational only — no write, no confirm button needed.

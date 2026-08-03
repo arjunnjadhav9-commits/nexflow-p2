@@ -11,6 +11,7 @@
     <link rel="stylesheet" href="css/nexflow-design.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="js/supabase-client.js"></script>
+    <script src="js/roles.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/utils.js"></script>
     <script src="js/navbar.js"></script>
@@ -243,6 +244,7 @@
         let allInvoices = [];
         let filtered = [];
         let canInvoice = false;
+        let currentRole = 'owner';
 
         document.addEventListener('DOMContentLoaded', init);
 
@@ -271,6 +273,15 @@
             try {
                 const authed = await checkAuth();
                 if (!authed) return;
+                const role = getUserRole();
+                currentRole = role;
+                if (!canAccess(role, 'invoices')) {
+                    window.location.href = 'index.html?denied=1';
+                    return;
+                }
+                if (role === 'accountant') {
+                    document.getElementById('newConsolidatedInvoiceBtn').style.display = 'none';
+                }
                 const { data: { user } } = await window.supabase.auth.getUser();
                 tenantId = user.id;
 
@@ -373,7 +384,7 @@
                     : inv.status === 'sent'
                     ? `<span class="nx-badge nx-badge-green">Sent</span>`
                     : `<span class="nx-badge nx-badge-yellow">Draft</span>`;
-                const cancelBtn = inv.status === 'cancelled'
+                const cancelBtn = (inv.status === 'cancelled' || currentRole === 'accountant')
                     ? ''
                     : `<button onclick="cancelInvoice('${inv.id}')" class="nx-btn nx-btn-ghost nx-btn-sm" style="color:var(--red);">Cancel</button>`;
 
@@ -505,5 +516,7 @@
             });
         }
     </script>
+
+<script src="js/agent-chat.js"></script>
 </body>
 </html>

@@ -11,6 +11,7 @@
     <link rel="stylesheet" href="css/nexflow-design.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="js/supabase-client.js"></script>
+    <script src="js/roles.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/utils.js"></script>
     <script src="js/navbar.js"></script>
@@ -268,11 +269,18 @@
         let allOrders = [];
         let filtered  = [];
         let canInvoice = false; // Pro/Founder gate, fresh-fetched — never isPro()/localStorage. Used by the Detail modal's invoice section.
+        let currentRole = 'owner';
 
         document.addEventListener('DOMContentLoaded', async () => {
             try {
                 const authed = await checkAuth();
                 if (!authed) return;
+                const role = getUserRole();
+                currentRole = role;
+                if (!canAccess(role, 'dispatch_history')) {
+                    window.location.href = 'index.html?denied=1';
+                    return;
+                }
                 const { data: { user } } = await window.supabase.auth.getUser();
                 tenantId = user.id;
 
@@ -552,7 +560,7 @@
                         <div style="font-size:11px; color:var(--mid); margin-top:6px; text-align:center;">
                             Invoice ${escapeHtml(existingInvoice.invoice_number || '')} · ${escapeHtml(existingInvoice.status || '')}
                         </div>`;
-                } else if (canInvoice) {
+                } else if (canInvoice && currentRole !== 'accountant') {
                     invoiceSection.innerHTML = `
                         <button class="nx-btn nx-btn-secondary" style="width:100%;"
                             onclick="openInvoiceModal('${orderId}')">Generate Invoice</button>`;

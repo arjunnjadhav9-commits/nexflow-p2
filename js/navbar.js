@@ -16,16 +16,16 @@
     }
 
     const NAV_LINKS = [
-        { href: 'index.html',            en: 'Dashboard',   mr: 'डॅशबोर्ड'   },
-        { href: 'grn.html',              en: 'GRN',         mr: 'GRN'         },
-        { href: 'production-issue.html', en: 'Issue',       mr: 'इश्यू'       },
-        { href: 'dispatch.html',         en: 'Dispatch',    mr: 'डिस्पॅच'    },
-        { href: 'invoices.html',         en: 'Invoices',    mr: 'इनव्हॉइस'   },
-        { href: 'rm-dispatch.html',      en: 'RM Dispatch', mr: 'RM डिस्पॅच' },
-        { href: 'products.html',         en: 'Products',    mr: 'उत्पादने'    },
-        { href: 'reports.html',          en: 'Reports',     mr: 'अहवाल'       },
-        { href: 'scanner.html',          en: '📷 Scanner',  mr: '📷 स्कॅनर'  },
-        { href: 'settings.html',         en: 'Settings',    mr: 'सेटिंग्ज'   }
+        { href: 'index.html',            en: 'Dashboard',   mr: 'डॅशबोर्ड',   page: 'dashboard'   },
+        { href: 'grn.html',              en: 'GRN',         mr: 'GRN',        page: 'grn'         },
+        { href: 'production-issue.html', en: 'Issue',       mr: 'इश्यू',      page: 'issue'       },
+        { href: 'dispatch.html',         en: 'Dispatch',    mr: 'डिस्पॅच',    page: 'dispatch'    },
+        { href: 'invoices.html',         en: 'Invoices',    mr: 'इनव्हॉइस',  page: 'invoices'    },
+        { href: 'rm-dispatch.html',      en: 'RM Dispatch', mr: 'RM डिस्पॅच', page: 'rm_dispatch' },
+        { href: 'products.html',         en: 'Products',    mr: 'उत्पादने',   page: 'products'    },
+        { href: 'reports.html',          en: 'Reports',     mr: 'अहवाल',      page: 'reports'     },
+        { href: 'scanner.html',          en: '📷 Scanner',  mr: '📷 स्कॅनर', page: 'scanner'     },
+        { href: 'settings.html',         en: 'Settings',    mr: 'सेटिंग्ज',   page: 'settings'    }
     ];
 
     function getInitials(email) {
@@ -36,13 +36,17 @@
         return name.slice(0, 2).toUpperCase();
     }
 
-    function buildNavbar() {
-        const linksHTML = NAV_LINKS.map(l => {
+    function buildNavbar(role) {
+        const visibleLinks = typeof canAccess === 'function'
+            ? NAV_LINKS.filter(l => canAccess(role, l.page))
+            : NAV_LINKS;
+
+        const linksHTML = visibleLinks.map(l => {
             const active = isActive(l.href) ? ' nx-active' : '';
             return `<a href="${l.href}" class="nx-link${active}" data-en="${l.en}" data-mr="${l.mr}">${l.en}</a>`;
         }).join('');
 
-        const mobileLinksHTML = NAV_LINKS.map(l => {
+        const mobileLinksHTML = visibleLinks.map(l => {
             const active = isActive(l.href) ? ' nx-active' : '';
             return `<a href="${l.href}" class="nx-mlink${active}" data-en="${l.en}" data-mr="${l.mr}">${l.en}</a>`;
         }).join('');
@@ -238,6 +242,7 @@ body{padding-top:56px}
                 btn.addEventListener('click', async () => {
                     await window.supabase.auth.signOut();
                     ['user_role','tenant_id','nexflow_tenant_id'].forEach(k => localStorage.removeItem(k));
+                    sessionStorage.removeItem('nexflow_role');
                     window.location.href = 'login.html';
                 });
             });
@@ -310,7 +315,19 @@ body{padding-top:56px}
             c.id = 'navbar-container';
             document.body.insertBefore(c, document.body.firstChild);
         }
-        c.innerHTML = buildNavbar();
+
+        let role = 'owner';
+        try {
+            if (window.supabase && typeof fetchUserRole === 'function') {
+                const { data: { user } } = await window.supabase.auth.getUser();
+                if (user) {
+                    const tenantId = user.user_metadata?.tenant_id || user.id;
+                    role = await fetchUserRole(user.id, tenantId);
+                }
+            }
+        } catch (_) {}
+
+        c.innerHTML = buildNavbar(role);
         initLang();
         initBurger();
         await initUserInfo();
