@@ -363,7 +363,7 @@
             try {
                 const { data: { user } } = await window.supabase.auth.getUser();
                 if (!user) { window.location.href = 'login.html'; return; }
-                const tenantId = user.id;
+                const tenantId = user.user_metadata?.tenant_id || user.id;
 
                 const { data: dispatchOrder, error: orderError } = await window.supabase
                     .from('p2_dispatch_orders').select('*, challan_note, challan_footer')
