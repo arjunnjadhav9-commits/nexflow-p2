@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Set Your Password | Nexflow P2</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%230c0e14'/><text y='.9em' font-size='80' x='10' fill='%23ff5c1a'>N</text></svg>">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800;900&family=Barlow+Condensed:wght@500;600;700;800;900&display=swap">
+    <link rel="stylesheet" href="css/nexflow-design.css">
+    <script src="https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+    <script src="js/supabase-client.js"></script>
+
+    <style>
+        body {
+            min-height: 100svh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px 16px;
+        }
+
+        .login-wrap {
+            width: 100%;
+            max-width: 400px;
+        }
+
+        .login-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 36px 28px;
+            box-shadow: var(--shadow-md);
+        }
+
+        .login-icon-mark {
+            width: 44px; height: 44px;
+            margin: 0 auto 16px;
+            background: linear-gradient(135deg, #ff5c1a, #ff8c42);
+            -webkit-mask-image: url('assets/nexflow-mark.png');
+            mask-image: url('assets/nexflow-mark.png');
+            -webkit-mask-size: contain;
+            mask-size: contain;
+            -webkit-mask-repeat: no-repeat;
+            mask-repeat: no-repeat;
+            -webkit-mask-position: center;
+            mask-position: center;
+        }
+
+        .login-logo {
+            font-family: var(--condensed);
+            font-weight: 900;
+            font-size: 28px;
+            color: var(--white);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 4px;
+        }
+        .login-logo span { color: var(--orange); }
+
+        .login-sub {
+            font-size: 13px;
+            color: var(--mid);
+            margin-bottom: 28px;
+        }
+
+        .login-error {
+            display: none;
+            background: var(--red-dim);
+            border: 1px solid rgba(239,68,68,0.25);
+            border-left: 3px solid var(--red);
+            border-radius: var(--radius);
+            padding: 11px 14px;
+            font-size: 13px;
+            color: var(--red);
+            margin-bottom: 18px;
+        }
+
+        .login-footer {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 11px;
+            color: var(--mid);
+        }
+
+        .nx-btn[data-loading="true"] {
+            opacity: 0.6;
+            pointer-events: none;
+        }
+
+        #stateLoading, #stateInvalid, #stateSuccess { text-align: center; }
+    </style>
+</head>
+<body>
+
+    <div class="login-wrap nx-fade-in">
+
+        <div style="text-align:center; margin-bottom:24px;">
+            <div class="login-icon-mark"></div>
+            <div class="login-logo">Nexflow <span>P2</span></div>
+            <div class="login-sub">Raw Material &amp; Inventory Tracker</div>
+        </div>
+
+        <div class="login-card">
+
+            <!-- Checking the invite link -->
+            <div id="stateLoading">
+                <p style="color:var(--mid); font-size:13px;">Checking your invite link&hellip;</p>
+            </div>
+
+            <!-- Invalid / expired link -->
+            <div id="stateInvalid" style="display:none;">
+                <p style="font-size:14px; margin-bottom:8px;">This invite link is invalid or has expired.</p>
+                <p style="color:var(--mid); font-size:13px;">Ask the person who invited you to send a new one from Settings &rarr; Staff.</p>
+            </div>
+
+            <!-- Set password form -->
+            <div id="statePasswordForm" style="display:none;">
+                <div id="setPwError" class="login-error"></div>
+
+                <form id="setPwForm">
+                    <div class="nx-form-group">
+                        <label for="password">New Password</label>
+                        <input type="password" id="password" required minlength="6" class="nx-input"
+                               placeholder="••••••••" autocomplete="new-password">
+                    </div>
+
+                    <div class="nx-form-group" style="margin-bottom:24px;">
+                        <label for="confirmPassword">Confirm Password</label>
+                        <input type="password" id="confirmPassword" required minlength="6" class="nx-input"
+                               placeholder="••••••••" autocomplete="new-password">
+                    </div>
+
+                    <button type="submit" id="setPwBtn" class="nx-btn nx-btn-primary nx-btn-lg nx-btn-full">
+                        Set Password &amp; Continue
+                    </button>
+                </form>
+            </div>
+
+            <!-- Success -->
+            <div id="stateSuccess" style="display:none;">
+                <p style="font-size:14px;">Password set. Taking you to Nexflow P2&hellip;</p>
+            </div>
+
+        </div>
+
+        <div class="login-footer">
+            Powered by Nexflow Automations &middot; MIDC Manufacturing ERP
+        </div>
+    </div>
+
+    <script>
+        function showState(id) {
+            ['stateLoading', 'stateInvalid', 'statePasswordForm', 'stateSuccess'].forEach(s => {
+                document.getElementById(s).style.display = (s === id) ? 'block' : 'none';
+            });
+        }
+
+        // supabase-js v2 parses the invite/recovery token out of the redirect
+        // URL automatically (detectSessionInUrl defaults to true) and fires
+        // this event once the session is established -- there's no separate
+        // manual token-parsing step needed here.
+        window.supabase.auth.onAuthStateChange((event, session) => {
+            if (event === 'PASSWORD_RECOVERY' || (session && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION'))) {
+                showState('statePasswordForm');
+            }
+        });
+
+        // Fallback: if no auth event fires within a few seconds (bad/expired
+        // link -- Supabase redirects with ?error=... in that case and never
+        // establishes a session), show the invalid-link state.
+        setTimeout(async () => {
+            if (document.getElementById('stateLoading').style.display !== 'none') {
+                const { data: { session } } = await window.supabase.auth.getSession();
+                showState(session ? 'statePasswordForm' : 'stateInvalid');
+            }
+        }, 3000);
+
+        document.getElementById('setPwForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const password = document.getElementById('password').value;
+            const confirmPassword = document.getElementById('confirmPassword').value;
+            const btn = document.getElementById('setPwBtn');
+            const errorDiv = document.getElementById('setPwError');
+
+            errorDiv.style.display = 'none';
+            errorDiv.textContent = '';
+
+            if (password !== confirmPassword) {
+                errorDiv.textContent = 'Passwords do not match.';
+                errorDiv.style.display = 'block';
+                return;
+            }
+
+            btn.dataset.loading = 'true';
+            btn.textContent = 'Setting password...';
+
+            try {
+                const { error } = await window.supabase.auth.updateUser({ password });
+                if (error) throw error;
+                showState('stateSuccess');
+                setTimeout(() => { window.location.href = 'index.html'; }, 1200);
+            } catch (error) {
+                errorDiv.textContent = error.message || 'Could not set password. Try the invite link again.';
+                errorDiv.style.display = 'block';
+                btn.dataset.loading = 'false';
+                btn.textContent = 'Set Password & Continue';
+            }
+        });
+    </script>
+</body>
+</html>

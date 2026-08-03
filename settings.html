@@ -457,6 +457,12 @@
                 <div class="nx-card-header">
                     <div class="nx-card-title" data-en="Staff Members" data-mr="कर्मचारी सदस्य">Staff Members</div>
                 </div>
+                <div class="nx-alert nx-alert-yellow nx-mb-16">
+                    <span class="nx-alert-icon">⚠️</span>
+                    <span style="font-size:12px;" data-en="After sending an invite, create this person's account in Supabase Dashboard → Authentication → Users → Add User (or Edit User), then share their password with them. Use 'Copy setup details' on a pending row for the exact email and metadata to paste in." data-mr="आमंत्रण पाठवल्यानंतर, Supabase Dashboard → Authentication → Users → Add User मध्ये या व्यक्तीचे खाते तयार करा आणि त्यांचा पासवर्ड शेअर करा. प्रलंबित रांगेतील 'सेटअप तपशील कॉपी करा' वापरा.">
+                        After sending an invite, create this person's account in Supabase Dashboard → Authentication → Users → Add User (or Edit User), then share their password with them. Use "Copy setup details" on a pending row for the exact email and metadata to paste in.
+                    </span>
+                </div>
                 <div class="nx-table-wrap">
                     <table class="nx-table">
                         <thead>
@@ -1613,43 +1619,78 @@
             const { data: { user } } = await window.supabase.auth.getUser();
             if (!user) return;
             const { data: roles, error: rolesError } = await window.supabase
-                .from('p2_user_roles').select('id, user_id, role, created_at')
+                .from('p2_user_roles').select('user_id, role, email, created_at')
                 .eq('tenant_id', user.id).order('created_at', { ascending: false });
             if (rolesError) throw rolesError;
 
+            const { data: pending, error: pendingError } = await window.supabase
+                .from('p2_pending_invites').select('id, email, role, invited_at')
+                .eq('tenant_id', user.id).eq('status', 'pending')
+                .order('invited_at', { ascending: false });
+            if (pendingError) throw pendingError;
+
+            // Reconciliation: a pending invite whose email now matches an active
+            // p2_user_roles row means the Owner already created that account in the
+            // Supabase dashboard. Flip it to 'accepted' (fire-and-forget, cosmetic —
+            // it just stops the row from lingering in the pending list) and drop it
+            // from what we render below.
+            const activeEmails = new Set(roles.filter(r => r.email).map(r => r.email.toLowerCase()));
+            const stillPending = [];
+            for (const invite of (pending || [])) {
+                if (activeEmails.has(invite.email.toLowerCase())) {
+                    window.supabase.from('p2_pending_invites').update({ status: 'accepted' }).eq('id', invite.id);
+                } else {
+                    stillPending.push(invite);
+                }
+            }
+
+            const lang = localStorage.getItem('nexflow_lang') || 'en';
             const tbody = document.getElementById('staff-list');
             tbody.innerHTML = '';
+
             for (const role of roles) {
                 const row = document.createElement('tr');
-                const userEmail = await getUserEmail(role.user_id);
                 row.innerHTML = `
-                    <td>${userEmail}</td>
+                    <td>${role.email || role.user_id}</td>
                     <td><span class="nx-badge ${role.role==='owner'?'nx-badge-orange':'nx-badge-grey'}">${getRoleLabel(role.role)}</span></td>
                     <td class="owner-only">
                         ${role.user_id !== user.id
-                            ? `<button onclick="removeStaff('${role.id}')" class="nx-btn nx-btn-danger nx-btn-sm" data-en="Remove" data-mr="काढा">Remove</button>`
+                            ? `<button onclick="removeStaff('${role.user_id}')" class="nx-btn nx-btn-danger nx-btn-sm" data-en="Remove" data-mr="काढा">Remove</button>`
                             : `<span style="font-size:12px; color:var(--mid);" data-en="(You)" data-mr="(तुम्ही)">(You)</span>`
                         }
                     </td>
                 `;
                 tbody.appendChild(row);
             }
-            const lang = localStorage.getItem('nexflow_lang') || 'en';
+
+            for (const invite of stillPending) {
+                const metaJson = JSON.stringify({ tenant_id: user.id, role: invite.role });
+                const row = document.createElement('tr');
+                row.style.opacity = '0.75';
+                row.innerHTML = `
+                    <td>${invite.email}</td>
+                    <td><span class="nx-badge nx-badge-grey">${getRoleLabel(invite.role)}</span></td>
+                    <td class="owner-only" style="display:flex; gap:6px; flex-wrap:wrap;">
+                        <span class="nx-badge" style="background:#5c4400; color:#ffd166;" data-en="Pending setup" data-mr="सेटअप प्रलंबित">Pending setup</span>
+                        <button onclick="copyInviteSetupDetails('${invite.email}', '${metaJson.replace(/'/g,"\\'")}')" class="nx-btn nx-btn-ghost nx-btn-sm" data-en="Copy setup details" data-mr="सेटअप तपशील कॉपी करा">Copy setup details</button>
+                        <button onclick="removePendingInvite('${invite.id}')" class="nx-btn nx-btn-ghost nx-btn-sm" data-en="Cancel" data-mr="रद्द करा">Cancel</button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            }
+
             applyLang(lang);
         } catch (error) {
             console.error('Error loading staff list:', error);
         }
     }
 
-    async function getUserEmail(userId) {
-        try {
-            const { data, error } = await window.supabase.functions.invoke('get-user-email', { body: { user_id: userId } });
-            if (error) throw error;
-            return data.email || userId;
-        } catch (error) {
-            console.error('Error fetching user email:', error);
-            return userId;
-        }
+    function copyInviteSetupDetails(email, metaJson) {
+        const lang = localStorage.getItem('nexflow_lang') || 'en';
+        const text = `Email: ${email}\nUser Metadata (paste into Supabase Dashboard → Authentication → Users → Add User / Edit User):\n${metaJson}`;
+        navigator.clipboard.writeText(text)
+            .then(() => toast(lang==='mr' ? 'सेटअप तपशील कॉपी झाले' : 'Setup details copied', 'success'))
+            .catch(() => toast(lang==='mr' ? 'कॉपी करण्यात अयशस्वी' : 'Failed to copy', 'error'));
     }
 
     document.getElementById('invite-staff-form').addEventListener('submit', async (e) => {
@@ -1664,11 +1705,21 @@
         try {
             const { data: { user } } = await window.supabase.auth.getUser();
             if (!user) { showStatus('invite-status','error','Not authenticated','प्रमाणित नाही'); return; }
-            const { error } = await window.supabase.functions.invoke('invite-staff', {
-                body: { email, tenant_id: user.id, role, inviter_id: user.id }
+            const { data: { session } } = await window.supabase.auth.getSession();
+            const res = await fetch('/api/invite-staff', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+                body: JSON.stringify({ email, tenant_id: user.id, role, inviter_id: user.id })
             });
-            if (error) throw error;
-            showStatus('invite-status','success','Invite sent successfully!','आमंत्रण यशस्वीरित्या पाठवले!');
+            const data = await res.json();
+            if (!res.ok || data.error) throw new Error(data.error || 'Failed to send invite');
+            if (data && data.warning === 'email_failed') {
+                showStatus('invite-status','success',
+                    "Invite recorded, but the notification email couldn't be sent — please tell them directly.",
+                    'आमंत्रण साठवले, पण सूचना ईमेल पाठवता आले नाही — कृपया त्यांना थेट सांगा.');
+            } else {
+                showStatus('invite-status','success','Invite sent successfully!','आमंत्रण यशस्वीरित्या पाठवले!');
+            }
             e.target.reset();
             loadStaffList();
         } catch (error) {
@@ -1677,16 +1728,29 @@
         }
     });
 
-    async function removeStaff(roleId) {
+    async function removeStaff(userId) {
         const lang = localStorage.getItem('nexflow_lang') || 'en';
         if (!confirm(lang==='mr'?'या कर्मचार्याला काढायचे आहे का?':'Are you sure you want to remove this staff member?')) return;
         try {
-            const { error } = await window.supabase.from('p2_user_roles').delete().eq('id', roleId);
+            const { error } = await window.supabase.from('p2_user_roles').delete().eq('user_id', userId);
             if (error) throw error;
             loadStaffList();
         } catch (error) {
             console.error('Error removing staff:', error);
             toast(localStorage.getItem('nexflow_lang')==='mr'?'कर्मचारी काढण्यात अयशस्वी':'Failed to remove staff','error');
+        }
+    }
+
+    async function removePendingInvite(inviteId) {
+        const lang = localStorage.getItem('nexflow_lang') || 'en';
+        if (!confirm(lang==='mr'?'हे आमंत्रण रद्द करायचे आहे का?':'Cancel this pending invite?')) return;
+        try {
+            const { error } = await window.supabase.from('p2_pending_invites').delete().eq('id', inviteId);
+            if (error) throw error;
+            loadStaffList();
+        } catch (error) {
+            console.error('Error cancelling pending invite:', error);
+            toast(lang==='mr'?'आमंत्रण रद्द करण्यात अयशस्वी':'Failed to cancel invite','error');
         }
     }
 
