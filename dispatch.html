@@ -383,7 +383,7 @@
 
                 applyDemoModeToForms();
 
-                tenantId = user.id;
+                tenantId = user.user_metadata?.tenant_id || user.id;
 
                 document.getElementById('dispatchDate').value = new Date().toISOString().split('T')[0];
 

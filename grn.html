@@ -301,7 +301,7 @@
                 applyDemoModeToForms();
                 const { data: { user } } = await window.supabase.auth.getUser();
                 if (!user || !user.id) throw new Error('User or tenant ID not found');
-                tenantId = user.id;
+                tenantId = user.user_metadata?.tenant_id || user.id;
                 await Promise.all([
                     loadSuppliers().catch(e => console.error('loadSuppliers failed:', e)),
                     loadMaterials().catch(e => console.error('loadMaterials failed:', e)),

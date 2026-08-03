@@ -1033,7 +1033,7 @@
         try {
             const { data: { user } } = await window.supabase.auth.getUser();
             if (!user) return;
-            const tenantId = user.id;
+            const tenantId = user.user_metadata?.tenant_id || user.id;
 
             const { data, error } = await window.supabase
                 .from('p2_tenant_settings')
@@ -1083,7 +1083,7 @@
         try {
             const { data: { user } } = await window.supabase.auth.getUser();
             if (!user) { showStatus('company-status','error','Not authenticated','प्रमाणित नाही'); return; }
-            const tenantId = user.id;
+            const tenantId = user.user_metadata?.tenant_id || user.id;
 
             const { error } = await window.supabase.from('p2_tenant_settings').upsert({
                 tenant_id: tenantId, company_name: companyName,
@@ -1190,7 +1190,7 @@
         try {
             const { data: { user } } = await window.supabase.auth.getUser();
             if (!user) return;
-            const tenantId = user.id;
+            const tenantId = user.user_metadata?.tenant_id || user.id;
 
             const { data, error } = await window.supabase.from('p2_raw_materials')
                 .select('*').eq('tenant_id', tenantId).eq('is_active', true).order('name');
@@ -1263,7 +1263,7 @@
         try {
             const { data: { user } } = await window.supabase.auth.getUser();
             if (!user) { toast('Not authenticated','error'); return; }
-            const tenantId = user.id;
+            const tenantId = user.user_metadata?.tenant_id || user.id;
 
             const { data: existingMaterials, error: checkError } = await window.supabase
                 .from('p2_raw_materials').select('id, name').eq('tenant_id', tenantId).eq('is_active', true);
@@ -1963,7 +1963,7 @@
         try {
             const { data: { user } } = await window.supabase.auth.getUser();
             if (!user) throw new Error('Not authenticated');
-            const tenantId = user.id;
+            const tenantId = user.user_metadata?.tenant_id || user.id;
 
             const { data: existing, error: fetchErr } = await window.supabase.from('p2_raw_materials')
                 .select('name').eq('tenant_id', tenantId).eq('is_active', true);
@@ -2072,7 +2072,7 @@
     async function loadPricesTab() {
         const { data: { user } } = await window.supabase.auth.getUser();
         if (!user) return;
-        const tenantId = user.id;
+        const tenantId = user.user_metadata?.tenant_id || user.id;
 
         const { data: materials } = await window.supabase.from('p2_raw_materials')
             .select('id, name, unit, material_code').eq('tenant_id', tenantId).eq('is_active', true).order('name');
@@ -2327,7 +2327,7 @@
         btn.disabled = true; btn.textContent = 'Importing…';
         try {
             const { data: { user } } = await window.supabase.auth.getUser();
-            const tenantId = user.id;
+            const tenantId = user.user_metadata?.tenant_id || user.id;
             const CHUNK = 50;
             let inserted = 0;
             for (let i = 0; i < priceRows.length; i += CHUNK) {

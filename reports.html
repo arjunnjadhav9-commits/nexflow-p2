@@ -238,7 +238,7 @@
                 const { data: { user }, error: userError } = await window.supabase.auth.getUser();
                 if (userError || !user) throw new Error('User not authenticated');
 
-                const tenantId = user.id;
+                const tenantId = user.user_metadata?.tenant_id || user.id;
                 const firstDay = new Date(year, month - 1, 1);
                 const lastDay  = new Date(year, month, 0, 23, 59, 59, 999);
 

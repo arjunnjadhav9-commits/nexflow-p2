@@ -554,7 +554,7 @@
                     return;
                 }
                 const { data: { user } } = await window.supabase.auth.getUser();
-                tenantId = user.id;
+                tenantId = user.user_metadata?.tenant_id || user.id;
 
                 applyLang(localStorage.getItem('nexflow_lang') || 'en');
                 applyDemoModeToForms();

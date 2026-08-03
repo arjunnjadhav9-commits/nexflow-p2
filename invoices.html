@@ -283,7 +283,7 @@
                     document.getElementById('newConsolidatedInvoiceBtn').style.display = 'none';
                 }
                 const { data: { user } } = await window.supabase.auth.getUser();
-                tenantId = user.id;
+                tenantId = user.user_metadata?.tenant_id || user.id;
 
                 // Fresh fetch, never isPro()/localStorage — plan can change and
                 // localStorage only refreshes on login/auth-state-change.
