@@ -416,8 +416,8 @@
             btn.textContent = 'Exporting...';
 
             try {
-                const tenantId = (await window.supabase.auth.getUser()).data.user?.id
-                    || localStorage.getItem('nexflow_tenant_id');
+                const { data: { user: exportUser } } = await window.supabase.auth.getUser();
+                const tenantId = exportUser?.user_metadata?.tenant_id || exportUser?.id || localStorage.getItem('nexflow_tenant_id');
 
                 let companyName = 'company';
                 try {

@@ -341,7 +341,7 @@
                 const { data: { user } } = await window.supabase.auth.getUser();
                 if (!user) throw new Error('No user found');
 
-                currentTenantId = user.id;
+                currentTenantId = user.user_metadata?.tenant_id || user.id;
                 applyDemoModeToForms();
 
                 const loadPromise = Promise.all([loadProducts(), loadRawMaterials()]);
