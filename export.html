@@ -498,7 +498,7 @@ async function exportTallyTransactions() {
     .from('p2_stock_transactions')
     .select(`
       transaction_type, transaction_date, invoice_no,
-      quantity, rate, notes, supplier_name,
+      quantity, rate, notes, supplier_name, supplier_id, purchase_type,
       p2_raw_materials!inner(name, material_code, gst_rate, hsn_sac)
     `)
     .eq('tenant_id', tenantId)
@@ -545,14 +545,15 @@ async function exportTallyTransactions() {
     // GST applies to GRN (purchase) rows only — consumption rows are internal
     // stock movements with no supplier invoice, so their GST columns stay blank.
     const taxableAmount = qty * rate;
-    const isGrn      = t.transaction_type === 'grn';
+    const isGrn        = t.transaction_type === 'grn';
+    const isInterstate = t.purchase_type === 'interstate';
     const gstRate    = isGrn ? (t.p2_raw_materials.gst_rate || 0) : 0;
-    const cgstRate   = isGrn ? gstRate / 2 : '';
-    const sgstRate   = isGrn ? gstRate / 2 : '';
-    const igstRate   = isGrn ? 0 : '';
-    const cgstAmount = isGrn ? (taxableAmount * (gstRate / 2) / 100).toFixed(2) : '';
-    const sgstAmount = isGrn ? (taxableAmount * (gstRate / 2) / 100).toFixed(2) : '';
-    const igstAmount = isGrn ? '0.00' : '';
+    const cgstRate   = isGrn ? (isInterstate ? 0 : gstRate / 2) : '';
+    const sgstRate   = isGrn ? (isInterstate ? 0 : gstRate / 2) : '';
+    const igstRate   = isGrn ? (isInterstate ? gstRate : 0) : '';
+    const cgstAmount = isGrn ? (isInterstate ? '0.00' : (taxableAmount * (gstRate / 2) / 100).toFixed(2)) : '';
+    const sgstAmount = isGrn ? (isInterstate ? '0.00' : (taxableAmount * (gstRate / 2) / 100).toFixed(2)) : '';
+    const igstAmount = isGrn ? (isInterstate ? (taxableAmount * gstRate / 100).toFixed(2) : '0.00') : '';
     const totalGst   = isGrn ? (parseFloat(cgstAmount) + parseFloat(sgstAmount) + parseFloat(igstAmount)).toFixed(2) : '';
     const invoiceTotal = isGrn ? (taxableAmount + parseFloat(totalGst)).toFixed(2) : '';
     const hsnSac     = t.p2_raw_materials.hsn_sac || '';
@@ -687,7 +688,7 @@ async function exportZohoTransactions() {
     .from('p2_stock_transactions')
     .select(`
       id, transaction_date, invoice_no,
-      quantity, rate, supplier_name,
+      quantity, rate, supplier_name, supplier_id, purchase_type,
       p2_raw_materials!inner(name, material_code, hsn_sac, gst_rate)
     `)
     .eq('tenant_id', tenantId)
@@ -716,15 +717,16 @@ async function exportZohoTransactions() {
   const headers = ['Vendor Name','Source of Supply','Bill Number','Bill Date','Item Name','SKU','Quantity','Purchase Price','Account','Tax Name'];
   const rows    = [headers];
 
-  function zohoTaxName(rate) {
-    if (!rate || rate <= 0) return 'GST0';
+  function zohoTaxName(rate, isInterstate) {
+    const prefix = isInterstate ? 'IGST' : 'GST';
+    if (!rate || rate <= 0) return `${prefix}0`;
     const r = parseFloat(rate);
-    if (r === 28) return 'GST28';
-    if (r === 18) return 'GST18';
-    if (r === 12) return 'GST12';
-    if (r ===  5) return 'GST5';
-    if (r ===  3) return 'GST3';
-    return `GST${r}`;
+    if (r === 28) return `${prefix}28`;
+    if (r === 18) return `${prefix}18`;
+    if (r === 12) return `${prefix}12`;
+    if (r ===  5) return `${prefix}5`;
+    if (r ===  3) return `${prefix}3`;
+    return `${prefix}${r}`;
   }
 
   // Bill Number logic:
@@ -755,9 +757,10 @@ async function exportZohoTransactions() {
       billNo = fallbackBillMap[key];
     }
     const gstRate = t.p2_raw_materials.gst_rate || 0;
+    const isInterstate = t.purchase_type === 'interstate';
     rows.push([
       t.supplier_name   || '',
-      'MH',
+      isInterstate ? '' : 'MH',
       billNo,
       fmtZoho(t.transaction_date),
       t.p2_raw_materials.name,
@@ -765,7 +768,7 @@ async function exportZohoTransactions() {
       parseFloat(t.quantity) || 0,
       parseFloat(t.rate)     || 0,
       'Purchase Account',
-      zohoTaxName(gstRate)
+      zohoTaxName(gstRate, isInterstate)
     ]);
   });
 
