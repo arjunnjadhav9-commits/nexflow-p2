@@ -628,6 +628,10 @@
                         <label data-en="Address" data-mr="पत्ता">Address</label>
                         <textarea name="address" class="nx-input" rows="3" placeholder="Address" data-en="Address" data-mr="पत्ता" style="resize:vertical;"></textarea>
                     </div>
+                    <div class="nx-form-group">
+                        <label data-en="GSTIN" data-mr="जीएसटी नंबर">GSTIN</label>
+                        <input type="text" name="gstin" class="nx-input" placeholder="22AAAAA0000A1Z5" data-en="22AAAAA0000A1Z5" data-mr="22AAAAA0000A1Z5">
+                    </div>
                     <button type="submit" class="nx-btn nx-btn-primary nx-btn-full" data-en="Add Supplier" data-mr="पुरवठादार जोडा">Add Supplier</button>
                 </form>
             </div>
@@ -643,6 +647,7 @@
                                 <th data-en="Name"    data-mr="नाव">Name</th>
                                 <th data-en="Mobile"  data-mr="मोबाईल">Mobile</th>
                                 <th data-en="Address" data-mr="पत्ता">Address</th>
+                                <th data-en="GSTIN"   data-mr="जीएसटी नंबर">GSTIN</th>
                                 <th data-en="Actions" data-mr="क्रिया">Actions</th>
                             </tr>
                         </thead>
@@ -1329,6 +1334,22 @@
     }
 
     // ── LOAD SUPPLIERS ────────────────────────────────────────────────────────
+    let suppliersCache = [];
+
+    function supplierViewRow(supplier) {
+        return `
+            <td class="nx-td-bold">${supplier.name}</td>
+            <td>${supplier.mobile || ''}</td>
+            <td style="font-size:12px; color:var(--mid);">${supplier.address || ''}</td>
+            <td style="font-size:12px; color:var(--mid);">${supplier.gstin || ''}</td>
+            <td>
+                <button onclick="editSupplier('${supplier.id}')" class="nx-btn nx-btn-ghost nx-btn-sm" data-en="Edit" data-mr="संपादित करा">Edit</button>
+                <button onclick="deactivateSupplier('${supplier.id}')"
+                    class="nx-btn nx-btn-danger nx-btn-sm" data-en="Deactivate" data-mr="निष्क्रिय करा">Deactivate</button>
+            </td>
+        `;
+    }
+
     async function loadSuppliers() {
         try {
             const { data: { user } } = await window.supabase.auth.getUser();
@@ -1337,19 +1358,13 @@
                 .select('*').eq('tenant_id', user.id).eq('is_active', true).order('name');
             if (error) throw error;
 
+            suppliersCache = data || [];
             const tbody = document.getElementById('suppliers-list');
             tbody.innerHTML = '';
-            data.forEach(supplier => {
+            suppliersCache.forEach(supplier => {
                 const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td class="nx-td-bold">${supplier.name}</td>
-                    <td>${supplier.mobile || ''}</td>
-                    <td style="font-size:12px; color:var(--mid);">${supplier.address || ''}</td>
-                    <td>
-                        <button onclick="deactivateSupplier('${supplier.id}')"
-                            class="nx-btn nx-btn-danger nx-btn-sm" data-en="Deactivate" data-mr="निष्क्रिय करा">Deactivate</button>
-                    </td>
-                `;
+                row.id = `supplier-row-${supplier.id}`;
+                row.innerHTML = supplierViewRow(supplier);
                 tbody.appendChild(row);
             });
             const lang = localStorage.getItem('nexflow_lang') || 'en';
@@ -1365,6 +1380,7 @@
         const name     = formData.get('name')?.trim();
         const mobile   = formData.get('mobile')?.trim();
         const address  = formData.get('address')?.trim();
+        const gstin    = formData.get('gstin')?.trim();
         const lang     = localStorage.getItem('nexflow_lang') || 'en';
 
         if (!name)   { toast(lang==='mr'?'कृपया पुरवठादाराचे नाव प्रविष्ट करा':'Please enter supplier name','error'); return; }
@@ -1374,7 +1390,7 @@
             const { data: { user } } = await window.supabase.auth.getUser();
             if (!user) { toast('Not authenticated','error'); return; }
             const { error } = await window.supabase.from('p2_suppliers')
-                .insert({ name, mobile, address, tenant_id: user.id, is_active: true });
+                .insert({ name, mobile, address, gstin: gstin || null, tenant_id: user.id, is_active: true });
             if (error) throw error;
             toast(lang==='mr'?'पुरवठादार यशस्वीरित्या जोडला':'Supplier added successfully','success');
             e.target.reset();
@@ -1384,6 +1400,54 @@
             toast(lang==='mr'?'पुरवठादार जोडण्यात अयशस्वी':'Failed to add supplier','error');
         }
     });
+
+    function editSupplier(supplierId) {
+        const supplier = suppliersCache.find(s => s.id === supplierId);
+        const row = document.getElementById(`supplier-row-${supplierId}`);
+        if (!supplier || !row) return;
+        row.innerHTML = `
+            <td><input type="text" class="nx-input" id="edit-sup-name-${supplierId}" value="${escAttr(supplier.name)}"></td>
+            <td><input type="tel" class="nx-input" id="edit-sup-mobile-${supplierId}" value="${escAttr(supplier.mobile)}"></td>
+            <td><input type="text" class="nx-input" id="edit-sup-address-${supplierId}" value="${escAttr(supplier.address)}" placeholder="Address"></td>
+            <td><input type="text" class="nx-input" id="edit-sup-gstin-${supplierId}" value="${escAttr(supplier.gstin)}" placeholder="GSTIN"></td>
+            <td>
+                <button onclick="saveSupplier('${supplierId}')" class="nx-btn nx-btn-primary nx-btn-sm" data-en="Save" data-mr="जतन करा">Save</button>
+                <button onclick="cancelEditSupplier('${supplierId}')" class="nx-btn nx-btn-ghost nx-btn-sm" data-en="Cancel" data-mr="रद्द करा">Cancel</button>
+            </td>
+        `;
+        applyLang(localStorage.getItem('nexflow_lang') || 'en');
+    }
+
+    function cancelEditSupplier(supplierId) {
+        const supplier = suppliersCache.find(s => s.id === supplierId);
+        const row = document.getElementById(`supplier-row-${supplierId}`);
+        if (!supplier || !row) return;
+        row.innerHTML = supplierViewRow(supplier);
+        applyLang(localStorage.getItem('nexflow_lang') || 'en');
+    }
+
+    async function saveSupplier(supplierId) {
+        const lang    = localStorage.getItem('nexflow_lang') || 'en';
+        const name    = document.getElementById(`edit-sup-name-${supplierId}`)?.value.trim();
+        const mobile  = document.getElementById(`edit-sup-mobile-${supplierId}`)?.value.trim();
+        const address = document.getElementById(`edit-sup-address-${supplierId}`)?.value.trim();
+        const gstin   = document.getElementById(`edit-sup-gstin-${supplierId}`)?.value.trim();
+
+        if (!name)   { toast(lang==='mr'?'कृपया पुरवठादाराचे नाव प्रविष्ट करा':'Please enter supplier name','error'); return; }
+        if (!mobile) { toast(lang==='mr'?'कृपया मोबाईल नंबर प्रविष्ट करा':'Please enter mobile number','error'); return; }
+
+        try {
+            const { error } = await window.supabase.from('p2_suppliers')
+                .update({ name, mobile, address, gstin: gstin || null })
+                .eq('id', supplierId);
+            if (error) throw error;
+            toast(lang==='mr'?'पुरवठादार अद्ययावत झाला':'Supplier updated','success');
+            loadSuppliers();
+        } catch (error) {
+            console.error('Error updating supplier:', error);
+            toast(lang==='mr'?'पुरवठादार अद्ययावत करण्यात अयशस्वी':'Failed to update supplier','error');
+        }
+    }
 
     async function deactivateSupplier(supplierId) {
         const lang = localStorage.getItem('nexflow_lang') || 'en';

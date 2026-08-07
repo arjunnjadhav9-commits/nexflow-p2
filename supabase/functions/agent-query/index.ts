@@ -3106,7 +3106,12 @@ interface TallyExportTxnRow {
   quantity: number
   rate: number | null
   notes: string | null
+  invoice_no: string | null
+  supplier_id: string | null
+  supplier_name: string | null
+  purchase_type: string
   p2_raw_materials: TallyExportRawMaterialJoin
+  p2_suppliers: { gstin: string | null } | null
 }
 
 interface TallyExportInvoiceRow {
@@ -3120,10 +3125,21 @@ interface TallyExportInvoiceRow {
   amount_gst: number
   amount_total: number
   gst_type: string
+  client_gstin: string | null
 }
 
 const TALLY_EXPORT_JOIN_COLUMNS =
-  'transaction_date, quantity, rate, notes, p2_raw_materials!inner(name, material_code, hsn_sac, gst_rate, unit)'
+  'transaction_date, quantity, rate, notes, invoice_no, supplier_id, supplier_name, purchase_type, p2_raw_materials!inner(name, material_code, hsn_sac, gst_rate, unit), p2_suppliers(gstin)'
+
+// Shared orange header style — CA Export, Invoices, and GST Summary sheets
+// all use this same look.
+function styleHeaderRow(row: { eachCell: (cb: (cell: any) => void) => void }): void {
+  row.eachCell((cell: any) => {
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFF5C1A' } }
+    cell.alignment = { horizontal: 'center', vertical: 'middle' }
+  })
+}
 
 const TALLY_EXPORT_DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
@@ -3215,7 +3231,7 @@ async function sendTallyExportIntent(
     applyInvoiceRange(
       supabaseClient
         .from('p2_invoices')
-        .select('invoice_number, created_at, client_name, invoice_mode, date_from, date_to, amount_subtotal, amount_gst, amount_total, gst_type')
+        .select('invoice_number, created_at, client_name, invoice_mode, date_from, date_to, amount_subtotal, amount_gst, amount_total, gst_type, client_gstin')
         .eq('tenant_id', tenantId)
         .order('created_at', { ascending: true })
     ),
@@ -3257,16 +3273,23 @@ async function sendTallyExportIntent(
     { header: 'SGST Rate (%)', key: 'sgstRate', width: 14 },
     { header: 'SGST Amount', key: 'sgstAmount', width: 14, numFmt: '#,##0.00' },
     { header: 'IGST Rate (%)', key: 'igstRate', width: 14 },
-    { header: 'IGST Amount', key: 'igstAmount', width: 14 },
+    { header: 'IGST Amount', key: 'igstAmount', width: 14, numFmt: '#,##0.00' },
     { header: 'Total GST Amount', key: 'totalGst', width: 16, numFmt: '#,##0.00' },
     { header: 'Invoice Total', key: 'invoiceTotal', width: 14, numFmt: '#,##0.00' },
+    { header: 'Supplier Name', key: 'supplierName', width: 20 },
+    { header: 'Supplier GSTIN', key: 'supplierGstin', width: 16 },
+    { header: 'Supplier Invoice No', key: 'supplierInvoiceNo', width: 18 },
   ]
 
-  worksheet.getRow(1).eachCell((cell: any) => {
-    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
-    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFF5C1A' } }
-    cell.alignment = { horizontal: 'center', vertical: 'middle' }
-  })
+  styleHeaderRow(worksheet.getRow(1))
+
+  // Running totals for the GST Summary sheet — purchases side (ITC). Derived
+  // here alongside the per-row addRow() calls rather than re-summed later,
+  // since the per-row GST split is only ever computed inline in this loop.
+  let totalTaxableGrn = 0
+  let totalCgstGrn = 0
+  let totalSgstGrn = 0
+  let totalIgstGrn = 0
 
   for (const { type, row } of allRows) {
     const rm = row.p2_raw_materials
@@ -3279,32 +3302,55 @@ async function sendTallyExportIntent(
       const qty = row.quantity
       const amount = qty * rate
       const gstRate = rm.gst_rate ?? 0
-      const cgstRate = gstRate / 2
-      const sgstRate = gstRate / 2
-      const cgstAmount = (amount * cgstRate) / 100
-      const sgstAmount = (amount * sgstRate) / 100
-      const totalGst = cgstAmount + sgstAmount
+      const isInterstate = row.purchase_type === 'interstate'
+
+      let cgstRate: number | string = ''
+      let cgstAmount: number | string = ''
+      let sgstRate: number | string = ''
+      let sgstAmount: number | string = ''
+      let igstRate: number | string = ''
+      let igstAmount: number | string = ''
+
+      if (isInterstate) {
+        igstRate = gstRate
+        igstAmount = (amount * gstRate) / 100
+      } else {
+        cgstRate = gstRate / 2
+        sgstRate = gstRate / 2
+        cgstAmount = (amount * cgstRate) / 100
+        sgstAmount = (amount * sgstRate) / 100
+      }
+
+      const totalGst = (Number(cgstAmount) || 0) + (Number(sgstAmount) || 0) + (Number(igstAmount) || 0)
       const invoiceTotal = amount + totalGst
+
+      totalTaxableGrn += amount
+      totalCgstGrn += Number(cgstAmount) || 0
+      totalSgstGrn += Number(sgstAmount) || 0
+      totalIgstGrn += Number(igstAmount) || 0
 
       worksheet.addRow({
         date, material: rm.name, materialCode, hsnSac, transactionType: 'GRN (Purchase)',
         quantity: qty, unit: rm.unit, rate, amount,
-        cgstRate, cgstAmount, sgstRate, sgstAmount, igstRate: '', igstAmount: '',
+        cgstRate, cgstAmount, sgstRate, sgstAmount, igstRate, igstAmount,
         totalGst, invoiceTotal,
+        supplierName: row.supplier_name ?? '',
+        supplierGstin: row.p2_suppliers?.gstin ?? '',
+        supplierInvoiceNo: row.invoice_no ?? '',
       })
     } else if (type === 'consumption') {
       worksheet.addRow({
         date, material: rm.name, materialCode, hsnSac, transactionType: 'Consumption (Issue)',
         quantity: Math.abs(row.quantity), unit: rm.unit, rate: '', amount: '',
         cgstRate: '', cgstAmount: '', sgstRate: '', sgstAmount: '', igstRate: '', igstAmount: '',
-        totalGst: '', invoiceTotal: '',
+        totalGst: '', invoiceTotal: '', supplierName: '', supplierGstin: '', supplierInvoiceNo: '',
       })
     } else {
       worksheet.addRow({
         date, material: rm.name, materialCode, hsnSac, transactionType: 'Opening Stock',
         quantity: row.quantity, unit: rm.unit, rate: '', amount: '',
         cgstRate: '', cgstAmount: '', sgstRate: '', sgstAmount: '', igstRate: '', igstAmount: '',
-        totalGst: '', invoiceTotal: '',
+        totalGst: '', invoiceTotal: '', supplierName: '', supplierGstin: '', supplierInvoiceNo: '',
       })
     }
   }
@@ -3325,13 +3371,19 @@ async function sendTallyExportIntent(
     { header: 'SGST (₹)', key: 'sgst', width: 12, numFmt: '#,##0.00' },
     { header: 'IGST (₹)', key: 'igst', width: 12, numFmt: '#,##0.00' },
     { header: 'Total (₹)', key: 'total', width: 14, numFmt: '#,##0.00' },
+    { header: 'Client GSTIN', key: 'clientGstin', width: 16 },
+    { header: 'B2B / B2C', key: 'b2bB2c', width: 10 },
+    { header: 'Invoice Mode', key: 'invoiceModeCol', width: 14 },
   ]
 
-  invoiceSheet.getRow(1).eachCell((cell: any) => {
-    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
-    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFF5C1A' } }
-    cell.alignment = { horizontal: 'center', vertical: 'middle' }
-  })
+  styleHeaderRow(invoiceSheet.getRow(1))
+
+  // Running totals for the GST Summary sheet — sales side (output tax).
+  let totalTaxableSales = 0
+  let totalCgstSales = 0
+  let totalSgstSales = 0
+  let totalIgstSales = 0
+  let totalOutputTax = 0
 
   for (const inv of (invoiceResult.data ?? []) as unknown as TallyExportInvoiceRow[]) {
     const isConsolidated = inv.invoice_mode === 'consolidated'
@@ -3347,6 +3399,14 @@ async function sendTallyExportIntent(
     }
     // 'none' — all three stay blank
 
+    totalTaxableSales += Number(inv.amount_subtotal) || 0
+    totalCgstSales += Number(cgst) || 0
+    totalSgstSales += Number(sgst) || 0
+    totalIgstSales += Number(igst) || 0
+    totalOutputTax += gstAmount
+
+    const clientGstin = inv.client_gstin ?? ''
+
     invoiceSheet.addRow({
       invoiceNo: inv.invoice_number,
       date: formatDDMMYYYY(inv.created_at),
@@ -3357,10 +3417,66 @@ async function sendTallyExportIntent(
       subtotal: Number(inv.amount_subtotal) || 0,
       cgst, sgst, igst,
       total: Number(inv.amount_total) || 0,
+      clientGstin,
+      b2bB2c: clientGstin.trim() ? 'B2B' : 'B2C',
+      invoiceModeCol: inv.invoice_mode,
     })
   }
 
   invoiceSheet.views = [{ state: 'frozen', ySplit: 1 }]
+
+  // GST Summary — derived entirely from the totals accumulated in the two
+  // loops above (allRows for purchases/ITC, invoiceResult.data for sales/
+  // output tax). No new DB queries.
+  const gstSummarySheet = workbook.addWorksheet('GST Summary')
+  gstSummarySheet.columns = [
+    { key: 'label', width: 35 },
+    { key: 'value', width: 18 },
+  ]
+
+  const summaryTitleDate = effectiveFrom ? new Date(effectiveFrom) : new Date()
+  const summaryMonthYear = `${summaryTitleDate.toLocaleDateString('en-IN', { month: 'long' })} ${summaryTitleDate.getFullYear()}`
+
+  const summaryTitleRow = gstSummarySheet.addRow({ label: `GST SUMMARY — ${summaryMonthYear}`, value: '' })
+  gstSummarySheet.mergeCells(`A${summaryTitleRow.number}:B${summaryTitleRow.number}`)
+  styleHeaderRow(summaryTitleRow)
+
+  gstSummarySheet.addRow({})
+
+  const purchasesHeaderRow = gstSummarySheet.addRow({ label: 'PURCHASES (Input Tax Credit)', value: '' })
+  purchasesHeaderRow.getCell(1).font = { bold: true }
+
+  const addSummaryCurrencyRow = (label: string, value: number) => {
+    const row = gstSummarySheet.addRow({ label, value })
+    row.getCell(2).numFmt = '#,##0.00'
+    return row
+  }
+
+  addSummaryCurrencyRow('Total Taxable Value (Purchases)', totalTaxableGrn)
+  addSummaryCurrencyRow('Total CGST Paid', totalCgstGrn)
+  addSummaryCurrencyRow('Total SGST Paid', totalSgstGrn)
+  addSummaryCurrencyRow('Total IGST Paid', totalIgstGrn)
+  const totalItcClaimable = totalCgstGrn + totalSgstGrn + totalIgstGrn
+  addSummaryCurrencyRow('Total ITC Claimable', totalItcClaimable)
+
+  gstSummarySheet.addRow({})
+
+  const salesHeaderRow = gstSummarySheet.addRow({ label: 'SALES (Output Tax)', value: '' })
+  salesHeaderRow.getCell(1).font = { bold: true }
+
+  addSummaryCurrencyRow('Total Taxable Value (Sales)', totalTaxableSales)
+  addSummaryCurrencyRow('Total CGST Collected', totalCgstSales)
+  addSummaryCurrencyRow('Total SGST Collected', totalSgstSales)
+  addSummaryCurrencyRow('Total IGST Collected', totalIgstSales)
+  addSummaryCurrencyRow('Total Output Tax', totalOutputTax)
+
+  gstSummarySheet.addRow({})
+
+  const netGstPayable = totalOutputTax - totalItcClaimable
+  const netRow = addSummaryCurrencyRow('NET GST PAYABLE / (REFUNDABLE)', netGstPayable)
+  const netColor = netGstPayable >= 0 ? 'FFFF5C1A' : 'FF22D87A'
+  netRow.getCell(1).font = { bold: true, color: { argb: netColor } }
+  netRow.getCell(2).font = { bold: true, color: { argb: netColor } }
 
   const buffer = await workbook.xlsx.writeBuffer()
   const base64 = encodeBase64(new Uint8Array(buffer))
@@ -4177,6 +4293,7 @@ async function confirmReceiveGrn(
       supplier_id: matchedSupplier?.id ?? null,
       supplier_name: senderCompanyName,
       rate: m.rate,
+      invoice_no: invoiceNo,
       reference_id: null,
     })))
 

@@ -190,6 +190,7 @@
                                         <th data-en="Unit" data-mr="एकक">Unit</th>
                                         <th data-en="Rate (Rs)" data-mr="दर (Rs)">Rate (Rs)</th>
                                         <th data-en="Invoice No" data-mr="चलान क्र">Invoice No</th>
+                                        <th data-en="Purchase Type" data-mr="खरेदी प्रकार">Purchase Type</th>
                                         <th data-en="Action" data-mr="कृती" style="text-align:center;">Del</th>
                                     </tr>
                                 </thead>
@@ -510,7 +511,7 @@
         }
 
         function addGRNRow() {
-            grnRows.push({ id: Date.now(), material_id: '', quantity: '', unit: '', rate: '', invoice_no: '' });
+            grnRows.push({ id: Date.now(), material_id: '', quantity: '', unit: '', rate: '', invoice_no: '', purchase_type: 'intrastate' });
             renderGRNRows();
         }
 
@@ -542,9 +543,21 @@
                 rInput.addEventListener('input', e => { row.rate = e.target.value; });
 
                 const iInput = document.createElement('input');
-                iInput.type='text'; iInput.value=row.invoice_no; iInput.placeholder='Optional';
+                iInput.type='text'; iInput.value=row.invoice_no; iInput.placeholder='Required';
                 iInput.className='grn-row-input';
                 iInput.addEventListener('input', e => { row.invoice_no = e.target.value; });
+
+                const ptSelect = document.createElement('select');
+                ptSelect.className='grn-row-input';
+                const ptIntra = document.createElement('option');
+                ptIntra.value='intrastate'; ptIntra.textContent='Intrastate (CGST+SGST)';
+                ptIntra.setAttribute('data-en','Intrastate (CGST+SGST)'); ptIntra.setAttribute('data-mr','राज्यांतर्गत (CGST+SGST)');
+                const ptInter = document.createElement('option');
+                ptInter.value='interstate'; ptInter.textContent='Interstate (IGST)';
+                ptInter.setAttribute('data-en','Interstate (IGST)'); ptInter.setAttribute('data-mr','आंतरराज्यीय (IGST)');
+                ptSelect.appendChild(ptIntra); ptSelect.appendChild(ptInter);
+                ptSelect.value = row.purchase_type || 'intrastate';
+                ptSelect.addEventListener('change', e => { row.purchase_type = e.target.value; });
 
                 const rmBtn = document.createElement('button');
                 rmBtn.type='button'; rmBtn.textContent='x'; rmBtn.className='nx-btn nx-btn-danger nx-btn-sm';
@@ -556,10 +569,11 @@
                 const td3=document.createElement('td'); td3.style.padding='8px 8px';  td3.appendChild(uInput);
                 const td4=document.createElement('td'); td4.style.padding='8px 8px';  td4.appendChild(rInput);
                 const td5=document.createElement('td'); td5.style.padding='8px 8px';  td5.appendChild(iInput);
-                const td6=document.createElement('td'); td6.style.padding='8px 12px'; td6.style.textAlign='center'; td6.appendChild(rmBtn);
+                const td6=document.createElement('td'); td6.style.padding='8px 8px';  td6.appendChild(ptSelect);
+                const td7=document.createElement('td'); td7.style.padding='8px 12px'; td7.style.textAlign='center'; td7.appendChild(rmBtn);
 
                 tr.appendChild(td1); tr.appendChild(td2); tr.appendChild(td3);
-                tr.appendChild(td4); tr.appendChild(td5); tr.appendChild(td6);
+                tr.appendChild(td4); tr.appendChild(td5); tr.appendChild(td6); tr.appendChild(td7);
                 tbody.appendChild(tr);
             });
             applyLang(localStorage.getItem('nexflow_lang') || 'en');
@@ -583,6 +597,7 @@
                 if (!row.quantity || row.quantity === '') { toast(lang==='mr' ? 'ओळ '+(i+1)+': कृपया परिमाण प्रविष्ट करा' : 'Row '+(i+1)+': Please enter quantity', 'error'); hasError=true; break; }
                 const qty = parseFloat(row.quantity);
                 if (isNaN(qty) || qty <= 0) { toast(lang==='mr' ? 'ओळ '+(i+1)+': परिमाण ० पेक्षा जास्त असणे आवश्यक आहे' : 'Row '+(i+1)+': Quantity must be greater than 0', 'error'); hasError=true; break; }
+                if (!row.invoice_no || !row.invoice_no.trim()) { toast(lang==='mr' ? 'GST नोंदींसाठी पुरवठादार चलान क्रमांक आवश्यक आहे.' : 'Supplier invoice number is required for GST records.', 'error'); hasError=true; break; }
             }
             if (hasError) return;
 
@@ -611,6 +626,7 @@
                     rate: row.rate !== '' ? parseFloat(row.rate) : null,
                     supplier_id: supplierId, supplier_name: supplierName,
                     transaction_date: grnDate, invoice_no: row.invoice_no || null,
+                    purchase_type: row.purchase_type || 'intrastate',
                     grn_no: grnNo
                 }));
 
