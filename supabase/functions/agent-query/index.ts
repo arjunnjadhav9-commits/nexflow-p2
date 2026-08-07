@@ -228,6 +228,7 @@ type HaikuIntent =
   | 'top_supplier'
   | 'invoice_total'
   | 'invoice_detail'
+  | 'grn_completeness'
   | 'unknown'
 
 interface GrnItem {
@@ -250,8 +251,8 @@ interface HaikuResult {
     product_name?: string // stock_check_product, product_code_lookup, bom_detail
     quantity?: number // stock_check_product — how many units to produce
     top_n?: number // top_consumption, top_received — how many to show, default 5
-    date_from?: string // send_tally_export, send_invoice, invoice_total — YYYY-MM-DD, absent means all-time / single-dispatch mode
-    date_to?: string // send_tally_export, send_invoice, invoice_total — YYYY-MM-DD; if date_from is set but this isn't, defaults to today (send_tally_export only)
+    date_from?: string // send_tally_export, send_invoice, invoice_total, grn_completeness — YYYY-MM-DD, absent means all-time / single-dispatch mode (grn_completeness: absent means current calendar month)
+    date_to?: string // send_tally_export, send_invoice, invoice_total, grn_completeness — YYYY-MM-DD; if date_from is set but this isn't, defaults to today (send_tally_export only)
     client_name?: string // send_invoice, invoice_total
     invoice_number?: string // invoice_detail only
   }
@@ -1260,6 +1261,16 @@ Classify the message as one of:
   - "MS Sheet 50 kg dispatch karo" -> { "items": [{ "material_name": "MS Sheet", "quantity": 50, "unit": "kg" }] }
   - "Hex Bolt 100 ani Bearing 20 pathav" -> { "items": [{ "material_name": "Hex Bolt", "quantity": 100 }, { "material_name": "Bearing", "quantity": 20 }] }
   IMPORTANT: "aala"/"aali"/"kadun aale" = incoming = create_grn. "pathva"/"dispatch karo"/"send karo" = outgoing = create_rm_dispatch. Never confuse direction — this is the opposite of create_grn.
+- "grn_completeness" — user asks whether this month's (or another period's) GRNs have all their supplier invoice numbers filled in / are complete for CA export. This is a READ — it only reports counts, it does not send or generate anything (do not confuse with send_tally_export).
+  extracted fields: { "date_from"?: string (YYYY-MM-DD), "date_to"?: string (YYYY-MM-DD) }
+  Rules:
+  - Same date resolution rules as send_tally_export/invoice_total: bare month names ("July"), "this month", "last month" resolve to a full calendar range using "Today's date" above.
+  - If the user names no period at all, omit both fields — the system defaults to the current calendar month.
+  Examples (assuming Today's date above is 2026-08-07):
+  - "This month cha GRN complete aahe ka?" -> {}
+  - "GRN complete aahe ka?" -> {}
+  - "July cha GRN complete aahe ka?" -> { "date_from": "2026-07-01", "date_to": "2026-07-31" }
+  - "Last month cha GRN sagle invoice number aahet ka?" -> { "date_from": "2026-06-01", "date_to": "2026-06-30" }
 - "unknown" — neither intent fits.
   extracted fields: {}
 
@@ -1269,7 +1280,7 @@ Examples of correct create_grn extraction from mixed Hinglish/Marathi messages:
 - Message: "steel sheet 200 kg Sharma Traders ne bheja" -> extracted: { "items": [{ "material_name": "steel sheet", "quantity": 200, "unit": "kg" }], "supplier_name": "Sharma Traders" }
 
 Respond with ONLY valid JSON, no markdown code fences, no preamble, no explanation. The response must match exactly this shape:
-{ "intent": "check_stock" | "create_grn" | "create_production_issue" | "create_product_dispatch" | "create_rm_dispatch" | "recent_grn" | "consumption_summary" | "supplier_history" | "low_stock_list" | "grn_detail" | "pending_dispatches" | "grn_summary" | "top_consumption" | "material_list" | "stock_check_product" | "zero_stock_list" | "dispatch_summary" | "supplier_delivery_check" | "challan_detail" | "issue_summary" | "product_code_lookup" | "top_received" | "product_list" | "supplier_list" | "dispatch_detail" | "issue_detail" | "send_challan" | "send_tally_export" | "send_invoice" | "bom_detail" | "top_supplier" | "invoice_total" | "invoice_detail" | "unknown", "extracted": { ...fields... } }`
+{ "intent": "check_stock" | "create_grn" | "create_production_issue" | "create_product_dispatch" | "create_rm_dispatch" | "recent_grn" | "consumption_summary" | "supplier_history" | "low_stock_list" | "grn_detail" | "pending_dispatches" | "grn_summary" | "top_consumption" | "material_list" | "stock_check_product" | "zero_stock_list" | "dispatch_summary" | "supplier_delivery_check" | "challan_detail" | "issue_summary" | "product_code_lookup" | "top_received" | "product_list" | "supplier_list" | "dispatch_detail" | "issue_detail" | "send_challan" | "send_tally_export" | "send_invoice" | "bom_detail" | "top_supplier" | "invoice_total" | "invoice_detail" | "grn_completeness" | "unknown", "extracted": { ...fields... } }`
 
   try {
     const response = await anthropicClient.messages.create({
@@ -1975,6 +1986,44 @@ async function executeQuery(
     const totalFormatted = total.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
     return `💰 ${client.name}${periodLabel}\nTotal Billed: ₹${totalFormatted}\nInvoices: ${rows.length}`
+  }
+
+  if (intent === 'grn_completeness') {
+    const validFrom = extracted.date_from && TALLY_EXPORT_DATE_RE.test(extracted.date_from) ? extracted.date_from : undefined
+    const validTo = extracted.date_to && TALLY_EXPORT_DATE_RE.test(extracted.date_to) ? extracted.date_to : undefined
+
+    // No period given -> default to the current calendar month (IST), same
+    // first/last-of-month computation grn.html's Month-End Check modal uses.
+    const todayISO = getISTDateRange(0).since.split('T')[0]
+    const [todayYear, todayMonth] = todayISO.split('-').map(Number)
+    const firstOfMonth = `${todayYear}-${String(todayMonth).padStart(2, '0')}-01`
+    const lastDay = new Date(todayYear, todayMonth, 0).getDate()
+    const lastOfMonth = `${todayYear}-${String(todayMonth).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
+
+    const dateFrom = validFrom ?? firstOfMonth
+    const dateTo = validTo ?? lastOfMonth
+
+    const { data, error } = await supabaseClient
+      .from('p2_stock_transactions')
+      .select('invoice_no')
+      .eq('tenant_id', tenantId)
+      .eq('transaction_type', 'grn')
+      .gte('transaction_date', dateFrom)
+      .lte('transaction_date', dateTo)
+
+    if (error) return 'Could not fetch GRN completeness.'
+
+    const rows = (data ?? []) as { invoice_no: string | null }[]
+    const total = rows.length
+    const missing = rows.filter((r) => !r.invoice_no || !r.invoice_no.trim()).length
+    // timeZone explicit: the edge runtime's default local zone is not IST,
+    // and toLocaleDateString without it renders the wrong calendar month
+    // whenever the IST midnight instant crosses a UTC day boundary.
+    const monthLabel = new Date(dateFrom + 'T00:00:00+05:30').toLocaleDateString('en-IN', { month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' })
+
+    if (total === 0) return `ℹ️ ${monthLabel} madhe konta GRN nahi.`
+    if (missing === 0) return `✅ ${monthLabel} madhe ${total} GRNs aahit — sagle invoice numbers entered aahit. CA export pathavayala ready aahe.`
+    return `⚠️ ${monthLabel} madhe ${total} GRNs aahit, ${missing} rows la invoice number nahi. CA export pathavnyapurvi Month-End Check madhe bagha.`
   }
 
   if (intent === 'low_stock_list') {
@@ -4925,6 +4974,7 @@ Deno.serve(async (req) => {
       'top_supplier',
       'invoice_total',
       'invoice_detail',
+      'grn_completeness',
     ]
 
     if (READ_ONLY_INTENTS.includes(haikuResult.intent)) {

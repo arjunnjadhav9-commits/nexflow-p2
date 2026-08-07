@@ -1116,7 +1116,7 @@
         'challan_detail', 'issue_summary', 'product_code_lookup',
         'top_received', 'product_list', 'supplier_list', 'dispatch_detail',
         'issue_detail', 'bom_detail', 'top_supplier',
-        'invoice_total', 'invoice_detail'
+        'invoice_total', 'invoice_detail', 'grn_completeness'
       ];
       if (READ_ONLY_TEXT_INTENTS.includes(data.intent)) {
         // Informational only — no write, no confirm button needed.
