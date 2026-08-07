@@ -138,6 +138,7 @@ interface InvoiceItem {
   unit: string
   rate: number
   amount: number
+  hsn_sac: string
 }
 
 interface RawMaterial {
@@ -3126,6 +3127,7 @@ interface TallyExportInvoiceRow {
   amount_total: number
   gst_type: string
   client_gstin: string | null
+  items: { hsn_sac?: string }[] | null
 }
 
 const TALLY_EXPORT_JOIN_COLUMNS =
@@ -3231,7 +3233,7 @@ async function sendTallyExportIntent(
     applyInvoiceRange(
       supabaseClient
         .from('p2_invoices')
-        .select('invoice_number, created_at, client_name, invoice_mode, date_from, date_to, amount_subtotal, amount_gst, amount_total, gst_type, client_gstin')
+        .select('invoice_number, created_at, client_name, invoice_mode, date_from, date_to, amount_subtotal, amount_gst, amount_total, gst_type, client_gstin, items')
         .eq('tenant_id', tenantId)
         .order('created_at', { ascending: true })
     ),
@@ -3374,6 +3376,7 @@ async function sendTallyExportIntent(
     { header: 'Client GSTIN', key: 'clientGstin', width: 16 },
     { header: 'B2B / B2C', key: 'b2bB2c', width: 10 },
     { header: 'Invoice Mode', key: 'invoiceModeCol', width: 14 },
+    { header: 'HSN Codes', key: 'hsnCodes', width: 18 },
   ]
 
   styleHeaderRow(invoiceSheet.getRow(1))
@@ -3406,6 +3409,14 @@ async function sendTallyExportIntent(
     totalOutputTax += gstAmount
 
     const clientGstin = inv.client_gstin ?? ''
+    // Comma-separated unique HSN codes across line items — a single "HSN"
+    // column would only show one item's code, which is wrong for
+    // consolidated invoices spanning multiple materials/products.
+    // Pre-hsn_sac invoices have no hsn_sac on their items snapshot at all —
+    // those blank out here rather than being back-filled.
+    const hsnCodes = [
+      ...new Set((inv.items ?? []).map((item) => item.hsn_sac ?? '').filter((code) => code.trim())),
+    ].join(', ')
 
     invoiceSheet.addRow({
       invoiceNo: inv.invoice_number,
@@ -3420,6 +3431,7 @@ async function sendTallyExportIntent(
       clientGstin,
       b2bB2c: clientGstin.trim() ? 'B2B' : 'B2C',
       invoiceModeCol: inv.invoice_mode,
+      hsnCodes,
     })
   }
 
@@ -3671,36 +3683,49 @@ async function buildInvoiceItemsForOrder(
   const itemRows = items as ItemRow[]
 
   // Same batched p2_products lookup as receive-dispatch/sendChallanIntent —
-  // product dispatch items have NULL material_name at the DB level.
-  const missingProductIds = [
-    ...new Set(itemRows.filter((it) => !it.material_name && it.product_id).map((it) => it.product_id as string)),
-  ]
-  const productsById = new Map<string, { name: string | null }>()
-  if (missingProductIds.length) {
+  // product dispatch items have NULL material_name at the DB level. All
+  // product items (not just those missing a name) need this for hsn_sac.
+  const productIdsForLookup = [...new Set(itemRows.map((it) => it.product_id).filter(Boolean))] as string[]
+  const productsById = new Map<string, { name: string | null; hsn_sac: string | null }>()
+  if (productIdsForLookup.length) {
     const { data: products, error: productsError } = await supabaseClient
       .from('p2_products')
-      .select('id, name')
+      .select('id, name, hsn_sac')
       .eq('tenant_id', tenantId)
-      .in('id', missingProductIds)
+      .in('id', productIdsForLookup)
     if (productsError) {
       return { error: 'Product details load karta aale nahi.' }
     }
-    for (const p of (products ?? []) as { id: string; name: string | null }[]) {
-      productsById.set(p.id, { name: p.name })
+    for (const p of (products ?? []) as { id: string; name: string | null; hsn_sac: string | null }[]) {
+      productsById.set(p.id, { name: p.name, hsn_sac: p.hsn_sac })
     }
   }
 
   const materialIds = [...new Set(itemRows.map((it) => it.raw_material_id).filter(Boolean))] as string[]
   const materialPriceById = new Map<string, number>()
+  const hsnByMaterialId = new Map<string, string | null>()
   if (materialIds.length) {
-    const { data: prices } = await supabaseClient
-      .from('p2_material_prices')
-      .select('raw_material_id, price_per_unit, effective_date')
-      .eq('tenant_id', tenantId)
-      .in('raw_material_id', materialIds)
-      .order('effective_date', { ascending: false })
+    const [{ data: prices }, { data: materials, error: materialsError }] = await Promise.all([
+      supabaseClient
+        .from('p2_material_prices')
+        .select('raw_material_id, price_per_unit, effective_date')
+        .eq('tenant_id', tenantId)
+        .in('raw_material_id', materialIds)
+        .order('effective_date', { ascending: false }),
+      supabaseClient
+        .from('p2_raw_materials')
+        .select('id, hsn_sac')
+        .eq('tenant_id', tenantId)
+        .in('id', materialIds),
+    ])
+    if (materialsError) {
+      return { error: 'Material details load karta aale nahi.' }
+    }
     for (const p of (prices ?? []) as { raw_material_id: string; price_per_unit: number }[]) {
       if (!materialPriceById.has(p.raw_material_id)) materialPriceById.set(p.raw_material_id, p.price_per_unit)
+    }
+    for (const m of (materials ?? []) as { id: string; hsn_sac: string | null }[]) {
+      hsnByMaterialId.set(m.id, m.hsn_sac)
     }
   }
 
@@ -3726,6 +3751,11 @@ async function buildInvoiceItemsForOrder(
       : it.raw_material_id
         ? Number(materialPriceById.get(it.raw_material_id) ?? 0)
         : 0
+    const hsnSac = it.product_id
+      ? product?.hsn_sac ?? ''
+      : it.raw_material_id
+        ? hsnByMaterialId.get(it.raw_material_id) ?? ''
+        : ''
     return {
       challan_number: order.challan_number,
       dispatch_date: order.dispatch_date,
@@ -3734,6 +3764,7 @@ async function buildInvoiceItemsForOrder(
       unit: it.unit,
       rate,
       amount: qty * rate,
+      hsn_sac: hsnSac ?? '',
     }
   })
 
@@ -4401,7 +4432,7 @@ async function confirmGenerateInvoice(
 
   const { data: items, error: itemsError } = await supabaseClient
     .from('p2_dispatch_items')
-    .select('id, material_name, material_code, qty_dispatched, unit, product_id')
+    .select('id, material_name, material_code, qty_dispatched, unit, raw_material_id, product_id')
     .eq('dispatch_order_id', dispatch_order_id)
     .eq('tenant_id', tenant_id)
 
@@ -4409,26 +4440,41 @@ async function confirmGenerateInvoice(
     return respond({ status: 'error', error: itemsError?.message ?? 'No dispatch items found' }, 400)
   }
 
-  type ItemRow = { id: string; material_name: string | null; material_code: string | null; qty_dispatched: number; unit: string; product_id: string | null }
+  type ItemRow = { id: string; material_name: string | null; material_code: string | null; qty_dispatched: number; unit: string; raw_material_id: string | null; product_id: string | null }
   const itemRows = items as ItemRow[]
 
   // Same batched p2_products lookup as receive-dispatch/sendChallanIntent —
-  // product dispatch items have NULL material_name at the DB level.
-  const missingProductIds = [
-    ...new Set(itemRows.filter((it) => !it.material_name && it.product_id).map((it) => it.product_id as string)),
-  ]
-  const productsById = new Map<string, { name: string | null }>()
-  if (missingProductIds.length) {
+  // product dispatch items have NULL material_name at the DB level. All
+  // product items (not just those missing a name) need this for hsn_sac.
+  const productIdsForLookup = [...new Set(itemRows.map((it) => it.product_id).filter(Boolean))] as string[]
+  const productsById = new Map<string, { name: string | null; hsn_sac: string | null }>()
+  if (productIdsForLookup.length) {
     const { data: products, error: productsError } = await supabaseClient
       .from('p2_products')
-      .select('id, name')
+      .select('id, name, hsn_sac')
       .eq('tenant_id', tenant_id)
-      .in('id', missingProductIds)
+      .in('id', productIdsForLookup)
     if (productsError) {
       return respond({ status: 'error', error: productsError.message }, 500)
     }
-    for (const p of (products ?? []) as { id: string; name: string | null }[]) {
-      productsById.set(p.id, { name: p.name })
+    for (const p of (products ?? []) as { id: string; name: string | null; hsn_sac: string | null }[]) {
+      productsById.set(p.id, { name: p.name, hsn_sac: p.hsn_sac })
+    }
+  }
+
+  const rawMaterialIdsForLookup = [...new Set(itemRows.map((it) => it.raw_material_id).filter(Boolean))] as string[]
+  const hsnByMaterialId = new Map<string, string | null>()
+  if (rawMaterialIdsForLookup.length) {
+    const { data: materials, error: materialsError } = await supabaseClient
+      .from('p2_raw_materials')
+      .select('id, hsn_sac')
+      .eq('tenant_id', tenant_id)
+      .in('id', rawMaterialIdsForLookup)
+    if (materialsError) {
+      return respond({ status: 'error', error: materialsError.message }, 500)
+    }
+    for (const m of (materials ?? []) as { id: string; hsn_sac: string | null }[]) {
+      hsnByMaterialId.set(m.id, m.hsn_sac)
     }
   }
 
@@ -4438,6 +4484,11 @@ async function confirmGenerateInvoice(
     const product = it.product_id ? productsById.get(it.product_id) : undefined
     const qty = Number(it.qty_dispatched) || 0
     const rate = Number(rateById.get(it.id)) || 0
+    const hsnSac = it.product_id
+      ? product?.hsn_sac ?? ''
+      : it.raw_material_id
+        ? hsnByMaterialId.get(it.raw_material_id) ?? ''
+        : ''
     return {
       challan_number: order.challan_number,
       dispatch_date: order.dispatch_date,
@@ -4446,6 +4497,7 @@ async function confirmGenerateInvoice(
       unit: it.unit,
       rate,
       amount: qty * rate,
+      hsn_sac: hsnSac ?? '',
     }
   })
 
