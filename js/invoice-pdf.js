@@ -133,7 +133,7 @@
 
     function getColumns(mode) {
         if (mode === 'consolidated') {
-            const fixed = { sr: 10, challan: 24, date: 18, qty: 14, unit: 12, rate: 22, amount: 26 };
+            const fixed = { sr: 10, challan: 24, date: 18, qty: 14, unit: 12, sac: 16, rate: 22, amount: 26 };
             const desc = CW - Object.values(fixed).reduce((a, b) => a + b, 0);
             return [
                 { key: 'sr',      label: 'SR',          w: fixed.sr,      align: 'center' },
@@ -142,17 +142,19 @@
                 { key: 'desc',    label: 'DESCRIPTION', w: desc,          align: 'left' },
                 { key: 'qty',     label: 'QTY',         w: fixed.qty,     align: 'right' },
                 { key: 'unit',    label: 'UNIT',        w: fixed.unit,    align: 'center' },
+                { key: 'sac',     label: 'SAC CODE',    w: fixed.sac,     align: 'center' },
                 { key: 'rate',    label: 'RATE',        w: fixed.rate,    align: 'right' },
                 { key: 'amount',  label: 'AMOUNT',      w: fixed.amount,  align: 'right' },
             ];
         }
-        const fixed = { sr: 10, qty: 18, unit: 16, rate: 24, amount: 28 };
+        const fixed = { sr: 10, qty: 18, unit: 16, sac: 16, rate: 24, amount: 28 };
         const desc = CW - Object.values(fixed).reduce((a, b) => a + b, 0);
         return [
             { key: 'sr',     label: 'SR',          w: fixed.sr,     align: 'center' },
             { key: 'desc',   label: 'DESCRIPTION', w: desc,         align: 'left' },
             { key: 'qty',    label: 'QTY',         w: fixed.qty,    align: 'right' },
             { key: 'unit',   label: 'UNIT',        w: fixed.unit,   align: 'center' },
+            { key: 'sac',    label: 'SAC CODE',    w: fixed.sac,    align: 'center' },
             { key: 'rate',   label: 'RATE',        w: fixed.rate,   align: 'right' },
             { key: 'amount', label: 'AMOUNT',      w: fixed.amount, align: 'right' },
         ];
@@ -253,6 +255,8 @@
      * @param {string} [p.bankAccount]
      * @param {string} [p.bankIfsc]
      * @param {boolean} [p.isCancelled]
+     * @param {string} [p.sacCode]           SAC code for all line items
+     * @param {string} [p.placeOfSupply]     derived from client address
      * @returns {Promise<string>} base64 PDF, no data-URI prefix
      */
     async function buildInvoicePdf(p) {
@@ -291,8 +295,19 @@
         // 2 ── title band
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(15);
-        doc.text('INVOICE', PAGE_W / 2, y + 8.5, { align: 'center' });
-        y += 12;
+        doc.text('TAX INVOICE', PAGE_W / 2, y + 8, { align: 'center' });
+        y += 11;
+        // copy labels — right-aligned, small
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7);
+        doc.text('Original for Recipient', M + CW, y - 7, { align: 'right' });
+        doc.text('Duplicate for Supplier / Transporter', M + CW, y - 3.5, { align: 'right' });
+        doc.text('Triplicate for Supplier', M + CW, y, { align: 'right' });
+        // reverse charge
+        doc.setFontSize(8);
+        doc.text('Reverse Charge: No', M + 4, y);
+        y += 3;
+        doc.setLineWidth(0.5);
         doc.line(M, y, M + CW, y);
 
         // 3 ── invoice no / date / period
@@ -318,26 +333,39 @@
         y = iy + 5;
         doc.setLineWidth(0.5);
         doc.line(M, y, M + CW, y);
+        y += 1;
 
-        // 4 ── bill to
-        let by = y + 6;
+        // 4 ── receiver / consignee (two columns) + place of supply
+        const halfW = CW / 2 - 4;
+        let by = y + 5;
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(8.5);
-        doc.text('BILL TO:', M + 4, by);
-        by += LINE_H + 0.6;
-        doc.setFontSize(10);
+        doc.setFontSize(8);
+        doc.text('Details of Receiver', M + 4, by);
+        doc.text('Details of Consignee', M + CW / 2 + 4, by);
+        by += LINE_H;
+        doc.setFontSize(9.5);
         doc.text(sanitize(p.clientName || 'N/A'), M + 4, by);
+        doc.text(sanitize(p.clientName || 'N/A'), M + CW / 2 + 4, by);
         doc.setFont('helvetica', 'normal');
-        doc.setFontSize(9);
+        doc.setFontSize(8.5);
+        let byLeft = by, byRight = by;
         if (p.clientAddress) {
-            doc.splitTextToSize(sanitize(p.clientAddress), CW - 8).forEach((line) => {
-                by += LINE_H;
-                doc.text(line, M + 4, by);
-            });
+            const leftLines = doc.splitTextToSize(sanitize(p.clientAddress), halfW);
+            leftLines.forEach((line) => { byLeft += LINE_H; doc.text(line, M + 4, byLeft); });
+            const rightLines = doc.splitTextToSize(sanitize(p.clientAddress), halfW);
+            rightLines.forEach((line) => { byRight += LINE_H; doc.text(line, M + CW / 2 + 4, byRight); });
         }
         if (p.clientGstin) {
+            byLeft += LINE_H;
+            doc.text('GSTIN: ' + sanitize(p.clientGstin), M + 4, byLeft);
+            byRight += LINE_H;
+            doc.text('GSTIN: ' + sanitize(p.clientGstin), M + CW / 2 + 4, byRight);
+        }
+        by = Math.max(byLeft, byRight);
+        if (p.placeOfSupply) {
             by += LINE_H;
-            doc.text('GSTIN: ' + sanitize(p.clientGstin), M + 4, by);
+            doc.setFontSize(8);
+            doc.text('Place of Supply: ' + sanitize(p.placeOfSupply), M + 4, by);
         }
         y = by + 4;
         doc.setLineWidth(0.5);
@@ -377,6 +405,7 @@
                 date: item.dispatchDateFormatted || '—',
                 qty: sanitize(item.qty),
                 unit: sanitize(item.unit),
+                sac: sanitize(p.sacCode || ''),
                 rate: 'Rs. ' + fmtAmount(item.rate),
                 amount: 'Rs. ' + fmtAmount(item.amount),
             };

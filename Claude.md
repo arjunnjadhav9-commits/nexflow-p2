@@ -35,7 +35,8 @@ Mobile-first: owners use phones. Must work on mobile browser.
 - p2_tenant_settings — company name, address, logo_url, challan_sequence, GSTIN,
   challan_mode, agent_tier, agent_interactions_today, agent_reset_date, ca_email, agent_enabled,
   email (used as reply_to for challan emails — tell owners to fill this in Settings),
-  invoice_sequence, bank_name, bank_account, bank_ifsc (added July 30 — invoice feature)
+  invoice_sequence, bank_name, bank_account, bank_ifsc (added July 30 — invoice feature),
+  sac_code (added Aug 7 — SAC code printed on every invoice PDF line item, tax invoice format)
 - p2_raw_materials — raw material master (name, unit, min_stock_level, is_active, material_code)
 - p2_suppliers — supplier master (is_active — CSV-imported suppliers default to
   is_active=false, invisible in dropdowns/matching unless checked)

@@ -217,6 +217,12 @@
                         <input type="text" id="bank-ifsc" name="bank_ifsc" class="nx-input" placeholder="Enter IFSC code" data-en="Enter IFSC code" data-mr="आयएफएससी कोड प्रविष्ट करा">
                     </div>
                 </div>
+                <div class="nx-form-group">
+                    <label data-en="SAC Code" data-mr="एसएसी कोड">SAC Code</label>
+                    <input type="text" id="sac-code" name="sac_code" class="nx-input"
+                           placeholder="e.g. 998898"
+                           data-en="e.g. 998898" data-mr="उदा. 998898">
+                </div>
                 <div style="position:relative; display:inline-block; width:100%;">
                     <button type="submit" id="saveCompanyBtn" class="nx-btn nx-btn-primary nx-btn-full" data-en="Save Company Details" data-mr="कंपनी तपशील साठवा">
                         Save Company Details
@@ -1052,6 +1058,7 @@
                 document.getElementById('bank-name').value       = data.bank_name || '';
                 document.getElementById('bank-account').value    = data.bank_account || '';
                 document.getElementById('bank-ifsc').value       = data.bank_ifsc || '';
+                document.getElementById('sac-code').value        = data.sac_code || '';
                 document.getElementById('challan-sequence').value  = data.challan_sequence || 1001;
                 document.getElementById('grn-sequence').value      = data.grn_sequence || '';
                 document.getElementById('telegram-chat-id').value  = data.telegram_chat_id || '';
@@ -1079,6 +1086,7 @@
         const bankName     = document.getElementById('bank-name').value.trim();
         const bankAccount  = document.getElementById('bank-account').value.trim();
         const bankIfsc     = document.getElementById('bank-ifsc').value.trim();
+        const sacCode      = document.getElementById('sac-code').value.trim();
 
         try {
             const { data: { user } } = await window.supabase.auth.getUser();
@@ -1089,7 +1097,7 @@
                 tenant_id: tenantId, company_name: companyName,
                 address_line1: addressLine1, address_line2: addressLine2,
                 mobile: mobile, gstin: gstin,
-                bank_name: bankName, bank_account: bankAccount, bank_ifsc: bankIfsc
+                bank_name: bankName, bank_account: bankAccount, bank_ifsc: bankIfsc, sac_code: sacCode
             }, { onConflict: 'tenant_id' });
 
             if (error) throw error;

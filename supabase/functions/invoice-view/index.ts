@@ -85,6 +85,7 @@ Deno.serve(async (req) => {
         bank_name: settings?.bank_name ?? null,
         bank_account: settings?.bank_account ?? null,
         bank_ifsc: settings?.bank_ifsc ?? null,
+        sac_code: settings?.sac_code ?? null,
       },
     }, 200)
 
