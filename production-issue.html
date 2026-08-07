@@ -1269,6 +1269,17 @@ async function submitIssue() {
     }
   }
 
+  if (error && /INSUFFICIENT_STOCK/.test(error.message || '')) {
+    const detailMatch = /INSUFFICIENT_STOCK: (.+?) — Need ([\d.]+), Available ([\d.]+)/.exec(error.message);
+    const detail = detailMatch
+      ? `"${detailMatch[1]}" — ${t('need', 'गरज')} ${detailMatch[2]}, ${t('available', 'उपलब्ध')} ${detailMatch[3]}`
+      : error.message;
+    toast(t('Not enough stock: ', 'पुरेसा स्टॉक नाही: ') + detail, 'error');
+    confirmBtn.disabled = false;
+    if (btnLabel) btnLabel.textContent = t('Confirm Issue', 'इश्यू पुष्टी करा');
+    return;
+  }
+
   if (error) {
     toast(t('Issue failed: ', 'इश्यू अयशस्वी: ') + error.message, 'error');
     confirmBtn.disabled = false;
