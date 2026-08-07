@@ -3198,12 +3198,13 @@ function monthAbbr(d: Date): string {
   return d.toLocaleDateString('en-IN', { month: 'short' })
 }
 
-// send_tally_export orchestrator — builds the 17-column GST workbook (GRN,
-// consumption, opening stock), optionally scoped to a date range, and emails
-// it as an XLSX attachment to ca_email. Executes immediately, no confirm
-// gate. Not in READ_ONLY_INTENTS on purpose (mirrors sendChallanIntent) —
-// this is a write (sends an email) even though it never touches the DB
-// beyond reading.
+// send_tally_export orchestrator — builds the 17-column GST workbook (GRN
+// purchases, opening stock — consumption intentionally excluded, CA only
+// needs purchases and invoices), optionally scoped to a date range, and
+// emails it as an XLSX attachment to ca_email. Executes immediately, no
+// confirm gate. Not in READ_ONLY_INTENTS on purpose (mirrors
+// sendChallanIntent) — this is a write (sends an email) even though it
+// never touches the DB beyond reading.
 async function sendTallyExportIntent(
   supabaseClient: ReturnType<typeof createClient>,
   tenantId: string,
@@ -3256,20 +3257,13 @@ async function sendTallyExportIntent(
     return q
   }
 
-  const [grnResult, consumptionResult, openingResult, invoiceResult] = await Promise.all([
+  const [grnResult, openingResult, invoiceResult] = await Promise.all([
     applyRange(
       supabaseClient
         .from('p2_stock_transactions')
         .select(TALLY_EXPORT_JOIN_COLUMNS)
         .eq('tenant_id', tenantId)
         .eq('transaction_type', 'grn')
-    ),
-    applyRange(
-      supabaseClient
-        .from('p2_stock_transactions')
-        .select(TALLY_EXPORT_JOIN_COLUMNS)
-        .eq('tenant_id', tenantId)
-        .eq('transaction_type', 'consumption')
     ),
     applyRange(
       supabaseClient
@@ -3288,26 +3282,25 @@ async function sendTallyExportIntent(
     ),
   ])
 
-  if (grnResult.error || consumptionResult.error || openingResult.error || invoiceResult.error) {
+  if (grnResult.error || openingResult.error || invoiceResult.error) {
     return {
       text: '❌ Export tayar karta aala nahi.',
       success: false,
       errorReason:
-        grnResult.error?.message ?? consumptionResult.error?.message ?? openingResult.error?.message ?? invoiceResult.error?.message ?? 'unknown query error',
+        grnResult.error?.message ?? openingResult.error?.message ?? invoiceResult.error?.message ?? 'unknown query error',
     }
   }
 
-  type TaggedRow = { type: 'grn' | 'consumption' | 'opening'; row: TallyExportTxnRow }
+  type TaggedRow = { type: 'grn' | 'opening'; row: TallyExportTxnRow }
   const allRows: TaggedRow[] = [
     ...((grnResult.data ?? []) as unknown as TallyExportTxnRow[]).map((row) => ({ type: 'grn' as const, row })),
-    ...((consumptionResult.data ?? []) as unknown as TallyExportTxnRow[]).map((row) => ({ type: 'consumption' as const, row })),
     ...((openingResult.data ?? []) as unknown as TallyExportTxnRow[]).map((row) => ({ type: 'opening' as const, row })),
   ]
 
   allRows.sort((a, b) => a.row.transaction_date.localeCompare(b.row.transaction_date))
 
   const workbook = new ExcelJS.Workbook()
-  const worksheet = workbook.addWorksheet('CA Export')
+  const worksheet = workbook.addWorksheet('Purchases (GRN)')
 
   worksheet.columns = [
     { header: 'Date', key: 'date', width: 14 },
@@ -3388,13 +3381,6 @@ async function sendTallyExportIntent(
         supplierName: row.supplier_name ?? '',
         supplierGstin: row.p2_suppliers?.gstin ?? '',
         supplierInvoiceNo: row.invoice_no ?? '',
-      })
-    } else if (type === 'consumption') {
-      worksheet.addRow({
-        date, material: rm.name, materialCode, hsnSac, transactionType: 'Consumption (Issue)',
-        quantity: Math.abs(row.quantity), unit: rm.unit, rate: '', amount: '',
-        cgstRate: '', cgstAmount: '', sgstRate: '', sgstAmount: '', igstRate: '', igstAmount: '',
-        totalGst: '', invoiceTotal: '', supplierName: '', supplierGstin: '', supplierInvoiceNo: '',
       })
     } else {
       worksheet.addRow({
