@@ -39,13 +39,18 @@ Mobile-first: owners use phones. Must work on mobile browser.
   sac_code (added Aug 7 — SAC code printed on every invoice PDF line item, tax invoice format)
 - p2_raw_materials — raw material master (name, unit, min_stock_level, is_active, material_code)
 - p2_suppliers — supplier master (is_active — CSV-imported suppliers default to
-  is_active=false, invisible in dropdowns/matching unless checked)
+  is_active=false, invisible in dropdowns/matching unless checked), gstin text
+  (added Aug 7 — supplier GSTIN, optional, printed on CA export GRN sheet)
 - p2_stock_transactions — append-only log. transaction_type check constraint: ONLY
   'grn', 'consumption', 'adjustment' (lowercase, no other values allowed).
   Opening stock = type='adjustment', notes='Opening Stock' — not a separate type.
   reference_id links transactions to their originating dispatch/challan.
   Has rate column (what was paid on that specific GRN — NOT a standing cost rate).
-- p2_products — finished goods, has product_code (unique index per tenant)
+  purchase_type text NOT NULL DEFAULT 'intrastate' CHECK IN ('intrastate','interstate')
+  (added Aug 7 — routes GRN GST math to CGST/SGST vs IGST across CA export, Tally export,
+  and Zoho export).
+- p2_products — finished goods, has product_code (unique index per tenant), hsn_sac text
+  (added Aug 7 — HSN/SAC, optional, for CA export)
 - p2_product_bom — recipe. Uses raw_material_id and qty_per_unit (not product_id-only or qty).
 - p2_dispatch_orders — each dispatch = one challan. Has RPCs: confirm_bom_issue,
   cancel_challan, add_missing_challan_item, get_next_grn_number.
@@ -538,6 +543,18 @@ deliberate simplification for that reason.
   - `openDetail()` is now async. On successful invoice generation, the rate/GST modal's
     success handler calls `refreshDetailInvoiceSection()` directly instead of the old
     `loadHistory()` reload — the still-open Detail modal flips to "View Invoice →" in place.
+
+## Shipped August 7, 2026
+- CA Export & GST Reliability upgrade — full pitch for replacing in-house CA at MIDC factories:
+  - p2_suppliers: gstin text column added
+  - p2_products: hsn_sac text column added
+  - p2_stock_transactions: purchase_type text NOT NULL DEFAULT 'intrastate' CHECK IN ('intrastate','interstate') added
+  - settings.html: Supplier inline edit row built from scratch (name/mobile/address/gstin) — suppliers had no edit capability before
+  - products.html: hsn_sac field added to Add form and Edit modal
+  - grn.html: invoice_no now mandatory per-row with validation; per-row Intrastate/Interstate selector writing to purchase_type; Month-End GRN Reconciliation modal (role-gated owner/supervisor) — grouped by supplier, shows invoice numbers, red dash on missing, orange Unknown Supplier group
+  - confirmReceiveGrn (Tier 4 auto-fill GRN): fixed invoice_no not being written to the column (was only buried in notes free-text)
+  - agent-query sendTallyExportIntent: GRN sheet gets Supplier Name + Supplier GSTIN + Supplier Invoice No columns; purchase_type-aware GST math (IGST branch for interstate, CGST/SGST for intrastate); Invoice sheet gets Client GSTIN + B2B/B2C + Invoice Mode columns; new GST Summary sheet (Sheet 4) with ITC/output-tax/net-payable totals
+  - export.html: Zoho Bills and Tally transactions updated for purchase_type — interstate rows get IGST tax names and blank Source of Supply
 
 ## GST Scope — PERMANENTLY LOCKED
 Nexflow P2 is operational software only. No GST filing, no GSTR generation, no financial reporting layer.
