@@ -246,7 +246,7 @@
      * @param {string} p.clientName
      * @param {string} [p.clientAddress]
      * @param {string} [p.clientGstin]
-     * @param {Array<{challanNumber?:string, dispatchDateFormatted?:string, description:string, qty:(string|number), unit:string, rate:(string|number), amount:(string|number)}>} p.items
+     * @param {Array<{challanNumber?:string, dispatchDateFormatted?:string, description:string, qty:(string|number), unit:string, rate:(string|number), amount:(string|number), hsnSac?:string}>} p.items
      * @param {string} p.gstType                 'cgst_sgst' | 'igst' | 'none'
      * @param {number} p.amountSubtotal
      * @param {number} p.amountGst
@@ -255,7 +255,7 @@
      * @param {string} [p.bankAccount]
      * @param {string} [p.bankIfsc]
      * @param {boolean} [p.isCancelled]
-     * @param {string} [p.sacCode]           SAC code for all line items
+     * @param {string} [p.sacCode]           Tenant-level SAC code — fallback when a line item has no hsn_sac of its own
      * @param {string} [p.placeOfSupply]     derived from client address
      * @returns {Promise<string>} base64 PDF, no data-URI prefix
      */
@@ -405,7 +405,7 @@
                 date: item.dispatchDateFormatted || '—',
                 qty: sanitize(item.qty),
                 unit: sanitize(item.unit),
-                sac: sanitize(p.sacCode || ''),
+                sac: sanitize(item.hsnSac || p.sacCode || ''),
                 rate: 'Rs. ' + fmtAmount(item.rate),
                 amount: 'Rs. ' + fmtAmount(item.amount),
             };

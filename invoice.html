@@ -444,7 +444,7 @@ function renderInvoice(data) {
             <td>${escapeHtml(item.description || '')}</td>
             <td>${escapeHtml(item.qty)}</td>
             <td>${escapeHtml(item.unit)}</td>
-            <td class="print-only-cell">${escapeHtml(sacCode)}</td>
+            <td class="print-only-cell">${escapeHtml(item.hsn_sac || sacCode)}</td>
             <td>${fmtMoney(item.rate)}</td>
             <td>${fmtMoney(item.amount)}</td>
         </tr>
@@ -454,7 +454,7 @@ function renderInvoice(data) {
             <td>${escapeHtml(item.description || '')}</td>
             <td>${escapeHtml(item.qty)}</td>
             <td>${escapeHtml(item.unit)}</td>
-            <td class="print-only-cell">${escapeHtml(sacCode)}</td>
+            <td class="print-only-cell">${escapeHtml(item.hsn_sac || sacCode)}</td>
             <td>${fmtMoney(item.rate)}</td>
             <td>${fmtMoney(item.amount)}</td>
         </tr>
@@ -533,6 +533,7 @@ async function downloadPdf() {
                 unit: item.unit,
                 rate: item.rate,
                 amount: item.amount,
+                hsnSac: item.hsn_sac || '',
             })),
             gstType: invoice.gst_type || 'cgst_sgst',
             amountSubtotal: invoice.amount_subtotal,
