@@ -130,6 +130,8 @@
                     <div class="nx-page-sub">Log incoming raw materials from suppliers</div>
                 </div>
                 <div style="display:flex;gap:10px;align-items:center;flex-shrink:0;">
+                    <button type="button" id="reconcileBtn" class="nx-btn nx-btn-secondary" style="display:none;"
+                            data-en="Month-End Check" data-mr="महिना-अखेर तपासणी">Month-End Check</button>
                     <a href="grn-history.html" class="nx-btn nx-btn-ghost"
                        data-en="Full History" data-mr="पूर्ण इतिहास">Full History &rarr;</a>
                 </div>
@@ -255,6 +257,32 @@
         </div>
     </div>
 
+    <!-- RECONCILE MODAL -->
+    <div id="reconcileModal" class="nx-modal-overlay" style="display:none;">
+        <div class="nx-modal" style="max-width:640px;max-height:85vh;overflow-y:auto;">
+            <div class="nx-modal-title" id="reconcileTitle">GRN Reconciliation</div>
+
+            <div class="nx-form-group">
+                <label data-en="Month" data-mr="महिना">Month</label>
+                <select id="reconcileMonthSelect" class="nx-input"></select>
+            </div>
+
+            <div id="reconcileSummary" style="font-size:13px;color:var(--mid);margin:4px 0 16px;"></div>
+
+            <div id="reconcileBody"></div>
+
+            <div style="font-size:12px;color:var(--mid);margin-top:16px;line-height:1.5;"
+                 data-en="Compare this list against your supplier bills folder. If any supplier's count doesn't match, find the missing bill and enter the GRN before sending the CA export."
+                 data-mr="ही यादी तुमच्या पुरवठादार बिल फोल्डरशी जुळवा. जर एखाद्या पुरवठादाराची संख्या जुळत नसेल, तर हरवलेले बिल शोधा आणि CA एक्सपोर्ट पाठवण्यापूर्वी GRN नोंदवा.">
+                Compare this list against your supplier bills folder. If any supplier's count doesn't
+                match, find the missing bill and enter the GRN before sending the CA export.
+            </div>
+
+            <button type="button" id="closeReconcileBtn" class="nx-btn nx-btn-secondary nx-btn-full nx-mt-8"
+                    data-en="Close" data-mr="बंद करा">Close</button>
+        </div>
+    </div>
+
     <div class="nx-toast-wrap" id="toastWrap"></div>
 
     <script>
@@ -298,6 +326,9 @@
                 if (!canAccess(role, 'grn')) {
                     window.location.href = 'index.html?denied=1';
                     return;
+                }
+                if (role === 'owner' || role === 'supervisor') {
+                    document.getElementById('reconcileBtn').style.display = '';
                 }
                 applyDemoModeToForms();
                 const { data: { user } } = await window.supabase.auth.getUser();
@@ -684,6 +715,27 @@
             }
         });
 
+        document.getElementById('reconcileBtn').addEventListener('click', async () => {
+            populateReconcileMonths();
+            const sel = document.getElementById('reconcileMonthSelect');
+            const now = new Date();
+            sel.value = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+            const d = new Date(sel.value + '-01');
+            document.getElementById('reconcileTitle').textContent =
+                'GRN Reconciliation — ' + d.toLocaleString('en-US', { month: 'long' }) + ' ' + d.getFullYear();
+            document.getElementById('reconcileModal').style.display = 'flex';
+            await loadReconciliation(sel.value);
+        });
+        document.getElementById('reconcileMonthSelect').addEventListener('change', async (e) => {
+            const d = new Date(e.target.value + '-01');
+            document.getElementById('reconcileTitle').textContent =
+                'GRN Reconciliation — ' + d.toLocaleString('en-US', { month: 'long' }) + ' ' + d.getFullYear();
+            await loadReconciliation(e.target.value);
+        });
+        document.getElementById('closeReconcileBtn').addEventListener('click', () => {
+            document.getElementById('reconcileModal').style.display = 'none';
+        });
+
         async function loadRecentGRN() {
             const { data, error } = await window.supabase
                 .from('p2_stock_transactions')
@@ -710,7 +762,103 @@
             });
         }
 
+        function escapeHtml(str) {
+            return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        }
 
+        function populateReconcileMonths() {
+            const sel = document.getElementById('reconcileMonthSelect');
+            sel.innerHTML = '';
+            const now = new Date();
+            for (let i = 0; i < 6; i++) {
+                const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                const value = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+                const label = d.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+                const opt = document.createElement('option');
+                opt.value = value; opt.textContent = label;
+                sel.appendChild(opt);
+            }
+        }
+
+        function renderSupplierGroup(name, entries, isUnknown) {
+            const countLabel = entries.length + (entries.length === 1 ? ' GRN' : ' GRNs');
+            let html = '<div style="margin-bottom:16px;">' +
+                '<div style="display:flex;justify-content:space-between;font-weight:700;font-family:var(--condensed);' +
+                'text-transform:uppercase;letter-spacing:0.3px;color:' + (isUnknown ? 'var(--orange)' : 'var(--white)') + ';' +
+                'border-bottom:1px solid var(--border2);padding-bottom:6px;margin-bottom:6px;">' +
+                '<span>' + escapeHtml(name) + '</span><span style="color:var(--mid);font-weight:500;">' + countLabel + '</span></div>';
+            entries.forEach(e => {
+                const invoiceLabel = e.invoice_no && e.invoice_no.trim()
+                    ? escapeHtml(e.invoice_no)
+                    : '<span style="color:var(--red);">&mdash;</span>';
+                const matName = e.p2_raw_materials && e.p2_raw_materials.name ? e.p2_raw_materials.name : 'N/A';
+                const unit = e.p2_raw_materials && e.p2_raw_materials.unit ? e.p2_raw_materials.unit : '';
+                html += '<div style="font-size:13px;padding:4px 0 4px 12px;color:var(--text);">' +
+                    '&bull; ' + invoiceLabel + '&nbsp;&nbsp;' + formatDate(e.transaction_date) + '&nbsp;&nbsp;' +
+                    formatNumber(e.quantity) + ' ' + escapeHtml(unit) + ' ' + escapeHtml(matName) + '</div>';
+            });
+            html += '</div>';
+            return html;
+        }
+
+        async function loadReconciliation(monthValue) {
+            const [year, month] = monthValue.split('-').map(Number);
+            const firstOfMonth = year + '-' + String(month).padStart(2, '0') + '-01';
+            const lastDay = new Date(year, month, 0).getDate();
+            const lastOfMonth = year + '-' + String(month).padStart(2, '0') + '-' + String(lastDay).padStart(2, '0');
+
+            const body = document.getElementById('reconcileBody');
+            const summary = document.getElementById('reconcileSummary');
+            body.innerHTML = '<div style="text-align:center;color:var(--mid);padding:20px;">Loading...</div>';
+            summary.textContent = '';
+
+            const { data, error } = await window.supabase
+                .from('p2_stock_transactions')
+                .select('transaction_date, invoice_no, quantity, supplier_name, p2_raw_materials!inner(name, unit)')
+                .eq('tenant_id', tenantId)
+                .eq('transaction_type', 'grn')
+                .gte('transaction_date', firstOfMonth)
+                .lte('transaction_date', lastOfMonth)
+                .order('supplier_name')
+                .order('transaction_date');
+
+            if (error) {
+                console.error('Error loading reconciliation:', error);
+                body.innerHTML = '<div style="color:var(--red);">Could not load GRN data.</div>';
+                return;
+            }
+
+            const rows = data || [];
+            const lang = localStorage.getItem('nexflow_lang') || 'en';
+
+            if (rows.length === 0) {
+                summary.textContent = lang === 'mr' ? 'या महिन्यात कोणतेही GRN आढळले नाही' : 'No GRNs found for this month';
+                body.innerHTML = '<div style="text-align:center;color:var(--mid);padding:20px;">' +
+                    (lang === 'mr' ? 'या महिन्यात कोणतेही GRN आढळले नाही' : 'No GRNs found for this month') + '</div>';
+                return;
+            }
+
+            const groups = new Map(); // supplier_name (or null) -> rows[]
+            rows.forEach(r => {
+                const key = r.supplier_name && r.supplier_name.trim() ? r.supplier_name : null;
+                if (!groups.has(key)) groups.set(key, []);
+                groups.get(key).push(r);
+            });
+
+            const named = [...groups.entries()].filter(([k]) => k !== null).sort((a, b) => a[0].localeCompare(b[0]));
+            const unknown = groups.get(null);
+
+            summary.textContent = (named.length + (unknown ? 1 : 0)) + ' suppliers · ' + rows.length + ' GRNs total this month';
+
+            let html = '';
+            named.forEach(([supplierName, entries]) => {
+                html += renderSupplierGroup(supplierName, entries, false);
+            });
+            if (unknown) {
+                html += renderSupplierGroup(lang === 'mr' ? 'अज्ञात पुरवठादार' : 'Unknown Supplier', unknown, true);
+            }
+            body.innerHTML = html;
+        }
 
         document.addEventListener('DOMContentLoaded', () => {
             const saved = localStorage.getItem('nexflow_lang') || 'en';
