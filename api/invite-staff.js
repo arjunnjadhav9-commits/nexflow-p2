@@ -97,15 +97,13 @@ module.exports = async function handler(req, res) {
     });
 
     if (linkResult.error) {
-      // Most likely cause: this email already has an auth.users row from an
-      // earlier invite (a real resend) -- 'invite' can't be reissued for an
-      // existing user, but 'recovery' still produces a valid password-set
-      // link for them.
-      linkResult = await supabaseAdmin.auth.admin.generateLink({
-        type: 'recovery',
-        email: normalizedEmail,
-        options: { redirectTo: REDIRECT_URL },
+      // Do NOT fall back to recovery — that sends a password reset link which
+      // overwrites the user's credentials. If the user already exists, tell
+      // the owner explicitly instead.
+      res.status(400).json({
+        error: 'This email has already been invited. If they need a new link, delete the pending invite and re-invite them.',
       });
+      return;
     }
 
     if (linkResult.error) {
