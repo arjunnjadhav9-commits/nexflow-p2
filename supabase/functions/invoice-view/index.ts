@@ -63,7 +63,7 @@ Deno.serve(async (req) => {
 
     const { data: settings, error: settingsError } = await supabase
       .from('p2_tenant_settings')
-      .select('company_name, address_line1, address_line2, mobile, gstin, bank_name, bank_account, bank_ifsc')
+      .select('company_name, address_line1, address_line2, mobile, gstin, bank_name, bank_account, bank_ifsc, sac_code')
       .eq('tenant_id', invoice.tenant_id)
       .maybeSingle()
 
