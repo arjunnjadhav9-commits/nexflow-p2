@@ -177,42 +177,62 @@ Demo account (5f021c96-2ed4-41f8-9fbc-7db517fc840b):
 ### SS Engineering (client 1)
 - Full Pro + agent — free, permanently. Never changes.
 
-## Plan gating (added August 2026)
+## Plan gating (August 2026)
 
-p2_tenant_settings.plan values and what they unlock:
-- 'founder': full Pro access, agent 30/day (agent_tier='standard')
-- 'pro': full Pro access, agent 50/day (agent_tier='standard', limit overridden by plan)
-- 'lite': limited features, no agent, 250 material cap
-- 'demo': Pro features visible, no agent
+p2_tenant_settings.plan values:
+- 'founder': clients 1-5, full Pro access, agent 30/day (agent_tier='standard')
+- 'pro': client 6+ Pro, full Pro access, agent 50/day (agent_tier='standard', limit from plan)
+- 'lite': client 6+ Lite, limited features, no agent, 250 material cap, single user
+- 'demo': landing page demo, Pro features visible, no agent (agent_enabled=false)
 
-Agent daily limit logic (agent-query Edge Function):
-- agent_tier = 'unlimited' → 999999 (test tenant only)
-- plan = 'lite' → 0 (no agent)
+Plan helper functions — all live in js/supabase-client.js (NOT js/roles.js):
+- getPlan(): returns raw plan string from localStorage nexflow_plan, default 'lite'
+- isPro(): returns true for plan IN ('pro', 'founder', 'demo')
+- isLite(): returns true for plan = 'lite' only
+- isFounder(): returns true for plan = 'founder' only
+- showUpgradePrompt(featureName): orange modal overlay, WhatsApp CTA to +91 72489 32468
+
+Agent daily limit — enforced server-side in check_and_increment_agent_usage RPC:
+- agent_tier = 'unlimited' → 999999 (test tenant, wins over everything)
+- plan = 'lite' → 0 (no agent access)
 - plan = 'demo' → 20
 - plan = 'pro' → 50
-- plan = 'founder' OR agent_tier = 'standard' → 30
+- plan = 'founder' → 30
+- agent_tier = 'power' → 100
+- agent_tier = 'standard' → 30 (fallback)
 
-isPro() — js/roles.js: returns true for plan IN ('pro', 'founder', 'demo')
-isLite() — js/roles.js: returns true for plan = 'lite'
-isFounder() — js/roles.js: returns true for plan = 'founder'
-getPlan() — js/roles.js: returns raw plan string, default 'lite'
-showUpgradePrompt(featureName) — js/roles.js: shows upgrade modal for Lite users
+Pro-only features (Lite is blocked):
+- AI Copilot agent FAB — silently hidden for Lite in js/agent-chat.js
+- Agent tab in settings.html — hidden for Lite (no point configuring what they don't have)
+- QR Scanner (scanner.html) — shows Pro gate panel, Scanner link stays in nav as upsell
+- Staff Members tab in settings.html — hidden for Lite (single user plan)
+- 250 material cap — blocked at insert with showUpgradePrompt()
 
-Pro-only features (Lite blocked):
-- AI Copilot agent FAB
-- invoices.html (full invoice management)
-- scanner.html (QR scanner)
-- Staff Members tab in settings.html (multi-user is Pro only)
-
-Lite CAN access:
-- GRN, dispatch, challan, stock dashboard, reports
-- Invoice generation from dispatch history (Generate Invoice button)
+Lite gets full access to:
+- GRN, dispatch, challan, production issue
+- invoices.html — full access including consolidated invoice (no gate)
+- Invoice generation from dispatch history
 - CA export via export.html
-- Settings: materials, suppliers, clients, products
+- Stock dashboard, reports
+- Settings: company details, challan settings, telegram alerts, materials,
+  suppliers, clients, products, stock adjustment, prices
+- Scanner link visible in nav (shows Pro gate when clicked — intentional upsell)
 
-Lite limits:
-- 250 active materials maximum — blocked at insert with upgrade prompt
-- Single user — no staff invite
+Key decisions:
+- Scanner nav link stays visible for Lite — clicking it shows the Pro gate,
+  which is intentional upsell friction
+- Agent tab in settings hidden for Lite — no config for a feature they don't have
+- invoices.html fully open for Lite — consolidated invoice is not a meaningful
+  differentiator, locking it away frustrates Lite clients
+- showUpgradePrompt() never called on scanner.html or agent FAB — those use
+  their own existing gate UI (scanner has inline panel, FAB just silently hides)
+- showUpgradePrompt() IS called for: material cap at 250
+
+invoice generation note:
+- Lite clients generate invoices from all-dispatch-history.html (Generate Invoice button)
+- Lite clients view/manage all invoices at invoices.html (full access)
+- Agent-triggered invoice sending (send_invoice intent) requires Pro/Founder —
+  agent is not available to Lite
 
 ## AI Agent — Architecture
 
