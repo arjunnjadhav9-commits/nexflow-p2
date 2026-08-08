@@ -19,7 +19,6 @@
     <style>
         #loadingSpinner { display: flex; align-items: center; justify-content: center; padding: 60px 20px; }
         #errorState { display: none; }
-        #upgradeState { display: none; }
         #invoicesContent { display: none; }
 
         /* Modal — not in shared stylesheet (css/nexflow-design.css only adds the
@@ -108,15 +107,6 @@
                 <div>
                     <div class="nx-bold" data-en="Could not load data" data-mr="डेटा लोड करू शकला नाही">Could not load data</div>
                     <div data-en="Check your connection and refresh the page." data-mr="तुमचे कनेक्शन तपासा आणि पृष्ठ रीफ्रेश करा.">Check your connection and refresh the page.</div>
-                </div>
-            </div>
-
-            <!-- UPGRADE STATE (Lite plan) -->
-            <div id="upgradeState" class="nx-alert nx-alert-orange nx-mb-24">
-                <span class="nx-alert-icon">🔒</span>
-                <div>
-                    <div class="nx-bold">Invoices is a Pro / Founder feature</div>
-                    <div>Upgrade your plan to generate and manage client invoices.</div>
                 </div>
             </div>
 
@@ -243,7 +233,6 @@
         let tenantId = null;
         let allInvoices = [];
         let filtered = [];
-        let canInvoice = false;
         let currentRole = 'owner';
 
         document.addEventListener('DOMContentLoaded', init);
@@ -267,7 +256,6 @@
         async function init() {
             const loadingSpinner = document.getElementById('loadingSpinner');
             const errorState = document.getElementById('errorState');
-            const upgradeState = document.getElementById('upgradeState');
             const invoicesContent = document.getElementById('invoicesContent');
 
             try {
@@ -285,21 +273,7 @@
                 const { data: { user } } = await window.supabase.auth.getUser();
                 tenantId = user.user_metadata?.tenant_id || user.id;
 
-                // Fresh fetch, never isPro()/localStorage — plan can change and
-                // localStorage only refreshes on login/auth-state-change.
-                const { data: settingsData } = await window.supabase
-                    .from('p2_tenant_settings')
-                    .select('plan')
-                    .eq('tenant_id', tenantId)
-                    .maybeSingle();
-                canInvoice = !!settingsData && (settingsData.plan === 'pro' || settingsData.plan === 'founder');
-
                 loadingSpinner.style.display = 'none';
-
-                if (!canInvoice) {
-                    upgradeState.style.display = 'flex';
-                    return;
-                }
 
                 document.getElementById('newInvoiceHeaderActions').style.display = 'flex';
                 invoicesContent.style.display = 'block';
