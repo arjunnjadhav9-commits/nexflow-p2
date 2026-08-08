@@ -981,6 +981,13 @@
     // ── INVOICE SEQUENCE (last-used number, per get_next_invoice_number RPC) ──
     let currentInvoiceSequence = 0;
 
+    // Fresh-fetched once per page load (see DOMContentLoaded) — NOT isLite()/
+    // isPro()/localStorage. Those cache nexflow_plan and only refresh on the
+    // next checkAuth() cycle, which is too stale for gating logic (see
+    // CLAUDE.md "Critical agent gotchas"). Used by applyRoleVisibility() and
+    // the add-material 250-cap check below.
+    let tenantPlan = 'founder';
+
     // ── STOCK ADJUSTMENT SIGN ─────────────────────────────────────────────────
     let adjSign = 1;
 
@@ -1037,10 +1044,11 @@
         document.querySelectorAll('.owner-only').forEach(el => {
             el.style.display = role !== 'owner' ? 'none' : '';
         });
-        // Staff Members is Pro/Founder only — multi-user is not a Lite feature.
+        // Staff Members and Agent are Pro/Founder only — not Lite features.
         // Runs after the owner-only loop so it wins over an owner's '' reset.
-        if (isLite()) {
+        if (tenantPlan === 'lite') {
             document.getElementById('tab-staff')?.style.setProperty('display', 'none');
+            document.getElementById('tab-agent')?.style.setProperty('display', 'none');
         }
     }
 
@@ -1300,7 +1308,7 @@
                 if (error) throw error;
                 toast(lang==='mr'?'साहित्य यशस्वीरित्या अपडेट केले':'Material updated successfully','success');
             } else {
-                if (isLite()) {
+                if (tenantPlan === 'lite') {
                     const { count } = await window.supabase.from('p2_raw_materials')
                         .select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('is_active', true);
                     if (count >= 250) { showUpgradePrompt('More than 250 materials. Upgrade to Pro for unlimited materials.'); return; }
@@ -2579,6 +2587,21 @@
 
         switchToTab('company');
         await checkAuth();
+
+        // Fresh plan fetch — see tenantPlan declaration above for why this
+        // can't be isLite()/isPro() (localStorage staleness).
+        {
+            const { data: { user: planUser } } = await window.supabase.auth.getUser();
+            const planTenantId = planUser.user_metadata?.tenant_id || planUser.id;
+            const { data: settingsData } = await window.supabase
+                .from('p2_tenant_settings')
+                .select('plan')
+                .eq('tenant_id', planTenantId)
+                .maybeSingle();
+            tenantPlan = settingsData?.plan || 'founder';
+            console.log('settings.html plan check:', tenantPlan);
+        }
+
         applyRoleVisibility();
         loadCompanyDetails();
     });
