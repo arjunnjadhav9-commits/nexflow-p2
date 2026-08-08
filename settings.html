@@ -1037,6 +1037,11 @@
         document.querySelectorAll('.owner-only').forEach(el => {
             el.style.display = role !== 'owner' ? 'none' : '';
         });
+        // Staff Members is Pro/Founder only — multi-user is not a Lite feature.
+        // Runs after the owner-only loop so it wins over an owner's '' reset.
+        if (isLite()) {
+            document.getElementById('tab-staff')?.style.setProperty('display', 'none');
+        }
     }
 
     // ── LOAD COMPANY ──────────────────────────────────────────────────────────
@@ -1295,10 +1300,10 @@
                 if (error) throw error;
                 toast(lang==='mr'?'साहित्य यशस्वीरित्या अपडेट केले':'Material updated successfully','success');
             } else {
-                if (!isPro()) {
+                if (isLite()) {
                     const { count } = await window.supabase.from('p2_raw_materials')
                         .select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('is_active', true);
-                    if (count >= 250) { toast('Material limit reached (250 materials). Upgrade to Pro for unlimited materials.','info'); return; }
+                    if (count >= 250) { showUpgradePrompt('More than 250 materials. Upgrade to Pro for unlimited materials.'); return; }
                 }
                 const { error } = await window.supabase.from('p2_raw_materials')
                     .insert({ name, unit, min_stock_level: minStock, material_code: materialCode, hsn_sac: hsnSac, gst_rate: gstRate, tenant_id: tenantId, is_active: true });

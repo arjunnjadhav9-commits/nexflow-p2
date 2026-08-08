@@ -67,7 +67,15 @@ function getPlan() {
 
 function isPro() {
     const plan = getPlan();
-    return plan === 'pro' || plan === 'founder';
+    return plan === 'pro' || plan === 'founder' || plan === 'demo';
+}
+
+function isLite() {
+    return getPlan() === 'lite';
+}
+
+function isFounder() {
+    return getPlan() === 'founder';
 }
 
 // Call at top of every Pro-gated page after checkAuth()
@@ -82,6 +90,35 @@ function requireOwner() {
     if (!isOwner()) {
         window.location.href = 'index.html?unauthorized=true';
     }
+}
+
+function showUpgradePrompt(featureName) {
+    document.getElementById('nx-upgrade-modal')?.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'nx-upgrade-modal';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+
+    overlay.innerHTML = `
+    <div style="background:var(--surface,#1a1d27);border:1px solid var(--orange,#ff6b2b);border-radius:10px;padding:28px 24px;max-width:380px;width:100%;text-align:center;">
+      <div style="font-size:28px;margin-bottom:12px;">⚡</div>
+      <div style="font-family:var(--condensed,'sans-serif');font-weight:800;font-size:18px;color:var(--orange,#ff6b2b);margin-bottom:8px;">Pro Feature</div>
+      <div style="font-size:14px;color:var(--text,#e8eaf0);margin-bottom:6px;font-weight:600;">${featureName}</div>
+      <div style="font-size:13px;color:var(--mid,#8892aa);margin-bottom:20px;line-height:1.5;">This feature is available on Nexflow P2 Pro.<br>Upgrade to unlock AI Copilot, multi-user access, unlimited materials, and more.</div>
+      <div style="display:flex;gap:10px;">
+        <button onclick="window.open('https://wa.me/917248932468?text=Hi, I want to upgrade to Nexflow P2 Pro','_blank')"
+          style="flex:1;background:var(--orange,#ff6b2b);color:#fff;border:none;padding:10px;border-radius:6px;font-weight:700;font-size:13px;cursor:pointer;">
+          Contact Us
+        </button>
+        <button onclick="document.getElementById('nx-upgrade-modal').remove()"
+          style="flex:1;background:none;color:var(--mid,#8892aa);border:1px solid var(--border,#2e3347);padding:10px;border-radius:6px;font-size:13px;cursor:pointer;">
+          Close
+        </button>
+      </div>
+    </div>`;
+
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
 }
 
 async function checkAuthAndTenant(requiredTenantId) {

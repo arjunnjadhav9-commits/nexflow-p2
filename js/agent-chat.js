@@ -17,6 +17,14 @@
       const tenantId = user.user_metadata?.tenant_id || user.id;
       const role = await fetchUserRole(user.id, tenantId);
       if (!canAccess(role, 'agent')) return;
+
+      // Plan gate: FAB shown for Pro/Founder only. Lite has no agent access;
+      // demo intentionally has no agent despite isPro() treating it as Pro
+      // elsewhere. Silent hide — no upgrade prompt here.
+      if (typeof getPlan === 'function') {
+        const plan = getPlan();
+        if (plan !== 'pro' && plan !== 'founder') return;
+      }
     }
   } catch (_) {
     return;
