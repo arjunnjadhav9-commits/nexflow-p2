@@ -21,10 +21,18 @@
       // Plan gate: FAB shown for Pro/Founder only. Lite has no agent access;
       // demo intentionally has no agent despite isPro() treating it as Pro
       // elsewhere. Silent hide — no upgrade prompt here.
-      if (typeof getPlan === 'function') {
-        const plan = getPlan();
-        if (plan !== 'pro' && plan !== 'founder') return;
-      }
+      // Fresh DB fetch, NOT getPlan()/localStorage: this IIFE deliberately
+      // doesn't wait on the page's own checkAuth() (see comment above), and
+      // for an owner login fetchUserRole() above returns synchronously with
+      // no DB round trip — this check can race ahead of checkAuth()'s own
+      // plan refresh and read a stale cached value otherwise.
+      const { data: settingsData } = await window.supabase
+        .from('p2_tenant_settings')
+        .select('plan')
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
+      const plan = settingsData?.plan || 'founder';
+      if (plan !== 'pro' && plan !== 'founder') return;
     }
   } catch (_) {
     return;
