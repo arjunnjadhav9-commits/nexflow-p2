@@ -36,8 +36,15 @@ Mobile-first: owners use phones. Must work on mobile browser.
   challan_mode, agent_tier, agent_interactions_today, agent_reset_date, ca_email, agent_enabled,
   email (used as reply_to for challan emails — tell owners to fill this in Settings),
   invoice_sequence, bank_name, bank_account, bank_ifsc (added July 30 — invoice feature),
-  sac_code (added Aug 7 — SAC code printed on every invoice PDF line item, tax invoice format)
-- p2_raw_materials — raw material master (name, unit, min_stock_level, is_active, material_code)
+  sac_code (added Aug 7 — SAC code printed on every invoice PDF line item, tax invoice format),
+  plan text (values: 'founder' [clients 1-5], 'pro' [client 6+ Pro], 'lite' [client 6+ Lite],
+  'demo' [landing page demo account] — drives feature gating, see Plan gating section below),
+  agent_tier CHECK constraint: only 'standard', 'power', 'unlimited' (never 'founder' or any
+  other value) — standard = 30/day (founder clients), power = not yet used, unlimited = test
+  tenant only, never reset. New Pro clients (plan='pro') get 50/day via a plan check in
+  agent-query, not via agent_tier.
+- p2_raw_materials — raw material master (name, unit, min_stock_level, is_active, material_code,
+  hsn_sac, gst_rate — both already existed, confirmed present here for reference)
 - p2_suppliers — supplier master (is_active — CSV-imported suppliers default to
   is_active=false, invisible in dropdowns/matching unless checked), gstin text
   (added Aug 7 — supplier GSTIN, optional, printed on CA export GRN sheet)
@@ -48,12 +55,17 @@ Mobile-first: owners use phones. Must work on mobile browser.
   Has rate column (what was paid on that specific GRN — NOT a standing cost rate).
   purchase_type text NOT NULL DEFAULT 'intrastate' CHECK IN ('intrastate','interstate')
   (added Aug 7 — routes GRN GST math to CGST/SGST vs IGST across CA export, Tally export,
-  and Zoho export).
+  and Zoho export). invoice_no text — already existed, now mandatory on the GRN form
+  (grn.html, added Aug 7).
 - p2_products — finished goods, has product_code (unique index per tenant), hsn_sac text
   (added Aug 7 — HSN/SAC, optional, for CA export)
 - p2_product_bom — recipe. Uses raw_material_id and qty_per_unit (not product_id-only or qty).
 - p2_dispatch_orders — each dispatch = one challan. Has RPCs: confirm_bom_issue,
   cancel_challan, add_missing_challan_item, get_next_grn_number.
+  confirm_bom_issue (v2, Aug 7): server-side stock check aggregates required qty per
+  material_id across all BOM lines (GROUP BY) before checking balance, using a FOR UPDATE
+  subquery lock; raises INSUFFICIENT_STOCK: {material} — Need {x}, Available {y}.
+  production-issue.html catches this and shows a clean toast.
   dispatch_type values: bom_issue, raw_material, product.
   status values: draft, confirmed, cancelled — NO 'pending'.
   challan_number column (NOT challan_no). NO notes column — use challan_note if needed.
@@ -111,10 +123,14 @@ Mobile-first: owners use phones. Must work on mobile browser.
 ## Tenants
 - Live client: S.S. Engineering, tenant_id 5ab7fb07-2557-42e7-8a8a-5d9fd59048ac,
   Founder tier. NEVER test writes or run experimental code against this tenant.
+  agent_enabled = true (was incorrectly false — fixed Aug 8), agent_tier = 'standard'
+  (30/day), plan = 'founder'.
+- Demo account: 5f021c96-2ed4-41f8-9fbc-7db517fc840b, plan='pro', agent_enabled=false.
+  Company: Nexflow Demo Factory — DO NOT change plan or enable agent.
 - Test tenant: fe2b94fb-9668-405f-9c62-5f54b32f8c7a (arjunjadhav9@gmail.com,
   "Shree Ganesh Engineering Works") — fully populated with realistic data,
   safe to break, use for ALL development and agent testing.
-  agent_tier = 'unlimited' on test tenant (set deliberately — do not reset).
+  agent_tier = 'unlimited', plan = 'founder', agent_enabled = true — NEVER reset agent_tier.
 
 ## Language Toggle
 - Static elements: data-en="..." / data-mr="..." attributes, applied once by
@@ -128,40 +144,75 @@ Mobile-first: owners use phones. Must work on mobile browser.
 - index.ts (Edge Function) has NO language toggle — every string is single hardcoded
   Hinglish. Bilingual support across all intents is a future pass, not per-intent.
 
-## Pricing (DO NOT expose in UI)
-Revised July 25, 2026. All plans include AMC + retainer bundled — no separate support billing at current scale.
+## Pricing (August 2026)
 
-### P2 Lite
-- Setup: ₹20,000 (one-time)
-- Annual: ₹44,000/yr (includes AMC + retainer)
-- Monthly billing: ₹20,000 setup + ₹5,500/mo (no lock-in, no AMC)
-- Y1 total (annual): ₹64,000
-- Includes: full web UI, GRN, dispatch, challans, CA export, Marathi toggle, up to 250 materials, single user
-- Does NOT include: agent, challan email, QR exchange
-- Agent add-on for Lite: +₹18,000/yr — 20 interactions/day, challan email via agent
+Founder plan (clients 1-5 only):
+- Year 1: ₹20,000 setup + ₹44,000/yr = ₹64,000 total
+- Payment: ₹20K day 1 · ₹15K day 30 · ₹15K day 60 · ₹14K day 90 · 9 months free
+- Monthly option: ₹20K setup + ₹6,500/month, 3-month minimum
+- Agent: 30/day (permanent for this tier)
+- Rate locked 2 years. After 2 years → standard Pro pricing.
+- Agreement: Nexflow_Founder_Agreement_v5.1.docx
 
-### P2 Pro
-- Setup: ₹35,000 (one-time)
-- Annual: ₹80,000/yr = ₹6,667/mo (includes AMC + retainer)
-- Monthly billing: ₹35,000 setup + ₹9,000/mo (no lock-in, no AMC)
-- Y1 total (annual): ₹1,15,000
-- Includes: everything in Lite + unlimited materials, multi-user, AI agent (30/day),
-  challan email via agent, QR codes on challan + box (Tier 4, when shipped),
-  /receive page for recipients, priority support
+Standard Lite (client 6+):
+- Year 1: ₹20,000 setup + ₹56,000/yr = ₹76,000 total
+- Payment: ₹20K day 1 · ₹20K day 30 · ₹16K day 90 · 9 months free
+- Monthly option: ₹20K setup + ₹6,500/month, 3-month minimum
+- Features: GRN, dispatch, challan, invoice generation, CA export, 250 material limit, single user
+- No agent access
+- Agreement: Nexflow_Standard_Agreement_v1.2.docx
 
-### Founder (clients 2–5 only)
-- Setup: ₹20,000 (one-time)
-- Annual: ₹44,000/yr, 2-year rate lock from signup
-- Y1 total: ₹64,000
-- All current Pro features + agent 30/day (permanent cap, no upgrade within founder pricing)
-- QR exchange included when built
-- AMC: 3 free calls/yr, ₹500/call after
-- After 2 years: standard Pro pricing, 3 months notice
-- Future add-ons NOT covered — priced separately
-- Contract must state: founder pricing = current feature set only
+Standard Pro (client 6+):
+- Year 1: ₹35,000 setup + ₹1,00,000/yr = ₹1,35,000 total
+- Payment: ₹35K day 1 · ₹35K day 30 · ₹35K day 60 · ₹30K day 90 · 9 months free
+- Monthly option: ₹35K setup + ₹11,500/month, 3-month minimum
+- Features: everything in Lite + AI Copilot 50/day, multi-user, unlimited materials,
+  owner visibility, QR scanner
+- Agreement: Nexflow_Standard_Agreement_v1.2.docx
+
+Demo account (5f021c96-2ed4-41f8-9fbc-7db517fc840b):
+- plan = 'pro', agent_enabled = false
+- Landing page demo — do not change plan or enable agent
 
 ### SS Engineering (client 1)
 - Full Pro + agent — free, permanently. Never changes.
+
+## Plan gating (added August 2026)
+
+p2_tenant_settings.plan values and what they unlock:
+- 'founder': full Pro access, agent 30/day (agent_tier='standard')
+- 'pro': full Pro access, agent 50/day (agent_tier='standard', limit overridden by plan)
+- 'lite': limited features, no agent, 250 material cap
+- 'demo': Pro features visible, no agent
+
+Agent daily limit logic (agent-query Edge Function):
+- agent_tier = 'unlimited' → 999999 (test tenant only)
+- plan = 'lite' → 0 (no agent)
+- plan = 'demo' → 20
+- plan = 'pro' → 50
+- plan = 'founder' OR agent_tier = 'standard' → 30
+
+isPro() — js/roles.js: returns true for plan IN ('pro', 'founder', 'demo')
+isLite() — js/roles.js: returns true for plan = 'lite'
+isFounder() — js/roles.js: returns true for plan = 'founder'
+getPlan() — js/roles.js: returns raw plan string, default 'lite'
+showUpgradePrompt(featureName) — js/roles.js: shows upgrade modal for Lite users
+
+Pro-only features (Lite blocked):
+- AI Copilot agent FAB
+- invoices.html (full invoice management)
+- scanner.html (QR scanner)
+- Staff Members tab in settings.html (multi-user is Pro only)
+
+Lite CAN access:
+- GRN, dispatch, challan, stock dashboard, reports
+- Invoice generation from dispatch history (Generate Invoice button)
+- CA export via export.html
+- Settings: materials, suppliers, clients, products
+
+Lite limits:
+- 250 active materials maximum — blocked at insert with upgrade prompt
+- Single user — no staff invite
 
 ## AI Agent — Architecture
 
@@ -340,6 +391,19 @@ bom_detail, top_supplier
   migration or script. If any code touches p2_tenant_settings broadly, verify test tenant
   tier afterward: SELECT agent_tier FROM p2_tenant_settings WHERE tenant_id =
   'fe2b94fb-9668-405f-9c62-5f54b32f8c7a';
+- agent_tier CHECK constraint: only 'standard', 'power', 'unlimited' — never use
+  'founder' or any other value.
+- plan field drives feature gating in UI; agent_tier drives legacy daily limit; new limit
+  logic checks plan first, falls back to agent_tier.
+- isPro() reads from localStorage nexflow_settings.plan — can be stale if settings
+  changed without re-login. Always read plan from DB-fetched settings object on pages
+  where plan accuracy matters.
+- Lite clients: invoice generation from dispatch IS allowed; invoices.html IS NOT.
+- 250 material limit: check count BEFORE insert, not after.
+- purchase_type on p2_stock_transactions: default 'intrastate'; 'interstate' triggers
+  IGST column in CA export instead of CGST/SGST.
+- p2_invoices items JSONB now includes hsn_sac field (added Aug 7 2026) — old invoices
+  have blank hsn_sac, this is expected, do not backfill.
 
 ### Proactive Telegram layer
 - Daily briefing (check-low-stock): 8am IST via pg_net cron (jobid 2, 30 2 * * *)
@@ -555,6 +619,27 @@ deliberate simplification for that reason.
   - confirmReceiveGrn (Tier 4 auto-fill GRN): fixed invoice_no not being written to the column (was only buried in notes free-text)
   - agent-query sendTallyExportIntent: GRN sheet gets Supplier Name + Supplier GSTIN + Supplier Invoice No columns; purchase_type-aware GST math (IGST branch for interstate, CGST/SGST for intrastate); Invoice sheet gets Client GSTIN + B2B/B2C + Invoice Mode columns; new GST Summary sheet (Sheet 4) with ITC/output-tax/net-payable totals
   - export.html: Zoho Bills and Tally transactions updated for purchase_type — interstate rows get IGST tax names and blank Source of Supply
+- confirm_bom_issue RPC v2: stock check now aggregates required qty per material_id across
+  all BOM lines before checking balance — v1 checked each line independently and could pass
+  when same material appeared in multiple BOM lines with combined qty exceeding stock. Fix
+  uses GROUP BY material_id with SUM before the balance check.
+
+## Shipped August 8, 2026
+- CA export: consumption rows removed — CA only needs GRN purchases and invoices.
+- grn_completeness agent intent: READ, added to both READ_ONLY_INTENTS and
+  READ_ONLY_TEXT_INTENTS. Queries p2_stock_transactions for grn type, counts total
+  vs missing invoice_no. Defaults to current month. IST timezone fix applied.
+- invoice_total period label: IST timezone fix applied (was using machine timezone,
+  wrong on Supabase edge runtime).
+- invoice.html + invoice-pdf.js: per-item hsn_sac from items snapshot used for SAC CODE
+  column, falls back to tenant sac_code.
+- confirm_bom_issue v2: stock check aggregates by material_id GROUP BY before checking
+  balance — fixes bug where same material in multiple BOM lines passed check individually
+  but combined qty exceeded stock.
+- onboarding.html: supplier GSTIN added to template and import, post-onboarding CA
+  checklist added (fill supplier GSTIN, material HSN, material prices).
+- Test tenant reset: clean data — 6 suppliers, 18 materials, 4 motor products with BOM,
+  3 clients, opening stock, July+August GRNs all with invoice_no, Tata Steel = interstate.
 
 ## GST Scope — PERMANENTLY LOCKED
 Nexflow P2 is operational software only. No GST filing, no GSTR generation, no financial reporting layer.
