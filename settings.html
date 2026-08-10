@@ -586,6 +586,14 @@
             <div class="nx-card">
                 <div class="nx-card-header">
                     <div class="nx-card-title" data-en="Raw Materials List" data-mr="कच्च्या मालाची यादी">Raw Materials List</div>
+                    <div style="position:relative; width:200px;">
+                        <input type="text" id="materialsListSearch" class="nx-input"
+                               style="padding-right:32px; font-size:13px;"
+                               data-en="Search materials..." data-mr="साहित्य शोधा..."
+                               placeholder="Search materials...">
+                        <button id="materialsListClear" type="button" style="display:none; position:absolute; right:10px; top:50%; transform:translateY(-50%);
+                                background:none; border:none; color:var(--mid); cursor:pointer; font-size:16px; line-height:1;">×</button>
+                    </div>
                     <button onclick="openQRModal()" id="btn-print-qr" class="nx-btn nx-btn-ghost nx-btn-sm" style="display:none;">🖨️ QR Labels</button>
                 </div>
                 <div class="nx-table-wrap">
@@ -1212,6 +1220,8 @@
     });
 
     // ── LOAD MATERIALS ────────────────────────────────────────────────────────
+    let allMaterialsList = [];
+
     async function loadMaterials() {
         try {
             const { data: { user } } = await window.supabase.auth.getUser();
@@ -1222,33 +1232,54 @@
                 .select('*').eq('tenant_id', tenantId).eq('is_active', true).order('name');
             if (error) throw error;
 
-            const tbody = document.getElementById('materials-list');
-            tbody.innerHTML = '';
-            data.forEach(material => {
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td class="nx-td-mono">${material.material_code || '-'}</td>
-                    <td class="nx-td-bold">${material.name}</td>
-                    <td>${material.unit}</td>
-                    <td style="text-align:right;">${material.min_stock_level}</td>
-                    <td class="nx-td-mono">${material.hsn_sac || '-'}</td>
-                    <td>${material.gst_rate > 0 ? material.gst_rate + '%' : '-'}</td>
-                    <td>
-                        <div style="display:flex; gap:6px;">
-                            <button onclick="editMaterial('${material.id}','${material.name.replace(/'/g,"\\'")}','${material.unit}',${material.min_stock_level},'${(material.material_code||'').replace(/'/g,"\\'")}','${(material.hsn_sac||'').replace(/'/g,"\\'")}',${material.gst_rate||0})"
-                                class="nx-btn nx-btn-ghost nx-btn-sm" data-en="Edit" data-mr="संपादित करा">Edit</button>
-                            <button onclick="deactivateMaterial('${material.id}')"
-                                class="nx-btn nx-btn-danger nx-btn-sm" data-en="Deactivate" data-mr="निष्क्रिय करा">Deactivate</button>
-                        </div>
-                    </td>
-                `;
-                tbody.appendChild(row);
-            });
-            const lang = localStorage.getItem('nexflow_lang') || 'en';
-            applyLang(lang);
+            allMaterialsList = data || [];
+            renderMaterialsList(allMaterialsList);
         } catch (error) {
             console.error('Error loading materials:', error);
         }
+    }
+
+    function renderMaterialsList(materialsArr) {
+        const tbody = document.getElementById('materials-list');
+        tbody.innerHTML = '';
+
+        if (materialsArr.length === 0) {
+            const emptyMsg = allMaterialsList.length === 0 ? 'No materials added yet.' : 'No materials match your search.';
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:var(--mid); padding:20px;">' + emptyMsg + '</td></tr>';
+            return;
+        }
+
+        materialsArr.forEach(material => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td class="nx-td-mono">${material.material_code || '-'}</td>
+                <td class="nx-td-bold">${material.name}</td>
+                <td>${material.unit}</td>
+                <td style="text-align:right;">${material.min_stock_level}</td>
+                <td class="nx-td-mono">${material.hsn_sac || '-'}</td>
+                <td>${material.gst_rate > 0 ? material.gst_rate + '%' : '-'}</td>
+                <td>
+                    <div style="display:flex; gap:6px;">
+                        <button onclick="editMaterial('${material.id}','${material.name.replace(/'/g,"\\'")}','${material.unit}',${material.min_stock_level},'${(material.material_code||'').replace(/'/g,"\\'")}','${(material.hsn_sac||'').replace(/'/g,"\\'")}',${material.gst_rate||0})"
+                            class="nx-btn nx-btn-ghost nx-btn-sm" data-en="Edit" data-mr="संपादित करा">Edit</button>
+                        <button onclick="deactivateMaterial('${material.id}')"
+                            class="nx-btn nx-btn-danger nx-btn-sm" data-en="Deactivate" data-mr="निष्क्रिय करा">Deactivate</button>
+                    </div>
+                </td>
+            `;
+            tbody.appendChild(row);
+        });
+        const lang = localStorage.getItem('nexflow_lang') || 'en';
+        applyLang(lang);
+    }
+
+    function filterMaterialsList(term) {
+        const t = term.toLowerCase();
+        const filtered = allMaterialsList.filter(m =>
+            m.name.toLowerCase().includes(t) ||
+            (m.material_code && m.material_code.toLowerCase().includes(t))
+        );
+        renderMaterialsList(filtered);
     }
 
     function editMaterial(id, name, unit, minStockLevel, materialCode='', hsnSac='', gstRate=0) {
@@ -2568,6 +2599,19 @@
             switchToTab('materials');
             loadMaterials();
             if (isPro()) document.getElementById('btn-print-qr').style.display = '';
+        });
+
+        const materialsListSearchInput = document.getElementById('materialsListSearch');
+        const materialsListClearBtn    = document.getElementById('materialsListClear');
+        materialsListSearchInput.addEventListener('input', (e) => {
+            const term = e.target.value;
+            materialsListClearBtn.style.display = term.length > 0 ? 'block' : 'none';
+            filterMaterialsList(term);
+        });
+        materialsListClearBtn.addEventListener('click', () => {
+            materialsListSearchInput.value = '';
+            materialsListClearBtn.style.display = 'none';
+            filterMaterialsList('');
         });
         document.getElementById('tab-suppliers').addEventListener('click',  () => { switchToTab('suppliers');  loadSuppliers(); });
         document.getElementById('tab-clients').addEventListener('click',    () => { switchToTab('clients');    loadClients(); });
