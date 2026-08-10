@@ -167,6 +167,14 @@
                     <div class="nx-card">
                         <div class="nx-card-header">
                             <div class="nx-card-title" data-en="Products List" data-mr="उत्पादनांची यादी">Products List</div>
+                            <div style="position:relative; width:200px;">
+                                <input type="text" id="productsListSearch" class="nx-input"
+                                       style="padding-right:32px; font-size:13px;"
+                                       data-en="Search products..." data-mr="उत्पादने शोधा..."
+                                       placeholder="Search products...">
+                                <button id="productsListClear" type="button" style="display:none; position:absolute; right:10px; top:50%; transform:translateY(-50%);
+                                        background:none; border:none; color:var(--mid); cursor:pointer; font-size:16px; line-height:1;">×</button>
+                            </div>
                         </div>
                         <div class="nx-table-wrap">
                             <table class="nx-table">
@@ -371,6 +379,8 @@
             }
         });
 
+        let allProductsList = [];
+
         async function loadProducts() {
             const { data, error } = await supabaseClient
                 .from('p2_products')
@@ -399,22 +409,39 @@
                 }
             }
 
-            const tbody    = document.getElementById('products-list');
+            allProductsList = data.map(product => ({ ...product, hasBOM: bomCountMap[product.id] > 0 }));
+
             const bomSelect = document.getElementById('bom-product-select');
-            const emptyEl  = document.getElementById('productsEmpty');
+            bomSelect.innerHTML = '<option value="" data-en="-- Select a Product --" data-mr="-- उत्पादन निवडा --">-- Select a Product --</option>';
+            allProductsList.forEach(product => {
+                const option = document.createElement('option');
+                option.value       = product.id;
+                option.textContent = product.name;
+                bomSelect.appendChild(option);
+            });
+
+            renderProductsList(allProductsList);
+        }
+
+        function renderProductsList(productsArr) {
+            const tbody   = document.getElementById('products-list');
+            const emptyEl = document.getElementById('productsEmpty');
 
             tbody.innerHTML = '';
-            bomSelect.innerHTML = '<option value="" data-en="-- Select a Product --" data-mr="-- उत्पादन निवडा --">-- Select a Product --</option>';
 
-            if (!data || data.length === 0) {
-                emptyEl.style.display = 'block';
+            if (productsArr.length === 0) {
+                if (allProductsList.length === 0) {
+                    emptyEl.style.display = 'block';
+                } else {
+                    emptyEl.style.display = 'none';
+                    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:var(--mid); padding:20px;">No products match your search.</td></tr>';
+                }
                 return;
             }
             emptyEl.style.display = 'none';
 
-            data.forEach(product => {
-                const hasBOM    = bomCountMap[product.id] > 0;
-                const bomBadge  = hasBOM
+            productsArr.forEach(product => {
+                const bomBadge = product.hasBOM
                     ? '<span class="nx-badge nx-badge-green">BOM Set</span>'
                     : '<span class="nx-badge nx-badge-yellow" data-en="No BOM ⚠" data-mr="BOM नाही ⚠">No BOM ⚠</span>';
 
@@ -435,16 +462,20 @@
                     </td>
                 `;
                 tbody.appendChild(row);
-
-                const option = document.createElement('option');
-                option.value       = product.id;
-                option.textContent = product.name;
-                bomSelect.appendChild(option);
             });
 
             if (window.utils && typeof window.utils.updateLanguage === 'function') {
                 window.utils.updateLanguage();
             }
+        }
+
+        function filterProductsList(term) {
+            const t = term.toLowerCase();
+            const filtered = allProductsList.filter(p =>
+                p.name.toLowerCase().includes(t) ||
+                (p.product_code && p.product_code.toLowerCase().includes(t))
+            );
+            renderProductsList(filtered);
         }
 
         async function loadRawMaterials() {
@@ -515,6 +546,20 @@
         }
 
         function setupEventListeners() {
+            // Products List search
+            const productsListSearchInput = document.getElementById('productsListSearch');
+            const productsListClearBtn    = document.getElementById('productsListClear');
+            productsListSearchInput.addEventListener('input', (e) => {
+                const term = e.target.value;
+                productsListClearBtn.style.display = term.length > 0 ? 'block' : 'none';
+                filterProductsList(term);
+            });
+            productsListClearBtn.addEventListener('click', () => {
+                productsListSearchInput.value = '';
+                productsListClearBtn.style.display = 'none';
+                filterProductsList('');
+            });
+
             // Add Product
             document.getElementById('add-product-form').addEventListener('submit', async (e) => {
                 e.preventDefault();
