@@ -99,15 +99,7 @@
                     </div>
                     <div class="nx-form-group" style="margin:0;">
                         <label for="year" data-en="Select Year" data-mr="वर्ष निवडा">Select Year</label>
-                        <select id="year" class="nx-input" style="width:110px;">
-                            <option value="2024">2024</option>
-                            <option value="2025">2025</option>
-                            <option value="2026">2026</option>
-                            <option value="2027">2027</option>
-                            <option value="2028">2028</option>
-                            <option value="2029">2029</option>
-                            <option value="2030">2030</option>
-                        </select>
+                        <select id="year" class="nx-input" style="width:110px;"></select>
                     </div>
                     <button id="generate-report" class="nx-btn nx-btn-primary"
                             data-en="Generate Report" data-mr="अहवाल तयार करा">Generate Report</button>
@@ -184,6 +176,17 @@
         // Set defaults on load
         const yearSelect = document.getElementById('year');
         const today = new Date();
+
+        // Dynamic 5-year window (2 years back, 2 years forward) instead of a
+        // fixed literal list that would silently stop covering new years.
+        const currentYear = today.getFullYear();
+        for (let y = currentYear - 2; y <= currentYear + 2; y++) {
+            const opt = document.createElement('option');
+            opt.value = y;
+            opt.textContent = y;
+            yearSelect.appendChild(opt);
+        }
+
         yearSelect.value = today.getFullYear();
         document.getElementById('month').value = today.getMonth() + 1;
 
