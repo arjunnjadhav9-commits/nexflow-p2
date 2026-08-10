@@ -165,6 +165,15 @@
             <div id="stockTableCard" style="display:none;" class="nx-card">
                 <div class="nx-card-header">
                     <div class="nx-card-title" data-en="Stock Levels" data-mr="साठा पातळी">Stock Levels</div>
+                    <!-- STATUS FILTER -->
+                    <div id="stockStatusFilter" style="display:flex; gap:6px;">
+                        <button type="button" class="nx-btn nx-btn-sm nx-btn-primary status-filter-btn" data-status="all"
+                                data-en="All" data-mr="सर्व">All</button>
+                        <button type="button" class="nx-btn nx-btn-sm nx-btn-ghost status-filter-btn" data-status="low"
+                                data-en="Low" data-mr="कमी">Low</button>
+                        <button type="button" class="nx-btn nx-btn-sm nx-btn-ghost status-filter-btn" data-status="ok"
+                                data-en="OK" data-mr="ठीक">OK</button>
+                    </div>
                     <!-- SEARCH -->
                     <div style="position:relative; width:220px;">
                         <input type="text" id="materialSearch" class="nx-input"
@@ -218,7 +227,21 @@
     <div id="historyModal" class="nx-modal-overlay" style="display:none;">
         <div class="nx-modal" style="max-width:560px;">
             <div class="nx-modal-title" id="historyModalTitle" style="color:var(--orange);">Material History</div>
-            <div style="font-size:13px; color:var(--mid); margin-bottom:16px;" id="historyModalSub">Last 2 months</div>
+
+            <div class="nx-form-row" style="margin-bottom:12px;">
+                <div class="nx-form-group" style="margin-bottom:0;">
+                    <label class="nx-label" data-en="From" data-mr="पासून">From</label>
+                    <input type="date" id="historyFromDate" class="nx-input">
+                </div>
+                <div class="nx-form-group" style="margin-bottom:0;">
+                    <label class="nx-label" data-en="To" data-mr="पर्यंत">To</label>
+                    <input type="date" id="historyToDate" class="nx-input">
+                </div>
+            </div>
+            <div style="display:flex; justify-content:flex-end; margin-bottom:16px;">
+                <button id="historyApplyBtn" type="button" class="nx-btn nx-btn-primary nx-btn-sm"
+                        data-en="Apply" data-mr="लागू करा">Apply</button>
+            </div>
 
             <div id="historyLoading" style="display:flex; align-items:center; justify-content:center; padding:30px;">
                 <div class="nx-logo-loader">
@@ -227,8 +250,9 @@
                 </div>
             </div>
 
-            <div id="historyEmpty" style="display:none; text-align:center; padding:30px; color:var(--mid); font-size:13px;">
-                No transactions in the last 2 months.
+            <div id="historyEmpty" style="display:none; text-align:center; padding:30px; color:var(--mid); font-size:13px;"
+                 data-en="No transactions in this date range." data-mr="या कालावधीत कोणतेही व्यवहार नाहीत.">
+                No transactions in this date range.
             </div>
 
             <div id="historyTableWrap" class="nx-table-wrap" style="display:none; max-height:380px; overflow-y:auto; margin-bottom:16px;">
@@ -278,15 +302,18 @@
                 const row   = document.createElement('tr');
                 row.dataset.materialName = item.material_name.toLowerCase();
                 row.dataset.materialCode = (item.material_code || '').toLowerCase();
+                row.dataset.materialId   = item.raw_material_id;
                 row.innerHTML = `
                     <td class="nx-td-mono">${item.material_code || '—'}</td>
-                    <td class="nx-td-bold" style="${isLow ? 'color:var(--red);' : ''}">${item.material_name}</td>
-                    <td style="text-align:right; font-weight:700; color:${isLow ? 'var(--red)' : 'var(--green)'};">
+                    <td class="nx-td-bold" data-cell="name" style="${isLow ? 'color:var(--red);' : ''}">${item.material_name}</td>
+                    <td data-cell="stock" style="text-align:right; font-weight:700; color:${isLow ? 'var(--red)' : 'var(--green)'};">
                         ${formatNumber(item.current_stock)}
                     </td>
-                    <td style="text-align:right; color:var(--mid);">${formatNumber(item.min_stock_level)}</td>
+                    <td class="min-stock-cell" data-material-id="${item.raw_material_id}" style="text-align:right; color:var(--mid);">
+                        ${minStockCellHTML(item)}
+                    </td>
                     <td style="color:var(--mid);">${item.unit}</td>
-                    <td>
+                    <td data-cell="status">
                         ${isLow
                             ? '<span class="nx-badge nx-badge-red">⚠ Low Stock</span>'
                             : '<span class="nx-badge nx-badge-green">✓ OK</span>'
@@ -307,6 +334,131 @@
             });
         }
 
+        // ── MIN STOCK — INLINE EDIT ────────────────────────────────
+        // Renders the read-only (click-to-edit) state of the Min Stock cell.
+        function minStockCellHTML(item) {
+            return `
+                <span class="min-stock-display" data-material-id="${item.raw_material_id}" data-value="${item.min_stock_level}"
+                      style="cursor:pointer; border-bottom:1px dashed var(--border);" title="Click to edit">
+                    ${formatNumber(item.min_stock_level)}
+                </span>
+            `;
+        }
+
+        // Restores a Min Stock cell to its read-only display, reading the
+        // current value from allStockLevels unless an explicit value is passed
+        // (used to redraw the just-edited value before the array is refreshed).
+        function renderMinStockCell(td, materialId, value) {
+            const item = allStockLevels.find(i => i.raw_material_id === materialId);
+            const displayValue = value !== undefined ? value : item?.min_stock_level;
+            td.innerHTML = minStockCellHTML({ raw_material_id: materialId, min_stock_level: displayValue });
+        }
+
+        // Re-evaluates low-stock status for one row in place — no page reload,
+        // no re-fetch, just recolors the name/stock cells and swaps the badge.
+        function updateRowStatus(materialId) {
+            const item = allStockLevels.find(i => i.raw_material_id === materialId);
+            const row  = document.querySelector(`tr[data-material-id="${materialId}"]`);
+            if (!item || !row) return;
+
+            const isLow = item.current_stock < item.min_stock_level;
+
+            const nameCell = row.querySelector('[data-cell="name"]');
+            if (nameCell) nameCell.style.color = isLow ? 'var(--red)' : '';
+
+            const stockCell = row.querySelector('[data-cell="stock"]');
+            if (stockCell) stockCell.style.color = isLow ? 'var(--red)' : 'var(--green)';
+
+            const statusCell = row.querySelector('[data-cell="status"]');
+            if (statusCell) {
+                statusCell.innerHTML = isLow
+                    ? '<span class="nx-badge nx-badge-red">⚠ Low Stock</span>'
+                    : '<span class="nx-badge nx-badge-green">✓ OK</span>';
+            }
+        }
+
+        function startMinStockEdit(display) {
+            const td          = display.closest('td');
+            const materialId  = display.dataset.materialId;
+            const originalValue = display.dataset.value;
+
+            const input = document.createElement('input');
+            input.type = 'number';
+            input.min  = '0';
+            input.step = 'any';
+            input.value = originalValue;
+            input.className = 'nx-input';
+            input.style.cssText = 'width:80px; padding:4px 6px; font-size:13px; text-align:right; margin-left:auto; display:block;';
+            input.dataset.materialId    = materialId;
+            input.dataset.originalValue = originalValue;
+
+            td.innerHTML = '';
+            td.appendChild(input);
+            input.focus();
+            input.select();
+
+            let cancelled = false;
+
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    input.blur();
+                } else if (e.key === 'Escape') {
+                    cancelled = true;
+                    input.blur();
+                }
+            });
+
+            input.addEventListener('blur', () => {
+                if (cancelled) {
+                    renderMinStockCell(td, materialId, parseFloat(originalValue));
+                    return;
+                }
+                commitMinStockEdit(td, input, materialId);
+            });
+        }
+
+        async function commitMinStockEdit(td, input, materialId) {
+            const raw          = input.value;
+            const newValue     = parseFloat(raw);
+            const originalValue = parseFloat(input.dataset.originalValue);
+
+            if (raw === '' || isNaN(newValue) || newValue < 0) {
+                toast('Minimum stock level must be 0 or greater', 'error');
+                renderMinStockCell(td, materialId, originalValue);
+                return;
+            }
+
+            if (newValue === originalValue) {
+                renderMinStockCell(td, materialId, originalValue);
+                return;
+            }
+
+            input.disabled = true;
+
+            try {
+                const { error } = await window.supabase
+                    .from('p2_raw_materials')
+                    .update({ min_stock_level: newValue })
+                    .eq('id', materialId);
+
+                if (error) throw error;
+
+                const item = allStockLevels.find(i => i.raw_material_id === materialId);
+                if (item) item.min_stock_level = newValue;
+
+                renderMinStockCell(td, materialId, newValue);
+                updateRowStatus(materialId);
+                updateStats(allStockLevels);
+                toast('Minimum stock level updated', 'ok');
+
+            } catch (err) {
+                console.error('Error updating min stock level:', err);
+                toast('Failed to update minimum stock level', 'error');
+                renderMinStockCell(td, materialId, originalValue);
+            }
+        }
+
         // ── UPDATE KPI CARDS ──────────────────────────────────────
         function updateStats(stockLevels) {
             const total = stockLevels.length;
@@ -322,12 +474,30 @@
         }
 
         // ── SEARCH / FILTER ───────────────────────────────────────
+        let currentStatusFilter = 'all'; // 'all' | 'low' | 'ok'
+
         function filterMaterials(searchTerm) {
-            const filtered = allStockLevels.filter(item =>
-                item.material_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                (item.material_code && item.material_code.toLowerCase().includes(searchTerm.toLowerCase()))
-            );
-            renderStockLevels(filtered, searchTerm.length > 0);
+            const term = searchTerm.toLowerCase();
+            const filtered = allStockLevels.filter(item => {
+                const matchesSearch =
+                    item.material_name.toLowerCase().includes(term) ||
+                    (item.material_code && item.material_code.toLowerCase().includes(term));
+                if (!matchesSearch) return false;
+                if (currentStatusFilter === 'all') return true;
+                const isLow = item.current_stock < item.min_stock_level;
+                return currentStatusFilter === 'low' ? isLow : !isLow;
+            });
+            renderStockLevels(filtered, searchTerm.length > 0 || currentStatusFilter !== 'all');
+        }
+
+        function setStatusFilter(status) {
+            currentStatusFilter = status;
+            document.querySelectorAll('.status-filter-btn').forEach(btn => {
+                const active = btn.dataset.status === status;
+                btn.classList.toggle('nx-btn-primary', active);
+                btn.classList.toggle('nx-btn-ghost', !active);
+            });
+            filterMaterials(document.getElementById('materialSearch').value);
         }
 
         // ── FETCH STOCK ───────────────────────────────────────────
@@ -487,8 +657,8 @@
         }
 
         // ── MATERIAL HISTORY MODAL ─────────────────────────────────
-        // Shows last 2 months of p2_stock_transactions for one material:
-        // grn (stock in), consumption (stock out), adjustment (correction).
+        // Shows p2_stock_transactions for one material within a user-picked
+        // date range: grn (stock in), consumption (stock out), adjustment (correction).
         function transactionBadge(type, quantity) {
             if (type === 'grn') return '<span class="nx-badge nx-badge-green">GRN</span>';
             if (type === 'consumption') return '<span class="nx-badge nx-badge-red">Consumption</span>';
@@ -496,33 +666,54 @@
             return `<span class="nx-badge nx-badge-grey">${type}</span>`;
         }
 
+        let currentHistoryMaterial = null; // { id, name, unit }
+
         async function openMaterialHistory(materialId, materialName, unit) {
-            const modal      = document.getElementById('historyModal');
+            currentHistoryMaterial = { id: materialId, name: materialName, unit };
+
+            document.getElementById('historyModalTitle').textContent = materialName;
+
+            const today       = new Date();
+            const twoMonthsAgo = new Date();
+            twoMonthsAgo.setMonth(twoMonthsAgo.getMonth() - 2);
+
+            document.getElementById('historyFromDate').value = twoMonthsAgo.toISOString().split('T')[0];
+            document.getElementById('historyToDate').value   = today.toISOString().split('T')[0];
+
+            document.getElementById('historyModal').style.display = 'flex';
+
+            await loadMaterialHistory();
+        }
+
+        async function loadMaterialHistory() {
+            if (!currentHistoryMaterial) return;
+
             const loading    = document.getElementById('historyLoading');
             const empty      = document.getElementById('historyEmpty');
             const tableWrap  = document.getElementById('historyTableWrap');
             const tbody      = document.getElementById('historyTableBody');
+            const unit       = currentHistoryMaterial.unit;
 
-            document.getElementById('historyModalTitle').textContent = materialName;
-            document.getElementById('historyModalSub').textContent   = 'Last 2 months';
+            const fromDate = document.getElementById('historyFromDate').value;
+            const toDate   = document.getElementById('historyToDate').value;
+
+            if (!fromDate || !toDate || fromDate > toDate) {
+                toast('Please pick a valid From/To date range.', 'warn');
+                return;
+            }
 
             loading.style.display    = 'flex';
             empty.style.display      = 'none';
             tableWrap.style.display  = 'none';
             tbody.innerHTML = '';
 
-            modal.style.display = 'flex';
-
             try {
-                const twoMonthsAgo = new Date();
-                twoMonthsAgo.setMonth(twoMonthsAgo.getMonth() - 2);
-                const fromDate = twoMonthsAgo.toISOString().split('T')[0];
-
                 const { data, error } = await window.supabase
                     .from('p2_stock_transactions')
                     .select('id, transaction_type, quantity, transaction_date, notes, invoice_no, supplier_name')
-                    .eq('raw_material_id', materialId)
+                    .eq('raw_material_id', currentHistoryMaterial.id)
                     .gte('transaction_date', fromDate)
+                    .lte('transaction_date', toDate)
                     .order('transaction_date', { ascending: false })
                     .order('created_at', { ascending: false });
 
@@ -531,6 +722,8 @@
                 loading.style.display = 'none';
 
                 if (!data || data.length === 0) {
+                    const lang = localStorage.getItem('nexflow_lang') || 'en';
+                    empty.textContent = lang === 'mr' ? empty.dataset.mr : empty.dataset.en;
                     empty.style.display = 'block';
                     return;
                 }
@@ -579,16 +772,24 @@
         document.getElementById('historyModal').addEventListener('click', (e) => {
             if (e.target.id === 'historyModal') e.target.style.display = 'none';
         });
+        document.getElementById('historyApplyBtn').addEventListener('click', loadMaterialHistory);
 
-        // Delegated listener — table rows (and their history buttons) are
-        // rebuilt via innerHTML on every render/search, so we bind once on
-        // the static tbody parent instead of per-button (avoids duplicate
-        // listeners stacking up on each re-render).
+        // Delegated listener — table rows (and their history buttons /
+        // min-stock cells) are rebuilt via innerHTML on every render/search,
+        // so we bind once on the static tbody parent instead of per-element
+        // (avoids duplicate listeners stacking up on each re-render).
         document.getElementById('stockLevelsBody').addEventListener('click', (e) => {
             const btn = e.target.closest('.history-btn');
-            if (!btn) return;
-            const { materialId, materialName, unit } = btn.dataset;
-            openMaterialHistory(materialId, materialName, unit);
+            if (btn) {
+                const { materialId, materialName, unit } = btn.dataset;
+                openMaterialHistory(materialId, materialName, unit);
+                return;
+            }
+
+            const minStockDisplay = e.target.closest('.min-stock-display');
+            if (minStockDisplay) {
+                startMinStockEdit(minStockDisplay);
+            }
         });
 
         // ── FIRST LOGIN CHECK ─────────────────────────────────────
@@ -705,6 +906,10 @@
                 searchInput.value      = '';
                 clearBtn.style.display = 'none';
                 filterMaterials('');
+            });
+
+            document.querySelectorAll('.status-filter-btn').forEach(btn => {
+                btn.addEventListener('click', () => setStatusFilter(btn.dataset.status));
             });
         });
     </script>
