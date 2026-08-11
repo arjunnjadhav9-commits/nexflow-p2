@@ -118,6 +118,18 @@
         .mat-item-unit{font-size:11px;color:var(--mid);font-family:monospace;
             background:var(--surface3);padding:1px 6px;border-radius:3px;flex-shrink:0;}
         .mat-dropdown-empty{padding:12px;font-size:12px;color:var(--mid);text-align:center;}
+
+        /* ── Past Dispatches filters (same convention as all-dispatch-history.html) ── */
+        .dh-filters {
+            display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 16px;
+        }
+        .dh-filters .nx-form-group { margin: 0; min-width: 140px; }
+        .dh-filters label {
+            font-size: 11px; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.5px; color: var(--mid); display: block; margin-bottom: 6px;
+        }
+        .dh-filters .nx-input { height: 38px; font-size: 13px; }
+        .dh-filter-search { flex: 1; min-width: 180px; }
     </style>
 </head>
 <body>
@@ -318,6 +330,27 @@
                         <span data-en="Full History" data-mr="संपूर्ण इतिहास">Full History</span>
                     </a>
                 </div>
+
+                <div class="dh-filters">
+                    <div class="nx-form-group dh-filter-search">
+                        <label data-en="Client" data-mr="ग्राहक">Client</label>
+                        <input type="text" id="rmDispatchFilterClient" class="nx-input"
+                               data-en="Search client..." data-mr="ग्राहक शोधा..." placeholder="Search client...">
+                    </div>
+                    <div class="nx-form-group">
+                        <label data-en="From" data-mr="पासून">From</label>
+                        <input type="date" id="rmDispatchFilterFrom" class="nx-input">
+                    </div>
+                    <div class="nx-form-group">
+                        <label data-en="To" data-mr="पर्यंत">To</label>
+                        <input type="date" id="rmDispatchFilterTo" class="nx-input">
+                    </div>
+                    <button type="button" id="rmDispatchFilterApplyBtn" class="nx-btn nx-btn-primary" style="height:38px; white-space:nowrap;"
+                            data-en="Apply" data-mr="लागू करा">Apply</button>
+                    <button type="button" id="rmDispatchFilterResetBtn" class="nx-btn nx-btn-ghost" style="height:38px; white-space:nowrap;"
+                            data-en="Reset" data-mr="रीसेट">Reset</button>
+                </div>
+
                 <div class="nx-table-wrap">
                     <table class="nx-table">
                         <thead>
@@ -723,22 +756,45 @@
         };
 
         // ── LOAD PAST DISPATCHES (raw_material type only) ─────────────
-        async function loadRecentDispatches() {
+        async function loadRecentDispatches(filters = {}) {
+            const hasFilters = !!(filters.clientName || filters.fromDate || filters.toDate);
+
             const { data, error } = await window.supabase
                 .from('p2_dispatch_orders')
                 .select('id, client_name, status, challan_number, dispatch_date, created_at')
                 .eq('tenant_id', tenantId)
                 .eq('dispatch_type', 'raw_material')
                 .order('created_at', { ascending: false })
-                .limit(20);
+                .limit(hasFilters ? 100 : 20);
 
             if (error) throw error;
 
+            renderPastDispatches(applyDispatchFilters(data || [], filters), hasFilters);
+        }
+
+        // Client-side filter over the already-fetched rows.
+        function applyDispatchFilters(rows, filters) {
+            return rows.filter(d => {
+                if (filters.clientName) {
+                    const term = filters.clientName.toLowerCase();
+                    if (!(d.client_name || '').toLowerCase().includes(term)) return false;
+                }
+                const dateStr = d.dispatch_date || (d.created_at || '').split('T')[0];
+                if (filters.fromDate && dateStr < filters.fromDate) return false;
+                if (filters.toDate && dateStr > filters.toDate) return false;
+                return true;
+            });
+        }
+
+        function renderPastDispatches(data, hasFilters = false) {
             const tbody = document.getElementById('pastDispatchesBody');
             tbody.innerHTML = '';
 
             if (!data || data.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="5" style="padding:20px; text-align:center; color:var(--mid);">${t('No raw material dispatches yet.', 'अद्याप कोणताही कच्चा माल डिस्पॅच झालेला नाही.')}</td></tr>`;
+                const emptyMsg = hasFilters
+                    ? t('No dispatches match this filter.', 'या फिल्टरशी जुळणारे कोणतेही डिस्पॅच नाहीत.')
+                    : t('No raw material dispatches yet.', 'अद्याप कोणताही कच्चा माल डिस्पॅच झालेला नाही.');
+                tbody.innerHTML = `<tr><td colspan="5" style="padding:20px; text-align:center; color:var(--mid);">${emptyMsg}</td></tr>`;
                 return;
             }
 
@@ -774,6 +830,20 @@
                 tbody.appendChild(row);
             });
         }
+
+        document.getElementById('rmDispatchFilterApplyBtn').addEventListener('click', () => {
+            loadRecentDispatches({
+                clientName: document.getElementById('rmDispatchFilterClient').value.trim(),
+                fromDate:   document.getElementById('rmDispatchFilterFrom').value,
+                toDate:     document.getElementById('rmDispatchFilterTo').value
+            });
+        });
+        document.getElementById('rmDispatchFilterResetBtn').addEventListener('click', () => {
+            document.getElementById('rmDispatchFilterClient').value = '';
+            document.getElementById('rmDispatchFilterFrom').value = '';
+            document.getElementById('rmDispatchFilterTo').value = '';
+            loadRecentDispatches();
+        });
 
         // ── RENDER ITEMS TABLE ────────────────────────────────────────
         function renderItemsTable() {
