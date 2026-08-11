@@ -297,18 +297,6 @@
       }
       .notes-ta { border: none !important; background: transparent !important; padding: 0 !important; font-size: 10pt; font-weight: 700; resize: none; color: #000; }
     }
-
-    /* ── Recent Issues filters (same convention as all-dispatch-history.html) ── */
-    .dh-filters {
-      display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 16px;
-    }
-    .dh-filters .nx-form-group { margin: 0; min-width: 140px; }
-    .dh-filters label {
-      font-size: 11px; font-weight: 700; text-transform: uppercase;
-      letter-spacing: 0.5px; color: var(--mid); display: block; margin-bottom: 6px;
-    }
-    .dh-filters .nx-input { height: 38px; font-size: 13px; }
-    .dh-filter-search { flex: 1; min-width: 180px; }
   </style>
 </head>
 
@@ -464,26 +452,8 @@
     <div class="card">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
         <div class="card-title" style="margin:0;">Recent Issues</div>
-        <a href="issue-history.html" class="btn btn-outline btn-sm" style="font-size:11px;">Full History →</a>
+        <a href="issue-history.html" class="nx-btn nx-btn-ghost">View Full History →</a>
       </div>
-
-      <div class="dh-filters">
-        <div class="nx-form-group dh-filter-search">
-          <label>Client</label>
-          <input type="text" id="issueFilterClient" class="nx-input" placeholder="Search client...">
-        </div>
-        <div class="nx-form-group">
-          <label>From</label>
-          <input type="date" id="issueFilterFrom" class="nx-input">
-        </div>
-        <div class="nx-form-group">
-          <label>To</label>
-          <input type="date" id="issueFilterTo" class="nx-input">
-        </div>
-        <button type="button" id="issueFilterApplyBtn" class="nx-btn nx-btn-primary" style="height:38px; white-space:nowrap;">Apply</button>
-        <button type="button" id="issueFilterResetBtn" class="nx-btn nx-btn-ghost" style="height:38px; white-space:nowrap;">Reset</button>
-      </div>
-
       <div class="nx-table-wrap">
         <table class="nx-table" style="font-size:13px;">
           <thead>
@@ -1579,39 +1549,22 @@ window.cancelChallan = async (orderId, challanNumber) => {
 };
 
 // ── RECENT ISSUES ──────────────────────────────────────────
-function applyIssueFilters(rows, filters) {
-  return rows.filter(o => {
-    if (filters.clientName) {
-      const term = filters.clientName.toLowerCase();
-      if (!(o.client_name || '').toLowerCase().includes(term)) return false;
-    }
-    const dateStr = o.dispatch_date || (o.created_at || '').split('T')[0];
-    if (filters.fromDate && dateStr < filters.fromDate) return false;
-    if (filters.toDate && dateStr > filters.toDate) return false;
-    return true;
-  });
-}
-
-async function loadRecentIssues(filters = {}) {
+async function loadRecentIssues() {
   const tbody = document.getElementById('recentIssuesBody');
   if (!tbody) return;
-  const hasFilters = !!(filters.clientName || filters.fromDate || filters.toDate);
   try {
-    const { data: allOrders, error } = await window.supabase
+    const { data: orders, error } = await window.supabase
       .from('p2_dispatch_orders')
       .select('id, challan_number, dispatch_date, created_at, client_name, status')
       .eq('tenant_id', tenantId)
       .eq('dispatch_type', 'bom_issue')
       .order('created_at', { ascending: false })
-      .limit(hasFilters ? 100 : 5);
+      .limit(5);
 
     if (error) throw error;
 
-    const orders = applyIssueFilters(allOrders || [], filters);
-
     if (!orders || orders.length === 0) {
-      const emptyMsg = hasFilters ? 'No issues match this filter.' : 'No issues yet.';
-      tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:var(--mid); padding:16px;">${emptyMsg}</td></tr>`;
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:var(--mid); padding:16px;">No issues yet.</td></tr>';
       return;
     }
 
@@ -1652,20 +1605,6 @@ async function loadRecentIssues(filters = {}) {
     tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:var(--mid); padding:12px;">Could not load recent issues.</td></tr>';
   }
 }
-
-document.getElementById('issueFilterApplyBtn').addEventListener('click', () => {
-  loadRecentIssues({
-    clientName: document.getElementById('issueFilterClient').value.trim(),
-    fromDate:   document.getElementById('issueFilterFrom').value,
-    toDate:     document.getElementById('issueFilterTo').value
-  });
-});
-document.getElementById('issueFilterResetBtn').addEventListener('click', () => {
-  document.getElementById('issueFilterClient').value = '';
-  document.getElementById('issueFilterFrom').value = '';
-  document.getElementById('issueFilterTo').value = '';
-  loadRecentIssues();
-});
 
         // ── AMENDMENT ─────────────────────────────────────────────────────
         var _amendOrderId = null;
