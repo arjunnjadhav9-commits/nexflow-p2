@@ -229,6 +229,7 @@ type HaikuIntent =
   | 'invoice_total'
   | 'invoice_detail'
   | 'grn_completeness'
+  | 'gstr2b_status'
   | 'unknown'
 
 interface GrnItem {
@@ -1142,6 +1143,12 @@ Classify the message as one of:
   - "Amche suppliers kadhle aahit?" -> {}
   - "Supplier list dikhao" -> {}
   - "All suppliers show karo" -> {}
+- "gstr2b_status" — user asks about GSTR-2B reconciliation status or ITC matching.
+  extracted fields: {}
+  Examples:
+  - "GSTR-2B madhe kiti match zale?" -> {}
+  - "Last reconciliation status?" -> {}
+  - "ITC block zala ka?" -> {}
 - "dispatch_detail" — user asks what was inside a specific dispatch challan (line items, not just header).
   extracted fields: { "challan_number": string }
   Examples:
@@ -1280,7 +1287,7 @@ Examples of correct create_grn extraction from mixed Hinglish/Marathi messages:
 - Message: "steel sheet 200 kg Sharma Traders ne bheja" -> extracted: { "items": [{ "material_name": "steel sheet", "quantity": 200, "unit": "kg" }], "supplier_name": "Sharma Traders" }
 
 Respond with ONLY valid JSON, no markdown code fences, no preamble, no explanation. The response must match exactly this shape:
-{ "intent": "check_stock" | "create_grn" | "create_production_issue" | "create_product_dispatch" | "create_rm_dispatch" | "recent_grn" | "consumption_summary" | "supplier_history" | "low_stock_list" | "grn_detail" | "pending_dispatches" | "grn_summary" | "top_consumption" | "material_list" | "stock_check_product" | "zero_stock_list" | "dispatch_summary" | "supplier_delivery_check" | "challan_detail" | "issue_summary" | "product_code_lookup" | "top_received" | "product_list" | "supplier_list" | "dispatch_detail" | "issue_detail" | "send_challan" | "send_tally_export" | "send_invoice" | "bom_detail" | "top_supplier" | "invoice_total" | "invoice_detail" | "grn_completeness" | "unknown", "extracted": { ...fields... } }`
+{ "intent": "check_stock" | "create_grn" | "create_production_issue" | "create_product_dispatch" | "create_rm_dispatch" | "recent_grn" | "consumption_summary" | "supplier_history" | "low_stock_list" | "grn_detail" | "pending_dispatches" | "grn_summary" | "top_consumption" | "material_list" | "stock_check_product" | "zero_stock_list" | "dispatch_summary" | "supplier_delivery_check" | "challan_detail" | "issue_summary" | "product_code_lookup" | "top_received" | "product_list" | "supplier_list" | "dispatch_detail" | "issue_detail" | "send_challan" | "send_tally_export" | "send_invoice" | "bom_detail" | "top_supplier" | "invoice_total" | "invoice_detail" | "grn_completeness" | "gstr2b_status" | "unknown", "extracted": { ...fields... } }`
 
   try {
     const response = await anthropicClient.messages.create({
@@ -2543,6 +2550,12 @@ async function executeQuery(
 
     const lines = sorted.map((s) => `• ${s.name}`)
     return `${sorted.length} supplier${sorted.length !== 1 ? 's' : ''}:\n\n${lines.join('\n')}`
+  }
+
+  if (intent === 'gstr2b_status') {
+    // Reconciliation results aren't persisted (client-side only, stateless per
+    // upload) — this intent can't query a live result, so it nudges instead.
+    return "GSTR-2B reconciliation is done on the export page. Upload this month's JSON to see matched vs blocked ITC. GSTR-2B is available from the 14th — file by the 20th."
   }
 
   if (intent === 'dispatch_detail') {
@@ -5016,6 +5029,7 @@ Deno.serve(async (req) => {
       'invoice_total',
       'invoice_detail',
       'grn_completeness',
+      'gstr2b_status',
     ]
 
     if (READ_ONLY_INTENTS.includes(haikuResult.intent)) {
