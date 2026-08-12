@@ -25,8 +25,7 @@
         { href: 'products.html',         en: 'Products',    mr: 'उत्पादने',   page: 'products'    },
         { href: 'reports.html',          en: 'Reports',     mr: 'अहवाल',      page: 'reports'     },
         { href: 'scanner.html',          en: '📷 Scanner',  mr: '📷 स्कॅनर', page: 'scanner'     },
-        { href: 'settings.html',         en: 'Settings',    mr: 'सेटिंग्ज',   page: 'settings'    },
-        { href: 'manual.html',           en: 'Manual',      mr: 'मार्गदर्शिका', page: 'manual'    }
+        { href: 'settings.html',         en: 'Settings',    mr: 'सेटिंग्ज',   page: 'settings'    }
     ];
 
     function getInitials(email) {
@@ -86,6 +85,11 @@
 .nx-plan-chip{font-family:var(--condensed);font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;padding:2px 6px;border-radius:3px;background:var(--orange-dim);color:var(--orange);border:1px solid rgba(255,92,26,0.22);width:fit-content;line-height:1.2}
 .nx-plan-chip.pro{background:var(--green-dim);color:var(--green);border-color:rgba(34,216,122,0.22)}
 .nx-plan-chip.lite{background:rgba(136,146,168,0.12);color:var(--mid);border-color:rgba(136,146,168,0.2)}
+
+/* Manual link — small secondary link, desktop (below email) and mobile drawer (below nav links) */
+.nx-manual-link{font-size:11px;color:var(--mid);text-decoration:none;line-height:1.3;background:none;white-space:nowrap;transition:color .15s}
+.nx-manual-link:hover{color:var(--text);text-decoration:underline}
+.nx-drawer-manual{padding:10px 16px;border-top:1px solid var(--border);flex-shrink:0}
 
 /* Logout */
 .nx-logout-btn{font-family:var(--condensed);font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;background:transparent;color:var(--mid);border:1px solid var(--border);padding:5px 12px;border-radius:var(--radius-sm);cursor:pointer;transition:all .15s;white-space:nowrap}
@@ -154,6 +158,7 @@ body{padding-top:56px}
         <div class="nx-avatar" id="nx-avatar">--</div>
         <div class="nx-user-details">
           <span class="nx-user-email" id="nx-email-text"></span>
+          <a href="manual.html" class="nx-manual-link" data-en="📖 Manual" data-mr="📖 मार्गदर्शिका">📖 Manual</a>
           <span class="nx-plan-chip" id="nx-plan-chip"></span>
         </div>
       </div>
@@ -172,6 +177,9 @@ body{padding-top:56px}
     <button class="nx-drawer-close" id="nx-drawer-close" aria-label="Close menu">✕</button>
   </div>
   <div class="nx-drawer-links">${mobileLinksHTML}</div>
+  <div class="nx-drawer-manual">
+    <a href="manual.html" class="nx-manual-link" id="nx-drawer-manual-link" data-en="📖 User Manual" data-mr="📖 वापरकर्ता मार्गदर्शिका">📖 User Manual</a>
+  </div>
   <div class="nx-drawer-footer">
     <div class="nx-drawer-user" id="nx-drawer-user" style="display:none">
       <div class="nx-avatar" id="nx-davatar">--</div>
@@ -295,7 +303,7 @@ body{padding-top:56px}
         closeBtn?.addEventListener('click', closeDrawer);
 
         // Close on link tap
-        document.querySelectorAll('.nx-mlink').forEach(a => {
+        document.querySelectorAll('.nx-mlink, #nx-drawer-manual-link').forEach(a => {
             a.addEventListener('click', closeDrawer);
         });
 
