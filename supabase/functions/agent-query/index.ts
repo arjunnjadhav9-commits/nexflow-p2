@@ -3176,7 +3176,7 @@ interface TallyExportInvoiceRow {
   amount_total: number
   gst_type: string
   client_gstin: string | null
-  items: { hsn_sac?: string }[] | null
+  items: InvoiceItem[] | null
 }
 
 const TALLY_EXPORT_JOIN_COLUMNS =
@@ -3196,6 +3196,18 @@ const TALLY_EXPORT_DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
 function monthAbbr(d: Date): string {
   return d.toLocaleDateString('en-IN', { month: 'short' })
+}
+
+// GSTIN state-code prefix -> state name, for the Place of Supply columns
+// in the Purchases and Invoices sheets. Matches export.html's getPlaceOfSupply.
+const GST_STATE_CODES: Record<string, string> = {
+  '27': 'Maharashtra', '29': 'Karnataka', '06': 'Haryana', '07': 'Delhi',
+  '24': 'Gujarat', '33': 'Tamil Nadu', '36': 'Telangana', '32': 'Kerala',
+  '19': 'West Bengal', '08': 'Rajasthan',
+}
+function getPlaceOfSupply(gstin: string): string {
+  if (!gstin) return ''
+  return GST_STATE_CODES[gstin.slice(0, 2)] || ''
 }
 
 // send_tally_export orchestrator — builds the 17-column GST workbook (GRN
@@ -3398,20 +3410,24 @@ async function sendTallyExportIntent(
 
   invoiceSheet.columns = [
     { header: 'Invoice No', key: 'invoiceNo', width: 18 },
-    { header: 'Date', key: 'date', width: 14 },
+    { header: 'Invoice Date', key: 'date', width: 14 },
     { header: 'Client', key: 'client', width: 28 },
-    { header: 'Mode', key: 'mode', width: 14 },
+    { header: 'Client GSTIN', key: 'clientGstin', width: 16 },
+    { header: 'B2B / B2C', key: 'b2bB2c', width: 10 },
+    { header: 'Place of Supply', key: 'placeOfSupply', width: 16 },
+    { header: 'Invoice Mode', key: 'invoiceModeCol', width: 14 },
     { header: 'Period From', key: 'periodFrom', width: 14 },
     { header: 'Period To', key: 'periodTo', width: 14 },
-    { header: 'Subtotal (₹)', key: 'subtotal', width: 14, numFmt: '#,##0.00' },
+    { header: 'Item Description', key: 'description', width: 28 },
+    { header: 'HSN/SAC', key: 'hsnSac', width: 12 },
+    { header: 'Qty', key: 'qty', width: 10, numFmt: '#,##0.##' },
+    { header: 'Unit', key: 'unit', width: 8 },
+    { header: 'Rate', key: 'rate', width: 12, numFmt: '#,##0.##' },
+    { header: 'Taxable Amount', key: 'taxableAmount', width: 15, numFmt: '#,##0.00' },
     { header: 'CGST (₹)', key: 'cgst', width: 12, numFmt: '#,##0.00' },
     { header: 'SGST (₹)', key: 'sgst', width: 12, numFmt: '#,##0.00' },
     { header: 'IGST (₹)', key: 'igst', width: 12, numFmt: '#,##0.00' },
-    { header: 'Total (₹)', key: 'total', width: 14, numFmt: '#,##0.00' },
-    { header: 'Client GSTIN', key: 'clientGstin', width: 16 },
-    { header: 'B2B / B2C', key: 'b2bB2c', width: 10 },
-    { header: 'Invoice Mode', key: 'invoiceModeCol', width: 14 },
-    { header: 'HSN Codes', key: 'hsnCodes', width: 18 },
+    { header: 'Item Total (₹)', key: 'itemTotal', width: 14, numFmt: '#,##0.00' },
   ]
 
   styleHeaderRow(invoiceSheet.getRow(1))
@@ -3423,51 +3439,85 @@ async function sendTallyExportIntent(
   let totalIgstSales = 0
   let totalOutputTax = 0
 
+  // GST split shared by both the per-item loop and the no-items fallback —
+  // splits a taxable amount's GST per the invoice's flat gst_type.
+  const splitInvoiceGst = (
+    gstType: string,
+    gstAmount: number
+  ): { cgst: number | string; sgst: number | string; igst: number | string } => {
+    if (gstType === 'cgst_sgst') return { cgst: gstAmount / 2, sgst: gstAmount / 2, igst: '' }
+    if (gstType === 'igst') return { cgst: '', sgst: '', igst: gstAmount }
+    return { cgst: '', sgst: '', igst: '' }
+  }
+
   for (const inv of (invoiceResult.data ?? []) as unknown as TallyExportInvoiceRow[]) {
     const isConsolidated = inv.invoice_mode === 'consolidated'
-    const gstAmount = Number(inv.amount_gst) || 0
-    let cgst: number | string = ''
-    let sgst: number | string = ''
-    let igst: number | string = ''
-    if (inv.gst_type === 'cgst_sgst') {
-      cgst = gstAmount / 2
-      sgst = gstAmount / 2
-    } else if (inv.gst_type === 'igst') {
-      igst = gstAmount
-    }
-    // 'none' — all three stay blank
-
-    totalTaxableSales += Number(inv.amount_subtotal) || 0
-    totalCgstSales += Number(cgst) || 0
-    totalSgstSales += Number(sgst) || 0
-    totalIgstSales += Number(igst) || 0
-    totalOutputTax += gstAmount
-
     const clientGstin = inv.client_gstin ?? ''
-    // Comma-separated unique HSN codes across line items — a single "HSN"
-    // column would only show one item's code, which is wrong for
-    // consolidated invoices spanning multiple materials/products.
-    // Pre-hsn_sac invoices have no hsn_sac on their items snapshot at all —
-    // those blank out here rather than being back-filled.
-    const hsnCodes = [
-      ...new Set((inv.items ?? []).map((item) => item.hsn_sac ?? '').filter((code) => code.trim())),
-    ].join(', ')
-
-    invoiceSheet.addRow({
+    const base = {
       invoiceNo: inv.invoice_number,
       date: formatDDMMYYYY(inv.created_at),
       client: inv.client_name ?? '',
-      mode: isConsolidated ? 'Consolidated' : 'Single',
-      periodFrom: isConsolidated && inv.date_from ? formatDDMMYYYY(inv.date_from) : '',
-      periodTo: isConsolidated && inv.date_to ? formatDDMMYYYY(inv.date_to) : '',
-      subtotal: Number(inv.amount_subtotal) || 0,
-      cgst, sgst, igst,
-      total: Number(inv.amount_total) || 0,
       clientGstin,
       b2bB2c: clientGstin.trim() ? 'B2B' : 'B2C',
+      placeOfSupply: getPlaceOfSupply(clientGstin),
       invoiceModeCol: inv.invoice_mode,
-      hsnCodes,
-    })
+      periodFrom: isConsolidated && inv.date_from ? formatDDMMYYYY(inv.date_from) : '',
+      periodTo: isConsolidated && inv.date_to ? formatDDMMYYYY(inv.date_to) : '',
+    }
+
+    const items = inv.items
+    if (items && items.length > 0) {
+      const subtotal = Number(inv.amount_subtotal) || 0
+      const gstAmount = Number(inv.amount_gst) || 0
+
+      for (const item of items) {
+        const taxable = Number(item.amount) || 0
+        const perItemGst = subtotal > 0 ? (taxable / subtotal) * gstAmount : 0
+        const { cgst, sgst, igst } = inv.gst_type === 'none'
+          ? { cgst: '' as number | string, sgst: '' as number | string, igst: '' as number | string }
+          : splitInvoiceGst(inv.gst_type, perItemGst)
+        const itemTotal = inv.gst_type === 'none' ? taxable : taxable + perItemGst
+
+        totalTaxableSales += taxable
+        totalCgstSales += Number(cgst) || 0
+        totalSgstSales += Number(sgst) || 0
+        totalIgstSales += Number(igst) || 0
+        totalOutputTax += (Number(cgst) || 0) + (Number(sgst) || 0) + (Number(igst) || 0)
+
+        invoiceSheet.addRow({
+          ...base,
+          description: item.description || '',
+          hsnSac: item.hsn_sac || '',
+          qty: item.qty,
+          unit: item.unit,
+          rate: item.rate,
+          taxableAmount: taxable,
+          cgst, sgst, igst,
+          itemTotal,
+        })
+      }
+    } else {
+      // No item snapshot (pre-hsn_sac invoices) — fall back to one row of
+      // invoice-level totals instead of dropping the invoice entirely.
+      const taxable = Number(inv.amount_subtotal) || 0
+      const gstAmount = Number(inv.amount_gst) || 0
+      const { cgst, sgst, igst } = splitInvoiceGst(inv.gst_type, gstAmount)
+      const itemTotal = Number(inv.amount_total) || 0
+
+      totalTaxableSales += taxable
+      totalCgstSales += Number(cgst) || 0
+      totalSgstSales += Number(sgst) || 0
+      totalIgstSales += Number(igst) || 0
+      totalOutputTax += gstAmount
+
+      invoiceSheet.addRow({
+        ...base,
+        description: '', hsnSac: '', qty: '', unit: '', rate: '',
+        taxableAmount: taxable,
+        cgst, sgst, igst,
+        itemTotal,
+      })
+    }
   }
 
   invoiceSheet.views = [{ state: 'frozen', ySplit: 1 }]
