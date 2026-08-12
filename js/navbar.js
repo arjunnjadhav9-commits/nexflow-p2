@@ -25,7 +25,8 @@
         { href: 'products.html',         en: 'Products',    mr: 'उत्पादने',   page: 'products'    },
         { href: 'reports.html',          en: 'Reports',     mr: 'अहवाल',      page: 'reports'     },
         { href: 'scanner.html',          en: '📷 Scanner',  mr: '📷 स्कॅनर', page: 'scanner'     },
-        { href: 'settings.html',         en: 'Settings',    mr: 'सेटिंग्ज',   page: 'settings'    }
+        { href: 'settings.html',         en: 'Settings',    mr: 'सेटिंग्ज',   page: 'settings'    },
+        { href: 'manual.html',           en: 'Manual',      mr: 'मार्गदर्शिका', page: 'manual'    }
     ];
 
     function getInitials(email) {

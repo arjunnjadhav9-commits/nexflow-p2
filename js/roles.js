@@ -1,10 +1,10 @@
 const ROLE_PERMISSIONS = {
-    owner:       ['dashboard','grn','issue','dispatch','rm_dispatch','dispatch_history','products','reports','invoices','scanner','settings','agent'],
-    supervisor:  ['dashboard','grn','issue','dispatch','rm_dispatch','dispatch_history','products','reports','invoices','scanner','agent'],
-    storekeeper: ['dashboard','grn','scanner'],
-    operator:    ['dashboard','issue','dispatch','rm_dispatch','dispatch_history','products','reports'],
-    accountant:  ['reports','invoices'],
-    staff:       ['dashboard','grn','scanner']   // legacy DB value — same permissions as storekeeper
+    owner:       ['dashboard','grn','issue','dispatch','rm_dispatch','dispatch_history','products','reports','invoices','scanner','settings','agent','manual'],
+    supervisor:  ['dashboard','grn','issue','dispatch','rm_dispatch','dispatch_history','products','reports','invoices','scanner','agent','manual'],
+    storekeeper: ['dashboard','grn','scanner','manual'],
+    operator:    ['dashboard','issue','dispatch','rm_dispatch','dispatch_history','products','reports','manual'],
+    accountant:  ['reports','invoices','manual'],
+    staff:       ['dashboard','grn','scanner','manual']   // legacy DB value — same permissions as storekeeper
 };
 
 const ROLE_LABELS = {

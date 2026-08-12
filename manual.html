@@ -1,0 +1,1003 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manual | Nexflow P2</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%230c0e14'/><text y='.9em' font-size='80' x='10' fill='%23ff5c1a'>N</text></svg>">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800;900&family=Barlow+Condensed:wght@500;600;700;800;900&display=swap">
+    <link rel="stylesheet" href="css/nexflow-design.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/supabase-client.js"></script>
+    <script src="js/roles.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/navbar.js"></script>
+    <style>
+        /* ── LAYOUT ── */
+        .manual-shell {
+            display: grid;
+            grid-template-columns: 260px 1fr;
+            gap: 32px;
+            max-width: 1240px;
+            margin: 0 auto;
+            padding: 28px 20px 80px;
+            align-items: start;
+        }
+        @media (max-width: 980px) {
+            .manual-shell { grid-template-columns: 1fr; padding: 20px 14px 60px; }
+        }
+
+        /* ── SIDEBAR / JUMP-NAV ── */
+        .manual-nav {
+            position: sticky;
+            top: 72px;
+            max-height: calc(100vh - 96px);
+            overflow-y: auto;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 16px;
+        }
+        .manual-nav-toggle {
+            display: none; width: 100%; text-align: left;
+            background: var(--surface2); border: 1px solid var(--border2); color: var(--text);
+            font-family: var(--condensed); font-weight: 700; font-size: 13px;
+            text-transform: uppercase; letter-spacing: .6px;
+            padding: 11px 14px; border-radius: var(--radius-sm); cursor: pointer;
+        }
+        .manual-nav-title {
+            font-family: var(--condensed); font-size: 11px; font-weight: 800;
+            text-transform: uppercase; letter-spacing: .8px; color: var(--mid);
+            margin-bottom: 10px;
+        }
+        .manual-nav-list { display: flex; flex-direction: column; gap: 1px; }
+        .manual-nav-link {
+            display: block; padding: 7px 10px; border-radius: var(--radius-sm);
+            font-size: 13px; color: var(--mid); text-decoration: none;
+            border-left: 2px solid transparent; transition: all .12s;
+        }
+        .manual-nav-link.manual-nav-part {
+            font-weight: 700; color: var(--text); margin-top: 12px;
+            font-family: var(--condensed); text-transform: uppercase; letter-spacing: .4px; font-size: 13px;
+        }
+        .manual-nav-link.manual-nav-part:first-child { margin-top: 0; }
+        .manual-nav-link:hover { color: var(--text); background: var(--surface2); }
+        .manual-nav-link.nx-active { color: var(--orange); border-left-color: var(--orange); background: var(--orange-dim); }
+        .manual-nav-sub { font-size: 12.5px; padding-left: 20px; }
+        .manual-print-btn { width: 100%; margin-top: 16px; }
+
+        @media (max-width: 980px) {
+            .manual-nav { position: static; max-height: none; padding: 0; border: none; background: transparent; }
+            .manual-nav-toggle { display: block; }
+            .manual-nav-list {
+                display: none; flex-direction: column; margin-top: 8px;
+                background: var(--surface); border: 1px solid var(--border);
+                border-radius: var(--radius-lg); padding: 0 16px; max-height: 60vh; overflow-y: auto;
+            }
+            .manual-nav-list.open { display: flex; padding: 16px; }
+        }
+
+        /* ── CONTENT ── */
+        .manual-content h2 {
+            font-family: var(--condensed); font-weight: 800; font-size: 24px;
+            color: var(--white); text-transform: uppercase; letter-spacing: .3px;
+            margin: 0 0 6px;
+        }
+        .manual-content h3 {
+            font-family: var(--condensed); font-weight: 700; font-size: 17px;
+            color: var(--white); margin: 28px 0 10px;
+        }
+        .manual-content h4 {
+            font-family: var(--condensed); font-weight: 700; font-size: 14px;
+            color: var(--orange); text-transform: uppercase; letter-spacing: .5px;
+            margin: 18px 0 8px;
+        }
+        .manual-content p { color: var(--text); line-height: 1.6; margin: 0 0 12px; }
+        .manual-content ul, .manual-content ol { color: var(--text); line-height: 1.7; margin: 0 0 12px; padding-left: 22px; }
+        .manual-content li { margin-bottom: 4px; }
+        .manual-part-sub { color: var(--mid); font-size: 14px; margin: 0 0 24px; max-width: 720px; }
+        .manual-section { scroll-margin-top: 76px; padding-top: 8px; border-top: 1px solid var(--border); margin-top: 44px; }
+        .manual-section:first-of-type { border-top: none; margin-top: 0; }
+        .manual-part-num {
+            display: inline-block; font-family: var(--condensed); font-weight: 900;
+            font-size: 13px; color: var(--orange); background: var(--orange-dim);
+            border: 1px solid rgba(255,92,26,0.25); border-radius: var(--radius-sm);
+            padding: 3px 9px; letter-spacing: .5px; margin-bottom: 10px;
+        }
+        .manual-subsection { scroll-margin-top: 76px; margin-top: 30px; }
+        .manual-mono { font-family: monospace; background: var(--surface2); padding: 1px 6px; border-radius: 3px; font-size: 0.92em; color: var(--light); }
+        .manual-cmd-table td:first-child { white-space: nowrap; }
+        code.manual-cmd { font-family: monospace; color: var(--orange); background: var(--orange-dim); padding: 2px 7px; border-radius: 3px; font-size: 12.5px; white-space: nowrap; }
+
+        /* ── ROLE GUIDE CARDS ── */
+        .manual-role-card { margin-bottom: 22px; }
+        .manual-role-jump {
+            display: none; align-items: center; gap: 8px;
+        }
+        .manual-role-jump.visible { display: inline-flex; }
+
+        /* ── PRINT ── */
+        .mobile-print-hint { display: none; }
+        @media print {
+            body > *:not(.nx-main) { display: none !important; }
+            .nx-main { padding-top: 0 !important; }
+            .manual-shell { display: block !important; max-width: 100% !important; padding: 0 !important; }
+            .manual-nav { display: none !important; }
+            .manual-content { max-width: 100% !important; }
+            .no-print { display: none !important; }
+            body, .manual-content, .manual-content * {
+                background: #fff !important; color: #000 !important;
+                box-shadow: none !important;
+            }
+            .manual-content .nx-card { border: 1px solid #ccc !important; }
+            .manual-content .nx-table thead tr, .manual-content .nx-table thead th {
+                background: #e5e7eb !important; color: #000 !important;
+                -webkit-print-color-adjust: exact; print-color-adjust: exact;
+            }
+            .manual-content code.manual-cmd { background: #f1f1f1 !important; color: #000 !important; border: 1px solid #ccc; }
+            .manual-section { break-inside: avoid-page; }
+            @page { size: A4; margin: 12mm; }
+
+            /* Role-guide scoped print — set via document.body.dataset.printScope */
+            body[data-print-scope="owner"] .manual-role-card:not([data-role="owner"]) { display: none !important; }
+            body[data-print-scope="supervisor"] .manual-role-card:not([data-role="supervisor"]) { display: none !important; }
+            body[data-print-scope="storekeeper"] .manual-role-card:not([data-role="storekeeper"]) { display: none !important; }
+            body[data-print-scope="operator"] .manual-role-card:not([data-role="operator"]) { display: none !important; }
+            body[data-print-scope="accountant"] .manual-role-card:not([data-role="accountant"]) { display: none !important; }
+            body[data-print-scope] .manual-section:not(#part-6) { display: none !important; }
+            body[data-print-scope] #part-6 > *:not(.manual-role-card) { display: none !important; }
+            body[data-print-scope] .manual-role-jump { display: none !important; }
+        }
+    </style>
+</head>
+<body>
+<div id="navbar-container"></div>
+
+<div class="nx-main">
+<div class="manual-shell">
+
+    <!-- ══════════ SIDEBAR / JUMP-NAV ══════════ -->
+    <aside class="manual-nav no-print" id="manualNav">
+        <button class="manual-nav-toggle" id="manualNavToggle" type="button">
+            ☰ <span data-en="Jump to section" data-mr="विभागात जा">Jump to section</span>
+        </button>
+        <div class="manual-nav-list" id="manualNavList">
+            <div class="manual-nav-title" data-en="ON THIS PAGE" data-mr="या पानावर">ON THIS PAGE</div>
+
+            <a href="#part-1" class="manual-nav-link manual-nav-part" data-jump="part-1" data-en="1. Getting Started" data-mr="१. सुरुवात">1. Getting Started</a>
+            <a href="#gs-what" class="manual-nav-link manual-nav-sub" data-jump="gs-what" data-en="What is Nexflow P2" data-mr="Nexflow P2 म्हणजे काय">What is Nexflow P2</a>
+            <a href="#gs-login" class="manual-nav-link manual-nav-sub" data-jump="gs-login" data-en="Login" data-mr="लॉगिन">Login</a>
+            <a href="#gs-dashboard" class="manual-nav-link manual-nav-sub" data-jump="gs-dashboard" data-en="Dashboard" data-mr="डॅशबोर्ड">Dashboard</a>
+            <a href="#gs-roles" class="manual-nav-link manual-nav-sub" data-jump="gs-roles" data-en="Role Access" data-mr="भूमिका प्रवेश">Role Access</a>
+            <a href="#gs-lang" class="manual-nav-link manual-nav-sub" data-jump="gs-lang" data-en="Language Toggle" data-mr="भाषा बदल">Language Toggle</a>
+
+            <a href="#part-2" class="manual-nav-link manual-nav-part" data-jump="part-2" data-en="2. Daily Operations" data-mr="२. दैनंदिन कामे">2. Daily Operations</a>
+            <a href="#do-grn" class="manual-nav-link manual-nav-sub" data-jump="do-grn" data-en="GRN" data-mr="GRN">GRN</a>
+            <a href="#do-issue" class="manual-nav-link manual-nav-sub" data-jump="do-issue" data-en="Issue" data-mr="Issue">Issue</a>
+            <a href="#do-dispatch" class="manual-nav-link manual-nav-sub" data-jump="do-dispatch" data-en="Dispatch" data-mr="Dispatch">Dispatch</a>
+            <a href="#do-rmdispatch" class="manual-nav-link manual-nav-sub" data-jump="do-rmdispatch" data-en="RM Dispatch" data-mr="RM Dispatch">RM Dispatch</a>
+            <a href="#do-invoices" class="manual-nav-link manual-nav-sub" data-jump="do-invoices" data-en="Invoices" data-mr="Invoices">Invoices</a>
+
+            <a href="#part-3" class="manual-nav-link manual-nav-part" data-jump="part-3" data-en="3. AI Copilot" data-mr="३. AI Copilot">3. AI Copilot</a>
+            <a href="#ac-what" class="manual-nav-link manual-nav-sub" data-jump="ac-what" data-en="What It Is" data-mr="काय आहे">What It Is</a>
+            <a href="#ac-readonly" class="manual-nav-link manual-nav-sub" data-jump="ac-readonly" data-en="Read-Only Queries" data-mr="फक्त वाचन">Read-Only Queries</a>
+            <a href="#ac-write" class="manual-nav-link manual-nav-sub" data-jump="ac-write" data-en="Write Entries" data-mr="नोंदी">Write Entries</a>
+            <a href="#ac-immediate" class="manual-nav-link manual-nav-sub" data-jump="ac-immediate" data-en="Send Immediately" data-mr="ताबडतोब पाठवणे">Send Immediately</a>
+            <a href="#ac-tips" class="manual-nav-link manual-nav-sub" data-jump="ac-tips" data-en="Tips &amp; Limitations" data-mr="सूचना व मर्यादा">Tips &amp; Limitations</a>
+
+            <a href="#part-4" class="manual-nav-link manual-nav-part" data-jump="part-4" data-en="4. Reports &amp; Exports" data-mr="४. अहवाल">4. Reports &amp; Exports</a>
+            <a href="#re-dashboard" class="manual-nav-link manual-nav-sub" data-jump="re-dashboard" data-en="Stock Dashboard" data-mr="स्टॉक डॅशबोर्ड">Stock Dashboard</a>
+            <a href="#re-monthly" class="manual-nav-link manual-nav-sub" data-jump="re-monthly" data-en="Monthly Report" data-mr="मासिक अहवाल">Monthly Report</a>
+            <a href="#re-caexport" class="manual-nav-link manual-nav-sub" data-jump="re-caexport" data-en="CA Export" data-mr="CA Export">CA Export</a>
+            <a href="#re-gstr2b" class="manual-nav-link manual-nav-sub" data-jump="re-gstr2b" data-en="GSTR-2B Reconciliation" data-mr="GSTR-2B जुळवणी">GSTR-2B Reconciliation</a>
+            <a href="#re-history" class="manual-nav-link manual-nav-sub" data-jump="re-history" data-en="History Pages" data-mr="इतिहास पृष्ठे">History Pages</a>
+
+            <a href="#part-5" class="manual-nav-link manual-nav-part" data-jump="part-5" data-en="5. Settings" data-mr="५. सेटिंग्ज">5. Settings</a>
+            <a href="#st-company" class="manual-nav-link manual-nav-sub" data-jump="st-company" data-en="Company Details" data-mr="कंपनी तपशील">Company Details</a>
+            <a href="#st-materials" class="manual-nav-link manual-nav-sub" data-jump="st-materials" data-en="Materials &amp; Suppliers" data-mr="माल व पुरवठादार">Materials &amp; Suppliers</a>
+            <a href="#st-clients" class="manual-nav-link manual-nav-sub" data-jump="st-clients" data-en="Clients, BOM &amp; Prices" data-mr="क्लायंट, BOM, किंमती">Clients, BOM &amp; Prices</a>
+            <a href="#st-staff" class="manual-nav-link manual-nav-sub" data-jump="st-staff" data-en="Staff &amp; Telegram" data-mr="कर्मचारी व Telegram">Staff &amp; Telegram</a>
+            <a href="#st-agent" class="manual-nav-link manual-nav-sub" data-jump="st-agent" data-en="Agent &amp; Adjustment" data-mr="Agent व समायोजन">Agent &amp; Adjustment</a>
+
+            <a href="#part-6" class="manual-nav-link manual-nav-part" data-jump="part-6" data-en="6. Role Guides" data-mr="६. भूमिका मार्गदर्शक">6. Role Guides</a>
+            <a href="#role-owner" class="manual-nav-link manual-nav-sub" data-jump="role-owner" data-en="Owner" data-mr="मालक">Owner</a>
+            <a href="#role-supervisor" class="manual-nav-link manual-nav-sub" data-jump="role-supervisor" data-en="Supervisor" data-mr="पर्यवेक्षक">Supervisor</a>
+            <a href="#role-storekeeper" class="manual-nav-link manual-nav-sub" data-jump="role-storekeeper" data-en="Storekeeper" data-mr="गोदाम कर्मचारी">Storekeeper</a>
+            <a href="#role-operator" class="manual-nav-link manual-nav-sub" data-jump="role-operator" data-en="Operator" data-mr="ऑपरेटर">Operator</a>
+            <a href="#role-accountant" class="manual-nav-link manual-nav-sub" data-jump="role-accountant" data-en="Accountant" data-mr="लेखापाल">Accountant</a>
+
+            <a href="#part-7" class="manual-nav-link manual-nav-part" data-jump="part-7" data-en="7. Troubleshooting" data-mr="७. समस्या निराकरण">7. Troubleshooting</a>
+
+            <button class="nx-btn nx-btn-secondary nx-btn-sm manual-print-btn" id="printManualBtn" type="button" data-en="🖨 Print Manual" data-mr="🖨 मार्गदर्शिका छापा">🖨 Print Manual</button>
+        </div>
+    </aside>
+
+    <!-- ══════════ CONTENT ══════════ -->
+    <div class="manual-content">
+
+        <div class="nx-page-header">
+            <div>
+                <div class="nx-eyebrow" data-en="Reference" data-mr="संदर्भ">Reference</div>
+                <div class="nx-page-title">User <span data-en="Manual" data-mr="मॅन्युअल">Manual</span></div>
+                <div class="nx-page-sub" data-en="Every Nexflow P2 feature, kept current with every release. Print any page or role guide if you'd rather hand out paper." data-mr="Nexflow P2 चे प्रत्येक वैशिष्ट्य, प्रत्येक अपडेटसह अद्ययावत. कागदी प्रत हवी असल्यास कोणतेही पान किंवा भूमिका मार्गदर्शक छापा.">Every Nexflow P2 feature, kept current with every release. Print any page or role guide if you'd rather hand out paper.</div>
+            </div>
+        </div>
+
+        <div id="mobilePrintMsg" class="mobile-print-hint nx-alert nx-alert-orange nx-mb-24 no-print" style="display:none">
+            <span class="nx-alert-icon">📱</span>
+            <div data-en="On mobile: use your browser's Share → Print option to print this page." data-mr="मोबाईलवर: हे पान छापण्यासाठी ब्राउझरच्या Share → Print पर्यायाचा वापर करा.">On mobile: use your browser's Share → Print option to print this page.</div>
+        </div>
+
+        <!-- ══════════════════════ PART 1 — GETTING STARTED ══════════════════════ -->
+        <section id="part-1" class="manual-section">
+            <div class="manual-part-num">PART 1</div>
+            <h2 data-en="Getting Started" data-mr="सुरुवात">Getting Started</h2>
+            <p class="manual-part-sub" data-en="Login, Dashboard, and Navigation — what you need before day one." data-mr="लॉगिन, डॅशबोर्ड आणि नेव्हिगेशन — पहिल्या दिवसाआधी काय जाणून घ्यायचे.">Login, Dashboard, and Navigation — what you need before day one.</p>
+
+            <div id="gs-what" class="manual-subsection">
+                <h3 data-en="What is Nexflow P2?" data-mr="Nexflow P2 म्हणजे काय?">What is Nexflow P2?</h3>
+                <p data-en="Nexflow P2 tracks raw material stock, production, and client deliveries for your factory — replacing paper registers and challan books with one system that works from your phone or computer. GRN records what comes in from suppliers, Issue records what goes to the production floor, Dispatch records what leaves for a client and generates a challan number, and Reports &amp; Invoices pull it all together for your CA and your billing." data-mr="Nexflow P2 तुमच्या कारखान्याचा कच्चा माल, उत्पादन आणि क्लायंट डिलिव्हरी ट्रॅक करतो — कागदी रजिस्टर आणि चलान बुकाची जागा घेणारी एकच सिस्टम, फोन किंवा कॉम्प्युटरवरून वापरता येते. GRN म्हणजे पुरवठादाराकडून आलेला माल, Issue म्हणजे उत्पादनासाठी गेलेला माल, Dispatch म्हणजे क्लायंटला गेलेला माल (चलान क्रमांकासह), आणि Reports &amp; Invoices हे सर्व एकत्र आणून CA आणि बिलिंगसाठी तयार करतात.">Nexflow P2 tracks raw material stock, production, and client deliveries for your factory — replacing paper registers and challan books with one system that works from your phone or computer. GRN records what comes in from suppliers, Issue records what goes to the production floor, Dispatch records what leaves for a client and generates a challan number, and Reports &amp; Invoices pull it all together for your CA and your billing.</p>
+                <div class="nx-alert nx-alert-green nx-mb-16">
+                    <span class="nx-alert-icon">✓</span>
+                    <div data-en="You do not need technical knowledge to use Nexflow P2. If you can use WhatsApp, you can use this system." data-mr="Nexflow P2 वापरायला तांत्रिक ज्ञान लागत नाही. WhatsApp वापरता येत असेल तर हे सिस्टम वापरता येईल.">You do not need technical knowledge to use Nexflow P2. If you can use WhatsApp, you can use this system.</div>
+                </div>
+            </div>
+
+            <div id="gs-login" class="manual-subsection">
+                <h3 data-en="How to Log In" data-mr="लॉगिन कसे करायचे">How to Log In</h3>
+                <ol>
+                    <li data-en="Open the Nexflow P2 link in Chrome browser (phone or computer)." data-mr="फोन किंवा कॉम्प्युटरवर Chrome मध्ये Nexflow P2 लिंक उघडा.">Open the Nexflow P2 link in Chrome browser (phone or computer).</li>
+                    <li data-en="Enter your Email and Password." data-mr="तुमचा ईमेल आणि पासवर्ड टाका.">Enter your Email and Password.</li>
+                    <li data-en="Tap the eye icon to check for typos before submitting." data-mr="सबमिट करण्यापूर्वी पासवर्ड बरोबर आहे का ते डोळ्याच्या आयकॉनवर टॅप करून तपासा.">Tap the eye icon to check for typos before submitting.</li>
+                    <li data-en="Tap Sign In. Correct credentials land you on the Stock Dashboard." data-mr="Sign In टॅप करा. बरोबर असल्यास Stock Dashboard दिसेल.">Tap Sign In. Correct credentials land you on the Stock Dashboard.</li>
+                </ol>
+                <div class="nx-alert nx-alert-red nx-mb-16">
+                    <span class="nx-alert-icon">!</span>
+                    <div data-en="There is no 'Forgot Password' link. Contact your factory Owner or Nexflow support to reset it. New team members must be invited by the Owner from Settings → Staff — nobody can sign up on their own." data-mr="'Forgot Password' लिंक नाही. पासवर्ड रीसेट करण्यासाठी Owner किंवा Nexflow सपोर्टशी संपर्क करा. नवीन सदस्यांना Owner ने Settings → Staff मधून आमंत्रण द्यावे लागेल — स्वतः साइन अप करता येत नाही.">There is no "Forgot Password" link. Contact your factory Owner or Nexflow support to reset it. New team members must be invited by the Owner from Settings → Staff — nobody can sign up on their own.</div>
+                </div>
+            </div>
+
+            <div id="gs-dashboard" class="manual-subsection">
+                <h3 data-en="Understanding the Dashboard" data-mr="डॅशबोर्ड समजून घ्या">Understanding the Dashboard</h3>
+                <div class="nx-table-wrap">
+                    <table class="nx-table">
+                        <thead><tr>
+                            <th data-en="Element" data-mr="घटक">Element</th>
+                            <th data-en="What it shows" data-mr="काय दाखवतो">What it shows</th>
+                        </tr></thead>
+                        <tbody>
+                            <tr><td class="nx-td-bold">Total Materials</td><td data-en="How many raw materials are tracked in the system." data-mr="किती कच्चा माल ट्रॅक होतो.">How many raw materials are tracked in the system.</td></tr>
+                            <tr><td class="nx-td-bold">Low Stock Alerts</td><td data-en="Materials below minimum stock level — reorder immediately." data-mr="किमान पातळीखाली गेलेला माल — तातडीने मागवा.">Materials below minimum stock level — reorder immediately.</td></tr>
+                            <tr><td class="nx-td-bold">OK Stock</td><td data-en="Materials at a safe level — no action needed." data-mr="सुरक्षित पातळीवरील माल — कारवाई नको.">Materials at a safe level — no action needed.</td></tr>
+                            <tr><td class="nx-td-bold">Last Updated</td><td data-en="Auto-refreshes every 5 minutes." data-mr="दर 5 मिनिटांनी आपोआप रिफ्रेश होतो.">Auto-refreshes every 5 minutes.</td></tr>
+                            <tr><td class="nx-td-bold">History icon</td><td data-en="Tap any material row to see its last 2 months of GRN, Consumption, and Adjustment history." data-mr="कोणत्याही मालाच्या रांगेवर टॅप करा — मागील 2 महिन्यांचा GRN, वापर व समायोजनाचा इतिहास दिसेल.">Tap any material row to see its last 2 months of GRN, Consumption, and Adjustment history.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="gs-roles" class="manual-subsection">
+                <h3 data-en="Navigation — Role Access" data-mr="नेव्हिगेशन — भूमिकेनुसार प्रवेश">Navigation — Role Access</h3>
+                <p data-en="Every logged-in role sees this Manual — it's the one page with no plan or role gate. Everything else is controlled by role:" data-mr="प्रत्येक लॉगिन-केलेल्या भूमिकेला हे मार्गदर्शक दिसते — यावर कोणतेही प्लॅन किंवा भूमिका बंधन नाही. बाकी सर्व भूमिकेनुसार ठरते:">Every logged-in role sees this Manual — it's the one page with no plan or role gate. Everything else is controlled by role:</p>
+                <div class="nx-table-wrap">
+                    <table class="nx-table">
+                        <thead><tr>
+                            <th data-en="Role" data-mr="भूमिका">Role</th>
+                            <th data-en="Pages Accessible" data-mr="उपलब्ध पृष्ठे">Pages Accessible</th>
+                        </tr></thead>
+                        <tbody>
+                            <tr><td><span class="nx-badge nx-badge-orange">Owner</span></td><td>Dashboard · GRN · Issue · Dispatch · Invoices · RM Dispatch · Products · Reports · Scanner · Settings · AI Copilot · Manual</td></tr>
+                            <tr><td><span class="nx-badge nx-badge-grey">Supervisor</span></td><td data-en="Same as Owner, except Settings (Owner-only)." data-mr="Settings सोडून Owner सारखेच.">Same as Owner, except Settings (Owner-only).</td></tr>
+                            <tr><td><span class="nx-badge nx-badge-grey">Storekeeper</span></td><td>Dashboard · GRN · Scanner · Manual</td></tr>
+                            <tr><td><span class="nx-badge nx-badge-grey">Operator</span></td><td>Dashboard · Issue · Dispatch · RM Dispatch · Products · Reports · Manual</td></tr>
+                            <tr><td><span class="nx-badge nx-badge-grey">Accountant</span></td><td data-en="Reports · Invoices (view &amp; print only) · Manual" data-mr="Reports · Invoices (फक्त पाहणे व प्रिंट) · Manual">Reports · Invoices (view &amp; print only) · Manual</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p class="nx-text-sm" style="color:var(--mid); margin-top:10px" data-en="AI Copilot is a separate visibility switch on top of this table — only Owner and Supervisor ever see the chat button, regardless of which pages a role can open." data-mr="AI Copilot ही या तक्त्यावरील एक वेगळी दृश्यता आहे — भूमिका कोणतीही पाने उघडू शकत असली तरी चॅट बटण फक्त Owner आणि Supervisor यांनाच दिसते.">AI Copilot is a separate visibility switch on top of this table — only Owner and Supervisor ever see the chat button, regardless of which pages a role can open.</p>
+            </div>
+
+            <div id="gs-lang" class="manual-subsection">
+                <h3 data-en="Language Toggle" data-mr="भाषा बदल">Language Toggle</h3>
+                <p data-en="The button in the top navbar (मराठी / English) switches the whole app between English and Marathi instantly. Your choice is saved on this device and applies automatically the next time you log in." data-mr="वरच्या नेव्हबारमधील बटण (मराठी / English) संपूर्ण अ‍ॅप ताबडतोब मराठी आणि इंग्रजीत बदलते. तुमची निवड या डिव्हाइसवर सेव्ह होते आणि पुढच्या वेळी लॉगिन केल्यावर आपोआप लागू होते.">The button in the top navbar (मराठी / English) switches the whole app between English and Marathi instantly. Your choice is saved on this device and applies automatically the next time you log in.</p>
+            </div>
+        </section>
+
+        <!-- ══════════════════════ PART 2 — DAILY OPERATIONS ══════════════════════ -->
+        <section id="part-2" class="manual-section">
+            <div class="manual-part-num">PART 2</div>
+            <h2 data-en="Daily Operations" data-mr="दैनंदिन कामे">Daily Operations</h2>
+            <p class="manual-part-sub" data-en="GRN, Issue, Dispatch, RM Dispatch, and Invoices — the five workflows your team runs every day." data-mr="GRN, Issue, Dispatch, RM Dispatch आणि Invoices — तुमच्या टीमचे दैनंदिन पाच कार्यप्रवाह.">GRN, Issue, Dispatch, RM Dispatch, and Invoices — the five workflows your team runs every day.</p>
+
+            <div id="do-grn" class="manual-subsection">
+                <h3 data-en="1. GRN — Receiving Materials" data-mr="१. GRN — माल स्वीकारणे">1. GRN — Receiving Materials</h3>
+                <p data-en="Log every supplier delivery here — this is what increases your stock. Do it the same day, before material gets mixed into general stock." data-mr="प्रत्येक पुरवठादाराच्या डिलिव्हरीची नोंद येथे करा — यामुळेच स्टॉक वाढतो. त्याच दिवशी करा, माल सामान्य स्टॉकमध्ये मिसळण्यापूर्वी.">Log every supplier delivery here — this is what increases your stock. Do it the same day, before material gets mixed into general stock.</p>
+
+                <h4 data-en="Manual Entry" data-mr="हाताने नोंद">Manual Entry</h4>
+                <ol>
+                    <li data-en="Open GRN from the menu." data-mr="मेनूमधून GRN उघडा.">Open GRN from the menu.</li>
+                    <li data-en="Select the Supplier from the dropdown (tap '+' to add a new one)." data-mr="ड्रॉपडाउनमधून पुरवठादार निवडा (नवीनसाठी '+' टॅप करा).">Select the Supplier from the dropdown (tap "+" to add a new one).</li>
+                    <li data-en="Confirm the Date (defaults to today)." data-mr="तारीख confirm करा (आजचीच डीफॉल्ट).">Confirm the Date (defaults to today).</li>
+                    <li data-en="Search for the material — Unit fills in automatically." data-mr="माल शोधा — Unit आपोआप भरेल.">Search for the material — Unit fills in automatically.</li>
+                    <li data-en="Enter Qty and Rate." data-mr="Qty आणि Rate टाका.">Enter Qty and Rate.</li>
+                    <li data-en="Enter Invoice No — mandatory on every row since August 7, 2026." data-mr="Invoice No टाका — 7 ऑगस्ट 2026 पासून प्रत्येक रांगेत अनिवार्य.">Enter Invoice No — mandatory on every row since August 7, 2026.</li>
+                    <li data-en="Choose Intrastate or Interstate for this delivery — this decides whether the GST math on your CA export/Tally/Zoho uses CGST+SGST or IGST." data-mr="या डिलिव्हरीसाठी Intrastate किंवा Interstate निवडा — यावरून CA export/Tally/Zoho वरील GST गणित CGST+SGST की IGST हे ठरते.">Choose Intrastate or Interstate for this delivery — this decides whether the GST math on your CA export/Tally/Zoho uses CGST+SGST or IGST.</li>
+                    <li data-en="Tap + Add Row for additional materials from the same delivery." data-mr="एकाच डिलिव्हरीतील अधिक माल असल्यास + Add Row टॅप करा.">Tap + Add Row for additional materials from the same delivery.</li>
+                    <li data-en="Tap Submit All Materials — confirmation shows the assigned GRN number." data-mr="Submit All Materials टॅप करा — GRN क्रमांकासह confirmation दिसेल.">Tap Submit All Materials — confirmation shows the assigned GRN number.</li>
+                </ol>
+                <div class="nx-alert nx-alert-red nx-mb-16">
+                    <span class="nx-alert-icon">!</span>
+                    <div data-en="Always check the Unit (KG vs PCS vs MTR) before entering quantity — a wrong unit throws off your entire stock count. GRN entries cannot be edited or deleted once submitted; use Settings → Stock Adjustment for genuine corrections." data-mr="प्रमाण टाकण्यापूर्वी नेहमी Unit तपासा (KG vs PCS vs MTR) — चुकीचे Unit संपूर्ण स्टॉक बिघडवते. GRN एकदा submit केल्यावर बदलता येत नाही किंवा Delete करता येत नाही — खऱ्या दुरुस्तीसाठी Settings → Stock Adjustment वापरा.">Always check the Unit (KG vs PCS vs MTR) before entering quantity — a wrong unit throws off your entire stock count. GRN entries cannot be edited or deleted once submitted; use Settings → Stock Adjustment for genuine corrections.</div>
+                </div>
+
+                <h4 data-en="Scanner GRN — Mobile, Pro/Founder Plan Only" data-mr="Scanner GRN — मोबाईल, फक्त Pro/Founder">Scanner GRN — Mobile, Pro/Founder Plan Only</h4>
+                <p data-en="Scan the QR code sticker on each material's shelf instead of typing. Works only in Chrome on Android phones." data-mr="टाइप करण्याऐवजी शेल्फवरील QR स्टिकर स्कॅन करा. फक्त Android फोनवर Chrome मध्येच काम करतो.">Scan the QR code sticker on each material's shelf instead of typing. Works only in Chrome on Android phones.</p>
+                <ol>
+                    <li data-en="Open Scanner on your phone (Chrome). Allow camera access." data-mr="फोनवर Scanner उघडा (Chrome). Camera access द्या.">Open Scanner on your phone (Chrome). Allow camera access.</li>
+                    <li data-en="Optionally select Supplier and confirm Date at the top." data-mr="वरती Supplier आणि Date निवडा (ऐच्छिक).">Optionally select Supplier and confirm Date at the top.</li>
+                    <li data-en="Point the camera at the QR sticker on the shelf — the phone vibrates when detected." data-mr="शेल्फवरील QR स्टिकरवर कॅमेरा धरा. डिटेक्ट झाल्यावर फोन व्हायब्रेट होतो.">Point the camera at the QR sticker on the shelf — the phone vibrates when detected.</li>
+                    <li data-en="Type Quantity, optionally add Rate and Invoice No, tap Add to GRN." data-mr="प्रमाण टाका, ऐच्छिक Rate व Invoice No, Add to GRN टॅप करा.">Type Quantity, optionally add Rate and Invoice No, tap Add to GRN.</li>
+                    <li data-en="Camera resets immediately — repeat for every material in the delivery." data-mr="कॅमेरा तात्काळ रीसेट होतो — पुढील मालासाठी पुन्हा करा.">Camera resets immediately — repeat for every material in the delivery.</li>
+                    <li data-en="Tap Confirm GRN when done — all items save under one GRN number." data-mr="सर्व झाल्यावर Confirm GRN टॅप करा — एक GRN क्रमांक मिळेल.">Tap Confirm GRN when done — all items save under one GRN number.</li>
+                </ol>
+                <div class="nx-alert nx-alert-yellow nx-mb-16">
+                    <span class="nx-alert-icon">⚠️</span>
+                    <div data-en="Scanning does NOT save immediately — you must tap Confirm GRN at the end, or your pending list is lost if you close the page. Does not work on iPhone or desktop." data-mr="स्कॅन करताच सेव्ह होत नाही — शेवटी Confirm GRN टॅप करणे अनिवार्य आहे, अन्यथा पेज बंद केल्यास यादी नष्ट होईल. iPhone किंवा Desktop वर काम करत नाही.">Scanning does NOT save immediately — you must tap Confirm GRN at the end, or your pending list is lost if you close the page. Does not work on iPhone or desktop.</div>
+                </div>
+
+                <h4 data-en="Month-End GRN Reconciliation" data-mr="महिना-अखेर GRN जुळवणी">Month-End GRN Reconciliation</h4>
+                <p data-en="A modal on the GRN page (Owner/Supervisor only) that groups every GRN by supplier and shows invoice numbers side by side — a red dash marks a missing invoice number, and an orange 'Unknown Supplier' group catches anything that couldn't be matched. Run this before CA Export or GSTR-2B Reconciliation each month so nothing is missing an invoice number when it matters." data-mr="GRN पानावरील एक मोडल (फक्त Owner/Supervisor) जो प्रत्येक GRN पुरवठादारानुसार गटबद्ध करतो व invoice numbers शेजारी दाखवतो — लाल डॅश म्हणजे invoice number गहाळ, आणि नारिंगी 'Unknown Supplier' गट न जुळलेल्या नोंदी दाखवतो. दर महिन्याला CA Export किंवा GSTR-2B Reconciliation आधी हे चालवा, म्हणजे महत्त्वाच्या वेळी invoice number गहाळ राहणार नाही.">A modal on the GRN page (Owner/Supervisor only) that groups every GRN by supplier and shows invoice numbers side by side — a red dash marks a missing invoice number, and an orange "Unknown Supplier" group catches anything that couldn't be matched. Run this before CA Export or GSTR-2B Reconciliation each month so nothing is missing an invoice number when it matters.</p>
+            </div>
+
+            <div id="do-issue" class="manual-subsection">
+                <h3 data-en="2. Issue — Materials to Production" data-mr="२. Issue — उत्पादनासाठी माल">2. Issue — Materials to Production</h3>
+                <p data-en="Records raw materials leaving the store for the production floor. The system auto-calculates quantities from the product recipe (BOM) and deducts them from stock." data-mr="उत्पादन फ्लोअरला गेलेला कच्चा माल नोंदवतो. सिस्टम BOM नुसार लागणारा माल आपोआप calculate करून स्टॉकमधून वजा करतो.">Records raw materials leaving the store for the production floor. The system auto-calculates quantities from the product recipe (BOM) and deducts them from stock.</p>
+                <ol>
+                    <li data-en="Open Issue from the menu, select the Product being produced." data-mr="मेनूमधून Issue उघडा, तयार होणारे Product निवडा.">Open Issue from the menu, select the Product being produced.</li>
+                    <li data-en="Enter the Batch Quantity (number of units, e.g. 36 motors) and confirm the Issue Date." data-mr="Batch प्रमाण टाका (उदा. 36 मोटर्स) आणि Issue तारीख confirm करा.">Enter the Batch Quantity (number of units, e.g. 36 motors) and confirm the Issue Date.</li>
+                    <li data-en="Tap Generate BOM ↓ — the recipe loads and calculates quantities." data-mr="Generate BOM ↓ टॅप करा — रेसिपी लोड होऊन माल calculate होईल.">Tap Generate BOM ↓ — the recipe loads and calculates quantities.</li>
+                    <li data-en="Review the list, adjust Issue Qty if needed, tap Issue Materials." data-mr="यादी तपासा, गरज असल्यास Issue Qty बदला, Issue Materials टॅप करा.">Review the list, adjust Issue Qty if needed, tap Issue Materials.</li>
+                    <li data-en="If any material is short, Confirm is disabled — receive more via GRN first." data-mr="कोणताही माल कमी असल्यास Confirm बंद असेल — आधी GRN करा.">If any material is short, Confirm is disabled — receive more via GRN first.</li>
+                    <li data-en="Tap Confirm Issue — stock is deducted immediately." data-mr="Confirm Issue टॅप करा — स्टॉक ताबडतोब वजा होतो.">Tap Confirm Issue — stock is deducted immediately.</li>
+                </ol>
+                <div class="nx-alert nx-alert-yellow nx-mb-16">
+                    <span class="nx-alert-icon">⚠️</span>
+                    <div data-en="Most common mistake: forgetting to tap Generate BOM first — nothing issues until the recipe loads. Wrong Batch Quantity multiplies across every ingredient." data-mr="सर्वात सामान्य चूक: Generate BOM टॅप करायला विसरणे — रेसिपी लोड झाल्याशिवाय काहीही issue होत नाही. चुकीचे Batch Quantity सर्व घटकांवर गुणाकार होते.">Most common mistake: forgetting to tap Generate BOM first — nothing issues until the recipe loads. Wrong Batch Quantity multiplies across every ingredient.</div>
+                </div>
+            </div>
+
+            <div id="do-dispatch" class="manual-subsection">
+                <h3 data-en="3. Dispatch — Finished Products to Clients" data-mr="३. Dispatch — क्लायंटला तयार उत्पादन">3. Dispatch — Finished Products to Clients</h3>
+                <p data-en="Records finished products going to a client. Raw materials are deducted automatically via BOM, and a challan number is generated. Since August 7, the stock check aggregates required quantity per material across all BOM lines before checking balance — so the same material appearing in multiple recipe lines can no longer slip past a stock check individually and then fail combined." data-mr="क्लायंटला जाणारे तयार उत्पादन नोंदवतो. BOM नुसार कच्चा माल आपोआप वजा होतो आणि चलान क्रमांक तयार होतो. 7 ऑगस्टपासून, स्टॉक तपासणी सर्व BOM ओळींमध्ये मालानुसार आवश्यक प्रमाण एकत्र करून तपासते — त्यामुळे एकच माल अनेक रेसिपी ओळींमध्ये असल्यास वैयक्तिक तपासणीत पास होऊन एकत्रित प्रमाणात कमी पडण्याची शक्यता उरत नाही.">Records finished products going to a client. Raw materials are deducted automatically via BOM, and a challan number is generated. Since August 7, the stock check aggregates required quantity per material across all BOM lines before checking balance — so the same material appearing in multiple recipe lines can no longer slip past a stock check individually and then fail combined.</p>
+                <ol>
+                    <li data-en="Open Dispatch, type Client Name — address auto-fills from previous orders." data-mr="Dispatch उघडा, Client Name टाइप करा — मागील ऑर्डरवरून पत्ता आपोआप भरेल.">Open Dispatch, type Client Name — address auto-fills from previous orders.</li>
+                    <li data-en="Fill PO Number, Dispatch Date, Transport (vehicle number)." data-mr="PO क्रमांक, Dispatch तारीख, वाहन क्रमांक भरा.">Fill PO Number, Dispatch Date, Transport (vehicle number).</li>
+                    <li data-en="Select a Product, enter Qty, tap + Add Product — repeat for all products." data-mr="Product निवडा, Qty टाका, + Add Product टॅप करा — सर्वांसाठी पुन्हा करा.">Select a Product, enter Qty, tap + Add Product — repeat for all products.</li>
+                    <li data-en="Tap Confirm Dispatch — the system checks raw material stock." data-mr="Confirm Dispatch टॅप करा — सिस्टम कच्चा माल तपासतो.">Tap Confirm Dispatch — the system checks raw material stock.</li>
+                    <li data-en="If any material is short, dispatch is blocked entirely — you cannot partially dispatch." data-mr="माल कमी असल्यास dispatch पूर्णपणे थांबते — अर्धवट dispatch होत नाही.">If any material is short, dispatch is blocked entirely — you cannot partially dispatch.</li>
+                    <li data-en="Tap Print Challan to open the challan document, or send it by email via AI Copilot: " data-mr="Print Challan टॅप करा, किंवा AI Copilot ने ईमेल पाठवा: ">Tap Print Challan to open the challan document, or send it by email via AI Copilot: <code class="manual-cmd">Challan 4325 KPML la pathav</code></li>
+                </ol>
+            </div>
+
+            <div id="do-rmdispatch" class="manual-subsection">
+                <h3 data-en="4. RM Dispatch — Sending Raw Materials Out" data-mr="४. RM Dispatch — कच्चा माल थेट पाठवणे">4. RM Dispatch — Sending Raw Materials Out</h3>
+                <p data-en="Use when raw material itself leaves the factory — to a job-worker or sold directly. There is no BOM calculation; you enter exactly what leaves." data-mr="जेव्हा कच्चा माल थेट कारखान्यातून जातो — जॉब-वर्करला किंवा थेट विक्री. येथे BOM calculation नाही — नक्की किती गेले ते टाका.">Use when raw material itself leaves the factory — to a job-worker or sold directly. There is no BOM calculation; you enter exactly what leaves.</p>
+                <ol>
+                    <li data-en="Open RM Dispatch, type Client Name (required)." data-mr="RM Dispatch उघडा, Client Name टाका (अनिवार्य).">Open RM Dispatch, type Client Name (required).</li>
+                    <li data-en="Search and select the Material, check the stock colour before confirming." data-mr="माल शोधा आणि निवडा. Confirm करण्यापूर्वी रंग तपासा.">Search and select the Material, check the stock colour before confirming.</li>
+                    <li data-en="Enter Qty, tap + Add — repeat for all materials." data-mr="Qty टाका, + Add टॅप करा — सर्व मालासाठी पुन्हा करा.">Enter Qty, tap + Add — repeat for all materials.</li>
+                    <li data-en="Tap Confirm Dispatch — stock is deducted and a challan is generated." data-mr="Confirm Dispatch टॅप करा — स्टॉक वजा होतो, चलान तयार होतो.">Tap Confirm Dispatch — stock is deducted and a challan is generated.</li>
+                </ol>
+                <div class="nx-alert nx-alert-yellow nx-mb-16">
+                    <span class="nx-alert-icon">⚠️</span>
+                    <div data-en="RM Dispatch does NOT block you from dispatching more than your stock — it only shows a warning. Always read the stock colour before confirming (red = no stock)." data-mr="RM Dispatch स्टॉकपेक्षा जास्त dispatch रोखत नाही — फक्त इशारा दाखवतो. Confirm करण्यापूर्वी नेहमी स्टॉकचा रंग वाचा (लाल = स्टॉक नाही).">RM Dispatch does NOT block you from dispatching more than your stock — it only shows a warning. Always read the stock colour before confirming (red = no stock).</div>
+                </div>
+            </div>
+
+            <div id="do-invoices" class="manual-subsection">
+                <h3 data-en="5. Invoices — Billing Your Clients" data-mr="५. Invoices — क्लायंटचे बिल">5. Invoices — Billing Your Clients</h3>
+                <p data-en="Generate billing documents with GST for dispatched goods — Pro and Founder plans only. This is a proforma billing document, not a GST filing return; your CA still handles GSTR filing separately." data-mr="GST सह billing documents तयार करा — फक्त Pro आणि Founder plan. हा proforma billing document आहे, GST filing return नाही — GSTR filing तुमचा CA वेगळे करतो.">Generate billing documents with GST for dispatched goods — Pro and Founder plans only. This is a proforma billing document, not a GST filing return; your CA still handles GSTR filing separately.</p>
+                <h4 data-en="Single Invoice" data-mr="एकल इनव्हॉइस">Single Invoice</h4>
+                <ol>
+                    <li data-en="Go to All Dispatches → find the confirmed challan → tap Detail." data-mr="All Dispatches मध्ये जा → confirmed चलान शोधा → Detail टॅप करा.">Go to All Dispatches → find the confirmed challan → tap Detail.</li>
+                    <li data-en="Tap Generate Invoice, enter Rate per item, choose GST Type." data-mr="Generate Invoice टॅप करा, प्रत्येक वस्तूचा दर टाका, GST Type निवडा.">Tap Generate Invoice, enter Rate per item, choose GST Type.</li>
+                    <li data-en="Tap Generate Invoice — opens in a new tab with a Download PDF button." data-mr="Generate Invoice टॅप करा — नवीन tab मध्ये Download PDF बटणासह उघडेल.">Tap Generate Invoice — opens in a new tab with a Download PDF button.</li>
+                </ol>
+                <h4 data-en="Consolidated Invoice" data-mr="एकत्रित इनव्हॉइस">Consolidated Invoice</h4>
+                <ol>
+                    <li data-en="Open Invoices from the menu → tap + New Consolidated Invoice." data-mr="मेनूमधून Invoices उघडा → + New Consolidated Invoice टॅप करा.">Open Invoices from the menu → tap + New Consolidated Invoice.</li>
+                    <li data-en="Select Client, Date From, Date To, GST Type, tap Generate Invoice." data-mr="Client, From Date, To Date, GST Type निवडा, Generate Invoice टॅप करा.">Select Client, Date From, Date To, GST Type, tap Generate Invoice.</li>
+                    <li data-en="Every confirmed delivery to that client in the date range is combined into one invoice." data-mr="त्या कालावधीतील त्या क्लायंटच्या सर्व confirmed deliveries एकत्र येतात.">Every confirmed delivery to that client in the date range is combined into one invoice.</li>
+                </ol>
+                <p data-en="Send either kind by AI Copilot:" data-mr="AI Copilot ने दोन्ही प्रकार पाठवता येतात:">Send either kind by AI Copilot:</p>
+                <ul>
+                    <li><code class="manual-cmd">KPML la invoice pathav</code> — <span data-en="latest invoice, right now" data-mr="ताजी इनव्हॉइस, आत्ता">latest invoice, right now</span></li>
+                    <li><code class="manual-cmd">KPML la July cha invoice pathav</code> — <span data-en="consolidated July invoice" data-mr="जुलैची एकत्रित इनव्हॉइस">consolidated July invoice</span></li>
+                </ul>
+                <div class="nx-alert nx-alert-red nx-mb-16">
+                    <span class="nx-alert-icon">!</span>
+                    <div data-en="Invoice amount locks when sent — changing prices later will NOT update it. Only Owner and Supervisor can generate or cancel invoices; Accountant can view and print only." data-mr="इनव्हॉइस पाठवल्यावर रक्कम lock होते — नंतर किंमत बदलली तरी update होणार नाही. फक्त Owner आणि Supervisor generate किंवा cancel करू शकतात — Accountant फक्त पाहू व प्रिंट करू शकतो.">Invoice amount locks when sent — changing prices later will NOT update it. Only Owner and Supervisor can generate or cancel invoices; Accountant can view and print only.</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ══════════════════════ PART 3 — AI COPILOT ══════════════════════ -->
+        <section id="part-3" class="manual-section">
+            <div class="manual-part-num">PART 3</div>
+            <h2 data-en="AI Copilot" data-mr="AI Copilot">AI Copilot</h2>
+            <p class="manual-part-sub" data-en="Type in Marathi, Hinglish, or English — instant answers, entries, and email sends." data-mr="मराठी, हिंग्लिश किंवा इंग्रजीत टाइप करा — तात्काळ उत्तरे, नोंदी आणि ईमेल.">Type in Marathi, Hinglish, or English — instant answers, entries, and email sends.</p>
+
+            <div id="ac-what" class="manual-subsection">
+                <h3 data-en="What Is the AI Copilot?" data-mr="AI Copilot म्हणजे काय?">What Is the AI Copilot?</h3>
+                <p data-en="A chat assistant on every page — orange round button, bottom-right corner. Type like you're texting a colleague; it answers stock questions instantly, creates GRN/Issue/Dispatch entries, and emails challans, invoices, and CA exports. Visible only to Owner and Supervisor." data-mr="प्रत्येक पानावरील chat assistant — उजव्या खालच्या कोपऱ्यात orange गोल बटण. सहकाऱ्याला message केल्यासारखे टाइप करा; स्टॉक प्रश्नांना तात्काळ उत्तर देतो, नोंदी करतो आणि चलान/इनव्हॉइस/CA export ईमेल करतो. फक्त Owner आणि Supervisor यांना दिसतो.">A chat assistant on every page — orange round button, bottom-right corner. Type like you're texting a colleague; it answers stock questions instantly, creates GRN/Issue/Dispatch entries, and emails challans, invoices, and CA exports. Visible only to Owner and Supervisor.</p>
+                <p data-en="There are 36 recognised intents in total (35 real actions plus a fallback 'unknown' for anything that doesn't match) — 28 are pure reads, 4 create records behind a confirmation card, and 3 send an email immediately with no confirmation at all. The command tables below are pulled directly from the Copilot's own instruction set, not reconstructed from memory." data-mr="एकूण 36 ओळखले जाणारे intents आहेत (35 खरे actions अधिक न जुळल्यास 'unknown') — 28 फक्त वाचन आहेत, 4 confirmation card नंतर नोंद तयार करतात, आणि 3 कोणत्याही confirmation शिवाय ताबडतोब ईमेल पाठवतात. खालील command तक्ते Copilot च्या स्वतःच्या instruction set मधून थेट घेतले आहेत, स्मरणातून तयार केलेले नाहीत.">There are 36 recognised intents in total (35 real actions plus a fallback "unknown" for anything that doesn't match) — 28 are pure reads, 4 create records behind a confirmation card, and 3 send an email immediately with no confirmation at all. The command tables below are pulled directly from the Copilot's own instruction set, not reconstructed from memory.</p>
+            </div>
+
+            <div id="ac-readonly" class="manual-subsection">
+                <h3 data-en="Read-Only Queries — Instant Answer, No Confirmation" data-mr="फक्त वाचन — तात्काळ उत्तर, confirmation नाही">Read-Only Queries — Instant Answer, No Confirmation</h3>
+                <div class="nx-table-wrap">
+                    <table class="nx-table manual-cmd-table">
+                        <thead><tr>
+                            <th data-en="Type this" data-mr="हे टाइप करा">Type this</th>
+                            <th data-en="What it does" data-mr="काय होते">What it does</th>
+                        </tr></thead>
+                        <tbody>
+                            <tr><td><code class="manual-cmd">Copper cha stock kitna aahe?</code></td><td data-en="Current stock of Copper" data-mr="Copper चा सध्याचा स्टॉक">Current stock of Copper</td></tr>
+                            <tr><td><code class="manual-cmd">Last week Hex Bolt cha GRN aala ka?</code></td><td data-en="Recent GRN receipts for a material" data-mr="मालाच्या अलीकडील GRN पावत्या">Recent GRN receipts for a material</td></tr>
+                            <tr><td><code class="manual-cmd">This month copper kitna consume zala?</code></td><td data-en="Copper consumed this month" data-mr="या महिन्यात वापरलेला Copper">Copper consumed this month</td></tr>
+                            <tr><td><code class="manual-cmd">Tata Steel kadun last delivery keva aali?</code></td><td data-en="Last delivery date from a supplier" data-mr="पुरवठादाराकडून शेवटची डिलिव्हरी">Last delivery date from a supplier</td></tr>
+                            <tr><td><code class="manual-cmd">Kadhle materials low aahit?</code></td><td data-en="List of all low-stock materials" data-mr="कमी स्टॉक असलेल्या सर्व मालाची यादी">List of all low-stock materials</td></tr>
+                            <tr><td><code class="manual-cmd">GRN-202607-054 madhe kay hota?</code></td><td data-en="Details of a specific GRN" data-mr="एका GRN चे तपशील">Details of a specific GRN</td></tr>
+                            <tr><td><code class="manual-cmd">Kadhle dispatch pending aahit?</code></td><td data-en="Dispatches still in Draft status" data-mr="Draft स्थितीतील dispatch">Dispatches still in Draft status</td></tr>
+                            <tr><td><code class="manual-cmd">Aaj kitne GRNs aale?</code></td><td data-en="Total GRNs received today" data-mr="आज आलेले एकूण GRN">Total GRNs received today</td></tr>
+                            <tr><td><code class="manual-cmd">Kaal sarvat jast konta material consume zala?</code></td><td data-en="Top-consumed materials, ranked" data-mr="सर्वाधिक वापरलेला माल, क्रमवारीत">Top-consumed materials, ranked</td></tr>
+                            <tr><td><code class="manual-cmd">Kadhle materials aahit?</code></td><td data-en="Full list of raw materials" data-mr="कच्च्या मालाची संपूर्ण यादी">Full list of raw materials</td></tr>
+                            <tr><td><code class="manual-cmd">KS4 motor 5 banvayala enough stock aahe ka?</code></td><td data-en="Stock check for making N units of a product" data-mr="उत्पादन बनवण्यासाठी पुरेसा स्टॉक आहे का">Stock check for making N units of a product</td></tr>
+                            <tr><td><code class="manual-cmd">Konti materials out of stock aahit?</code></td><td data-en="Materials at zero (or negative) stock" data-mr="शून्य स्टॉक असलेला माल">Materials at zero (or negative) stock</td></tr>
+                            <tr><td><code class="manual-cmd">Aaj konti dispatch confirm zali?</code></td><td data-en="Dispatches confirmed in a period" data-mr="ठराविक कालावधीत confirmed dispatch">Dispatches confirmed in a period</td></tr>
+                            <tr><td><code class="manual-cmd">Tata Steel kadun aaj aala ka?</code></td><td data-en="Did a specific supplier deliver today/recently" data-mr="विशिष्ट पुरवठादाराने आज/अलीकडे डिलिव्हरी दिली का">Did a specific supplier deliver today/recently</td></tr>
+                            <tr><td><code class="manual-cmd">Challan 4302 status kay aahe?</code></td><td data-en="Status of a specific challan (when/status)" data-mr="चलानची स्थिती (कधी/status)">Status of a specific challan (when/status)</td></tr>
+                            <tr><td><code class="manual-cmd">Aaj kitne issues kele?</code></td><td data-en="Production issues done in a period" data-mr="ठराविक कालावधीत झालेले production issues">Production issues done in a period</td></tr>
+                            <tr><td><code class="manual-cmd">KS4 motor cha product code?</code></td><td data-en="Product code lookup" data-mr="Product code शोध">Product code lookup</td></tr>
+                            <tr><td><code class="manual-cmd">This week top 3 received materials?</code></td><td data-en="Top-received materials by GRN quantity" data-mr="GRN प्रमाणानुसार सर्वाधिक आलेला माल">Top-received materials by GRN quantity</td></tr>
+                            <tr><td><code class="manual-cmd">Konti products aahit?</code></td><td data-en="Full list of products" data-mr="उत्पादनांची संपूर्ण यादी">Full list of products</td></tr>
+                            <tr><td><code class="manual-cmd">Konti suppliers aahit?</code></td><td data-en="Full supplier list" data-mr="पुरवठादारांची संपूर्ण यादी">Full supplier list</td></tr>
+                            <tr><td><code class="manual-cmd">Challan 4309 madhe kay hota?</code></td><td data-en="What was inside a specific challan (line items)" data-mr="चलानमधील तपशील (line items)">What was inside a specific challan (line items)</td></tr>
+                            <tr><td><code class="manual-cmd">Issue challan 4310 madhe konti materials geli?</code></td><td data-en="What was issued in a specific production issue" data-mr="विशिष्ट production issue मध्ये गेलेला माल">What was issued in a specific production issue</td></tr>
+                            <tr><td><code class="manual-cmd">KS4 motor cha BOM kay aahe?</code></td><td data-en="Product recipe / Bill of Materials" data-mr="उत्पादनाची रेसिपी / BOM">Product recipe / Bill of Materials</td></tr>
+                            <tr><td><code class="manual-cmd">Sarvat jast konty supplier ne pathavle this month?</code></td><td data-en="Top supplier by deliveries this month" data-mr="या महिन्यातील सर्वाधिक डिलिव्हरी देणारा पुरवठादार">Top supplier by deliveries this month</td></tr>
+                            <tr><td><code class="manual-cmd">KPML cha is month total bill kitna?</code></td><td data-en="Total billed to a client this period" data-mr="या कालावधीत क्लायंटला एकूण बिल">Total billed to a client this period</td></tr>
+                            <tr><td><code class="manual-cmd">INV-202607-003 madhe kay hota?</code></td><td data-en="Line items in a specific invoice" data-mr="इनव्हॉइसमधील तपशील">Line items in a specific invoice</td></tr>
+                            <tr><td><code class="manual-cmd">This month cha GRN complete aahe ka?</code></td><td data-en="Are this month's GRNs missing any invoice numbers (CA-export readiness)" data-mr="या महिन्याच्या GRN मध्ये invoice number गहाळ आहे का (CA-export साठी तयारी)">Are this month's GRNs missing any invoice numbers (CA-export readiness)</td></tr>
+                            <tr><td><code class="manual-cmd">GSTR-2B madhe kiti match zale?</code></td><td data-en="Nudges you to the GSTR-2B Reconciliation page — see Part 4" data-mr="GSTR-2B Reconciliation पानाकडे निर्देश करतो — भाग 4 पहा">Nudges you to the GSTR-2B Reconciliation page — see Part 4</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="ac-write" class="manual-subsection">
+                <h3 data-en="Write Entries — Confirmation Card First" data-mr="नोंदी — आधी Confirmation">Write Entries — Confirmation Card First</h3>
+                <p data-en="These commands show a confirmation card — nothing is saved until you tap Confirm." data-mr="या commands मध्ये confirmation card दिसतो — Confirm टॅप करेपर्यंत काहीही सेव्ह होत नाही.">These commands show a confirmation card — nothing is saved until you tap Confirm.</p>
+                <div class="nx-table-wrap">
+                    <table class="nx-table manual-cmd-table">
+                        <thead><tr>
+                            <th data-en="Type this" data-mr="हे टाइप करा">Type this</th>
+                            <th data-en="What it does" data-mr="काय होते">What it does</th>
+                        </tr></thead>
+                        <tbody>
+                            <tr><td><code class="manual-cmd">copper aala 50 kg</code></td><td data-en="GRN: 50 kg copper received" data-mr="GRN: 50 kg Copper आल्याची नोंद">GRN: 50 kg copper received</td></tr>
+                            <tr><td><code class="manual-cmd">MS Sheet 3MM 1 pcs aani Hex Nut SS M6x1 1 pcs hindustan copper kadun aale</code></td><td data-en="Multi-material GRN from one supplier in a single message" data-mr="एका संदेशात एका पुरवठादाराकडून अनेक माल असलेली GRN">Multi-material GRN from one supplier in a single message</td></tr>
+                            <tr><td><code class="manual-cmd">KS4 motor 5 issue karo</code></td><td data-en="Issue materials for 5 KS4 motors (BOM explosion)" data-mr="5 KS4 मोटर्ससाठी माल issue (BOM explosion)">Issue materials for 5 KS4 motors (BOM explosion)</td></tr>
+                            <tr><td><code class="manual-cmd">Panel 5 dispatch karo</code></td><td data-en="Dispatch 5 panels to a client" data-mr="क्लायंटला 5 panels dispatch">Dispatch 5 panels to a client</td></tr>
+                            <tr><td><code class="manual-cmd">MS Sheet 50 kg dispatch karo</code></td><td data-en="RM Dispatch: 50 kg MS Sheet out directly" data-mr="RM Dispatch: 50 kg MS Sheet थेट dispatch">RM Dispatch: 50 kg MS Sheet out directly</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="ac-immediate" class="manual-subsection">
+                <h3 data-en="Send Immediately — No Confirmation" data-mr="ताबडतोब पाठवणे — Confirmation नाही">Send Immediately — No Confirmation</h3>
+                <div class="nx-alert nx-alert-red nx-mb-16">
+                    <span class="nx-alert-icon">!</span>
+                    <div data-en="These commands send right away — there is no 'are you sure?' prompt." data-mr="हे commands ताबडतोब पाठवतात — 'खात्री आहे का?' असे विचारत नाही.">These commands send right away — there is no "are you sure?" prompt.</div>
+                </div>
+                <div class="nx-table-wrap">
+                    <table class="nx-table manual-cmd-table">
+                        <thead><tr>
+                            <th data-en="Type this" data-mr="हे टाइप करा">Type this</th>
+                            <th data-en="What it does" data-mr="काय होते">What it does</th>
+                        </tr></thead>
+                        <tbody>
+                            <tr><td><code class="manual-cmd">Challan 4325 KPML la pathav</code></td><td data-en="Email challan 4325 to KPML right now" data-mr="चलान 4325 KPML ला आत्ता ईमेल">Email challan 4325 to KPML right now</td></tr>
+                            <tr><td><code class="manual-cmd">Invoice 4325 challan sathi pathav KPML la</code></td><td data-en="Email a single-dispatch invoice for that challan" data-mr="त्या चलानसाठी एकल इनव्हॉइस ईमेल">Email a single-dispatch invoice for that challan</td></tr>
+                            <tr><td><code class="manual-cmd">KPML la July cha invoice pathav</code></td><td data-en="Email a consolidated July invoice" data-mr="जुलैची एकत्रित इनव्हॉइस ईमेल">Email a consolidated July invoice</td></tr>
+                            <tr><td><code class="manual-cmd">CA la export pathav</code></td><td data-en="Email the full CA export to your CA right now" data-mr="संपूर्ण CA export CA ला आत्ता ईमेल">Email the full CA export to your CA right now</td></tr>
+                            <tr><td><code class="manual-cmd">CA la July cha export pathav</code></td><td data-en="Email July's CA export only" data-mr="फक्त जुलैचा CA export ईमेल">Email July's CA export only</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="ac-tips" class="manual-subsection">
+                <h3 data-en="Tips &amp; Limitations" data-mr="सूचना व मर्यादा">Tips &amp; Limitations</h3>
+                <ul>
+                    <li data-en="Mixing Marathi and English in one sentence is fine — that's how it's designed." data-mr="एकाच वाक्यात मराठी आणि इंग्रजी मिसळणे ठीक आहे.">Mixing Marathi and English in one sentence is fine — that's how it's designed.</li>
+                    <li data-en="If there are similar material names, add the material code to be specific." data-mr="समान नावे असल्यास material code जोडा.">If there are similar material names, add the material code to be specific.</li>
+                    <li data-en="Tap material chips above the message box to insert a name without typing." data-mr="Message box वर material chips टॅप करा.">Tap material chips above the message box to insert a name without typing.</li>
+                    <li data-en="If the very first message of the day fails, send it again — it's a one-time cold-start delay, not an error." data-mr="दिवसातील पहिला message fail झाल्यास पुन्हा पाठवा — एकवेळचा cold-start delay आहे, error नाही.">If the very first message of the day fails, send it again — it's a one-time cold-start delay, not an error.</li>
+                </ul>
+                <h4 data-en="What the Copilot Cannot Do" data-mr="Copilot काय करू शकत नाही">What the Copilot Cannot Do</h4>
+                <ul>
+                    <li data-en="Cancel any challan, dispatch, GRN, or invoice — use History pages instead." data-mr="चलान, dispatch, GRN किंवा invoice cancel करणे — History pages वापरा.">Cancel any challan, dispatch, GRN, or invoice — use History pages instead.</li>
+                    <li data-en="Delete data." data-mr="डेटा Delete करणे.">Delete data.</li>
+                    <li data-en="Change Settings — company details, prices, staff, Telegram must be changed by the Owner." data-mr="Settings बदलणे — Owner नेच बदलावे.">Change Settings — company details, prices, staff, Telegram must be changed by the Owner.</li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- ══════════════════════ PART 4 — REPORTS & EXPORTS ══════════════════════ -->
+        <section id="part-4" class="manual-section">
+            <div class="manual-part-num">PART 4</div>
+            <h2 data-en="Reports &amp; Exports" data-mr="अहवाल व Export">Reports &amp; Exports</h2>
+            <p class="manual-part-sub" data-en="Monthly reports, CA exports, GSTR-2B reconciliation, and history pages for full visibility." data-mr="मासिक अहवाल, CA export, GSTR-2B जुळवणी आणि इतिहास पृष्ठे — संपूर्ण माहिती.">Monthly reports, CA exports, GSTR-2B reconciliation, and history pages for full visibility.</p>
+
+            <div id="re-dashboard" class="manual-subsection">
+                <h3 data-en="Stock Dashboard" data-mr="स्टॉक डॅशबोर्ड">Stock Dashboard</h3>
+                <p data-en="Check it every morning before starting production for Low Stock Alerts. Auto-refreshes every 5 minutes." data-mr="उत्पादन सुरू करण्यापूर्वी दर सकाळी Low Stock Alerts साठी तपासा. दर 5 मिनिटांनी आपोआप refresh होतो.">Check it every morning before starting production for Low Stock Alerts. Auto-refreshes every 5 minutes.</p>
+            </div>
+
+            <div id="re-monthly" class="manual-subsection">
+                <h3 data-en="Monthly Report &amp; CA Report" data-mr="मासिक अहवाल व CA Report">Monthly Report &amp; CA Report</h3>
+                <div class="nx-table-wrap">
+                    <table class="nx-table">
+                        <thead><tr><th data-en="Tool" data-mr="साधन">Tool</th><th data-en="What you get" data-mr="काय मिळते">What you get</th><th data-en="How to use" data-mr="कसे वापरावे">How to use</th></tr></thead>
+                        <tbody>
+                            <tr>
+                                <td class="nx-td-bold">Monthly Report</td>
+                                <td data-en="Opening stock, GRN, Consumption, Net Change, Closing Stock per material." data-mr="प्रत्येक मालाचा opening stock, GRN, वापर, बदल, closing stock.">Opening stock, GRN, Consumption, Net Change, Closing Stock per material.</td>
+                                <td data-en="Month + Year → Generate Report → Print." data-mr="Month + Year निवडा → Generate Report → Print.">Month + Year → Generate Report → Print.</td>
+                            </tr>
+                            <tr>
+                                <td class="nx-td-bold">CA Report</td>
+                                <td data-en="Formal document for your CA — all GRN, Consumption, Dispatch, GST details for a date range." data-mr="CA साठी औपचारिक दस्तऐवज — तारीख श्रेणीतील सर्व GRN, वापर, Dispatch, GST तपशील.">Formal document for your CA — all GRN, Consumption, Dispatch, GST details for a date range.</td>
+                                <td data-en="From + To Date → Generate CA Report → new tab → Print / Save as PDF." data-mr="From + To Date → Generate CA Report → new tab → Print / Save as PDF.">From + To Date → Generate CA Report → new tab → Print / Save as PDF.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="re-caexport" class="manual-subsection">
+                <h3 data-en="CA Export (Tally / Zoho Format)" data-mr="CA Export (Tally / Zoho स्वरूप)">CA Export (Tally / Zoho Format)</h3>
+                <p data-en="An XLSX workbook built for your CA — send it from the Dashboard, export.html, or by AI Copilot (" data-mr="तुमच्या CA साठी तयार केलेली XLSX फाईल — Dashboard, export.html किंवा AI Copilot ने पाठवा (">An XLSX workbook built for your CA — send it from the Dashboard, export.html, or by AI Copilot (<code class="manual-cmd">CA la export pathav</code>).</p>
+                <h4 data-en="What's inside" data-mr="आत काय असते">What's inside</h4>
+                <ul>
+                    <li data-en="Sheet 1 — Purchases (GRN): every GRN row with Supplier Name, Supplier GSTIN, Supplier Invoice No, HSN/SAC, GST rate, and a Place of Supply column (mapped from the supplier's GSTIN state code)." data-mr="Sheet 1 — Purchases (GRN): Supplier Name, Supplier GSTIN, Supplier Invoice No, HSN/SAC, GST rate आणि Place of Supply (पुरवठादाराच्या GSTIN वरून) असलेली प्रत्येक GRN रांग.">Sheet 1 — Purchases (GRN): every GRN row with Supplier Name, Supplier GSTIN, Supplier Invoice No, HSN/SAC, GST rate, and a Place of Supply column (mapped from the supplier's GSTIN state code).</li>
+                    <li data-en="Sheet 2 — Invoices: one row per line item (not per invoice) — 19 columns including Client GSTIN, B2B/B2C, Place of Supply, HSN/SAC, and CGST/SGST/IGST computed proportionally per item from the invoice's total GST." data-mr="Sheet 2 — Invoices: प्रत्येक invoice-per-row ऐवजी प्रत्येक line-item-per-row — Client GSTIN, B2B/B2C, Place of Supply, HSN/SAC आणि invoice च्या एकूण GST मधून प्रमाणशीर काढलेले CGST/SGST/IGST यांसह 19 स्तंभ.">Sheet 2 — Invoices: one row per line item (not per invoice) — 19 columns including Client GSTIN, B2B/B2C, Place of Supply, HSN/SAC, and CGST/SGST/IGST computed proportionally per item from the invoice's total GST.</li>
+                    <li data-en="Sheet 3 — GST Summary: titled with the actual date range you exported (or 'All Time'), showing 'Input GST Recorded (Potential ITC)', output tax, and net payable totals." data-mr="Sheet 3 — GST Summary: तुम्ही export केलेल्या खऱ्या तारीख श्रेणीसह शीर्षक (किंवा 'All Time'), 'Input GST Recorded (Potential ITC)', output tax आणि net payable बेरीज.">Sheet 3 — GST Summary: titled with the actual date range you exported (or "All Time"), showing "Input GST Recorded (Potential ITC)", output tax, and net payable totals.</li>
+                </ul>
+                <p data-en="Purchase-type aware: a GRN row marked Interstate uses IGST columns; Intrastate splits CGST+SGST. Consumption rows were removed from this export in August 2026 — your CA only needs purchases and invoices, not internal stock movement." data-mr="Purchase-type नुसार: Interstate असलेली GRN रांग IGST स्तंभ वापरते; Intrastate CGST+SGST मध्ये विभागते. ऑगस्ट 2026 पासून consumption रांगा या export मधून काढल्या आहेत — CA ला फक्त खरेदी आणि invoices हवेत, अंतर्गत stock हालचाल नाही.">Purchase-type aware: a GRN row marked Interstate uses IGST columns; Intrastate splits CGST+SGST. Consumption rows were removed from this export in August 2026 — your CA only needs purchases and invoices, not internal stock movement.</p>
+                <div class="nx-alert nx-alert-green nx-mb-16">
+                    <span class="nx-alert-icon">✓</span>
+                    <div data-en="Add your CA's email under Settings → Agent → CA Export Email first, otherwise the Copilot export command has nowhere to send it." data-mr="आधी Settings → Agent → CA Export Email मध्ये CA चा ईमेल टाका — अन्यथा Copilot export command ला कुठे पाठवायचे ते माहीत नसेल.">Add your CA's email under Settings → Agent → CA Export Email first, otherwise the Copilot export command has nowhere to send it.</div>
+                </div>
+            </div>
+
+            <div id="re-gstr2b" class="manual-subsection">
+                <h3 data-en="GSTR-2B Reconciliation" data-mr="GSTR-2B जुळवणी">GSTR-2B Reconciliation</h3>
+                <p data-en="From July 2026, GST 2.0 introduced hard system-level matching — Input Tax Credit that doesn't match your GSTR-2B is auto-blocked, and can no longer be manually corrected in GSTR-3B. This page catches mismatches before that happens, by matching your own GRN purchases against the GSTR-2B file the GST portal generates from what your suppliers have filed." data-mr="जुलै 2026 पासून, GST 2.0 ने कठोर system-level matching आणले — जो Input Tax Credit तुमच्या GSTR-2B शी जुळत नाही तो आपोआप ब्लॉक होतो आणि GSTR-3B मध्ये हाताने दुरुस्त करता येत नाही. हे पान असे mismatch आधीच पकडते — तुमच्या स्वतःच्या GRN खरेदी GST पोर्टलने तुमच्या पुरवठादारांनी भरलेल्या GSTR-2B फाईलशी जुळवून.">From July 2026, GST 2.0 introduced hard system-level matching — Input Tax Credit that doesn't match your GSTR-2B is auto-blocked, and can no longer be manually corrected in GSTR-3B. This page catches mismatches before that happens, by matching your own GRN purchases against the GSTR-2B file the GST portal generates from what your suppliers have filed.</p>
+                <div class="nx-alert nx-alert-orange nx-mb-16">
+                    <span class="nx-alert-icon">🔒</span>
+                    <div data-en="Pro and Founder plans only, and only the Owner or Accountant role can open this page — not reachable via the navbar, only from a link on the CA Export page." data-mr="फक्त Pro आणि Founder plan, आणि फक्त Owner किंवा Accountant भूमिका हे पान उघडू शकते — नेव्हबारमध्ये नाही, फक्त CA Export पानावरील लिंकवरून.">Pro and Founder plans only, and only the Owner or Accountant role can open this page — not reachable via the navbar, only from a link on the CA Export page.</div>
+                </div>
+                <h4 data-en="How to use it" data-mr="कसे वापरावे">How to use it</h4>
+                <ol>
+                    <li data-en="Download the GSTR-2B JSON for the period from the GST portal (Returns → View GSTR-2B → Download JSON)." data-mr="GST पोर्टलवरून त्या कालावधीची GSTR-2B JSON डाउनलोड करा (Returns → View GSTR-2B → Download JSON).">Download the GSTR-2B JSON for the period from the GST portal (Returns → View GSTR-2B → Download JSON).</li>
+                    <li data-en="Upload it — the period is auto-detected from the file itself, and matching runs entirely in your browser (the file is never sent to any server)." data-mr="ती अपलोड करा — कालावधी फाईलमधूनच आपोआप ओळखला जातो, आणि जुळवणी संपूर्णपणे तुमच्या ब्राउझरमध्येच होते (फाईल कोणत्याही सर्व्हरला पाठवली जात नाही).">Upload it — the period is auto-detected from the file itself, and matching runs entirely in your browser (the file is never sent to any server).</li>
+                    <li data-en="If the GSTIN in the file doesn't match your own, you'll see a non-blocking warning naming both — the reconciliation still runs." data-mr="फाईलमधील GSTIN तुमच्याशी न जुळल्यास, दोन्ही GSTIN दाखवणारा एक न-अडवणारा इशारा दिसेल — जुळवणी तरीही चालू राहते.">If the GSTIN in the file doesn't match your own, you'll see a non-blocking warning naming both — the reconciliation still runs.</li>
+                    <li data-en="Tap Run Reconciliation — GRN rows are grouped by supplier GSTIN + invoice number (a multi-material GRN batch under one supplier invoice is summed first) and matched against the file." data-mr="Run Reconciliation टॅप करा — GRN रांगा supplier GSTIN + invoice number नुसार गटबद्ध होतात (एका supplier invoice खालील multi-material GRN आधी एकत्र केली जाते) आणि फाईलशी जुळवली जातात.">Tap Run Reconciliation — GRN rows are grouped by supplier GSTIN + invoice number (a multi-material GRN batch under one supplier invoice is summed first) and matched against the file.</li>
+                </ol>
+                <h4 data-en="The four result buckets" data-mr="चार गट">The four result buckets</h4>
+                <div class="nx-table-wrap">
+                    <table class="nx-table">
+                        <thead><tr><th data-en="Bucket" data-mr="गट">Bucket</th><th data-en="Meaning" data-mr="अर्थ">Meaning</th></tr></thead>
+                        <tbody>
+                            <tr><td><span class="nx-badge nx-badge-green">✅ Matched</span></td><td data-en="Supplier GSTIN + invoice number found in the file, taxable value within ₹2." data-mr="Supplier GSTIN + invoice number फाईलमध्ये सापडले, taxable value ₹2 च्या आत.">Supplier GSTIN + invoice number found in the file, taxable value within ₹2.</td></tr>
+                            <tr><td><span class="nx-badge nx-badge-yellow">⚠️ Amount Mismatch</span></td><td data-en="Keys match, but the taxable value differs by more than ₹2." data-mr="Keys जुळतात, पण taxable value ₹2 पेक्षा जास्त फरकाने वेगळे आहे.">Keys match, but the taxable value differs by more than ₹2.</td></tr>
+                            <tr><td><span class="nx-badge nx-badge-red">❌ ITC Blocked</span></td><td data-en="In your GRN, but not in the GSTR-2B file — your supplier hasn't filed GSTR-1 for it yet." data-mr="तुमच्या GRN मध्ये आहे, पण GSTR-2B फाईलमध्ये नाही — तुमच्या पुरवठादाराने त्यासाठी अजून GSTR-1 भरलेला नाही.">In your GRN, but not in the GSTR-2B file — your supplier hasn't filed GSTR-1 for it yet.</td></tr>
+                            <tr><td><span class="nx-badge nx-badge-grey">❓ Unrecorded</span></td><td data-en="In the GSTR-2B file, but no matching GRN in Nexflow — an unrecorded purchase, or a fraudulent IMS auto-accept. Rows with IMS status NO_ACTION are highlighted red as most urgent to review." data-mr="GSTR-2B फाईलमध्ये आहे, पण Nexflow मध्ये जुळणारी GRN नाही — नोंद न झालेली खरेदी, किंवा फसवा IMS auto-accept. IMS status NO_ACTION असलेल्या रांगा तपासण्यासाठी सर्वात तातडीच्या म्हणून लाल रंगात दाखवल्या जातात.">In the GSTR-2B file, but no matching GRN in Nexflow — an unrecorded purchase, or a fraudulent IMS auto-accept. Rows with IMS status NO_ACTION are highlighted red as most urgent to review.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p data-en="A 'Download Reconciliation Report' button exports an XLSX with 4 sheets — Matched, Amount Mismatch, ITC Blocked, Unrecorded — with orange headers matching the rest of the app." data-mr="'Download Reconciliation Report' बटण 4 शीट असलेली XLSX export करते — Matched, Amount Mismatch, ITC Blocked, Unrecorded — बाकीच्या अ‍ॅपप्रमाणे नारिंगी हेडरसह.">A "Download Reconciliation Report" button exports an XLSX with 4 sheets — Matched, Amount Mismatch, ITC Blocked, Unrecorded — with orange headers matching the rest of the app.</p>
+                <div class="nx-alert nx-alert-yellow nx-mb-16">
+                    <span class="nx-alert-icon">⚠️</span>
+                    <div data-en="Results are session-only — nothing is saved to the database, so they disappear if you refresh the page. Download the XLSX if you need to keep a copy, and re-run reconciliation each time you want to check." data-mr="निकाल फक्त त्या session पुरते असतात — काहीही database मध्ये सेव्ह होत नाही, त्यामुळे पान refresh केल्यास ते नाहीसे होतात. प्रत हवी असल्यास XLSX डाउनलोड करा, आणि दरवेळी पुन्हा reconciliation चालवा.">Results are session-only — nothing is saved to the database, so they disappear if you refresh the page. Download the XLSX if you need to keep a copy, and re-run reconciliation each time you want to check.</div>
+                </div>
+                <p data-en="A Telegram nudge goes out automatically on the 15th of every month to owners with Telegram configured, reminding them to run this before GSTR-3B filing." data-mr="प्रत्येक महिन्याच्या 15 तारखेला Telegram सेट केलेल्या मालकांना GSTR-3B फाईलिंगपूर्वी हे चालवण्याची आठवण आपोआप Telegram वर पाठवली जाते.">A Telegram nudge goes out automatically on the 15th of every month to owners with Telegram configured, reminding them to run this before GSTR-3B filing.</p>
+            </div>
+
+            <div id="re-history" class="manual-subsection">
+                <h3 data-en="History Pages" data-mr="इतिहास पृष्ठे">History Pages</h3>
+                <ol>
+                    <li data-en="Set From and To dates, optionally add a Status filter, tap Apply." data-mr="From आणि To तारीख सेट करा, ऐच्छिक Status filter लावा, Apply टॅप करा.">Set From and To dates, optionally add a Status filter, tap Apply.</li>
+                    <li data-en="Tap Detail on any row for the full line-item breakdown." data-mr="कोणत्याही रांगेवर Detail टॅप करा — पूर्ण तपशील दिसेल.">Tap Detail on any row for the full line-item breakdown.</li>
+                    <li data-en="Export CSV downloads the filtered list; Print gives a clean printout." data-mr="Export CSV filtered यादी download करतो; Print स्वच्छ printout देतो.">Export CSV downloads the filtered list; Print gives a clean printout.</li>
+                    <li data-en="On Dispatch and Issue History, Cancel reverses stock — this cannot be undone." data-mr="Dispatch आणि Issue History मध्ये, Cancel स्टॉक परत करतो — हे पूर्ववत करता येत नाही.">On Dispatch and Issue History, Cancel reverses stock — this cannot be undone.</li>
+                </ol>
+                <div class="nx-alert nx-alert-red nx-mb-16">
+                    <span class="nx-alert-icon">!</span>
+                    <div data-en="GRN History has no cancel or edit function. A GRN, once submitted, is permanent — use Settings → Stock Adjustment for genuine corrections only." data-mr="GRN History मध्ये cancel किंवा edit function नाही. GRN एकदा submit केल्यावर कायमचे असते — खऱ्या दुरुस्तीसाठीच Settings → Stock Adjustment वापरा.">GRN History has no cancel or edit function. A GRN, once submitted, is permanent — use Settings → Stock Adjustment for genuine corrections only.</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ══════════════════════ PART 5 — SETTINGS ══════════════════════ -->
+        <section id="part-5" class="manual-section">
+            <div class="manual-part-num">PART 5</div>
+            <h2 data-en="Settings" data-mr="सेटिंग्ज">Settings</h2>
+            <p class="manual-part-sub" data-en="Owner-only master configuration — company details, materials, staff, and integrations. Anyone can read this section for reference, but only the Owner role can actually open Settings; every other role is redirected to Dashboard automatically." data-mr="फक्त Owner साठी — कंपनी तपशील, माल, कर्मचारी आणि integrations. हा भाग कोणीही संदर्भासाठी वाचू शकतो, पण Settings फक्त Owner च उघडू शकतो; इतर कोणतीही भूमिका आपोआप Dashboard वर जाते.">Owner-only master configuration — company details, materials, staff, and integrations. Anyone can read this section for reference, but only the Owner role can actually open Settings; every other role is redirected to Dashboard automatically.</p>
+
+            <div id="st-company" class="manual-subsection">
+                <h3 data-en="1. Company Details" data-mr="१. कंपनी तपशील">1. Company Details</h3>
+                <p data-en="Company Name, Address, Mobile, GSTIN, Bank Name, Account No, IFSC Code — appears on every challan and invoice. Do this on Day 1." data-mr="कंपनीचे नाव, पत्ता, मोबाईल, GSTIN, बँकेचे नाव, खाते क्रमांक, IFSC Code — प्रत्येक चलान आणि इनव्हॉइसवर येतात. पहिल्या दिवशीच हे करा.">Company Name, Address, Mobile, GSTIN, Bank Name, Account No, IFSC Code — appears on every challan and invoice. Do this on Day 1.</p>
+            </div>
+
+            <div id="st-materials" class="manual-subsection">
+                <h3 data-en="2. Raw Materials &amp; Suppliers" data-mr="२. कच्चा माल व पुरवठादार">2. Raw Materials &amp; Suppliers</h3>
+                <p data-en="Raw Materials: Name, Unit, Min Stock Level → Add Material. Bulk import via a downloadable template. Lite plan caps out at 250 active materials. To remove one, Deactivate — it keeps history, unlike Delete." data-mr="Raw Materials: नाव, Unit, किमान स्टॉक पातळी → Add Material. Bulk import template द्वारे. Lite plan साठी कमाल 250 सक्रिय माल. काढायला Deactivate करा — Delete उलट, इतिहास राहतो.">Raw Materials: Name, Unit, Min Stock Level → Add Material. Bulk import via a downloadable template. Lite plan caps out at 250 active materials. To remove one, Deactivate — it keeps history, unlike Delete.</p>
+                <p data-en="Suppliers: Name, Mobile, Address, GSTIN → Add. There's no Edit button — to correct a supplier, Deactivate the wrong one and add a new entry." data-mr="Suppliers: नाव, मोबाईल, पत्ता, GSTIN → Add. Edit बटण नाही — चुकीचे Deactivate करा आणि नवीन add करा.">Suppliers: Name, Mobile, Address, GSTIN → Add. There's no Edit button — to correct a supplier, Deactivate the wrong one and add a new entry.</p>
+            </div>
+
+            <div id="st-clients" class="manual-subsection">
+                <h3 data-en="3. Clients, Products &amp; BOM, Prices" data-mr="३. क्लायंट, उत्पादने व BOM, किंमती">3. Clients, Products &amp; BOM, Prices</h3>
+                <p data-en="Clients: Client Name (required), Email, Address, GSTIN → Add Client. Email is mandatory for the Send Challan and Send Invoice Copilot commands — a yellow 'No email' badge flags anyone missing one." data-mr="Clients: Client Name (अनिवार्य), Email, पत्ता, GSTIN → Add Client. चलान/इनव्हॉइस Copilot commands साठी email अनिवार्य आहे — Yellow badge = ईमेल नाही.">Clients: Client Name (required), Email, Address, GSTIN → Add Client. Email is mandatory for the Send Challan and Send Invoice Copilot commands — a yellow "No email" badge flags anyone missing one.</p>
+                <p data-en="Products &amp; BOM: add products (with HSN/SAC) on the Products page — it's in the main menu, not inside Settings. In Bill of Materials, pick a product, search a raw material, enter Qty per ONE unit → Add to Recipe. A yellow 'No BOM' badge means no raw material will be deducted." data-mr="Products &amp; BOM: Products page वर (main menu मध्ये, Settings मध्ये नाही) products जोडा (HSN/SAC सह). Bill of Materials मध्ये: product निवडा, माल शोधा, एका unit साठी Qty टाका → Add to Recipe. Yellow badge = BOM नाही.">Products &amp; BOM: add products (with HSN/SAC) on the Products page — it's in the main menu, not inside Settings. In Bill of Materials, pick a product, search a raw material, enter Qty per ONE unit → Add to Recipe. A yellow "No BOM" badge means no raw material will be deducted.</p>
+                <p data-en="Prices: two sections — Material Purchase Price and Product Selling Price. Every save adds a new price-history row; the system always uses the most recent price by date." data-mr="Prices: दोन विभाग — Material Purchase Price आणि Product Selling Price. प्रत्येक save नवीन row तयार करतो — सिस्टम नेहमी तारखेनुसार सर्वात अलीकडील किंमत वापरतो.">Prices: two sections — Material Purchase Price and Product Selling Price. Every save adds a new price-history row; the system always uses the most recent price by date.</p>
+                <p data-en="Challan &amp; GRN Settings: starting numbers for challans, GRNs, and invoices; Unified (one series) or Split (separate per type) mode." data-mr="Challan &amp; GRN Settings: चलान, GRN आणि invoice साठी सुरुवातीचे क्रमांक; Unified (एक मालिका) किंवा Split (वेगळी मालिका).">Challan &amp; GRN Settings: starting numbers for challans, GRNs, and invoices; Unified (one series) or Split (separate per type) mode.</p>
+            </div>
+
+            <div id="st-staff" class="manual-subsection">
+                <h3 data-en="4. Staff Management &amp; Telegram Alerts" data-mr="४. कर्मचारी व्यवस्थापन व Telegram">4. Staff Management &amp; Telegram Alerts</h3>
+                <p data-en="Staff (Pro/Founder only): enter email + choose role → Send Invite. To change someone's role, Remove and re-invite — there's no direct role-change button." data-mr="Staff (फक्त Pro/Founder): email + भूमिका निवडा → Send Invite. भूमिका बदलायला Remove करून पुन्हा invite करा — थेट role-change बटण नाही.">Staff (Pro/Founder only): enter email + choose role → Send Invite. To change someone's role, Remove and re-invite — there's no direct role-change button.</p>
+                <ol>
+                    <li data-en="On Telegram: search @BotFather → /newbot → follow instructions → get a token." data-mr="Telegram वर @BotFather शोधा → /newbot → सूचना पाळा → token मिळवा.">On Telegram: search @BotFather → /newbot → follow instructions → get a token.</li>
+                    <li data-en="Search @userinfobot → send any message → get your Chat ID." data-mr="@userinfobot शोधा → कोणताही message पाठवा → Chat ID मिळेल.">Search @userinfobot → send any message → get your Chat ID.</li>
+                    <li data-en="Paste the Chat ID into Nexflow Settings → Save Telegram Settings." data-mr="Chat ID Nexflow Settings मध्ये paste करा → Save Telegram Settings.">Paste the Chat ID into Nexflow Settings → Save Telegram Settings.</li>
+                </ol>
+                <p data-en="After setup: a daily 8 AM summary, plus an instant alert after every Issue or Dispatch." data-mr="Setup नंतर: दररोज सकाळी 8 वाजता summary, तसेच प्रत्येक Issue/Dispatch नंतर तात्काळ alert.">After setup: a daily 8 AM summary, plus an instant alert after every Issue or Dispatch.</p>
+            </div>
+
+            <div id="st-agent" class="manual-subsection">
+                <h3 data-en="5. Agent Settings, CA Email &amp; Stock Adjustment" data-mr="५. Agent Settings, CA Email व Stock Adjustment">5. Agent Settings, CA Email &amp; Stock Adjustment</h3>
+                <p data-en="Settings → Agent shows the Copilot's daily usage and limit tier (Standard: 30/day, Power: 100/day, Unlimited). Set the CA Export Email here — it's what powers the 'CA la export pathav' command." data-mr="Settings → Agent Copilot ची दैनिक वापर मर्यादा दाखवतो (Standard: 30/day, Power: 100/day, Unlimited). CA Export Email येथेच सेट करा — 'CA la export pathav' साठी अनिवार्य.">Settings → Agent shows the Copilot's daily usage and limit tier (Standard: 30/day, Power: 100/day, Unlimited). Set the CA Export Email here — it's what powers the "CA la export pathav" command.</p>
+                <p data-en="Stock Adjustment: use only for genuine corrections (physical count difference, damaged or lost material). Select Material → +/− → Quantity → enter a Reason (required) → Submit Adjustment." data-mr="Stock Adjustment: फक्त खऱ्या दुरुस्तीसाठी वापरा (प्रत्यक्ष मोजणीतील फरक, खराब/हरवलेला माल). माल निवडा → +/− → प्रमाण → कारण लिहा (अनिवार्य) → Submit.">Stock Adjustment: use only for genuine corrections (physical count difference, damaged or lost material). Select Material → +/− → Quantity → enter a Reason (required) → Submit Adjustment.</p>
+            </div>
+        </section>
+
+        <!-- ══════════════════════ PART 6 — ROLE GUIDES ══════════════════════ -->
+        <section id="part-6" class="manual-section">
+            <div class="manual-part-num">PART 6</div>
+            <h2 data-en="Role Guides" data-mr="भूमिका मार्गदर्शक">Role Guides</h2>
+            <p class="manual-part-sub" data-en="Five self-contained guides — print one and hand it to a team member, or scoped-print just their card below." data-mr="पाच स्वतंत्र मार्गदर्शक — एक छापा आणि टीम सदस्याला द्या, किंवा खाली फक्त त्यांचे कार्ड छापा.">Five self-contained guides — print one and hand it to a team member, or scoped-print just their card below.</p>
+
+            <a href="#" id="roleJumpLink" class="nx-btn nx-btn-primary nx-btn-sm manual-role-jump no-print" style="margin-bottom:18px" data-en="🔖 Jump to your role guide" data-mr="🔖 तुमच्या भूमिकेच्या मार्गदर्शकाकडे जा">🔖 Jump to your role guide</a>
+
+            <div id="role-owner" class="manual-role-card nx-card manual-subsection" data-role="owner">
+                <div class="nx-card-header">
+                    <div class="nx-card-title" data-en="Owner / मालक" data-mr="मालक / Owner">Owner / मालक</div>
+                    <button class="nx-btn nx-btn-ghost nx-btn-sm no-print" data-print-role="owner" data-en="🖨 Print This Guide" data-mr="🖨 हे मार्गदर्शक छापा">🖨 Print This Guide</button>
+                </div>
+                <p><strong data-en="Pages accessible:" data-mr="उपलब्ध पृष्ठे:">Pages accessible:</strong> Dashboard · GRN · Issue · Dispatch · Invoices · RM Dispatch · Products · Reports · Scanner · Settings · AI Copilot · Manual</p>
+                <p><strong data-en="Daily tasks:" data-mr="दैनंदिन कामे:">Daily tasks:</strong></p>
+                <ul>
+                    <li data-en="Check Dashboard Low Stock Alerts before production starts." data-mr="उत्पादन सुरू करण्यापूर्वी Dashboard Low Stock Alerts तपासा.">Check Dashboard Low Stock Alerts before production starts.</li>
+                    <li data-en="Review the Telegram morning summary." data-mr="Telegram सकाळी summary तपासा.">Review the Telegram morning summary.</li>
+                    <li data-en="Monitor GRNs, Issues, and Dispatches through the day." data-mr="दिवसभर GRN, Issue आणि Dispatch देखरेख करा.">Monitor GRNs, Issues, and Dispatches through the day.</li>
+                    <li data-en="Month-end: Monthly Report, CA Export, and GSTR-2B Reconciliation." data-mr="महिना-अखेर: Monthly Report, CA Export आणि GSTR-2B Reconciliation.">Month-end: Monthly Report, CA Export, and GSTR-2B Reconciliation.</li>
+                    <li data-en="Keep Settings current — new materials, suppliers, clients, prices." data-mr="Settings अद्ययावत ठेवा — नवीन माल, पुरवठादार, क्लायंट, किंमती.">Keep Settings current — new materials, suppliers, clients, prices.</li>
+                </ul>
+                <p><strong data-en="Quick reference:" data-mr="त्वरित संदर्भ:">Quick reference:</strong></p>
+                <ul>
+                    <li data-en="Add raw material: Settings → Raw Materials → fill form → Add Material" data-mr="कच्चा माल जोडा: Settings → Raw Materials → फॉर्म भरा → Add Material">Add raw material: Settings → Raw Materials → fill form → Add Material</li>
+                    <li data-en="Invite team member: Settings → Staff → email + role → Send Invite" data-mr="सदस्य आमंत्रित करा: Settings → Staff → email + role → Send Invite">Invite team member: Settings → Staff → email + role → Send Invite</li>
+                    <li data-en="Fix wrong stock: Settings → Stock Adjustment → material → +/− → reason → Submit" data-mr="चुकीचा स्टॉक दुरुस्त करा: Settings → Stock Adjustment → माल → +/− → कारण → Submit">Fix wrong stock: Settings → Stock Adjustment → material → +/− → reason → Submit</li>
+                    <li data-en="Send challan by chat: AI Copilot → " data-mr="चॅटने चलान पाठवा: AI Copilot → ">Send challan by chat: AI Copilot → <code class="manual-cmd">Challan [number] [client] la pathav</code></li>
+                </ul>
+            </div>
+
+            <div id="role-supervisor" class="manual-role-card nx-card manual-subsection" data-role="supervisor">
+                <div class="nx-card-header">
+                    <div class="nx-card-title" data-en="Supervisor / पर्यवेक्षक" data-mr="पर्यवेक्षक / Supervisor">Supervisor / पर्यवेक्षक</div>
+                    <button class="nx-btn nx-btn-ghost nx-btn-sm no-print" data-print-role="supervisor" data-en="🖨 Print This Guide" data-mr="🖨 हे मार्गदर्शक छापा">🖨 Print This Guide</button>
+                </div>
+                <p><strong data-en="Pages accessible:" data-mr="उपलब्ध पृष्ठे:">Pages accessible:</strong> <span data-en="Same as Owner, except Settings (Owner-only)." data-mr="Settings सोडून Owner सारखेच.">Same as Owner, except Settings (Owner-only).</span></p>
+                <p><strong data-en="Daily tasks:" data-mr="दैनंदिन कामे:">Daily tasks:</strong></p>
+                <ul>
+                    <li data-en="Check Dashboard low-stock warnings each morning." data-mr="दर सकाळी Dashboard low-stock इशारे तपासा.">Check Dashboard low-stock warnings each morning.</li>
+                    <li data-en="Log incoming deliveries as GRN entries when trucks arrive." data-mr="ट्रक आल्यावर GRN नोंद करा.">Log incoming deliveries as GRN entries when trucks arrive.</li>
+                    <li data-en="Process production Issues as each batch starts." data-mr="प्रत्येक batch सुरू होताना Issue करा.">Process production Issues as each batch starts.</li>
+                    <li data-en="Process Dispatches and RM Dispatches as goods leave." data-mr="माल गेल्यावर Dispatch करा.">Process Dispatches and RM Dispatches as goods leave.</li>
+                    <li data-en="Generate and send invoices for confirmed deliveries." data-mr="confirmed deliveries साठी invoices तयार करा.">Generate and send invoices for confirmed deliveries.</li>
+                </ul>
+                <p><strong data-en="Quick reference:" data-mr="त्वरित संदर्भ:">Quick reference:</strong></p>
+                <ul>
+                    <li data-en="Log a delivery: GRN → supplier → search material → qty → Submit All Materials" data-mr="डिलिव्हरी नोंदवा: GRN → पुरवठादार → माल शोधा → qty → Submit All Materials">Log a delivery: GRN → supplier → search material → qty → Submit All Materials</li>
+                    <li data-en="Issue to production: Issue → product → batch qty → Generate BOM → review → Issue Materials → Confirm" data-mr="उत्पादनाला Issue: Issue → product → batch qty → Generate BOM → review → Issue Materials → Confirm">Issue to production: Issue → product → batch qty → Generate BOM → review → Issue Materials → Confirm</li>
+                    <li data-en="Dispatch goods: Dispatch → client info → add products → Confirm Dispatch → Print Challan" data-mr="माल Dispatch करा: Dispatch → client माहिती → products जोडा → Confirm Dispatch → Print Challan">Dispatch goods: Dispatch → client info → add products → Confirm Dispatch → Print Challan</li>
+                    <li data-en="Generate invoice: All Dispatches → challan → Detail → Generate Invoice → rates → Generate" data-mr="Invoice तयार करा: All Dispatches → challan → Detail → Generate Invoice → rates → Generate">Generate invoice: All Dispatches → challan → Detail → Generate Invoice → rates → Generate</li>
+                </ul>
+            </div>
+
+            <div id="role-storekeeper" class="manual-role-card nx-card manual-subsection" data-role="storekeeper">
+                <div class="nx-card-header">
+                    <div class="nx-card-title" data-en="Storekeeper / गोदाम कर्मचारी" data-mr="गोदाम कर्मचारी / Storekeeper">Storekeeper / गोदाम कर्मचारी</div>
+                    <button class="nx-btn nx-btn-ghost nx-btn-sm no-print" data-print-role="storekeeper" data-en="🖨 Print This Guide" data-mr="🖨 हे मार्गदर्शक छापा">🖨 Print This Guide</button>
+                </div>
+                <p><strong data-en="Pages accessible:" data-mr="उपलब्ध पृष्ठे:">Pages accessible:</strong> Dashboard · GRN · Scanner · Manual</p>
+                <p><strong data-en="Daily tasks:" data-mr="दैनंदिन कामे:">Daily tasks:</strong></p>
+                <ul>
+                    <li data-en="Every time a delivery truck arrives: log it in GRN or Scanner." data-mr="डिलिव्हरी ट्रक आल्यावर GRN किंवा Scanner मध्ये नोंद करा.">Every time a delivery truck arrives: log it in GRN or Scanner.</li>
+                    <li data-en="Check material name and unit before entering quantity." data-mr="प्रमाण टाकण्यापूर्वी मालाचे नाव आणि Unit तपासा.">Check material name and unit before entering quantity.</li>
+                    <li data-en="Add Rate and Invoice No if the supplier gave you a bill." data-mr="पुरवठादाराने बिल दिले असल्यास Rate आणि Invoice No टाका.">Add Rate and Invoice No if the supplier gave you a bill.</li>
+                    <li data-en="On Scanner: always tap Confirm GRN at the end — do not close the page first." data-mr="Scanner वर: शेवटी नेहमी Confirm GRN टॅप करा — आधी पेज बंद करू नका.">On Scanner: always tap Confirm GRN at the end — do not close the page first.</li>
+                </ul>
+                <p><strong data-en="Quick reference:" data-mr="त्वरित संदर्भ:">Quick reference:</strong></p>
+                <ul>
+                    <li data-en="Manual GRN: GRN → select Supplier (+ for new) → search material → Qty → Rate + Invoice No → + Add Row → Submit All Materials" data-mr="हाताने GRN: GRN → पुरवठादार निवडा (नवीनसाठी +) → माल शोधा → Qty → Rate + Invoice No → + Add Row → Submit All Materials">Manual GRN: GRN → select Supplier (+ for new) → search material → Qty → Rate + Invoice No → + Add Row → Submit All Materials</li>
+                    <li data-en="Scanner GRN: phone Chrome → allow camera → Supplier + Date at top → point at QR sticker → Qty → Add to GRN → repeat → Confirm GRN" data-mr="Scanner GRN: फोनवर Chrome → camera allow → वरती Supplier + Date → QR स्टिकरवर कॅमेरा → Qty → Add to GRN → पुन्हा करा → Confirm GRN">Scanner GRN: phone Chrome → allow camera → Supplier + Date at top → point at QR sticker → Qty → Add to GRN → repeat → Confirm GRN</li>
+                </ul>
+            </div>
+
+            <div id="role-operator" class="manual-role-card nx-card manual-subsection" data-role="operator">
+                <div class="nx-card-header">
+                    <div class="nx-card-title" data-en="Operator / ऑपरेटर" data-mr="ऑपरेटर / Operator">Operator / ऑपरेटर</div>
+                    <button class="nx-btn nx-btn-ghost nx-btn-sm no-print" data-print-role="operator" data-en="🖨 Print This Guide" data-mr="🖨 हे मार्गदर्शक छापा">🖨 Print This Guide</button>
+                </div>
+                <p><strong data-en="Pages accessible:" data-mr="उपलब्ध पृष्ठे:">Pages accessible:</strong> Dashboard · Issue · Dispatch · RM Dispatch · Products · Reports · Manual</p>
+                <p><strong data-en="Daily tasks:" data-mr="दैनंदिन कामे:">Daily tasks:</strong></p>
+                <ul>
+                    <li data-en="Process production Issues as new batches start." data-mr="नवीन batches सुरू होताना Issue करा.">Process production Issues as new batches start.</li>
+                    <li data-en="Process Dispatches when finished goods leave for a client." data-mr="तयार माल क्लायंटला गेल्यावर Dispatch करा.">Process Dispatches when finished goods leave for a client.</li>
+                    <li data-en="Process RM Dispatches when raw material itself leaves." data-mr="कच्चा माल गेल्यावर RM Dispatch करा.">Process RM Dispatches when raw material itself leaves.</li>
+                    <li data-en="Keep product BOM updated on the Products page." data-mr="Products page वर BOM अद्ययावत ठेवा.">Keep product BOM updated on the Products page.</li>
+                </ul>
+                <p><strong data-en="Quick reference:" data-mr="त्वरित संदर्भ:">Quick reference:</strong></p>
+                <ul>
+                    <li data-en="Issue to production: Issue → product → batch qty → Generate BOM → review → Issue Materials → Confirm" data-mr="उत्पादनाला Issue: Issue → product → batch qty → Generate BOM → review → Issue Materials → Confirm">Issue to production: Issue → product → batch qty → Generate BOM → review → Issue Materials → Confirm</li>
+                    <li data-en="Dispatch finished goods: Dispatch → Client Name + Address → add Products + Qty → Confirm Dispatch → Print Challan" data-mr="तयार माल Dispatch: Dispatch → Client Name + पत्ता → Products + Qty जोडा → Confirm Dispatch → Print Challan">Dispatch finished goods: Dispatch → Client Name + Address → add Products + Qty → Confirm Dispatch → Print Challan</li>
+                    <li data-en="Update product recipe: Products page → Bill of Materials → select product → add ingredient → Qty per ONE unit → Add to Recipe" data-mr="उत्पादनाची रेसिपी अद्ययावत करा: Products page → Bill of Materials → product निवडा → घटक जोडा → एका unit साठी Qty → Add to Recipe">Update product recipe: Products page → Bill of Materials → select product → add ingredient → Qty per ONE unit → Add to Recipe</li>
+                </ul>
+            </div>
+
+            <div id="role-accountant" class="manual-role-card nx-card manual-subsection" data-role="accountant">
+                <div class="nx-card-header">
+                    <div class="nx-card-title" data-en="Accountant / लेखापाल" data-mr="लेखापाल / Accountant">Accountant / लेखापाल</div>
+                    <button class="nx-btn nx-btn-ghost nx-btn-sm no-print" data-print-role="accountant" data-en="🖨 Print This Guide" data-mr="🖨 हे मार्गदर्शक छापा">🖨 Print This Guide</button>
+                </div>
+                <p><strong data-en="Pages accessible:" data-mr="उपलब्ध पृष्ठे:">Pages accessible:</strong> Reports · Invoices (<span data-en="view &amp; print only, cannot generate or cancel" data-mr="फक्त पाहणे व प्रिंट, generate किंवा cancel करता येत नाही">view &amp; print only, cannot generate or cancel</span>) · Manual (<span data-en="no AI Copilot" data-mr="AI Copilot नाही">no AI Copilot</span>)</p>
+                <p><strong data-en="Daily / monthly tasks:" data-mr="दैनंदिन / मासिक कामे:">Daily / monthly tasks:</strong></p>
+                <ul>
+                    <li data-en="Month-end: generate the CA Report for the required date range." data-mr="महिना-अखेर: आवश्यक कालावधीसाठी CA Report तयार करा.">Month-end: generate the CA Report for the required date range.</li>
+                    <li data-en="Print or Save as PDF, forward to the CA firm." data-mr="प्रिंट करा किंवा PDF म्हणून Save करा, CA फर्मला पाठवा.">Print or Save as PDF, forward to the CA firm.</li>
+                    <li data-en="If Pro/Founder: run GSTR-2B Reconciliation before GSTR-3B filing each month (see Part 4)." data-mr="Pro/Founder असल्यास: दर महिन्याला GSTR-3B फाईलिंगपूर्वी GSTR-2B Reconciliation चालवा (भाग 4 पहा).">If Pro/Founder: run GSTR-2B Reconciliation before GSTR-3B filing each month (see Part 4).</li>
+                    <li data-en="Check Invoices page to review client billing status." data-mr="Invoices page वर क्लायंट billing status तपासा.">Check Invoices page to review client billing status.</li>
+                </ul>
+                <p><strong data-en="Quick reference:" data-mr="त्वरित संदर्भ:">Quick reference:</strong></p>
+                <ul>
+                    <li data-en="Generate CA Report: Reports → From Date + To Date → Generate CA Report → new tab → Print → 'Save as PDF'" data-mr="CA Report तयार करा: Reports → From Date + To Date → Generate CA Report → new tab → Print → 'Save as PDF'">Generate CA Report: Reports → From Date + To Date → Generate CA Report → new tab → Print → "Save as PDF"</li>
+                    <li data-en="View/print invoice: Invoices → filters → View/Print → Download Invoice (PDF) or Print Invoice" data-mr="Invoice पहा/प्रिंट: Invoices → filters → View/Print → Download Invoice (PDF) किंवा Print Invoice">View/print invoice: Invoices → filters → View/Print → Download Invoice (PDF) or Print Invoice</li>
+                    <li data-en="Check client billing: Invoices → filter by Client → Total Billed in the stat card at top" data-mr="Client billing तपासा: Invoices → Client filter → वरच्या stat card मध्ये Total Billed">Check client billing: Invoices → filter by Client → Total Billed in the stat card at top</li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- ══════════════════════ PART 7 — TROUBLESHOOTING ══════════════════════ -->
+        <section id="part-7" class="manual-section">
+            <div class="manual-part-num">PART 7</div>
+            <h2 data-en="Troubleshooting" data-mr="समस्या निराकरण">Troubleshooting</h2>
+            <p class="manual-part-sub" data-en="Common problems and how to fix them — fast." data-mr="सामान्य समस्या आणि त्यांचे जलद निराकरण.">Common problems and how to fix them — fast.</p>
+
+            <div id="ts-login" class="manual-subsection">
+                <h4 data-en="❓ Can't Log In" data-mr="❓ लॉगिन होत नाही">❓ Can't Log In</h4>
+                <ul>
+                    <li data-en="Double-check email and password — tap the eye icon to reveal and check for typos." data-mr="ईमेल आणि पासवर्ड पुन्हा तपासा — डोळ्याच्या आयकॉनवर टॅप करून तपासा.">Double-check email and password — tap the eye icon to reveal and check for typos.</li>
+                    <li data-en="No 'Forgot Password' link — contact your Owner or Nexflow support." data-mr="'Forgot Password' लिंक नाही — Owner किंवा Nexflow सपोर्टशी संपर्क करा.">No "Forgot Password" link — contact your Owner or Nexflow support.</li>
+                    <li data-en="New team members must be invited by the Owner from Settings → Staff." data-mr="नवीन सदस्यांना Owner ने Settings → Staff मधून आमंत्रण द्यावे लागेल.">New team members must be invited by the Owner from Settings → Staff.</li>
+                </ul>
+            </div>
+            <div id="ts-scanner" class="manual-subsection">
+                <h4 data-en="❓ Scanner Not Working" data-mr="❓ Scanner काम करत नाही">❓ Scanner Not Working</h4>
+                <ul>
+                    <li data-en="Only works on Pro or Founder plan — Lite plan shows a lock message." data-mr="फक्त Pro किंवा Founder plan वर काम करतो.">Only works on Pro or Founder plan — Lite plan shows a lock message.</li>
+                    <li data-en="Only works in Chrome on an Android phone — not iPhone, not Safari, not desktop." data-mr="फक्त Android फोनवर Chrome मध्ये.">Only works in Chrome on an Android phone — not iPhone, not Safari, not desktop.</li>
+                    <li data-en="Camera denied: go to phone browser settings → re-allow camera → reload the page." data-mr="Camera blocked असल्यास browser settings मध्ये re-allow करा.">Camera denied: go to phone browser settings → re-allow camera → reload the page.</li>
+                    <li data-en="QR won't scan: check it's not damaged, hold steady inside the orange guide box, good lighting." data-mr="QR scan होत नसल्यास स्थिर धरा, चांगला प्रकाश असू द्या.">QR won't scan: check it's not damaged, hold steady inside the orange guide box, good lighting.</li>
+                </ul>
+            </div>
+            <div id="ts-stock" class="manual-subsection">
+                <h4 data-en="❓ Stock Showing Wrong Number" data-mr="❓ स्टॉक चुकीचा दिसतो">❓ Stock Showing Wrong Number</h4>
+                <ul>
+                    <li data-en="Tap the icon next to the material on Dashboard — see every GRN, Consumption, Adjustment." data-mr="Dashboard वर मालाजवळील icon टॅप करा — सर्व इतिहास दिसेल.">Tap the icon next to the material on Dashboard — see every GRN, Consumption, Adjustment.</li>
+                    <li data-en="Common cause: a GRN or Issue entered with the wrong quantity or wrong unit." data-mr="सामान्य कारण: चुकीचे प्रमाण किंवा Unit.">Common cause: a GRN or Issue entered with the wrong quantity or wrong unit.</li>
+                    <li data-en="GRN entries cannot be edited — use Settings → Stock Adjustment for corrections." data-mr="GRN edit करता येत नाही — Stock Adjustment वापरा.">GRN entries cannot be edited — use Settings → Stock Adjustment for corrections.</li>
+                    <li data-en="Opening Stock must be entered as an Adjustment with the note text 'Opening Stock' exactly." data-mr="Opening Stock हे Adjustment म्हणून, बरोबर 'Opening Stock' असे नाव टाकून, नोंदवावे लागते.">Opening Stock must be entered as an Adjustment with the note text "Opening Stock" exactly.</li>
+                </ul>
+            </div>
+            <div id="ts-email" class="manual-subsection">
+                <h4 data-en="❓ Challan or Invoice Email Not Received" data-mr="❓ चलान किंवा इनव्हॉइस ईमेल मिळाला नाही">❓ Challan or Invoice Email Not Received</h4>
+                <ul>
+                    <li data-en="Client must have an email saved under Settings → Clients — the most common cause." data-mr="Settings → Clients मध्ये client email असणे आवश्यक — सर्वात सामान्य कारण.">Client must have an email saved under Settings → Clients — the most common cause.</li>
+                    <li data-en="Challan must be Confirmed, not Draft — drafts cannot be emailed." data-mr="चलान Confirmed असणे आवश्यक, Draft नाही.">Challan must be Confirmed, not Draft — drafts cannot be emailed.</li>
+                    <li data-en="Ask the client to check their Spam / Junk folder." data-mr="Client ला Spam/Junk folder तपासायला सांगा.">Ask the client to check their Spam / Junk folder.</li>
+                    <li data-en="Ask the AI Copilot again — it will tell you exactly what went wrong." data-mr="AI Copilot ला पुन्हा विचारा — काय चुकले ते सांगेल.">Ask the AI Copilot again — it will tell you exactly what went wrong.</li>
+                </ul>
+            </div>
+            <div id="ts-invoice" class="manual-subsection">
+                <h4 data-en="❓ Invoice Not Generating" data-mr="❓ Invoice तयार होत नाही">❓ Invoice Not Generating</h4>
+                <ul>
+                    <li data-en="Plan must be Pro or Founder — not available on Lite." data-mr="Pro किंवा Founder plan असणे आवश्यक.">Plan must be Pro or Founder — not available on Lite.</li>
+                    <li data-en="Must be logged in as Owner or Supervisor — Accountant cannot generate." data-mr="Owner किंवा Supervisor म्हणून login असणे आवश्यक — Accountant generate करू शकत नाही.">Must be logged in as Owner or Supervisor — Accountant cannot generate.</li>
+                    <li data-en="The underlying dispatch must be Confirmed, not Draft or Cancelled." data-mr="Dispatch Confirmed असणे आवश्यक, Draft किंवा Cancelled नाही.">The underlying dispatch must be Confirmed, not Draft or Cancelled.</li>
+                    <li data-en="Consolidated: if one already exists for that client + date range, the system reopens it — check the Invoices list first." data-mr="Consolidated: त्याच client+कालावधीसाठी आधीच असल्यास सिस्टम ते पुन्हा उघडतो — आधी Invoices list तपासा.">Consolidated: if one already exists for that client + date range, the system reopens it — check the Invoices list first.</li>
+                </ul>
+            </div>
+            <div id="ts-gstr2b" class="manual-subsection">
+                <h4 data-en="❓ GSTR-2B Reconciliation Problems" data-mr="❓ GSTR-2B Reconciliation समस्या">❓ GSTR-2B Reconciliation Problems</h4>
+                <ul>
+                    <li data-en="Plan gate: 'GSTR-2B Reconciliation is available on the Pro and Founder plan. You're currently on Lite. Upgrade to get automatic ITC matching and never miss a blocked credit.'" data-mr="Plan gate: 'GSTR-2B Reconciliation is available on the Pro and Founder plan. You're currently on Lite. Upgrade to get automatic ITC matching and never miss a blocked credit.'">Plan gate: "GSTR-2B Reconciliation is available on the Pro and Founder plan. You're currently on Lite. Upgrade to get automatic ITC matching and never miss a blocked credit."</li>
+                    <li data-en="Role gate: 'Only the owner or accountant can access this page.' — Supervisor, Storekeeper, and Operator cannot open it even on Pro/Founder." data-mr="Role gate: 'Only the owner or accountant can access this page.' — Supervisor, Storekeeper आणि Operator Pro/Founder असूनही उघडू शकत नाहीत.">Role gate: "Only the owner or accountant can access this page." — Supervisor, Storekeeper, and Operator cannot open it even on Pro/Founder.</li>
+                    <li data-en="Invalid JSON: 'This doesn't look like a valid GSTR-2B file. Download it from the GST portal under Returns → View GSTR-2B → Download JSON.'" data-mr="Invalid JSON: 'This doesn't look like a valid GSTR-2B file. Download it from the GST portal under Returns → View GSTR-2B → Download JSON.'">Invalid JSON: "This doesn't look like a valid GSTR-2B file. Download it from the GST portal under Returns → View GSTR-2B → Download JSON."</li>
+                    <li data-en="GSTIN mismatch shows a non-blocking warning naming both GSTINs — reconciliation still runs." data-mr="GSTIN जुळत नसल्यास दोन्ही GSTIN दाखवणारा न-अडवणारा इशारा येतो — reconciliation तरीही चालते.">GSTIN mismatch shows a non-blocking warning naming both GSTINs — reconciliation still runs.</li>
+                    <li data-en="Missing supplier GSTINs prevent matching entirely — matching keys on supplier GSTIN + invoice number, so a supplier with no GSTIN on file (Settings → Suppliers) can never match." data-mr="पुरवठादाराचा GSTIN नसल्यास matching होतच नाही — matching supplier GSTIN + invoice number वर आधारित असते, त्यामुळे Settings → Suppliers मध्ये GSTIN नसलेला पुरवठादार कधीच जुळणार नाही.">Missing supplier GSTINs prevent matching entirely — matching keys on supplier GSTIN + invoice number, so a supplier with no GSTIN on file (Settings → Suppliers) can never match.</li>
+                    <li data-en="Results disappeared after refresh — that's expected, they're session-only and never saved. Download the XLSX report if you need to keep a copy." data-mr="Refresh केल्यावर निकाल नाहीसे झाले — हे अपेक्षितच आहे, ते फक्त त्या session पुरते असतात, कधीच save होत नाहीत. प्रत हवी असल्यास XLSX report डाउनलोड करा.">Results disappeared after refresh — that's expected, they're session-only and never saved. Download the XLSX report if you need to keep a copy.</li>
+                </ul>
+            </div>
+            <div id="ts-copilot" class="manual-subsection">
+                <h4 data-en="❓ AI Copilot Not Responding" data-mr="❓ AI Copilot प्रतिसाद देत नाही">❓ AI Copilot Not Responding</h4>
+                <ul>
+                    <li data-en="Only visible to Owner and Supervisor — hidden for other roles by design." data-mr="फक्त Owner आणि Supervisor ला दिसतो.">Only visible to Owner and Supervisor — hidden for other roles by design.</li>
+                    <li data-en="First message of the day fails sometimes — send it again, it's a known one-time delay." data-mr="दिवसातील पहिला message कधी कधी fail होतो — पुन्हा पाठवा.">First message of the day fails sometimes — send it again, it's a known one-time delay.</li>
+                    <li data-en="Daily limit reached — resets at midnight IST. Contact support to upgrade your tier." data-mr="दैनिक मर्यादा संपली — मध्यरात्री reset होते. upgrade साठी सपोर्टशी संपर्क करा.">Daily limit reached — resets at midnight IST. Contact support to upgrade your tier.</li>
+                    <li data-en="Check your internet connection — the Copilot needs a server round-trip for every message." data-mr="Internet connection तपासा.">Check your internet connection — the Copilot needs a server round-trip for every message.</li>
+                </ul>
+            </div>
+
+            <div class="nx-card" style="margin-top:24px">
+                <div class="nx-card-header"><div class="nx-card-title" data-en="Contact Support" data-mr="सपोर्टशी संपर्क करा">Contact Support</div></div>
+                <p data-en="When reporting an issue, please mention: factory name · your role · the page you were on · exactly what you typed or clicked. This speeds up resolution significantly." data-mr="समस्या कळवताना कृपया नमूद करा: कारखान्याचे नाव · तुमची भूमिका · तुम्ही कोणत्या पृष्ठावर होता · तुम्ही नक्की काय टाइप केले किंवा क्लिक केले.">When reporting an issue, please mention: factory name · your role · the page you were on · exactly what you typed or clicked. This speeds up resolution significantly.</p>
+                <p data-en="WhatsApp: [Insert your Nexflow support number here]" data-mr="WhatsApp: [तुमचा Nexflow सपोर्ट नंबर येथे टाका]">WhatsApp: [Insert your Nexflow support number here]</p>
+            </div>
+        </section>
+
+    </div><!-- /manual-content -->
+</div><!-- /manual-shell -->
+</div><!-- /nx-main -->
+
+<script>
+    // ── LANGUAGE ── (same pattern as settings.html / grn.html — real, working
+    // convention; js/lang.js is dead code and is deliberately not included here)
+    function applyLang(lang) {
+        document.querySelectorAll('[data-en]').forEach(el => {
+            if (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA') {
+                el.placeholder = lang === 'mr' ? el.dataset.mr : el.dataset.en;
+            } else {
+                el.textContent = lang === 'mr' ? el.dataset.mr : el.dataset.en;
+            }
+        });
+        localStorage.setItem('nexflow_lang', lang);
+    }
+
+    function t(en, mr) {
+        return (localStorage.getItem('nexflow_lang') === 'mr') ? mr : en;
+    }
+
+    // ── MOBILE JUMP-NAV TOGGLE ──
+    function initMobileNav() {
+        const toggle = document.getElementById('manualNavToggle');
+        const list = document.getElementById('manualNavList');
+        toggle?.addEventListener('click', () => list.classList.toggle('open'));
+        list?.querySelectorAll('a.manual-nav-link').forEach(a => {
+            a.addEventListener('click', () => {
+                if (window.innerWidth <= 980) list.classList.remove('open');
+            });
+        });
+    }
+
+    // ── SCROLL-SPY ──
+    function initScrollSpy() {
+        const sections = Array.from(document.querySelectorAll('.manual-section, .manual-subsection'));
+        const links = Array.from(document.querySelectorAll('.manual-nav-link'));
+        if (!sections.length || !links.length) return;
+
+        const linkById = {};
+        links.forEach(l => { linkById[l.dataset.jump] = l; });
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                const link = linkById[entry.target.id];
+                if (!link) return;
+                if (entry.isIntersecting) {
+                    links.forEach(l => l.classList.remove('nx-active'));
+                    link.classList.add('nx-active');
+                    // Also highlight the parent Part link
+                    const partId = entry.target.closest('.manual-section')?.id;
+                    if (partId && linkById[partId]) linkById[partId].classList.add('nx-active');
+                }
+            });
+        }, { rootMargin: '-80px 0px -70% 0px', threshold: 0 });
+
+        sections.forEach(s => observer.observe(s));
+    }
+
+    // ── PRINT ──
+    function isMobileUA() {
+        return /Mobi|Android/i.test(navigator.userAgent);
+    }
+
+    function handlePrintManual() {
+        if (isMobileUA()) {
+            document.getElementById('mobilePrintMsg').style.display = 'flex';
+        } else {
+            window.print();
+        }
+    }
+
+    let printScopeClearTimer = null;
+    function clearPrintScope() {
+        delete document.body.dataset.printScope;
+        if (printScopeClearTimer) { clearTimeout(printScopeClearTimer); printScopeClearTimer = null; }
+    }
+
+    function printRoleGuide(role) {
+        document.body.dataset.printScope = role;
+        // afterprint doesn't fire reliably on Android Chrome — setTimeout fallback
+        // alongside the listener; clearPrintScope() is idempotent either way.
+        printScopeClearTimer = setTimeout(clearPrintScope, 2000);
+        if (isMobileUA()) {
+            document.getElementById('mobilePrintMsg').style.display = 'flex';
+        } else {
+            window.print();
+        }
+    }
+
+    function initPrintButtons() {
+        document.getElementById('printManualBtn')?.addEventListener('click', handlePrintManual);
+        document.querySelectorAll('[data-print-role]').forEach(btn => {
+            btn.addEventListener('click', () => printRoleGuide(btn.dataset.printRole));
+        });
+        window.addEventListener('afterprint', clearPrintScope);
+    }
+
+    // ── ROLE AUTO-JUMP ──
+    function initRoleJump(role) {
+        const link = document.getElementById('roleJumpLink');
+        if (!link) return;
+        const validRoles = ['owner', 'supervisor', 'storekeeper', 'operator', 'accountant'];
+        const target = validRoles.includes(role) ? role : 'owner';
+        link.href = '#role-' + target;
+        link.textContent = t('🔖 Jump to your role guide', '🔖 तुमच्या भूमिकेच्या मार्गदर्शकाकडे जा');
+        link.classList.add('visible');
+    }
+
+    // ── DOMContentLoaded ──
+    document.addEventListener('DOMContentLoaded', async () => {
+        const authed = await checkAuth();
+        if (!authed) return;
+
+        const saved = localStorage.getItem('nexflow_lang') || 'en';
+        applyLang(saved);
+
+        initMobileNav();
+        initScrollSpy();
+        initPrintButtons();
+
+        const role = getUserRole();
+        initRoleJump(role);
+    });
+</script>
+</body>
+</html>
