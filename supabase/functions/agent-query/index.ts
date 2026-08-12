@@ -3506,7 +3506,7 @@ async function sendTallyExportIntent(
   addSummaryCurrencyRow('Total SGST Paid', totalSgstGrn)
   addSummaryCurrencyRow('Total IGST Paid', totalIgstGrn)
   const totalItcClaimable = totalCgstGrn + totalSgstGrn + totalIgstGrn
-  addSummaryCurrencyRow('Total ITC Claimable', totalItcClaimable)
+  addSummaryCurrencyRow('Input GST Recorded (Potential ITC)', totalItcClaimable)
 
   gstSummarySheet.addRow({})
 
