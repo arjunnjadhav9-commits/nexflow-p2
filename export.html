@@ -502,7 +502,7 @@ async function exportTallyTransactions() {
       p2_raw_materials!inner(name, material_code, gst_rate, hsn_sac)
     `)
     .eq('tenant_id', tenantId)
-    .in('transaction_type', ['grn', 'consumption'])
+    .eq('transaction_type', 'grn')
     .gte('transaction_date', from)
     .lte('transaction_date', to)
     .order('transaction_date');
@@ -511,58 +511,55 @@ async function exportTallyTransactions() {
   if (!txns.length) throw new Error('No transactions found in selected date range.');
   log(`Fetched ${txns.length} transactions.`);
 
-  const missingRate     = txns.filter(t => !t.rate && t.transaction_type === 'grn').length;
-  const missingSupplier = txns.filter(t => t.transaction_type === 'grn' && !t.supplier_name).length;
+  const missingRate     = txns.filter(t => !t.rate).length;
+  const missingSupplier = txns.filter(t => !t.supplier_name).length;
   if (missingRate > 0 || missingSupplier > 0) {
     showWarn(`${missingRate} GRN row(s) missing rate. ${missingSupplier} GRN row(s) missing supplier. These export as blank — CA will fill manually.`);
     log(`Warning: ${missingRate} missing rate, ${missingSupplier} missing supplier.`, 'err');
   }
 
+  log('Fetching supplier GSTINs...');
+  const supplierIds = [...new Set(txns.map(t => t.supplier_id).filter(Boolean))];
+  const supplierGstinMap = {};
+  if (supplierIds.length) {
+    const { data: suppliers, error: se } = await window.supabase
+      .from('p2_suppliers')
+      .select('id, gstin')
+      .eq('tenant_id', tenantId)
+      .in('id', supplierIds);
+    if (se) throw new Error(`Supplier fetch error: ${se.message}`);
+    (suppliers || []).forEach(s => { supplierGstinMap[s.id] = s.gstin || ''; });
+  }
+
   log('Building Tally Vouchers CSV...');
-  const headers = ['Date','Voucher Type','Voucher No','Party Ledger Name','Item Name','HSN/SAC','Billed Quantity','Rate','Taxable Amount','CGST Rate (%)','CGST Amount','SGST Rate (%)','SGST Amount','IGST Rate (%)','IGST Amount','Total GST Amount','Invoice Total'];
+  const headers = ['Date','Voucher Type','Voucher No','Party Ledger Name','Supplier GSTIN','Item Name','HSN/SAC','Billed Quantity','Rate','Taxable Amount','CGST Rate (%)','CGST Amount','SGST Rate (%)','SGST Amount','IGST Rate (%)','IGST Amount','Total GST Amount','Invoice Total','Supplier Invoice No'];
   const rows    = [headers];
 
   txns.forEach(t => {
-    const voucherType = t.transaction_type === 'grn' ? 'Purchase' : 'Stock Journal';
-    const partyName   = t.transaction_type === 'grn' ? (t.supplier_name || '') : (t.notes || 'Production Floor');
+    const partyName   = t.supplier_name || '';
     const rate        = parseFloat(t.rate) || 0;
-    // Consumption rows are stored as negative in p2_stock_transactions (stock decreasing).
-    // Tally's Billed Quantity must always be positive — the voucher type (Stock Journal)
-    // already conveys direction. Use absolute value for both qty and amount here.
     const qty         = Math.abs(parseFloat(t.quantity) || 0);
+    const fallbackVoucherNo = 'GRN-' + t.transaction_date;
 
-    // Amendment rows must NOT share a Voucher No with same-day regular consumption rows —
-    // Tally merges rows with identical Voucher No into one Stock Journal voucher, which
-    // makes an amendment indistinguishable from the original production issue it corrects.
-    // Detect amendments via the notes prefix (set by confirm_bom_issue / amendment RPCs)
-    // and give them a distinct prefix so they always land in their own voucher.
-    const isAmendment = t.transaction_type === 'consumption' &&
-                         /^amendment/i.test((t.notes || '').trim());
-    const fallbackVoucherNo = isAmendment
-      ? 'AMENDMENT-' + t.transaction_date
-      : t.transaction_type.toUpperCase() + '-' + t.transaction_date;
-
-    // GST applies to GRN (purchase) rows only — consumption rows are internal
-    // stock movements with no supplier invoice, so their GST columns stay blank.
     const taxableAmount = qty * rate;
-    const isGrn        = t.transaction_type === 'grn';
     const isInterstate = t.purchase_type === 'interstate';
-    const gstRate    = isGrn ? (t.p2_raw_materials.gst_rate || 0) : 0;
-    const cgstRate   = isGrn ? (isInterstate ? 0 : gstRate / 2) : '';
-    const sgstRate   = isGrn ? (isInterstate ? 0 : gstRate / 2) : '';
-    const igstRate   = isGrn ? (isInterstate ? gstRate : 0) : '';
-    const cgstAmount = isGrn ? (isInterstate ? '0.00' : (taxableAmount * (gstRate / 2) / 100).toFixed(2)) : '';
-    const sgstAmount = isGrn ? (isInterstate ? '0.00' : (taxableAmount * (gstRate / 2) / 100).toFixed(2)) : '';
-    const igstAmount = isGrn ? (isInterstate ? (taxableAmount * gstRate / 100).toFixed(2) : '0.00') : '';
-    const totalGst   = isGrn ? (parseFloat(cgstAmount) + parseFloat(sgstAmount) + parseFloat(igstAmount)).toFixed(2) : '';
-    const invoiceTotal = isGrn ? (taxableAmount + parseFloat(totalGst)).toFixed(2) : '';
+    const gstRate    = t.p2_raw_materials.gst_rate || 0;
+    const cgstRate   = isInterstate ? 0 : gstRate / 2;
+    const sgstRate   = isInterstate ? 0 : gstRate / 2;
+    const igstRate   = isInterstate ? gstRate : 0;
+    const cgstAmount = isInterstate ? '0.00' : (taxableAmount * (gstRate / 2) / 100).toFixed(2);
+    const sgstAmount = isInterstate ? '0.00' : (taxableAmount * (gstRate / 2) / 100).toFixed(2);
+    const igstAmount = isInterstate ? (taxableAmount * gstRate / 100).toFixed(2) : '0.00';
+    const totalGst   = (parseFloat(cgstAmount) + parseFloat(sgstAmount) + parseFloat(igstAmount)).toFixed(2);
+    const invoiceTotal = (taxableAmount + parseFloat(totalGst)).toFixed(2);
     const hsnSac     = t.p2_raw_materials.hsn_sac || '';
 
     rows.push([
       fmtTally(t.transaction_date),
-      voucherType,
+      'Purchase',
       t.invoice_no || fallbackVoucherNo,
       partyName,
+      supplierGstinMap[t.supplier_id] || '',
       t.p2_raw_materials.name,
       hsnSac,
       qty, rate,
@@ -571,7 +568,8 @@ async function exportTallyTransactions() {
       sgstRate, sgstAmount,
       igstRate, igstAmount,
       totalGst,
-      invoiceTotal
+      invoiceTotal,
+      t.invoice_no || ''
     ]);
   });
 
