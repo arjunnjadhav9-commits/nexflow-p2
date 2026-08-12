@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GSTR-2B Reconciliation | Nexflow P2</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%230c0e14'/><text y='.9em' font-size='80' x='10' fill='%23ff5c1a'>N</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800;900&family=Barlow+Condensed:wght@500;600;700;800;900&display=swap">
+<link rel="stylesheet" href="css/nexflow-design.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/supabase-client.js"></script>
+<script src="js/roles.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/navbar.js"></script>
+<style>
+    /* Not in js/navbar.js's NAV_LINKS — this page is reached only via the
+       link on export.html, and still gates its own content directly in
+       init() via getUserRole() / a fresh p2_tenant_settings fetch. The
+       shared navbar itself (logo, dashboard link, user badge, logout)
+       still renders normally from #navbar-container below. */
+    #loadingSpinner { display: flex; align-items: center; justify-content: center; padding: 60px 20px; }
+    #errorState, #planGateError, #roleGateError, #mainContent { display: none; }
+
+    /* Tabs — page-local, mirrors settings.html's own .tab-panel (not in shared CSS) */
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    .gstr-upload-box {
+        border: 2px dashed var(--border2);
+        border-radius: var(--radius-lg);
+        padding: 24px;
+        text-align: center;
+    }
+    .gstr-toggle-btn {
+        background: none;
+        border: 1px solid var(--border2);
+        color: var(--mid);
+        font-size: 11px;
+        padding: 5px 10px;
+        border-radius: 6px;
+        cursor: pointer;
+        white-space: nowrap;
+    }
+    .gstr-toggle-btn:hover { border-color: var(--orange); color: var(--orange); }
+    .gstr-note-row td {
+        background: var(--surface2);
+        font-size: 12px;
+        color: var(--mid);
+        padding: 10px 14px;
+        line-height: 1.5;
+    }
+    .gstr-row-noaction { background: rgba(255,59,48,0.08); }
+</style>
+</head>
+<body>
+<div id="navbar-container"></div>
+
+<div class="nx-main">
+<div class="nx-page">
+
+    <!-- PAGE HEADER -->
+    <div class="nx-page-header">
+        <div>
+            <div class="nx-eyebrow">Accountant Tools</div>
+            <div class="nx-page-title">GSTR-2B <span>Reconciliation</span></div>
+            <div class="nx-page-sub">Match this month's GRN purchases against the GSTR-2B JSON before filing GSTR-3B</div>
+        </div>
+    </div>
+
+    <!-- LOADING -->
+    <div id="loadingSpinner">
+        <div class="nx-logo-loader">
+            <div class="nx-logo-loader-mark"></div>
+            <div class="nx-logo-loader-text">Loading...</div>
+        </div>
+    </div>
+
+    <!-- GENERIC ERROR (network/exception during init only) -->
+    <div id="errorState" class="nx-alert nx-alert-red nx-mb-24">
+        <span class="nx-alert-icon">⚠</span>
+        <div>
+            <div class="nx-bold">Could not load data</div>
+            <div>Check your connection and refresh the page.</div>
+        </div>
+    </div>
+
+    <!-- PLAN GATE -->
+    <div id="planGateError" class="nx-alert nx-alert-orange nx-mb-24">
+        <span class="nx-alert-icon">⚠</span>
+        <div>
+            <div class="nx-bold">Pro Feature</div>
+            <div>GSTR-2B Reconciliation is available on the Pro and Founder plan. You're currently on Lite. Upgrade to get automatic ITC matching and never miss a blocked credit.</div>
+        </div>
+    </div>
+
+    <!-- ROLE GATE -->
+    <div id="roleGateError" class="nx-alert nx-alert-red nx-mb-24">
+        <span class="nx-alert-icon">⚠</span>
+        <div>
+            <div class="nx-bold">Access Restricted</div>
+            <div>Only the owner or accountant can access this page.</div>
+        </div>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div id="mainContent">
+
+        <!-- UPLOAD -->
+        <div class="nx-card nx-mb-16">
+            <div class="nx-card-header">
+                <div class="nx-card-title">Step 1 — Upload GSTR-2B JSON</div>
+            </div>
+            <div class="gstr-upload-box">
+                <input type="file" id="jsonFileInput" accept=".json" class="nx-input" style="max-width:360px; margin:0 auto;">
+                <div id="periodDisplay" style="display:none; margin-top:14px; font-family:var(--condensed); font-weight:800; font-size:15px; color:var(--orange);"></div>
+            </div>
+            <div id="uploadError" class="nx-alert nx-alert-red nx-mt-16" style="display:none;">
+                <span class="nx-alert-icon">⚠</span>
+                <div id="uploadErrorText"></div>
+            </div>
+            <div id="gstinWarning" class="nx-alert nx-alert-yellow nx-mt-16" style="display:none;">
+                <span class="nx-alert-icon">⚠</span>
+                <div id="gstinWarningText"></div>
+            </div>
+            <div id="reconcileError" class="nx-alert nx-alert-red nx-mt-16" style="display:none;">
+                <span class="nx-alert-icon">⚠</span>
+                <div id="reconcileErrorText"></div>
+            </div>
+            <button id="runReconcileBtn" class="nx-btn nx-btn-primary nx-btn-full nx-mt-16" disabled>Run Reconciliation</button>
+        </div>
+
+        <div id="noGrnDataNotice" class="nx-alert nx-alert-orange nx-mb-16" style="display:none;">
+            <span class="nx-alert-icon">⚠</span>
+            <div id="noGrnDataNoticeText"></div>
+        </div>
+
+        <!-- SUMMARY + TABS (shown once reconciliation runs) -->
+        <div id="summarySection" style="display:none;">
+
+            <div class="nx-stat-grid nx-mb-24">
+                <div class="nx-stat nx-stat-green">
+                    <div class="nx-stat-label">✅ Matched</div>
+                    <div class="nx-stat-value" id="statMatchedCount">—</div>
+                    <div class="nx-stat-unit" id="statMatchedAmt">—</div>
+                </div>
+                <div class="nx-stat">
+                    <div class="nx-stat-label">⚠️ Amount Mismatch</div>
+                    <div class="nx-stat-value" id="statMismatchCount">—</div>
+                    <div class="nx-stat-unit" id="statMismatchAmt">—</div>
+                </div>
+                <div class="nx-stat nx-stat-red">
+                    <div class="nx-stat-label">❌ ITC Blocked</div>
+                    <div class="nx-stat-value" id="statBlockedCount">—</div>
+                    <div class="nx-stat-unit" id="statBlockedAmt">—</div>
+                </div>
+                <div class="nx-stat">
+                    <div class="nx-stat-label">❓ Unrecorded</div>
+                    <div class="nx-stat-value" id="statUnrecordedCount">—</div>
+                    <div class="nx-stat-unit">in Nexflow</div>
+                </div>
+            </div>
+
+            <div class="nx-stabs nx-mb-16">
+                <button id="tab-matched" class="nx-stab active">Matched</button>
+                <button id="tab-mismatch" class="nx-stab">Amount Mismatch</button>
+                <button id="tab-blocked" class="nx-stab">ITC Blocked</button>
+                <button id="tab-unrecorded" class="nx-stab">Unrecorded</button>
+            </div>
+
+            <!-- MATCHED -->
+            <div id="content-matched" class="tab-panel active">
+                <div class="nx-table-wrap">
+                    <table class="nx-table">
+                        <thead>
+                            <tr>
+                                <th>Supplier</th><th>Supplier GSTIN</th><th>Invoice No</th><th>Invoice Date</th>
+                                <th>Taxable Value (GRN)</th><th>Taxable Value (2B)</th><th>ITC Available (₹)</th><th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="matchedTbody"></tbody>
+                    </table>
+                </div>
+                <div id="matchedEmpty" class="nx-text-mid" style="display:none; text-align:center; padding:24px;">No matched invoices.</div>
+            </div>
+
+            <!-- AMOUNT MISMATCH -->
+            <div id="content-mismatch" class="tab-panel">
+                <div class="nx-table-wrap">
+                    <table class="nx-table">
+                        <thead>
+                            <tr>
+                                <th>Supplier</th><th>Supplier GSTIN</th><th>Invoice No</th><th>Invoice Date</th>
+                                <th>Taxable Value (GRN)</th><th>Taxable Value (2B)</th><th>Difference (₹)</th><th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="mismatchTbody"></tbody>
+                    </table>
+                </div>
+                <div id="mismatchEmpty" class="nx-text-mid" style="display:none; text-align:center; padding:24px;">No amount mismatches.</div>
+            </div>
+
+            <!-- ITC BLOCKED -->
+            <div id="content-blocked" class="tab-panel">
+                <div class="nx-table-wrap">
+                    <table class="nx-table">
+                        <thead>
+                            <tr>
+                                <th>Supplier</th><th>Supplier GSTIN</th><th>Invoice No</th><th>Invoice Date</th>
+                                <th>GRN Amount</th><th>Blocked ITC (₹)</th><th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="blockedTbody"></tbody>
+                    </table>
+                </div>
+                <div id="blockedEmpty" class="nx-text-mid" style="display:none; text-align:center; padding:24px;">No blocked ITC.</div>
+            </div>
+
+            <!-- UNRECORDED -->
+            <div id="content-unrecorded" class="tab-panel">
+                <div class="nx-table-wrap">
+                    <table class="nx-table">
+                        <thead>
+                            <tr>
+                                <th>Supplier GSTIN</th><th>Supplier Name</th><th>Invoice No</th><th>Invoice Date</th>
+                                <th>Taxable Value</th><th>ITC Available</th><th>IMS Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="unrecordedTbody"></tbody>
+                    </table>
+                </div>
+                <div id="unrecordedEmpty" class="nx-text-mid" style="display:none; text-align:center; padding:24px;">Nothing unrecorded.</div>
+            </div>
+
+            <button id="downloadReportBtn" class="nx-btn nx-btn-green nx-btn-full nx-mt-24">⬇ Download Reconciliation Report</button>
+        </div>
+
+    </div>
+
+</div>
+</div>
+
+<script>
+// ─── STATE ───────────────────────────────────────────────────────────────────
+let tenantId = null;
+let tenantGstin = '';
+let parsedJson = null;
+let periodInfo = null; // { month, year, monthLabel, firstOfMonth, lastOfMonth }
+let buckets = { matched: [], mismatch: [], blocked: [], unrecorded: [] };
+
+const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
+function escapeHtml(str) {
+    return String(str ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function fmtAmt(n) {
+    if (n === null || n === undefined || Number.isNaN(n)) return '—';
+    return Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// GRN dates come from p2_stock_transactions.transaction_date (YYYY-MM-DD).
+function fmtGrnDate(dateStr) {
+    if (!dateStr) return '';
+    const d = new Date(dateStr + 'T00:00:00');
+    return String(d.getDate()).padStart(2,'0') + '/' + String(d.getMonth()+1).padStart(2,'0') + '/' + d.getFullYear();
+}
+
+// GSTR-2B dates arrive as DD-MM-YYYY already — just normalise the separator.
+function fmt2BDate(idt) {
+    return idt ? idt.split('-').join('/') : '';
+}
+
+// Matching key normaliser — exactly as specified in the build brief.
+function normaliseInvoiceNo(str) {
+    return String(str || '').replace(/[\s\-\/]/g, '').toUpperCase();
+}
+
+// ─── INIT ────────────────────────────────────────────────────────────────────
+async function init() {
+    try {
+        const authed = await checkAuth();
+        if (!authed) return;
+
+        const role = getUserRole();
+        if (role !== 'owner' && role !== 'accountant') {
+            document.getElementById('loadingSpinner').style.display = 'none';
+            document.getElementById('roleGateError').style.display = 'flex';
+            return;
+        }
+
+        const { data: { user } } = await window.supabase.auth.getUser();
+        tenantId = user.user_metadata?.tenant_id || user.id;
+
+        // Fresh fetch from DB, not isPro()/localStorage — those can be stale.
+        const { data: settingsData } = await window.supabase
+            .from('p2_tenant_settings')
+            .select('plan, gstin')
+            .eq('tenant_id', tenantId)
+            .maybeSingle();
+
+        const plan = settingsData?.plan || 'lite';
+        if (plan !== 'pro' && plan !== 'founder') {
+            document.getElementById('loadingSpinner').style.display = 'none';
+            document.getElementById('planGateError').style.display = 'flex';
+            return;
+        }
+        tenantGstin = settingsData?.gstin || '';
+
+        document.getElementById('loadingSpinner').style.display = 'none';
+        document.getElementById('mainContent').style.display = 'block';
+        wireEvents();
+    } catch (err) {
+        console.error('gstr2b-reconcile.html init error:', err);
+        document.getElementById('loadingSpinner').style.display = 'none';
+        document.getElementById('errorState').style.display = 'flex';
+    }
+}
+
+function wireEvents() {
+    document.getElementById('jsonFileInput').addEventListener('change', handleFileUpload);
+    document.getElementById('runReconcileBtn').addEventListener('click', runReconciliation);
+    document.getElementById('downloadReportBtn').addEventListener('click', downloadReport);
+    ['matched','mismatch','blocked','unrecorded'].forEach(tab => {
+        document.getElementById('tab-' + tab).addEventListener('click', () => switchToTab(tab));
+    });
+}
+
+// ─── UPLOAD ──────────────────────────────────────────────────────────────────
+function showUploadError() {
+    document.getElementById('uploadErrorText').textContent =
+        "This doesn't look like a valid GSTR-2B file. Download it from the GST portal under Returns → View GSTR-2B → Download JSON.";
+    document.getElementById('uploadError').style.display = 'flex';
+}
+
+function handleFileUpload(evt) {
+    const file = evt.target.files[0];
+    document.getElementById('uploadError').style.display = 'none';
+    document.getElementById('gstinWarning').style.display = 'none';
+    document.getElementById('reconcileError').style.display = 'none';
+    document.getElementById('periodDisplay').style.display = 'none';
+    document.getElementById('summarySection').style.display = 'none';
+    document.getElementById('noGrnDataNotice').style.display = 'none';
+    document.getElementById('runReconcileBtn').disabled = true;
+    parsedJson = null;
+    periodInfo = null;
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onerror = () => showUploadError();
+    reader.onload = () => {
+        let parsed;
+        try {
+            parsed = JSON.parse(reader.result);
+        } catch (e) {
+            showUploadError();
+            return;
+        }
+        if (!parsed || !Array.isArray(parsed.b2b)) {
+            showUploadError();
+            return;
+        }
+
+        const prd = String(parsed.rtn_prd || '');
+        const month = parseInt(prd.slice(0, 2), 10);
+        const year = parseInt(prd.slice(2), 10);
+        if (!month || !year || month < 1 || month > 12 || year < 2000) {
+            showUploadError();
+            return;
+        }
+
+        parsedJson = parsed;
+        const lastDay = new Date(year, month, 0).getDate();
+        periodInfo = {
+            month, year,
+            monthLabel: MONTH_NAMES[month - 1],
+            firstOfMonth: year + '-' + String(month).padStart(2, '0') + '-01',
+            lastOfMonth: year + '-' + String(month).padStart(2, '0') + '-' + String(lastDay).padStart(2, '0')
+        };
+
+        document.getElementById('periodDisplay').textContent = 'Period detected: ' + periodInfo.monthLabel + ' ' + periodInfo.year;
+        document.getElementById('periodDisplay').style.display = 'block';
+
+        if (parsed.gstin && tenantGstin && parsed.gstin !== tenantGstin) {
+            document.getElementById('gstinWarningText').textContent =
+                'This GSTR-2B file belongs to GSTIN ' + parsed.gstin + ' but your Nexflow account is set up for GSTIN ' + tenantGstin + '. You may have uploaded the wrong month\'s file or the wrong company\'s file.';
+            document.getElementById('gstinWarning').style.display = 'flex';
+        }
+
+        document.getElementById('runReconcileBtn').disabled = false;
+    };
+    reader.readAsText(file);
+}
+
+// ─── RECONCILIATION ──────────────────────────────────────────────────────────
+async function runReconciliation() {
+    const btn = document.getElementById('runReconcileBtn');
+    btn.disabled = true;
+    btn.textContent = 'Reconciling...';
+    document.getElementById('noGrnDataNotice').style.display = 'none';
+    document.getElementById('reconcileError').style.display = 'none';
+
+    try {
+        const { data: grnRows, error } = await window.supabase
+            .from('p2_stock_transactions')
+            .select('transaction_date, invoice_no, quantity, rate, supplier_id, supplier_name, purchase_type, raw_material_id, p2_raw_materials(gst_rate), p2_suppliers(gstin)')
+            .eq('tenant_id', tenantId)
+            .eq('transaction_type', 'grn')
+            .gte('transaction_date', periodInfo.firstOfMonth)
+            .lte('transaction_date', periodInfo.lastOfMonth);
+
+        if (error) throw error;
+
+        if (!grnRows || grnRows.length === 0) {
+            document.getElementById('noGrnDataNoticeText').textContent =
+                'No GRN entries found in Nexflow for ' + periodInfo.monthLabel + ' ' + periodInfo.year + '. Make sure purchases for this period were entered before running reconciliation.';
+            document.getElementById('noGrnDataNotice').style.display = 'flex';
+        }
+
+        // Group GRN rows by (supplier GSTIN, normalised invoice_no) — a single
+        // supplier invoice can span multiple GRN rows (multi-material batch GRN),
+        // so they must be summed together before comparing to one 2B invoice.
+        const grnGroups = new Map();
+        let ungroupedCounter = 0;
+        (grnRows || []).forEach(row => {
+            const supplierGstin = row.p2_suppliers?.gstin || '';
+            const invoiceNoRaw = row.invoice_no || '';
+            const canMatch = Boolean(supplierGstin && invoiceNoRaw.trim());
+            const key = canMatch
+                ? (supplierGstin + '|' + normaliseInvoiceNo(invoiceNoRaw))
+                : ('__unmatched__' + (ungroupedCounter++));
+
+            let group = grnGroups.get(key);
+            if (!group) {
+                group = {
+                    supplierName: row.supplier_name || 'Unknown Supplier',
+                    supplierGstin,
+                    invoiceNo: invoiceNoRaw,
+                    invoiceDate: row.transaction_date,
+                    amount: 0,
+                    gstAmount: 0,
+                    gstUnknown: false,
+                    canMatch
+                };
+                grnGroups.set(key, group);
+            }
+
+            const qty = Number(row.quantity) || 0;
+            const rate = Number(row.rate) || 0;
+            const lineAmount = qty * rate;
+            group.amount += lineAmount;
+
+            const gstRate = row.p2_raw_materials?.gst_rate;
+            if (gstRate === null || gstRate === undefined) {
+                group.gstUnknown = true;
+            } else {
+                // Total GST on a line is the same figure whether split into
+                // CGST+SGST or charged as IGST — no need to branch on purchase_type
+                // just to arrive at one combined "Blocked ITC" estimate.
+                group.gstAmount += lineAmount * (Number(gstRate) / 100);
+            }
+
+            if (row.transaction_date < group.invoiceDate) group.invoiceDate = row.transaction_date;
+        });
+
+        // Build the GSTR-2B lookup map.
+        const map2B = new Map();
+        (parsedJson.b2b || []).forEach(supplierBlock => {
+            const ctin = supplierBlock.ctin || '';
+            const lglname = supplierBlock.lglname || '';
+            (supplierBlock.inv || []).forEach(inv => {
+                const invoiceNo = inv.inum || '';
+                const key = ctin + '|' + normaliseInvoiceNo(invoiceNo);
+                const items = inv.itms || [];
+                let taxableValue2B = 0, itcAmount2B = 0;
+                items.forEach(it => {
+                    taxableValue2B += Number(it.txval) || 0;
+                    itcAmount2B += (Number(it.iamt) || 0) + (Number(it.camt) || 0) + (Number(it.samt) || 0) + (Number(it.csamt) || 0);
+                });
+                map2B.set(key, {
+                    supplierGstin: ctin,
+                    supplierName: lglname,
+                    invoiceNo,
+                    invoiceDate: inv.idt || '',
+                    taxableValue2B,
+                    itcAmount2B,
+                    itcavl: inv.itcavl,
+                    itcrv: inv.itcrv,
+                    imsStatus: inv.ims_status || '',
+                    consumed: false
+                });
+            });
+        });
+
+        buckets = { matched: [], mismatch: [], blocked: [], unrecorded: [] };
+
+        grnGroups.forEach((group, key) => {
+            const match = group.canMatch ? map2B.get(key) : undefined;
+            if (match) {
+                match.consumed = true;
+                const diff = match.taxableValue2B - group.amount;
+                if (Math.abs(diff) <= 2) {
+                    const itcAvailable = (match.itcavl === 'Y' && match.itcrv !== 'Y') ? match.itcAmount2B : 0;
+                    buckets.matched.push({
+                        supplierName: group.supplierName, supplierGstin: group.supplierGstin,
+                        invoiceNo: group.invoiceNo, invoiceDate: group.invoiceDate,
+                        taxableGRN: group.amount, taxable2B: match.taxableValue2B,
+                        itcAvailable
+                    });
+                } else {
+                    buckets.mismatch.push({
+                        supplierName: group.supplierName, supplierGstin: group.supplierGstin,
+                        invoiceNo: group.invoiceNo, invoiceDate: group.invoiceDate,
+                        taxableGRN: group.amount, taxable2B: match.taxableValue2B,
+                        difference: diff
+                    });
+                }
+            } else {
+                buckets.blocked.push({
+                    supplierName: group.supplierName, supplierGstin: group.supplierGstin,
+                    invoiceNo: group.invoiceNo, invoiceDate: group.invoiceDate,
+                    grnAmount: group.amount,
+                    blockedItc: group.gstUnknown ? null : group.gstAmount
+                });
+            }
+        });
+
+        map2B.forEach(entry => {
+            if (!entry.consumed) {
+                buckets.unrecorded.push({
+                    supplierGstin: entry.supplierGstin, supplierName: entry.supplierName,
+                    invoiceNo: entry.invoiceNo, invoiceDate: entry.invoiceDate,
+                    taxableValue: entry.taxableValue2B,
+                    itcAvailable: (entry.itcavl === 'Y' && entry.itcrv !== 'Y') ? entry.itcAmount2B : 0,
+                    imsStatus: entry.imsStatus
+                });
+            }
+        });
+
+        renderSummary();
+        renderTables();
+        document.getElementById('summarySection').style.display = 'block';
+    } catch (err) {
+        console.error('runReconciliation error:', err);
+        document.getElementById('reconcileErrorText').textContent =
+            'Could not run reconciliation. Check your connection and try again.';
+        document.getElementById('reconcileError').style.display = 'flex';
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Run Reconciliation';
+    }
+}
+
+// ─── RENDER: SUMMARY ─────────────────────────────────────────────────────────
+function renderSummary() {
+    const matchedTotal = buckets.matched.reduce((s, r) => s + r.itcAvailable, 0);
+    const mismatchTotal = buckets.mismatch.reduce((s, r) => s + Math.abs(r.difference), 0);
+    const blockedTotal = buckets.blocked.reduce((s, r) => r.blockedItc === null ? s : s + r.blockedItc, 0);
+
+    document.getElementById('statMatchedCount').textContent = buckets.matched.length;
+    document.getElementById('statMatchedAmt').textContent = '₹' + fmtAmt(matchedTotal) + ' ITC safe';
+    document.getElementById('statMismatchCount').textContent = buckets.mismatch.length;
+    document.getElementById('statMismatchAmt').textContent = '₹' + fmtAmt(mismatchTotal) + ' difference';
+    document.getElementById('statBlockedCount').textContent = buckets.blocked.length;
+    document.getElementById('statBlockedAmt').textContent = '₹' + fmtAmt(blockedTotal) + ' blocked';
+    document.getElementById('statUnrecordedCount').textContent = buckets.unrecorded.length;
+}
+
+// ─── RENDER: TABLES ──────────────────────────────────────────────────────────
+function wireToggleButtons(container) {
+    container.querySelectorAll('.gstr-toggle-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const noteRow = document.getElementById(btn.dataset.note);
+            if (noteRow) noteRow.style.display = noteRow.style.display === 'none' ? 'table-row' : 'none';
+        });
+    });
+}
+
+function renderTables() {
+    renderMatchedTable();
+    renderMismatchTable();
+    renderBlockedTable();
+    renderUnrecordedTable();
+}
+
+function renderMatchedTable() {
+    const tbody = document.getElementById('matchedTbody');
+    tbody.innerHTML = '';
+    document.getElementById('matchedEmpty').style.display = buckets.matched.length ? 'none' : 'block';
+    buckets.matched.forEach(r => {
+        const tr = document.createElement('tr');
+        tr.innerHTML =
+            '<td>' + escapeHtml(r.supplierName) + '</td>' +
+            '<td>' + escapeHtml(r.supplierGstin) + '</td>' +
+            '<td>' + escapeHtml(r.invoiceNo) + '</td>' +
+            '<td>' + fmtGrnDate(r.invoiceDate) + '</td>' +
+            '<td>₹' + fmtAmt(r.taxableGRN) + '</td>' +
+            '<td>₹' + fmtAmt(r.taxable2B) + '</td>' +
+            '<td>₹' + fmtAmt(r.itcAvailable) + '</td>' +
+            '<td><span class="nx-text-green">✅ Matched</span></td>';
+        tbody.appendChild(tr);
+    });
+}
+
+function renderMismatchTable() {
+    const tbody = document.getElementById('mismatchTbody');
+    tbody.innerHTML = '';
+    document.getElementById('mismatchEmpty').style.display = buckets.mismatch.length ? 'none' : 'block';
+    buckets.mismatch.forEach((r, i) => {
+        const noteId = 'mismatch-note-' + i;
+        const tr = document.createElement('tr');
+        tr.innerHTML =
+            '<td>' + escapeHtml(r.supplierName) + '</td>' +
+            '<td>' + escapeHtml(r.supplierGstin) + '</td>' +
+            '<td>' + escapeHtml(r.invoiceNo) + '</td>' +
+            '<td>' + fmtGrnDate(r.invoiceDate) + '</td>' +
+            '<td>₹' + fmtAmt(r.taxableGRN) + '</td>' +
+            '<td>₹' + fmtAmt(r.taxable2B) + '</td>' +
+            '<td>₹' + fmtAmt(r.difference) + '</td>' +
+            '<td><button type="button" class="gstr-toggle-btn" data-note="' + noteId + '">ⓘ Details</button></td>';
+        tbody.appendChild(tr);
+
+        const noteText = 'The taxable value in your GRN (₹' + fmtAmt(r.taxableGRN) + ') doesn\'t match what the supplier reported to GST portal (₹' + fmtAmt(r.taxable2B) + '). Ask the supplier for a credit note or correct your GRN entry.';
+        const noteTr = document.createElement('tr');
+        noteTr.className = 'gstr-note-row';
+        noteTr.id = noteId;
+        noteTr.style.display = 'none';
+        noteTr.innerHTML = '<td colspan="8">' + escapeHtml(noteText) + '</td>';
+        tbody.appendChild(noteTr);
+    });
+    wireToggleButtons(tbody);
+}
+
+function renderBlockedTable() {
+    const tbody = document.getElementById('blockedTbody');
+    tbody.innerHTML = '';
+    document.getElementById('blockedEmpty').style.display = buckets.blocked.length ? 'none' : 'block';
+    buckets.blocked.forEach((r, i) => {
+        const noteId = 'blocked-note-' + i;
+        const blockedDisplay = r.blockedItc === null ? '—' : ('₹' + fmtAmt(r.blockedItc));
+        const tr = document.createElement('tr');
+        tr.innerHTML =
+            '<td>' + escapeHtml(r.supplierName) + '</td>' +
+            '<td>' + escapeHtml(r.supplierGstin) + '</td>' +
+            '<td>' + escapeHtml(r.invoiceNo) + '</td>' +
+            '<td>' + fmtGrnDate(r.invoiceDate) + '</td>' +
+            '<td>₹' + fmtAmt(r.grnAmount) + '</td>' +
+            '<td>' + blockedDisplay + '</td>' +
+            '<td><button type="button" class="gstr-toggle-btn" data-note="' + noteId + '">ⓘ Chase Supplier</button></td>';
+        tbody.appendChild(tr);
+
+        const noteText = r.blockedItc === null
+            ? 'Blocked ITC amount is unknown (no GST rate set for this material). This supplier hasn\'t filed their GSTR-1 yet. Contact them or defer this claim in GSTR-3B.'
+            : 'This supplier hasn\'t filed their GSTR-1 yet. Your ITC of ₹' + fmtAmt(r.blockedItc) + ' is blocked until they file. Contact them or defer this claim in GSTR-3B.';
+        const noteTr = document.createElement('tr');
+        noteTr.className = 'gstr-note-row';
+        noteTr.id = noteId;
+        noteTr.style.display = 'none';
+        noteTr.innerHTML = '<td colspan="7">' + escapeHtml(noteText) + '</td>';
+        tbody.appendChild(noteTr);
+    });
+    wireToggleButtons(tbody);
+}
+
+function renderUnrecordedTable() {
+    const tbody = document.getElementById('unrecordedTbody');
+    tbody.innerHTML = '';
+    document.getElementById('unrecordedEmpty').style.display = buckets.unrecorded.length ? 'none' : 'block';
+    buckets.unrecorded.forEach(r => {
+        // NO_ACTION = auto-accepted by the portal via IMS without owner review —
+        // the most urgent rows for the CA to check first.
+        const isNoAction = r.imsStatus === 'NO_ACTION';
+        const tr = document.createElement('tr');
+        if (isNoAction) tr.className = 'gstr-row-noaction';
+        const imsCell = isNoAction
+            ? '<span class="nx-text-red">⚠ NO_ACTION</span>'
+            : escapeHtml(r.imsStatus || '—');
+        tr.innerHTML =
+            '<td>' + escapeHtml(r.supplierGstin) + '</td>' +
+            '<td>' + escapeHtml(r.supplierName) + '</td>' +
+            '<td>' + escapeHtml(r.invoiceNo) + '</td>' +
+            '<td>' + fmt2BDate(r.invoiceDate) + '</td>' +
+            '<td>₹' + fmtAmt(r.taxableValue) + '</td>' +
+            '<td>₹' + fmtAmt(r.itcAvailable) + '</td>' +
+            '<td>' + imsCell + '</td>';
+        tbody.appendChild(tr);
+    });
+}
+
+// ─── TABS ────────────────────────────────────────────────────────────────────
+function switchToTab(activeTab) {
+    const tabs = ['matched', 'mismatch', 'blocked', 'unrecorded'];
+    tabs.forEach(tab => {
+        const content = document.getElementById('content-' + tab);
+        const btn = document.getElementById('tab-' + tab);
+        if (!content || !btn) return;
+        if (tab === activeTab) {
+            content.classList.add('active');
+            btn.classList.add('active');
+        } else {
+            content.classList.remove('active');
+            btn.classList.remove('active');
+        }
+    });
+}
+
+// ─── EXPORT ──────────────────────────────────────────────────────────────────
+// Shared orange header style — matches export.html / agent-query's styleHeaderRow.
+function styleHeaderRow(row) {
+    row.eachCell((cell) => {
+        cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFF5C1A' } };
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+    });
+}
+
+async function downloadXLSX(workbook, filename) {
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+
+async function downloadReport() {
+    const workbook = new ExcelJS.Workbook();
+
+    const matchedSheet = workbook.addWorksheet('Matched');
+    matchedSheet.columns = [
+        { header: 'Supplier', key: 'supplier', width: 24 },
+        { header: 'Supplier GSTIN', key: 'gstin', width: 18 },
+        { header: 'Invoice No', key: 'invoiceNo', width: 18 },
+        { header: 'Invoice Date', key: 'date', width: 14 },
+        { header: 'Taxable Value (GRN)', key: 'taxableGRN', width: 18, numFmt: '#,##0.00' },
+        { header: 'Taxable Value (2B)', key: 'taxable2B', width: 18, numFmt: '#,##0.00' },
+        { header: 'ITC Available (₹)', key: 'itc', width: 16, numFmt: '#,##0.00' },
+        { header: 'Status', key: 'status', width: 12 }
+    ];
+    styleHeaderRow(matchedSheet.getRow(1));
+    buckets.matched.forEach(r => matchedSheet.addRow({
+        supplier: r.supplierName, gstin: r.supplierGstin, invoiceNo: r.invoiceNo,
+        date: fmtGrnDate(r.invoiceDate), taxableGRN: r.taxableGRN, taxable2B: r.taxable2B,
+        itc: r.itcAvailable, status: 'Matched'
+    }));
+    matchedSheet.views = [{ state: 'frozen', ySplit: 1 }];
+
+    const mismatchSheet = workbook.addWorksheet('Amount Mismatch');
+    mismatchSheet.columns = [
+        { header: 'Supplier', key: 'supplier', width: 24 },
+        { header: 'Supplier GSTIN', key: 'gstin', width: 18 },
+        { header: 'Invoice No', key: 'invoiceNo', width: 18 },
+        { header: 'Invoice Date', key: 'date', width: 14 },
+        { header: 'Taxable Value (GRN)', key: 'taxableGRN', width: 18, numFmt: '#,##0.00' },
+        { header: 'Taxable Value (2B)', key: 'taxable2B', width: 18, numFmt: '#,##0.00' },
+        { header: 'Difference (₹)', key: 'diff', width: 16, numFmt: '#,##0.00' }
+    ];
+    styleHeaderRow(mismatchSheet.getRow(1));
+    buckets.mismatch.forEach(r => mismatchSheet.addRow({
+        supplier: r.supplierName, gstin: r.supplierGstin, invoiceNo: r.invoiceNo,
+        date: fmtGrnDate(r.invoiceDate), taxableGRN: r.taxableGRN, taxable2B: r.taxable2B, diff: r.difference
+    }));
+    mismatchSheet.views = [{ state: 'frozen', ySplit: 1 }];
+
+    const blockedSheet = workbook.addWorksheet('ITC Blocked');
+    blockedSheet.columns = [
+        { header: 'Supplier', key: 'supplier', width: 24 },
+        { header: 'Supplier GSTIN', key: 'gstin', width: 18 },
+        { header: 'Invoice No', key: 'invoiceNo', width: 18 },
+        { header: 'Invoice Date', key: 'date', width: 14 },
+        { header: 'GRN Amount', key: 'grnAmount', width: 16, numFmt: '#,##0.00' },
+        { header: 'Blocked ITC (₹)', key: 'blockedItc', width: 16, numFmt: '#,##0.00' }
+    ];
+    styleHeaderRow(blockedSheet.getRow(1));
+    buckets.blocked.forEach(r => blockedSheet.addRow({
+        supplier: r.supplierName, gstin: r.supplierGstin, invoiceNo: r.invoiceNo,
+        date: fmtGrnDate(r.invoiceDate), grnAmount: r.grnAmount,
+        blockedItc: r.blockedItc === null ? '' : r.blockedItc // blank, not 0, when unknown
+    }));
+    blockedSheet.views = [{ state: 'frozen', ySplit: 1 }];
+
+    const unrecordedSheet = workbook.addWorksheet('Unrecorded');
+    unrecordedSheet.columns = [
+        { header: 'Supplier GSTIN', key: 'gstin', width: 18 },
+        { header: 'Supplier Name', key: 'supplier', width: 24 },
+        { header: 'Invoice No', key: 'invoiceNo', width: 18 },
+        { header: 'Invoice Date', key: 'date', width: 14 },
+        { header: 'Taxable Value', key: 'taxable', width: 16, numFmt: '#,##0.00' },
+        { header: 'ITC Available', key: 'itc', width: 16, numFmt: '#,##0.00' },
+        { header: 'IMS Status', key: 'ims', width: 14 }
+    ];
+    styleHeaderRow(unrecordedSheet.getRow(1));
+    buckets.unrecorded.forEach(r => unrecordedSheet.addRow({
+        gstin: r.supplierGstin, supplier: r.supplierName, invoiceNo: r.invoiceNo,
+        date: fmt2BDate(r.invoiceDate), taxable: r.taxableValue, itc: r.itcAvailable, ims: r.imsStatus
+    }));
+    unrecordedSheet.views = [{ state: 'frozen', ySplit: 1 }];
+
+    const filename = 'GSTR2B_Reconciliation_' + periodInfo.monthLabel + periodInfo.year + '.xlsx';
+    await downloadXLSX(workbook, filename);
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js"></script>
+</body>
+</html>
