@@ -740,10 +740,7 @@ async function exportTallyTransactions() {
     { key: 'value', width: 18 }
   ];
 
-  const summaryTitleDate = new Date(from);
-  const summaryMonthYear = `${summaryTitleDate.toLocaleDateString('en-IN', { month: 'long' })} ${summaryTitleDate.getFullYear()}`;
-
-  const summaryTitleRow = gstSummarySheet.addRow({ label: `GST SUMMARY — ${summaryMonthYear}`, value: '' });
+  const summaryTitleRow = gstSummarySheet.addRow({ label: `GST SUMMARY — ${fmtDDMMYYYY(from)} to ${fmtDDMMYYYY(to)}`, value: '' });
   gstSummarySheet.mergeCells(`A${summaryTitleRow.number}:B${summaryTitleRow.number}`);
   styleHeaderRow(summaryTitleRow);
 

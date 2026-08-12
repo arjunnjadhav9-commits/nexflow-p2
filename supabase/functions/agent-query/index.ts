@@ -3481,10 +3481,12 @@ async function sendTallyExportIntent(
     { key: 'value', width: 18 },
   ]
 
-  const summaryTitleDate = effectiveFrom ? new Date(effectiveFrom) : new Date()
-  const summaryMonthYear = `${summaryTitleDate.toLocaleDateString('en-IN', { month: 'long' })} ${summaryTitleDate.getFullYear()}`
-
-  const summaryTitleRow = gstSummarySheet.addRow({ label: `GST SUMMARY — ${summaryMonthYear}`, value: '' })
+  const summaryTitleRow = gstSummarySheet.addRow({
+    label: effectiveFrom && effectiveTo
+      ? `GST SUMMARY — ${formatDDMMYYYY(effectiveFrom)} to ${formatDDMMYYYY(effectiveTo)}`
+      : 'GST SUMMARY — All Time',
+    value: '',
+  })
   gstSummarySheet.mergeCells(`A${summaryTitleRow.number}:B${summaryTitleRow.number}`)
   styleHeaderRow(summaryTitleRow)
 
