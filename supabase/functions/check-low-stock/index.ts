@@ -33,6 +33,12 @@ interface DispatchRow {
   created_at: string
 }
 
+interface NudgeTenantSettings {
+  company_name: string
+  telegram_chat_id?: string
+  agent_enabled?: boolean
+}
+
 async function sendTelegramMessage(chatId: string, message: string): Promise<boolean> {
   if (!TELEGRAM_BOT_TOKEN) {
     console.error('TELEGRAM_BOT_TOKEN not configured')
@@ -63,6 +69,55 @@ async function sendTelegramMessage(chatId: string, message: string): Promise<boo
   }
 }
 
+// Monthly GSTR-2B nudge (jobid 3, 15th of every month) — reuses this function
+// via a `mode` flag on the cron's POST body instead of a dedicated Edge
+// Function, so no new function needs deploying just for a fixed reminder text.
+// deno-lint-ignore no-explicit-any
+async function sendGstr2bNudge(supabase: any): Promise<Response> {
+  const { data: tenants, error: tenantsError } = await supabase
+    .from('p2_tenants')
+    .select(`
+      id,
+      p2_tenant_settings (
+        company_name,
+        telegram_chat_id,
+        agent_enabled
+      )
+    `)
+
+  if (tenantsError) {
+    return new Response(
+      JSON.stringify({ success: false, error: `Failed to fetch tenants: ${tenantsError.message}` }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    )
+  }
+
+  const message = '📋 GSTR-2B is now available on the GST portal. Upload it to Nexflow and run reconciliation before filing GSTR-3B on the 20th.'
+  const results: Array<{ tenant: string; success: boolean }> = []
+
+  for (const tenant of tenants || []) {
+    const settings = (Array.isArray(tenant.p2_tenant_settings)
+      ? tenant.p2_tenant_settings[0]
+      : tenant.p2_tenant_settings) as NudgeTenantSettings | undefined
+
+    const telegramChatId = settings?.telegram_chat_id
+    if (!settings?.agent_enabled || !telegramChatId) continue
+
+    const success = await sendTelegramMessage(telegramChatId, message)
+    results.push({ tenant: settings.company_name || 'Unknown Company', success })
+  }
+
+  return new Response(
+    JSON.stringify({
+      success: true,
+      message: `GSTR-2B nudge sent to ${results.length} tenant(s)`,
+      results,
+      timestamp: new Date().toISOString()
+    }),
+    { status: 200, headers: { 'Content-Type': 'application/json' } }
+  )
+}
+
 Deno.serve(async (req) => {
   try {
     // Initialize Supabase client with service role key for admin access
@@ -70,6 +125,13 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
+
+    // jobid 3 (monthly GSTR-2B nudge) posts {"mode":"gstr2b_nudge"} to this
+    // same function instead of getting its own — see sendGstr2bNudge above.
+    const body = await req.json().catch(() => ({} as Record<string, unknown>))
+    if (body && (body as Record<string, unknown>).mode === 'gstr2b_nudge') {
+      return await sendGstr2bNudge(supabase)
+    }
 
     // Step 1: Fetch all tenants with their settings
     const { data: tenants, error: tenantsError } = await supabase
