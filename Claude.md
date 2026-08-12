@@ -424,6 +424,19 @@ bom_detail, top_supplier
   IGST column in CA export instead of CGST/SGST.
 - p2_invoices items JSONB now includes hsn_sac field (added Aug 7 2026) — old invoices
   have blank hsn_sac, this is expected, do not backfill.
+- gstr2b-reconcile.html: not in navbar, not in js/roles.js ROLE_PERMISSIONS,
+  not in js/navbar.js NAV_LINKS. Role and plan checked directly in page init().
+- GSTR-2B JSON: parse b2b array only — ignore SUM, CDNR, IMPG sections entirely.
+- GRN grouping: must GROUP BY (supplier_gstin + normalised invoice_no) before
+  matching — one supplier invoice can span multiple GRN rows (multi-material batch).
+- normaliseInvoiceNo: str.replace(/[\s\-\/]/g, '').toUpperCase() — apply to both
+  sides before any comparison, never match on raw strings.
+- Blocked ITC shows '—' not ₹0 when gst_rate is null on the material.
+- check-low-stock mode branch: {"mode":"gstr2b_nudge"} must be checked BEFORE
+  the existing digest logic — early return, existing logic unchanged.
+- Cron jobid 3 uses anon key (not service role key) — confirmed by reading
+  live cron.job table. current_setting('app.settings.service_role_key') is NOT
+  configured in this project — never use it.
 
 ### Proactive Telegram layer
 - Daily briefing (check-low-stock): 8am IST via pg_net cron (jobid 2, 30 2 * * *)
@@ -660,6 +673,119 @@ deliberate simplification for that reason.
   checklist added (fill supplier GSTIN, material HSN, material prices).
 - Test tenant reset: clean data — 6 suppliers, 18 materials, 4 motor products with BOM,
   3 clients, opening stock, July+August GRNs all with invoice_no, Tata Steel = interstate.
+
+## Shipped August 12, 2026
+
+### CA Export Phase 1 — Four improvements to exportTallyTransactions() in export.html
+All four changes mirrored into sendTallyExportIntent() in agent-query/index.ts.
+
+**Commits: 7e89229, 3e6f6d9, 74fb508, 165c457**
+
+1. GST Summary title now shows actual date range:
+   - export.html: `GST SUMMARY — ${fmtDDMMYYYY(from)} to ${fmtDDMMYYYY(to)}`
+   - agent-query: same, with `effectiveFrom && effectiveTo ? ... : 'GST SUMMARY — All Time'` fallback
+
+2. "Total ITC Claimable" renamed to "Input GST Recorded (Potential ITC)"
+   - One string change in both files
+
+3. Invoices sheet exploded from one-row-per-invoice to one-row-per-line-item (19 columns):
+   - New columns: Invoice No | Invoice Date | Client | Client GSTIN | B2B / B2C |
+     Place of Supply | Invoice Mode | Period From | Period To | Item Description |
+     HSN/SAC | Qty | Unit | Rate | Taxable Amount | CGST (₹) | SGST (₹) | IGST (₹) | Item Total (₹)
+   - Per-item GST proportional: (item.amount / inv.amount_subtotal) * inv.amount_gst
+   - gst_type 'cgst_sgst' → CGST/SGST split; 'igst' → IGST; 'none' → all blank
+   - Fallback for invoices with items === null or items.length === 0: one row per invoice
+   - Running totals accumulated per item, not per invoice
+   - Helper added: getPlaceOfSupply(gstin) — maps state code (first 2 chars of GSTIN)
+     to state name. Map: 27→Maharashtra, 29→Karnataka, 06→Haryana, 07→Delhi,
+     24→Gujarat, 33→Tamil Nadu, 36→Telangana, 32→Kerala, 19→West Bengal, 08→Rajasthan
+
+4. Place of Supply column added to Sheet 1 (Purchases GRN) after Supplier GSTIN
+   - Value: getPlaceOfSupply(row.p2_suppliers?.gstin)
+   - Opening stock rows: blank
+
+### CA Export Phase 2 — GSTR-2B Reconciliation
+
+**Commits: 4937789, a80ae63, 36ceb93**
+
+**New file: gstr2b-reconcile.html (root level)**
+- Access: owner and accountant roles only (direct getUserRole() check, NOT canAccess())
+- Plan gate: Pro and Founder only (fresh fetch from p2_tenant_settings.plan, never isPro())
+- Not in navbar — reached only via link in export.html (CA/accounting tools stay together)
+- No js/lang.js — English only, matching export.html precedent for CA-facing GST terms
+- No new tables, no schema changes, no new Edge Functions
+- All matching runs client-side — GSTR-2B JSON never sent to server
+
+**How it works:**
+1. Owner downloads GSTR-2B JSON from GST portal (available 14th of each month)
+2. Uploads JSON to gstr2b-reconcile.html
+3. Page parses b2b array only (ignores SUM, CDNR, IMPG sections)
+4. Fetches GRN rows from p2_stock_transactions for the period in the JSON
+5. Groups GRN rows by (supplier_gstin + normalised invoice_no) — multi-material
+   batch GRNs under one invoice are summed before matching
+6. Matches against JSON on normalised key: ctin + normaliseInvoiceNo(inum)
+7. Shows four buckets, exports XLSX with 4 sheets
+
+**Normalisation:** `str.replace(/[\s\-\/]/g, '').toUpperCase()`
+**Amount tolerance:** ±₹2 (rounding differences don't trigger mismatch)
+**GRN taxable value:** quantity * rate (no amount column on p2_stock_transactions)
+**Blocked ITC estimate:** quantity * rate * gst_rate/100 — shows '—' if gst_rate is null
+
+**Four buckets:**
+- ✅ Matched — supplier GSTIN + normalised invoice_no found in JSON, taxable diff ≤ ₹2
+- ⚠️ Amount Mismatch — keys match but taxable diff > ₹2
+- ❌ ITC Blocked — in Nexflow GRN but not in JSON (supplier hasn't filed GSTR-1)
+- ❓ Unrecorded — in JSON but no GRN in Nexflow (unrecorded purchase or fraudulent IMS auto-accept)
+
+**Error messages — all plain English, no generic errors:**
+- Plan gate: "GSTR-2B Reconciliation is available on the Pro and Founder plan..."
+- Role gate: "Only the owner or accountant can access this page."
+- Invalid JSON: "This doesn't look like a valid GSTR-2B file. Download it from the GST portal under Returns → View GSTR-2B → Download JSON."
+- GSTIN mismatch: non-blocking warning showing both GSTINs
+- No GRN data: non-blocking notice, reconciliation still runs
+
+**IMS auto-accept risk:** Unrecorded rows with ims_status === 'NO_ACTION' highlighted
+red — these are auto-accepted by the portal via IMS and most urgent for CA to review.
+
+**GSTR-2B JSON format (action=B2B):**
+- ctin: supplier GSTIN (match against p2_suppliers.gstin)
+- inum: invoice number (match against p2_stock_transactions.invoice_no)
+- itcavl: Y/N — portal's ITC eligibility flag
+- ims_status: A=Accepted, R=Rejected, P=Pending, NO_ACTION=auto-accepted
+- itms[].txval: taxable value per line item
+- itms[].iamt/camt/samt/csamt: IGST/CGST/SGST/Cess
+
+**Agent intent: gstr2b_status**
+- Added to HaikuIntent union, system prompt, executeQuery, READ_ONLY_INTENTS,
+  READ_ONLY_TEXT_INTENTS (js/agent-chat.js)
+- No DB query — returns nudge text pointing owner to export page
+- Example triggers: "GSTR-2B madhe kiti match zale?", "Last reconciliation status?"
+
+**Monthly Telegram nudge: cron jobid 3**
+- Schedule: 30 2 15 * * (2:30 AM UTC = 8:00 AM IST, 15th of each month)
+- Calls check-low-stock Edge Function with body {"mode":"gstr2b_nudge"}
+- check-low-stock/index.ts branches early on mode === 'gstr2b_nudge' before
+  existing digest logic — no new Edge Function file
+- Sends to all tenants where agent_enabled = true AND telegram_chat_id is not null
+- Migration: supabase/migrations/20260812_setup_cron_gstr2b_nudge.sql
+  (uses anon key in Authorization header — same pattern as jobid 2)
+
+**Why Phase 2 is urgent (not deferred):**
+July 2026 regulatory change: GST 2.0 hard system-level matching — unmatched ITC
+is auto-blocked, manual correction in GSTR-3B no longer possible. This is a
+retention risk for existing clients, not a future growth feature.
+
+**Pricing:** GSTR-2B reconciliation is Pro/Founder only — the feature that
+justifies the ₹1L/year Pro pricing over Lite. One blocked ITC claim can cost
+a factory ₹50K+ in working capital; the software pays for itself twice over.
+
+**Phase 3 (deferred):** Draft P&L sheet — build only after Phase 2 is proven
+with 5+ clients AND a CA explicitly requests it. Gate not met yet.
+
+**Test JSON for gstr2b-reconcile.html:**
+Saved locally as gstr2b-test-august-2026.json (not committed — contains test data only).
+Tests: HCL-2608-001 (Matched), TSL-2608-012 (Amount Mismatch — txval 9600 vs 9450),
+BEL-2608-041 (Matched, multi-row GRN), KFP-2608-099 (Unrecorded + NO_ACTION).
 
 ## GST Scope — PERMANENTLY LOCKED
 Nexflow P2 is operational software only. No GST filing, no GSTR generation, no financial reporting layer.
