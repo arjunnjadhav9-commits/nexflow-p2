@@ -276,6 +276,35 @@ function downloadCSV(filename, rows) {
   document.body.removeChild(a); URL.revokeObjectURL(url);
 }
 
+// \u2500\u2500\u2500 XLSX BUILDER \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+async function downloadXLSX(workbook, filename) {
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob   = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url    = URL.createObjectURL(blob);
+  const a      = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+
+// Matches agent-query's formatDDMMYYYY \u2014 DD/MM/YYYY, distinct from fmtTally's DD-Mon-YYYY.
+function fmtDDMMYYYY(dateStr) {
+  if (!dateStr) return '';
+  const d  = new Date(dateStr);
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  return `${dd}/${mm}/${d.getFullYear()}`;
+}
+
+// Shared orange header style \u2014 matches agent-query's styleHeaderRow.
+function styleHeaderRow(row) {
+  row.eachCell((cell) => {
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFF5C1A' } };
+    cell.alignment = { horizontal: 'center', vertical: 'middle' };
+  });
+}
+
 // ─── LOGGING ─────────────────────────────────────────────────────────────────
 function log(msg, type = 'info') {
   const area  = document.getElementById('logArea');
@@ -488,95 +517,277 @@ async function exportTallyMasters() {
 }
 
 // ─── TALLY: TRANSACTION VOUCHERS ─────────────────────────────────────────────
+// Mirrors sendTallyExportIntent in supabase/functions/agent-query/index.ts —
+// same 3-sheet workbook shape (Purchases GRN+Opening, Invoices, GST Summary),
+// so the manual CA-export button and the emailed agent export always agree.
 async function exportTallyTransactions() {
   const { from, to } = getDateRange();
   log('Fetching session...');
   const tenantId = await getTenantId();
 
-  log(`Fetching transactions ${from} → ${to}...`);
-  const { data: txns, error } = await window.supabase
-    .from('p2_stock_transactions')
-    .select(`
-      transaction_type, transaction_date, invoice_no,
-      quantity, rate, notes, supplier_name, supplier_id, purchase_type,
-      p2_raw_materials!inner(name, material_code, gst_rate, hsn_sac)
-    `)
-    .eq('tenant_id', tenantId)
-    .eq('transaction_type', 'grn')
-    .gte('transaction_date', from)
-    .lte('transaction_date', to)
-    .order('transaction_date');
+  const JOIN_COLUMNS = 'transaction_date, quantity, rate, notes, invoice_no, supplier_id, supplier_name, purchase_type, p2_raw_materials!inner(name, material_code, hsn_sac, gst_rate, unit), p2_suppliers(gstin)';
 
-  if (error) throw new Error(`Supabase error: ${error.message}`);
-  if (!txns.length) throw new Error('No transactions found in selected date range.');
-  log(`Fetched ${txns.length} transactions.`);
+  log(`Fetching GRN, Opening Stock, and Invoices ${from} → ${to}...`);
+  const [grnResult, openingResult, invoiceResult] = await Promise.all([
+    window.supabase
+      .from('p2_stock_transactions')
+      .select(JOIN_COLUMNS)
+      .eq('tenant_id', tenantId)
+      .eq('transaction_type', 'grn')
+      .gte('transaction_date', from)
+      .lte('transaction_date', to),
+    window.supabase
+      .from('p2_stock_transactions')
+      .select(JOIN_COLUMNS)
+      .eq('tenant_id', tenantId)
+      .eq('transaction_type', 'adjustment')
+      .eq('notes', 'Opening Stock')
+      .gte('transaction_date', from)
+      .lte('transaction_date', to),
+    window.supabase
+      .from('p2_invoices')
+      .select('invoice_number, created_at, client_name, invoice_mode, date_from, date_to, amount_subtotal, amount_gst, amount_total, gst_type, client_gstin, items')
+      .eq('tenant_id', tenantId)
+      .gte('created_at', from + 'T00:00:00+05:30')
+      .lte('created_at', to + 'T23:59:59+05:30')
+      .order('created_at', { ascending: true })
+  ]);
 
-  const missingRate     = txns.filter(t => !t.rate).length;
-  const missingSupplier = txns.filter(t => !t.supplier_name).length;
+  if (grnResult.error)     throw new Error(`Supabase error (GRN): ${grnResult.error.message}`);
+  if (openingResult.error) throw new Error(`Supabase error (Opening Stock): ${openingResult.error.message}`);
+  if (invoiceResult.error) throw new Error(`Supabase error (Invoices): ${invoiceResult.error.message}`);
+
+  const grnRows     = grnResult.data || [];
+  const openingRows = openingResult.data || [];
+  const invoices    = invoiceResult.data || [];
+
+  if (!grnRows.length && !openingRows.length && !invoices.length) {
+    throw new Error('No transactions or invoices found in selected date range.');
+  }
+  log(`Fetched ${grnRows.length} GRN, ${openingRows.length} opening stock, ${invoices.length} invoice row(s).`);
+
+  const missingRate     = grnRows.filter(t => !t.rate).length;
+  const missingSupplier = grnRows.filter(t => !t.supplier_name).length;
   if (missingRate > 0 || missingSupplier > 0) {
     showWarn(`${missingRate} GRN row(s) missing rate. ${missingSupplier} GRN row(s) missing supplier. These export as blank — CA will fill manually.`);
     log(`Warning: ${missingRate} missing rate, ${missingSupplier} missing supplier.`, 'err');
   }
 
-  log('Fetching supplier GSTINs...');
-  const supplierIds = [...new Set(txns.map(t => t.supplier_id).filter(Boolean))];
-  const supplierGstinMap = {};
-  if (supplierIds.length) {
-    const { data: suppliers, error: se } = await window.supabase
-      .from('p2_suppliers')
-      .select('id, gstin')
-      .eq('tenant_id', tenantId)
-      .in('id', supplierIds);
-    if (se) throw new Error(`Supplier fetch error: ${se.message}`);
-    (suppliers || []).forEach(s => { supplierGstinMap[s.id] = s.gstin || ''; });
-  }
+  log('Building CA Export workbook...');
+  const workbook = new ExcelJS.Workbook();
 
-  log('Building Tally Vouchers CSV...');
-  const headers = ['Date','Voucher Type','Voucher No','Party Ledger Name','Supplier GSTIN','Item Name','HSN/SAC','Billed Quantity','Rate','Taxable Amount','CGST Rate (%)','CGST Amount','SGST Rate (%)','SGST Amount','IGST Rate (%)','IGST Amount','Total GST Amount','Invoice Total','Supplier Invoice No'];
-  const rows    = [headers];
+  // ── Sheet 1: Purchases (GRN) ──
+  const purchasesSheet = workbook.addWorksheet('Purchases (GRN)');
+  purchasesSheet.columns = [
+    { header: 'Date', key: 'date', width: 14 },
+    { header: 'Material', key: 'material', width: 35 },
+    { header: 'Material Code', key: 'materialCode', width: 16 },
+    { header: 'HSN/SAC', key: 'hsnSac', width: 12 },
+    { header: 'Transaction Type', key: 'transactionType', width: 20 },
+    { header: 'Quantity', key: 'quantity', width: 12, numFmt: '#,##0.##' },
+    { header: 'Unit', key: 'unit', width: 8 },
+    { header: 'Rate', key: 'rate', width: 12, numFmt: '#,##0.##' },
+    { header: 'Amount', key: 'amount', width: 14, numFmt: '#,##0.00' },
+    { header: 'CGST Rate (%)', key: 'cgstRate', width: 14 },
+    { header: 'CGST Amount', key: 'cgstAmount', width: 14, numFmt: '#,##0.00' },
+    { header: 'SGST Rate (%)', key: 'sgstRate', width: 14 },
+    { header: 'SGST Amount', key: 'sgstAmount', width: 14, numFmt: '#,##0.00' },
+    { header: 'IGST Rate (%)', key: 'igstRate', width: 14 },
+    { header: 'IGST Amount', key: 'igstAmount', width: 14, numFmt: '#,##0.00' },
+    { header: 'Total GST Amount', key: 'totalGst', width: 16, numFmt: '#,##0.00' },
+    { header: 'Invoice Total', key: 'invoiceTotal', width: 14, numFmt: '#,##0.00' },
+    { header: 'Supplier Name', key: 'supplierName', width: 20 },
+    { header: 'Supplier GSTIN', key: 'supplierGstin', width: 16 },
+    { header: 'Supplier Invoice No', key: 'supplierInvoiceNo', width: 18 }
+  ];
+  styleHeaderRow(purchasesSheet.getRow(1));
 
-  txns.forEach(t => {
-    const partyName   = t.supplier_name || '';
-    const rate        = parseFloat(t.rate) || 0;
-    const qty         = Math.abs(parseFloat(t.quantity) || 0);
-    const fallbackVoucherNo = 'GRN-' + t.transaction_date;
+  const allRows = [
+    ...grnRows.map(row => ({ type: 'grn', row })),
+    ...openingRows.map(row => ({ type: 'opening', row }))
+  ];
+  allRows.sort((a, b) => a.row.transaction_date.localeCompare(b.row.transaction_date));
 
-    const taxableAmount = qty * rate;
-    const isInterstate = t.purchase_type === 'interstate';
-    const gstRate    = t.p2_raw_materials.gst_rate || 0;
-    const cgstRate   = isInterstate ? 0 : gstRate / 2;
-    const sgstRate   = isInterstate ? 0 : gstRate / 2;
-    const igstRate   = isInterstate ? gstRate : 0;
-    const cgstAmount = isInterstate ? '0.00' : (taxableAmount * (gstRate / 2) / 100).toFixed(2);
-    const sgstAmount = isInterstate ? '0.00' : (taxableAmount * (gstRate / 2) / 100).toFixed(2);
-    const igstAmount = isInterstate ? (taxableAmount * gstRate / 100).toFixed(2) : '0.00';
-    const totalGst   = (parseFloat(cgstAmount) + parseFloat(sgstAmount) + parseFloat(igstAmount)).toFixed(2);
-    const invoiceTotal = (taxableAmount + parseFloat(totalGst)).toFixed(2);
-    const hsnSac     = t.p2_raw_materials.hsn_sac || '';
+  let totalTaxableGrn = 0;
+  let totalCgstGrn = 0;
+  let totalSgstGrn = 0;
+  let totalIgstGrn = 0;
 
-    rows.push([
-      fmtTally(t.transaction_date),
-      'Purchase',
-      t.invoice_no || fallbackVoucherNo,
-      partyName,
-      supplierGstinMap[t.supplier_id] || '',
-      t.p2_raw_materials.name,
-      hsnSac,
-      qty, rate,
-      taxableAmount.toFixed(2),
-      cgstRate, cgstAmount,
-      sgstRate, sgstAmount,
-      igstRate, igstAmount,
-      totalGst,
-      invoiceTotal,
-      t.invoice_no || ''
-    ]);
+  allRows.forEach(({ type, row }) => {
+    const rm = row.p2_raw_materials;
+    const date = fmtDDMMYYYY(row.transaction_date);
+    const materialCode = rm.material_code || '';
+    const hsnSac = rm.hsn_sac || '';
+
+    if (type === 'grn') {
+      const rate = row.rate || 0;
+      const qty  = row.quantity;
+      const amount = qty * rate;
+      const gstRate = rm.gst_rate || 0;
+      const isInterstate = row.purchase_type === 'interstate';
+
+      let cgstRate = '', cgstAmount = '', sgstRate = '', sgstAmount = '', igstRate = '', igstAmount = '';
+
+      if (isInterstate) {
+        igstRate = gstRate;
+        igstAmount = (amount * gstRate) / 100;
+      } else {
+        cgstRate = gstRate / 2;
+        sgstRate = gstRate / 2;
+        cgstAmount = (amount * cgstRate) / 100;
+        sgstAmount = (amount * sgstRate) / 100;
+      }
+
+      const totalGst = (Number(cgstAmount) || 0) + (Number(sgstAmount) || 0) + (Number(igstAmount) || 0);
+      const invoiceTotal = amount + totalGst;
+
+      totalTaxableGrn += amount;
+      totalCgstGrn += Number(cgstAmount) || 0;
+      totalSgstGrn += Number(sgstAmount) || 0;
+      totalIgstGrn += Number(igstAmount) || 0;
+
+      purchasesSheet.addRow({
+        date, material: rm.name, materialCode, hsnSac, transactionType: 'GRN (Purchase)',
+        quantity: qty, unit: rm.unit, rate, amount,
+        cgstRate, cgstAmount, sgstRate, sgstAmount, igstRate, igstAmount,
+        totalGst, invoiceTotal,
+        supplierName: row.supplier_name || '',
+        supplierGstin: (row.p2_suppliers && row.p2_suppliers.gstin) || '',
+        supplierInvoiceNo: row.invoice_no || ''
+      });
+    } else {
+      purchasesSheet.addRow({
+        date, material: rm.name, materialCode, hsnSac, transactionType: 'Opening Stock',
+        quantity: row.quantity, unit: rm.unit, rate: '', amount: '',
+        cgstRate: '', cgstAmount: '', sgstRate: '', sgstAmount: '', igstRate: '', igstAmount: '',
+        totalGst: '', invoiceTotal: '', supplierName: '', supplierGstin: '', supplierInvoiceNo: ''
+      });
+    }
   });
 
-  const filename = `Tally_Vouchers_${from}_to_${to}.csv`;
-  downloadCSV(filename, rows);
+  purchasesSheet.views = [{ state: 'frozen', ySplit: 1 }];
+
+  // ── Sheet 2: Invoices ──
+  const invoiceSheet = workbook.addWorksheet('Invoices');
+  invoiceSheet.columns = [
+    { header: 'Invoice No', key: 'invoiceNo', width: 18 },
+    { header: 'Date', key: 'date', width: 14 },
+    { header: 'Client', key: 'client', width: 28 },
+    { header: 'Mode', key: 'mode', width: 14 },
+    { header: 'Period From', key: 'periodFrom', width: 14 },
+    { header: 'Period To', key: 'periodTo', width: 14 },
+    { header: 'Subtotal (₹)', key: 'subtotal', width: 14, numFmt: '#,##0.00' },
+    { header: 'CGST (₹)', key: 'cgst', width: 12, numFmt: '#,##0.00' },
+    { header: 'SGST (₹)', key: 'sgst', width: 12, numFmt: '#,##0.00' },
+    { header: 'IGST (₹)', key: 'igst', width: 12, numFmt: '#,##0.00' },
+    { header: 'Total (₹)', key: 'total', width: 14, numFmt: '#,##0.00' },
+    { header: 'Client GSTIN', key: 'clientGstin', width: 16 },
+    { header: 'B2B / B2C', key: 'b2bB2c', width: 10 },
+    { header: 'Invoice Mode', key: 'invoiceModeCol', width: 14 },
+    { header: 'HSN Codes', key: 'hsnCodes', width: 18 }
+  ];
+  styleHeaderRow(invoiceSheet.getRow(1));
+
+  let totalTaxableSales = 0;
+  let totalCgstSales = 0;
+  let totalSgstSales = 0;
+  let totalIgstSales = 0;
+  let totalOutputTax = 0;
+
+  invoices.forEach(inv => {
+    const isConsolidated = inv.invoice_mode === 'consolidated';
+    const gstAmount = Number(inv.amount_gst) || 0;
+    let cgst = '', sgst = '', igst = '';
+    if (inv.gst_type === 'cgst_sgst') {
+      cgst = gstAmount / 2;
+      sgst = gstAmount / 2;
+    } else if (inv.gst_type === 'igst') {
+      igst = gstAmount;
+    }
+
+    totalTaxableSales += Number(inv.amount_subtotal) || 0;
+    totalCgstSales += Number(cgst) || 0;
+    totalSgstSales += Number(sgst) || 0;
+    totalIgstSales += Number(igst) || 0;
+    totalOutputTax += gstAmount;
+
+    const clientGstin = inv.client_gstin || '';
+    const hsnCodes = [...new Set((inv.items || []).map(item => item.hsn_sac || '').filter(code => code.trim()))].join(', ');
+
+    invoiceSheet.addRow({
+      invoiceNo: inv.invoice_number,
+      date: fmtDDMMYYYY(inv.created_at),
+      client: inv.client_name || '',
+      mode: isConsolidated ? 'Consolidated' : 'Single',
+      periodFrom: isConsolidated && inv.date_from ? fmtDDMMYYYY(inv.date_from) : '',
+      periodTo: isConsolidated && inv.date_to ? fmtDDMMYYYY(inv.date_to) : '',
+      subtotal: Number(inv.amount_subtotal) || 0,
+      cgst, sgst, igst,
+      total: Number(inv.amount_total) || 0,
+      clientGstin,
+      b2bB2c: clientGstin.trim() ? 'B2B' : 'B2C',
+      invoiceModeCol: inv.invoice_mode,
+      hsnCodes
+    });
+  });
+
+  invoiceSheet.views = [{ state: 'frozen', ySplit: 1 }];
+
+  // ── Sheet 3: GST Summary ──
+  const gstSummarySheet = workbook.addWorksheet('GST Summary');
+  gstSummarySheet.columns = [
+    { key: 'label', width: 35 },
+    { key: 'value', width: 18 }
+  ];
+
+  const summaryTitleDate = new Date(from);
+  const summaryMonthYear = `${summaryTitleDate.toLocaleDateString('en-IN', { month: 'long' })} ${summaryTitleDate.getFullYear()}`;
+
+  const summaryTitleRow = gstSummarySheet.addRow({ label: `GST SUMMARY — ${summaryMonthYear}`, value: '' });
+  gstSummarySheet.mergeCells(`A${summaryTitleRow.number}:B${summaryTitleRow.number}`);
+  styleHeaderRow(summaryTitleRow);
+
+  gstSummarySheet.addRow({});
+
+  const purchasesHeaderRow = gstSummarySheet.addRow({ label: 'PURCHASES (Input Tax Credit)', value: '' });
+  purchasesHeaderRow.getCell(1).font = { bold: true };
+
+  const addSummaryCurrencyRow = (label, value) => {
+    const row = gstSummarySheet.addRow({ label, value });
+    row.getCell(2).numFmt = '#,##0.00';
+    return row;
+  };
+
+  addSummaryCurrencyRow('Total Taxable Value (Purchases)', totalTaxableGrn);
+  addSummaryCurrencyRow('Total CGST Paid', totalCgstGrn);
+  addSummaryCurrencyRow('Total SGST Paid', totalSgstGrn);
+  addSummaryCurrencyRow('Total IGST Paid', totalIgstGrn);
+  const totalItcClaimable = totalCgstGrn + totalSgstGrn + totalIgstGrn;
+  addSummaryCurrencyRow('Total ITC Claimable', totalItcClaimable);
+
+  gstSummarySheet.addRow({});
+
+  const salesHeaderRow = gstSummarySheet.addRow({ label: 'SALES (Output Tax)', value: '' });
+  salesHeaderRow.getCell(1).font = { bold: true };
+
+  addSummaryCurrencyRow('Total Taxable Value (Sales)', totalTaxableSales);
+  addSummaryCurrencyRow('Total CGST Collected', totalCgstSales);
+  addSummaryCurrencyRow('Total SGST Collected', totalSgstSales);
+  addSummaryCurrencyRow('Total IGST Collected', totalIgstSales);
+  addSummaryCurrencyRow('Total Output Tax', totalOutputTax);
+
+  gstSummarySheet.addRow({});
+
+  const netGstPayable = totalOutputTax - totalItcClaimable;
+  const netRow = addSummaryCurrencyRow('NET GST PAYABLE / (REFUNDABLE)', netGstPayable);
+  const netColor = netGstPayable >= 0 ? 'FFFF5C1A' : 'FF22D87A';
+  netRow.getCell(1).font = { bold: true, color: { argb: netColor } };
+  netRow.getCell(2).font = { bold: true, color: { argb: netColor } };
+
+  const filename = `CA_Export_${from}_to_${to}.xlsx`;
+  await downloadXLSX(workbook, filename);
   log(`Downloaded: ${filename}`, 'ok');
-  showStats(rows.length - 1, filename);
+  showStats(allRows.length + invoices.length, filename);
 }
 
 // ─── ZOHO: ITEMS MASTER ──────────────────────────────────────────────────────
@@ -790,6 +1001,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   updateTemplateHighlight();
 });
 </script>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js"></script>
 <script src="js/agent-chat.js"></script>
 </body>
 </html>
