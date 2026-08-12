@@ -3334,6 +3334,7 @@ async function sendTallyExportIntent(
     { header: 'Invoice Total', key: 'invoiceTotal', width: 14, numFmt: '#,##0.00' },
     { header: 'Supplier Name', key: 'supplierName', width: 20 },
     { header: 'Supplier GSTIN', key: 'supplierGstin', width: 16 },
+    { header: 'Place of Supply', key: 'placeOfSupply', width: 16 },
     { header: 'Supplier Invoice No', key: 'supplierInvoiceNo', width: 18 },
   ]
 
@@ -3385,13 +3386,15 @@ async function sendTallyExportIntent(
       totalSgstGrn += Number(sgstAmount) || 0
       totalIgstGrn += Number(igstAmount) || 0
 
+      const supplierGstin = row.p2_suppliers?.gstin ?? ''
       worksheet.addRow({
         date, material: rm.name, materialCode, hsnSac, transactionType: 'GRN (Purchase)',
         quantity: qty, unit: rm.unit, rate, amount,
         cgstRate, cgstAmount, sgstRate, sgstAmount, igstRate, igstAmount,
         totalGst, invoiceTotal,
         supplierName: row.supplier_name ?? '',
-        supplierGstin: row.p2_suppliers?.gstin ?? '',
+        supplierGstin,
+        placeOfSupply: getPlaceOfSupply(supplierGstin),
         supplierInvoiceNo: row.invoice_no ?? '',
       })
     } else {
@@ -3399,7 +3402,7 @@ async function sendTallyExportIntent(
         date, material: rm.name, materialCode, hsnSac, transactionType: 'Opening Stock',
         quantity: row.quantity, unit: rm.unit, rate: '', amount: '',
         cgstRate: '', cgstAmount: '', sgstRate: '', sgstAmount: '', igstRate: '', igstAmount: '',
-        totalGst: '', invoiceTotal: '', supplierName: '', supplierGstin: '', supplierInvoiceNo: '',
+        totalGst: '', invoiceTotal: '', supplierName: '', supplierGstin: '', placeOfSupply: '', supplierInvoiceNo: '',
       })
     }
   }
