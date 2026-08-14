@@ -53,6 +53,19 @@
         line-height: 1.5;
     }
     .gstr-row-noaction { background: rgba(255,59,48,0.08); }
+    .gstr-cfs-badge {
+        display: inline-block;
+        background: rgba(247,201,72,0.15);
+        color: #f7c948;
+        border: 1px solid #f7c948;
+        font-size: 10px;
+        font-weight: 700;
+        padding: 2px 6px;
+        border-radius: 4px;
+        margin-left: 6px;
+        cursor: help;
+        white-space: nowrap;
+    }
 </style>
 </head>
 <body>
@@ -145,6 +158,7 @@
                     <div class="nx-stat-label">✅ Matched</div>
                     <div class="nx-stat-value" id="statMatchedCount">—</div>
                     <div class="nx-stat-unit" id="statMatchedAmt">—</div>
+                    <div class="nx-stat-unit" id="statMatchedCfsWarning" style="display:none; color:#f7c948;"></div>
                 </div>
                 <div class="nx-stat">
                     <div class="nx-stat-label">⚠️ Amount Mismatch</div>
@@ -471,6 +485,7 @@ async function runReconciliation() {
         (parsedJson.b2b || []).forEach(supplierBlock => {
             const ctin = supplierBlock.ctin || '';
             const lglname = supplierBlock.lglname || '';
+            const cfs = supplierBlock.cfs;
             (supplierBlock.inv || []).forEach(inv => {
                 const invoiceNo = inv.inum || '';
                 const key = ctin + '|' + normaliseInvoiceNo(invoiceNo);
@@ -490,6 +505,7 @@ async function runReconciliation() {
                     itcavl: inv.itcavl,
                     itcrv: inv.itcrv,
                     imsStatus: inv.ims_status || '',
+                    cfs,
                     consumed: false
                 });
             });
@@ -508,7 +524,8 @@ async function runReconciliation() {
                         supplierName: group.supplierName, supplierGstin: group.supplierGstin,
                         invoiceNo: group.invoiceNo, invoiceDate: group.invoiceDate,
                         taxableGRN: group.amount, taxable2B: match.taxableValue2B,
-                        itcAvailable
+                        itcAvailable,
+                        cfs_warning: match.cfs === 'N'
                     });
                 } else {
                     buckets.mismatch.push({
@@ -562,6 +579,16 @@ function renderSummary() {
 
     document.getElementById('statMatchedCount').textContent = buckets.matched.length;
     document.getElementById('statMatchedAmt').textContent = '₹' + fmtAmt(matchedTotal) + ' ITC safe';
+
+    const cfsWarningSuppliers = new Set(buckets.matched.filter(r => r.cfs_warning).map(r => r.supplierGstin));
+    const cfsWarningEl = document.getElementById('statMatchedCfsWarning');
+    if (cfsWarningSuppliers.size > 0) {
+        cfsWarningEl.textContent = '⚠ ' + cfsWarningSuppliers.size + ' supplier(s) not yet filed — verify before claiming ITC';
+        cfsWarningEl.style.display = 'block';
+    } else {
+        cfsWarningEl.style.display = 'none';
+    }
+
     document.getElementById('statMismatchCount').textContent = buckets.mismatch.length;
     document.getElementById('statMismatchAmt').textContent = '₹' + fmtAmt(mismatchTotal) + ' difference';
     document.getElementById('statBlockedCount').textContent = buckets.blocked.length;
@@ -592,8 +619,11 @@ function renderMatchedTable() {
     document.getElementById('matchedEmpty').style.display = buckets.matched.length ? 'none' : 'block';
     buckets.matched.forEach(r => {
         const tr = document.createElement('tr');
+        const cfsBadge = r.cfs_warning
+            ? ' <span class="gstr-cfs-badge" title="Supplier saved but not yet filed — ITC may still be blocked">⚠ Not Filed</span>'
+            : '';
         tr.innerHTML =
-            '<td>' + escapeHtml(r.supplierName) + '</td>' +
+            '<td>' + escapeHtml(r.supplierName) + cfsBadge + '</td>' +
             '<td>' + escapeHtml(r.supplierGstin) + '</td>' +
             '<td>' + escapeHtml(r.invoiceNo) + '</td>' +
             '<td>' + fmtGrnDate(r.invoiceDate) + '</td>' +
@@ -739,13 +769,15 @@ async function downloadReport() {
         { header: 'Taxable Value (GRN)', key: 'taxableGRN', width: 18, numFmt: '#,##0.00' },
         { header: 'Taxable Value (2B)', key: 'taxable2B', width: 18, numFmt: '#,##0.00' },
         { header: 'ITC Available (₹)', key: 'itc', width: 16, numFmt: '#,##0.00' },
-        { header: 'Status', key: 'status', width: 12 }
+        { header: 'Status', key: 'status', width: 12 },
+        { header: 'CFS Warning', key: 'cfsWarning', width: 16 }
     ];
     styleHeaderRow(matchedSheet.getRow(1));
     buckets.matched.forEach(r => matchedSheet.addRow({
         supplier: r.supplierName, gstin: r.supplierGstin, invoiceNo: r.invoiceNo,
         date: fmtGrnDate(r.invoiceDate), taxableGRN: r.taxableGRN, taxable2B: r.taxable2B,
-        itc: r.itcAvailable, status: 'Matched'
+        itc: r.itcAvailable, status: 'Matched',
+        cfsWarning: r.cfs_warning ? 'Not Filed' : ''
     }));
     matchedSheet.views = [{ state: 'frozen', ySplit: 1 }];
 
