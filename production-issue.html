@@ -297,6 +297,55 @@
       }
       .notes-ta { border: none !important; background: transparent !important; padding: 0 !important; font-size: 10pt; font-weight: 700; resize: none; color: #000; }
     }
+
+    /* ── Shared material/product typeahead (mirrors rm-dispatch.html) ── */
+    .mat-search-wrap{position:relative;width:100%;}
+    .mat-search-inner{position:relative;display:flex;align-items:center;}
+    .mat-search-icon{
+        position:absolute;left:10px;top:50%;transform:translateY(-50%);
+        color:var(--mid);pointer-events:none;font-size:15px;line-height:1;
+        font-style:normal;
+    }
+    .mat-search-input{
+        width:100%;background:var(--surface3);border:1px solid var(--border2);
+        border-radius:var(--radius-sm);color:var(--text);font-family:var(--font);
+        font-size:13px;padding:8px 30px 8px 32px;outline:none;
+        transition:border-color 0.15s,background 0.15s;box-sizing:border-box;
+    }
+    @media(max-width:900px){.mat-search-input{font-size:16px;min-height:44px;}}
+    .mat-search-input:focus{border-color:var(--orange);}
+    .mat-search-input.mat-selected{border-color:#22c55e;background:rgba(34,197,94,0.05);}
+    .mat-search-input::placeholder{color:var(--mid);opacity:0.7;}
+    .mat-clear-btn{
+        position:absolute;right:8px;top:50%;transform:translateY(-50%);
+        background:none;border:none;color:var(--mid);cursor:pointer;
+        font-size:16px;line-height:1;padding:0 3px;display:none;
+        transition:color 0.12s;
+    }
+    .mat-clear-btn:hover{color:var(--white);}
+    .mat-clear-btn.visible{display:block;}
+    .mat-dropdown{
+        position:absolute;top:calc(100% + 4px);left:0;right:0;
+        background:var(--surface);border:1px solid var(--border2);
+        border-radius:var(--radius-sm);z-index:300;
+        max-height:220px;overflow-y:auto;
+        box-shadow:0 8px 28px rgba(0,0,0,0.45);display:none;
+    }
+    .mat-dropdown.open{display:block;}
+    .mat-dropdown-item{
+        padding:9px 12px;font-size:13px;color:var(--text);
+        cursor:pointer;border-bottom:1px solid var(--border);
+        transition:background 0.08s;
+        display:flex;align-items:center;justify-content:space-between;gap:8px;
+    }
+    .mat-dropdown-item:last-child{border-bottom:none;}
+    .mat-dropdown-item:hover,.mat-dropdown-item.kbd-active{background:var(--surface2);}
+    .mat-dropdown-item:hover .mat-item-name,
+    .mat-dropdown-item.kbd-active .mat-item-name{color:var(--orange);}
+    .mat-item-name{font-weight:500;flex:1;}
+    .mat-item-unit{font-size:11px;color:var(--mid);font-family:monospace;
+        background:var(--surface3);padding:1px 6px;border-radius:3px;flex-shrink:0;}
+    .mat-dropdown-empty{padding:12px;font-size:12px;color:var(--mid);text-align:center;}
   </style>
 </head>
 
@@ -355,7 +404,7 @@
 
       <div class="fg">
         <label data-en="Product" data-mr="उत्पादन">Product</label>
-        <select id="productSelect"></select>
+        <div id="productSelectMount"></div>
       </div>
 
       <div class="fg">
@@ -611,10 +660,6 @@ function applyLang() {
   });
 
   // Placeholders — dynamic so set manually
-  const sel = document.getElementById('productSelect');
-  if (sel && sel.options[0]) {
-    sel.options[0].textContent = t('— Select Product —', '— उत्पादन निवडा —');
-  }
   const bq = document.getElementById('batchQty');
   if (bq) bq.placeholder = t('e.g. 36', 'उदा. ३६');
 
@@ -630,7 +675,7 @@ function applyLang() {
   // Re-render section meta
   const meta = document.getElementById('bomMeta');
   if (meta && meta.textContent) {
-    const p = products.find(x => x.id === document.getElementById('productSelect').value);
+    const p = products.find(x => x.id === (productTypeahead ? productTypeahead.getId() : ''));
     const batchQty = document.getElementById('batchQty').value;
     if (p && batchQty) {
       meta.textContent = `${p.name} × ${batchQty} — ${bomRows.length} ${t('BOM materials', 'BOM साहित्य')}`;
@@ -651,6 +696,125 @@ let company    = { name: '', address: '' };
 let manualSeed = 0;
 let currentIssueOrderId = null;      // set by submitIssue(), used by createDispatchChallan()
 let currentIssueChallanNumber = null; // set by submitIssue(), shown in the challan-created toast
+let productTypeahead = null;
+
+
+/* ═══════════════════════════════════════
+   SHARED MATERIAL/PRODUCT TYPEAHEAD (mirrors rm-dispatch.html)
+   materialsArr: array with .id OR .raw_material_id, .name, .unit, .material_code
+   opts: { placeholder, onSelect(id,name,unit) }
+   Returns: { element, getId(), getUnit(), reset(), setValue(id,name,unit) }
+═══════════════════════════════════════ */
+function buildMatTypeahead(materialsArr, opts) {
+    opts = opts || {};
+    var ph       = opts.placeholder || 'Search material...';
+    var onSelect = opts.onSelect    || function(){};
+
+    var wrap = document.createElement('div');
+    wrap.className = 'mat-search-wrap';
+    var inner = document.createElement('div');
+    inner.className = 'mat-search-inner';
+    var icon = document.createElement('i');
+    icon.className = 'mat-search-icon';
+    icon.textContent = '⌕';
+    var input = document.createElement('input');
+    input.type='text'; input.className='mat-search-input';
+    input.placeholder=ph; input.autocomplete='off';
+    var clearBtn = document.createElement('button');
+    clearBtn.type='button'; clearBtn.className='mat-clear-btn';
+    clearBtn.title='Clear'; clearBtn.textContent='×';
+    inner.appendChild(icon); inner.appendChild(input); inner.appendChild(clearBtn);
+    var dd = document.createElement('div');
+    dd.className = 'mat-dropdown';
+    wrap.appendChild(inner); wrap.appendChild(dd);
+
+    var selId='', selUnit='', kbdIdx=-1;
+
+    function getId(m){ return m.raw_material_id || m.id || ''; }
+    function esc(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+    function filter(term){
+        var t=(term||'').toLowerCase().trim();
+        return t==='' ? materialsArr.slice(0,50)
+            : materialsArr.filter(function(m){
+                return m.name.toLowerCase().includes(t)||
+                       (m.material_code&&m.material_code.toLowerCase().includes(t));
+              });
+    }
+
+    function renderDd(term){
+        var res=filter(term);
+        dd.innerHTML=''; kbdIdx=-1;
+        if(res.length===0){
+            dd.innerHTML='<div class="mat-dropdown-empty">No materials found</div>';
+            return;
+        }
+        res.forEach(function(m){
+            var d=document.createElement('div');
+            d.className='mat-dropdown-item';
+            d.dataset.id=getId(m); d.dataset.unit=m.unit||''; d.dataset.name=m.name;
+            d.innerHTML='<span class="mat-item-name">'+esc(m.name)+'</span>'+
+                         '<span class="mat-item-unit">'+esc(m.unit||'')+'</span>';
+            d.addEventListener('mousedown',function(e){
+                e.preventDefault(); sel(this.dataset.id,this.dataset.name,this.dataset.unit);
+            });
+            dd.appendChild(d);
+        });
+    }
+
+    function sel(id,name,unit){
+        selId=id; selUnit=unit;
+        input.value=name;
+        input.classList.add('mat-selected');
+        clearBtn.classList.add('visible');
+        dd.classList.remove('open');
+        onSelect(id,name,unit);
+    }
+
+    function reset(){
+        selId=''; selUnit='';
+        input.value='';
+        input.classList.remove('mat-selected');
+        clearBtn.classList.remove('visible');
+        dd.classList.remove('open');
+        onSelect('','','');
+    }
+
+    input.addEventListener('focus',function(){ renderDd(input.value); dd.classList.add('open'); });
+    input.addEventListener('input',function(){
+        if(selId){ selId=''; selUnit=''; input.classList.remove('mat-selected'); onSelect('','',''); }
+        clearBtn.classList.toggle('visible', input.value.length>0);
+        renderDd(input.value); dd.classList.add('open');
+    });
+    input.addEventListener('blur',function(){ setTimeout(function(){ dd.classList.remove('open'); },160); });
+    input.addEventListener('keydown',function(e){
+        var items=dd.querySelectorAll('.mat-dropdown-item');
+        if(e.key==='ArrowDown'){
+            e.preventDefault();
+            kbdIdx=Math.min(kbdIdx+1,items.length-1);
+            items.forEach(function(el,i){ el.classList.toggle('kbd-active',i===kbdIdx); });
+        } else if(e.key==='ArrowUp'){
+            e.preventDefault();
+            kbdIdx=Math.max(kbdIdx-1,0);
+            items.forEach(function(el,i){ el.classList.toggle('kbd-active',i===kbdIdx); });
+        } else if(e.key==='Enter'){
+            e.preventDefault();
+            if(kbdIdx>=0&&items[kbdIdx]){
+                var el=items[kbdIdx];
+                sel(el.dataset.id,el.dataset.name,el.dataset.unit);
+            }
+        } else if(e.key==='Escape'){ dd.classList.remove('open'); }
+    });
+    clearBtn.addEventListener('click',reset);
+
+    return {
+        element:  wrap,
+        getId:    function(){ return selId; },
+        getUnit:  function(){ return selUnit; },
+        reset:    reset,
+        setValue: sel
+    };
+}
 
 
 /* ═══════════════════════════════════════
@@ -713,15 +877,11 @@ async function fetchProducts() {
   if (error) { toast(t('Could not load products', 'उत्पादने लोड होऊ शकले नाही'), 'error'); return; }
   products = data || [];
 
-  const sel = document.getElementById('productSelect');
-  // Clear and re-add default option
-  sel.innerHTML = `<option value="">${t('— Select Product —', '— उत्पादन निवडा —')}</option>`;
-  products.forEach(p => {
-    const o = document.createElement('option');
-    o.value = p.id;
-    o.textContent = p.product_code ? `${p.product_code} — ${p.name}` : p.name;
-    sel.appendChild(o);
-  });
+  const taItems = products.map(p => ({ id: p.id, name: p.name, unit: p.product_code || '', material_code: p.product_code || null }));
+  const mount = document.getElementById('productSelectMount');
+  mount.innerHTML = '';
+  productTypeahead = buildMatTypeahead(taItems, { placeholder: t('Search product...', 'उत्पादन शोधा...') });
+  mount.appendChild(productTypeahead.element);
 }
 
 async function fetchStockMap() {
@@ -768,7 +928,7 @@ async function fetchRawMaterials() {
    GENERATE BOM
 ═══════════════════════════════════════ */
 async function generateBOM() {
-  const productId = document.getElementById('productSelect').value;
+  const productId = productTypeahead ? productTypeahead.getId() : '';
   const batchQty  = parseFloat(document.getElementById('batchQty').value);
 
   if (!productId) { toast(t('Select a product first', 'आधी उत्पादन निवडा'), 'warn'); return; }
@@ -1165,7 +1325,7 @@ function openConfirm() {
   const shortfalls = deductRows.filter(
     r => (parseFloat(r.issueQty) || 0) > (parseFloat(r.stock) || 0)
   );
-  const p     = products.find(x => x.id === document.getElementById('productSelect').value);
+  const p     = products.find(x => x.id === (productTypeahead ? productTypeahead.getId() : ''));
   const batch = document.getElementById('batchQty').value;
 
   document.getElementById('modalSub').textContent =
@@ -1213,7 +1373,7 @@ async function submitIssue() {
   const confirmBtn = document.getElementById('confirmBtn');
   const btnLabel   = confirmBtn.querySelector('[data-en]');
 
-  const p         = products.find(x => x.id === document.getElementById('productSelect').value);
+  const p         = products.find(x => x.id === (productTypeahead ? productTypeahead.getId() : ''));
   const batchQty  = document.getElementById('batchQty').value;
   const issueDate = document.getElementById('issueDate').value;
   const notes     = document.getElementById('issueNotes').value.trim();
@@ -1356,7 +1516,7 @@ function resetForNewIssue() {
   manualSeed = 0;
   currentIssueOrderId = null;
   currentIssueChallanNumber = null;
-  document.getElementById('productSelect').value = '';
+  if (productTypeahead) productTypeahead.reset();
   document.getElementById('batchQty').value = '';
   document.getElementById('issueNotes').value = '';
   document.getElementById('bomSection').style.display = 'none';

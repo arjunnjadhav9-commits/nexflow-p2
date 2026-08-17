@@ -15,6 +15,7 @@
 <script src="js/auth.js"></script>
 <script src="js/utils.js"></script>
 <script src="js/navbar.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
     /* Not in js/navbar.js's NAV_LINKS — this page is reached only via the
        link on export.html, and still gates its own content directly in
@@ -124,10 +125,11 @@
         <!-- UPLOAD -->
         <div class="nx-card nx-mb-16">
             <div class="nx-card-header">
-                <div class="nx-card-title">Step 1 — Upload GSTR-2B JSON</div>
+                <div class="nx-card-title">Step 1 — Upload GSTR-2B</div>
             </div>
             <div class="gstr-upload-box">
-                <input type="file" id="jsonFileInput" accept=".json" class="nx-input" style="max-width:360px; margin:0 auto;">
+                <input type="file" id="jsonFileInput" accept=".json,.xlsx,.xls" class="nx-input" style="max-width:360px; margin:0 auto;">
+                <div style="margin-top:8px; font-size:11px; color:var(--mid);">GSTR-2B JSON or Excel (.json / .xlsx)</div>
                 <div id="periodDisplay" style="display:none; margin-top:14px; font-family:var(--condensed); font-weight:800; font-size:15px; color:var(--orange);"></div>
             </div>
             <div id="uploadError" class="nx-alert nx-alert-red nx-mt-16" style="display:none;">
@@ -137,6 +139,10 @@
             <div id="gstinWarning" class="nx-alert nx-alert-yellow nx-mt-16" style="display:none;">
                 <span class="nx-alert-icon">⚠</span>
                 <div id="gstinWarningText"></div>
+            </div>
+            <div id="excelFormatNote" class="nx-alert nx-alert-yellow nx-mt-16" style="display:none;">
+                <span class="nx-alert-icon">⚠</span>
+                <div>Excel format detected — cfs filing status and IMS action not available in Excel exports. All matched invoices treated as filed.</div>
             </div>
             <div id="reconcileError" class="nx-alert nx-alert-red nx-mt-16" style="display:none;">
                 <span class="nx-alert-icon">⚠</span>
@@ -354,6 +360,7 @@ function handleFileUpload(evt) {
     const file = evt.target.files[0];
     document.getElementById('uploadError').style.display = 'none';
     document.getElementById('gstinWarning').style.display = 'none';
+    document.getElementById('excelFormatNote').style.display = 'none';
     document.getElementById('reconcileError').style.display = 'none';
     document.getElementById('periodDisplay').style.display = 'none';
     document.getElementById('summarySection').style.display = 'none';
@@ -363,6 +370,15 @@ function handleFileUpload(evt) {
     periodInfo = null;
     if (!file) return;
 
+    const ext = file.name.toLowerCase().split('.').pop();
+    if (ext === 'xlsx' || ext === 'xls') {
+        handleExcelUpload(file);
+    } else {
+        handleJsonUpload(file);
+    }
+}
+
+function handleJsonUpload(file) {
     const reader = new FileReader();
     reader.onerror = () => showUploadError();
     reader.onload = () => {
@@ -407,6 +423,128 @@ function handleFileUpload(evt) {
         document.getElementById('runReconcileBtn').disabled = false;
     };
     reader.readAsText(file);
+}
+
+// ─── EXCEL UPLOAD ────────────────────────────────────────────────────────────
+// Most factory owners can only get GSTR-2B as an Excel export from the portal
+// (JSON needs API/offline-tool access). Sheet1 = "Taxable inward supplies
+// received from registered persons" (B2B invoices — the only sheet needed).
+// Parsed into the exact same { b2b: [...] } shape the JSON path produces, so
+// runReconciliation()'s matching/bucketing logic never has to know the source format.
+function parseGSTR2BExcel(workbook) {
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
+
+    const supplierMap = {};
+
+    for (const row of rows) {
+        const gstin = row[0];
+        // Skip metadata/header rows — a valid GSTIN is exactly 15 chars, which
+        // robustly distinguishes real data rows from the variable header block.
+        if (!gstin || typeof gstin !== 'string' || gstin.length !== 15) continue;
+
+        const name = String(row[1] || '').trim();
+        const inum = String(row[2] || '').trim();
+        // Excel gives DD/MM/YYYY — normalise to DD-MM-YYYY to match fmt2BDate()'s
+        // existing expectation (same separator convention as the JSON path's idt).
+        const idtRaw = row[4] != null ? String(row[4]).trim() : '';
+        const idt = idtRaw ? idtRaw.replace(/\//g, '-') : '';
+        const itcavl = String(row[15] || '').trim().toLowerCase() === 'yes' ? 'Y' : 'N';
+        const txval = parseFloat(row[8]) || 0;
+        const iamt = parseFloat(row[9]) || 0;
+        const camt = parseFloat(row[10]) || 0;
+        const samt = parseFloat(row[11]) || 0;
+
+        if (!inum) continue;
+
+        if (!supplierMap[gstin]) {
+            supplierMap[gstin] = {
+                ctin: gstin,
+                lglname: name,
+                trdnm: name,
+                cfs: 'Y',  // Excel export only ever contains filed invoices — no "not filed" concept to carry
+                inv: []
+            };
+        }
+
+        supplierMap[gstin].inv.push({
+            inum,
+            idt,
+            itcavl,
+            ims_status: 'NO_ACTION',  // Excel has no IMS action column — treat as auto-accepted, same as an unreviewed JSON row
+            itms: [{ txval, iamt, camt, samt }]
+        });
+    }
+
+    return { b2b: Object.values(supplierMap) };
+}
+
+// Excel has no rtn_prd-equivalent field, so the query period is derived from
+// the invoice dates actually present in the file (a real fact, not a guess).
+// Returns null when no row has a parseable date — treated as an invalid upload.
+function derivePeriodFromExcel(parsed) {
+    let minDate = null, maxDate = null;
+    parsed.b2b.forEach(supplierBlock => {
+        (supplierBlock.inv || []).forEach(inv => {
+            const parts = String(inv.idt || '').split('-');
+            if (parts.length !== 3) return;
+            const d = parseInt(parts[0], 10), m = parseInt(parts[1], 10), y = parseInt(parts[2], 10);
+            if (!d || !m || !y || m < 1 || m > 12) return;
+            const dt = new Date(y, m - 1, d);
+            if (isNaN(dt.getTime())) return;
+            if (!minDate || dt < minDate) minDate = dt;
+            if (!maxDate || dt > maxDate) maxDate = dt;
+        });
+    });
+    if (!minDate || !maxDate) return null;
+
+    const month = minDate.getMonth() + 1, year = minDate.getFullYear();
+    const lastMonthEndDay = new Date(maxDate.getFullYear(), maxDate.getMonth() + 1, 0).getDate();
+    return {
+        month, year,
+        monthLabel: MONTH_NAMES[month - 1],
+        firstOfMonth: minDate.getFullYear() + '-' + String(minDate.getMonth() + 1).padStart(2, '0') + '-01',
+        lastOfMonth: maxDate.getFullYear() + '-' + String(maxDate.getMonth() + 1).padStart(2, '0') + '-' + String(lastMonthEndDay).padStart(2, '0')
+    };
+}
+
+function handleExcelUpload(file) {
+    const reader = new FileReader();
+    reader.onerror = () => showUploadError();
+    reader.onload = () => {
+        let workbook;
+        try {
+            workbook = XLSX.read(new Uint8Array(reader.result), { type: 'array' });
+        } catch (e) {
+            showUploadError();
+            return;
+        }
+
+        const parsed = parseGSTR2BExcel(workbook);
+        if (!parsed.b2b.length) {
+            showUploadError();
+            return;
+        }
+
+        const period = derivePeriodFromExcel(parsed);
+        if (!period) {
+            showUploadError();
+            return;
+        }
+
+        parsedJson = parsed;
+        periodInfo = period;
+
+        // Deliberately generic — derived from invoice dates, not an authoritative
+        // rtn_prd field, so we never claim a specific month here (a few backdated
+        // invoices could make that claim wrong).
+        document.getElementById('periodDisplay').textContent = 'Period: detected from file';
+        document.getElementById('periodDisplay').style.display = 'block';
+        document.getElementById('excelFormatNote').style.display = 'flex';
+
+        document.getElementById('runReconcileBtn').disabled = false;
+    };
+    reader.readAsArrayBuffer(file);
 }
 
 // ─── RECONCILIATION ──────────────────────────────────────────────────────────

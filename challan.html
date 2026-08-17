@@ -278,7 +278,7 @@
             <table class="ch-items-table">
                 <thead>
                     <tr>
-                        <th style="text-align:center; width:48px;" data-en="Sr No" data-mr="क्र.">Sr No</th>
+                        <th id="th-sr-no" style="text-align:center; width:48px;" data-en="Sr No" data-mr="क्र.">Sr No</th>
                         <th style="text-align:left;" data-en="Description" data-mr="वर्णन">Description</th>
                         <th style="text-align:right; width:100px;" data-en="Quantity" data-mr="प्रमाण">Quantity</th>
                         <th style="text-align:center; width:72px;" data-en="Unit" data-mr="एकक">Unit</th>
@@ -287,7 +287,7 @@
                 <tbody id="items-body" style="min-height:36px;"></tbody>
                 <tfoot>
                     <tr>
-                        <td colspan="2" style="text-align:right;" data-en="TOTAL" data-mr="एकूण">TOTAL</td>
+                        <td id="td-total-label" colspan="2" style="text-align:right;" data-en="TOTAL" data-mr="एकूण">TOTAL</td>
                         <td id="total-quantity" style="text-align:right;"></td>
                         <td></td>
                     </tr>
@@ -449,6 +449,21 @@
 
             const itemsBody = document.getElementById('items-body');
             itemsBody.innerHTML = '';
+
+            // PO No column: only shown when at least one line item carries a
+            // per-item PO number (Datta Prasad-style clients). Absent entirely
+            // when no item has one (SS Engineering's challan stays unchanged).
+            const showPoCol = items.some(item => item.po_number != null && item.po_number !== '');
+            const existingPoHeader = document.getElementById('th-po-no');
+            if (existingPoHeader) existingPoHeader.remove();
+            if (showPoCol) {
+                document.getElementById('th-sr-no').insertAdjacentHTML(
+                    'afterend',
+                    '<th id="th-po-no" style="text-align:left; width:90px;" data-en="PO No" data-mr="PO क्र.">PO No</th>'
+                );
+            }
+            document.getElementById('td-total-label').colSpan = showPoCol ? 3 : 2;
+
             let totalQty = 0;
             items.forEach((item, i) => {
                 let name;
@@ -465,9 +480,13 @@
                     name = item.p2_products?.name || item.material_name || 'Unknown Product';
                 }
                 const unit = item.unit || item.p2_products?.unit || '';
+                const poCell = showPoCol
+                    ? `<td style="vertical-align:middle; padding:10px;">${item.po_number || ''}</td>`
+                    : '';
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td style="text-align:center; vertical-align:middle; padding:10px;">${i + 1}</td>
+                    ${poCell}
                     <td style="vertical-align:middle; padding:10px;">${name}</td>
                     <td style="text-align:right; vertical-align:middle; padding:10px;">${formatNumber(item.qty_dispatched)}</td>
                     <td style="text-align:center; vertical-align:middle; padding:10px;">${unit}</td>`;
@@ -701,10 +720,19 @@
             const sigCompany     = document.getElementById('signature-company').textContent.trim();
             const totalQty       = document.getElementById('total-quantity').textContent.trim();
 
+            const showPoCol = !!document.getElementById('th-po-no');
+            const lastCol = showPoCol ? 'E' : 'D';
+
             const itemRows = document.querySelectorAll('#items-body tr');
             const items = Array.from(itemRows).map(row => {
                 const cells = row.querySelectorAll('td');
-                return {
+                return showPoCol ? {
+                    srNo: cells[0]?.textContent.trim() || '',
+                    poNo: cells[1]?.textContent.trim() || '',
+                    desc: cells[2]?.textContent.trim() || '',
+                    qty:  cells[3]?.textContent.trim() || '',
+                    unit: cells[4]?.textContent.trim() || ''
+                } : {
                     srNo: cells[0]?.textContent.trim() || '',
                     desc: cells[1]?.textContent.trim() || '',
                     qty:  cells[2]?.textContent.trim() || '',
@@ -723,30 +751,30 @@
                 right:  { style: 'thin' }
             };
 
-            // Row 1: DELIVERY CHALLAN — bold, centered across all 4 cols
-            const r1 = ws.addRow(['DELIVERY CHALLAN', '', '', '']);
-            ws.mergeCells(`A${r1.number}:D${r1.number}`);
+            // Row 1: DELIVERY CHALLAN — bold, centered across all cols
+            const r1 = ws.addRow(showPoCol ? ['DELIVERY CHALLAN', '', '', '', ''] : ['DELIVERY CHALLAN', '', '', '']);
+            ws.mergeCells(`A${r1.number}:${lastCol}${r1.number}`);
             r1.getCell(1).font = { bold: true, size: 13 };
             r1.getCell(1).alignment = { horizontal: 'center' };
             r1.getCell(1).border = thinBorder;
 
             // Row 2: Company name — bold, centered
-            const r2 = ws.addRow([companyName, '', '', '']);
-            ws.mergeCells(`A${r2.number}:D${r2.number}`);
+            const r2 = ws.addRow(showPoCol ? [companyName, '', '', '', ''] : [companyName, '', '', '']);
+            ws.mergeCells(`A${r2.number}:${lastCol}${r2.number}`);
             r2.getCell(1).font = { bold: true, size: 12 };
             r2.getCell(1).alignment = { horizontal: 'center' };
             r2.getCell(1).border = thinBorder;
 
             // Row 3: Company details — centered
-            const r3 = ws.addRow([companyDetails, '', '', '']);
-            ws.mergeCells(`A${r3.number}:D${r3.number}`);
+            const r3 = ws.addRow(showPoCol ? [companyDetails, '', '', '', ''] : [companyDetails, '', '', '']);
+            ws.mergeCells(`A${r3.number}:${lastCol}${r3.number}`);
             r3.getCell(1).alignment = { horizontal: 'center', wrapText: true };
             r3.height = 90;
             r3.getCell(1).border = thinBorder;
 
             // Row 4: blank separator
-            const r4 = ws.addRow(['', '', '', '']);
-            ws.mergeCells(`A${r4.number}:D${r4.number}`);
+            const r4 = ws.addRow(showPoCol ? ['', '', '', '', ''] : ['', '', '', '']);
+            ws.mergeCells(`A${r4.number}:${lastCol}${r4.number}`);
             r4.getCell(1).border = thinBorder;
 
             // Rows 5-7: TO block (left) + Challan meta (right) — side by side
@@ -756,6 +784,7 @@
                 [clientLines[0] || '',     '', 'Date',         challanDate],
                 [clientLines[1] || '',     '', 'Po No.',       poNo],
             ];
+            if (showPoCol) toData.forEach(rowData => rowData.push(''));
             toData.forEach(rowData => {
                 const r = ws.addRow(rowData);
                 // Left cell (TO block) — merge A+B
@@ -768,13 +797,15 @@
             });
 
             // Note row
-            const rNote = ws.addRow([note, '', '', '']);
-            ws.mergeCells(`A${rNote.number}:D${rNote.number}`);
+            const rNote = ws.addRow(showPoCol ? [note, '', '', '', ''] : [note, '', '', '']);
+            ws.mergeCells(`A${rNote.number}:${lastCol}${rNote.number}`);
             rNote.getCell(1).font = { italic: true };
             rNote.getCell(1).border = thinBorder;
 
             // Header row
-            const rHead = ws.addRow(['Sr No.', 'Description', 'Quantity', 'Unit']);
+            const rHead = ws.addRow(showPoCol
+                ? ['Sr No.', 'PO No', 'Description', 'Quantity', 'Unit']
+                : ['Sr No.', 'Description', 'Quantity', 'Unit']);
             rHead.eachCell(cell => {
                 cell.font = { bold: true };
                 cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE5E7EB' } };
@@ -784,40 +815,66 @@
 
             // Item rows
             items.forEach(item => {
-                const r = ws.addRow([item.srNo, item.desc, item.qty, item.unit]);
+                const r = showPoCol
+                    ? ws.addRow([item.srNo, item.poNo, item.desc, item.qty, item.unit])
+                    : ws.addRow([item.srNo, item.desc, item.qty, item.unit]);
                 r.eachCell(cell => { cell.border = thinBorder; });
                 r.getCell(1).alignment = { horizontal: 'center' };
-                r.getCell(3).alignment = { horizontal: 'right' };
-                r.getCell(4).alignment = { horizontal: 'center' };
+                if (showPoCol) {
+                    r.getCell(2).alignment = { horizontal: 'center' };
+                    r.getCell(4).alignment = { horizontal: 'right' };
+                    r.getCell(5).alignment = { horizontal: 'center' };
+                } else {
+                    r.getCell(3).alignment = { horizontal: 'right' };
+                    r.getCell(4).alignment = { horizontal: 'center' };
+                }
             });
 
             // Total row
-            const rTotal = ws.addRow(['', 'TOTAL', totalQty, '']);
+            const totalLabelCol = showPoCol ? 3 : 2;
+            const totalQtyCol = showPoCol ? 4 : 3;
+            const rTotal = showPoCol
+                ? ws.addRow(['', '', 'TOTAL', totalQty, ''])
+                : ws.addRow(['', 'TOTAL', totalQty, '']);
             rTotal.eachCell(cell => { cell.border = thinBorder; });
-            rTotal.getCell(2).font = { bold: true };
-            rTotal.getCell(2).alignment = { horizontal: 'right' };
-            rTotal.getCell(3).font = { bold: true };
-            rTotal.getCell(3).alignment = { horizontal: 'right' };
+            rTotal.getCell(totalLabelCol).font = { bold: true };
+            rTotal.getCell(totalLabelCol).alignment = { horizontal: 'right' };
+            rTotal.getCell(totalQtyCol).font = { bold: true };
+            rTotal.getCell(totalQtyCol).alignment = { horizontal: 'right' };
 
             // Blank row
-            ws.addRow(['', '', '', '']);
+            ws.addRow(showPoCol ? ['', '', '', '', ''] : ['', '', '', '']);
 
-            // Signature row
-            const rSig = ws.addRow(['Receivers Signature', '', 'For ' + sigCompany, '']);
-            ws.mergeCells(`C${rSig.number}:D${rSig.number}`);
+            // Signature row — "For company" block starts right after the
+            // Description column ends, spanning through to the last column.
+            const sigStartColNum = showPoCol ? 4 : 3;
+            const sigStartCol = String.fromCharCode(64 + sigStartColNum);
+            const rSig = showPoCol
+                ? ws.addRow(['Receivers Signature', '', '', 'For ' + sigCompany, ''])
+                : ws.addRow(['Receivers Signature', '', 'For ' + sigCompany, '']);
+            ws.mergeCells(`${sigStartCol}${rSig.number}:${lastCol}${rSig.number}`);
             rSig.getCell(1).border = thinBorder;
-            rSig.getCell(3).border = thinBorder;
-            rSig.getCell(3).font = { bold: true };
+            rSig.getCell(sigStartColNum).border = thinBorder;
+            rSig.getCell(sigStartColNum).font = { bold: true };
 
-            const rAuth = ws.addRow(['', '', 'Authorized Signatory', '']);
-            ws.mergeCells(`C${rAuth.number}:D${rAuth.number}`);
-            rAuth.getCell(3).border = thinBorder;
+            const rAuth = showPoCol
+                ? ws.addRow(['', '', '', 'Authorized Signatory', ''])
+                : ws.addRow(['', '', 'Authorized Signatory', '']);
+            ws.mergeCells(`${sigStartCol}${rAuth.number}:${lastCol}${rAuth.number}`);
+            rAuth.getCell(sigStartColNum).border = thinBorder;
 
             // Column widths
             ws.getColumn(1).width = 6;
-            ws.getColumn(2).width = 35;
-            ws.getColumn(3).width = 14;
-            ws.getColumn(4).width = 25;
+            if (showPoCol) {
+                ws.getColumn(2).width = 14;
+                ws.getColumn(3).width = 35;
+                ws.getColumn(4).width = 14;
+                ws.getColumn(5).width = 25;
+            } else {
+                ws.getColumn(2).width = 35;
+                ws.getColumn(3).width = 14;
+                ws.getColumn(4).width = 25;
+            }
 
             // Download
             const buffer = await workbook.xlsx.writeBuffer();

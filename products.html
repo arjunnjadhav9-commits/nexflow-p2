@@ -158,6 +158,10 @@
                                 <label data-en="HSN / SAC" data-mr="HSN / SAC">HSN / SAC</label>
                                 <input type="text" name="hsn_sac" class="nx-input" placeholder="8414" data-en="8414" data-mr="8414">
                             </div>
+                            <div class="nx-form-group">
+                                <label data-en="Default PO Number" data-mr="डीफॉल्ट PO क्रमांक">Default PO Number</label>
+                                <input type="text" name="default_po_number" class="nx-input" placeholder="e.g. 27/1585">
+                            </div>
                             <button type="submit" class="nx-btn nx-btn-green nx-btn-full"
                                     data-en="Add Product" data-mr="उत्पादन जोडा">Add Product</button>
                         </form>
@@ -324,6 +328,10 @@
                     <label data-en="HSN / SAC" data-mr="HSN / SAC">HSN / SAC</label>
                     <input type="text" id="edit-product-hsn" class="nx-input" placeholder="8414" data-en="8414" data-mr="8414">
                 </div>
+                <div class="nx-form-group">
+                    <label data-en="Default PO Number" data-mr="डीफॉल्ट PO क्रमांक">Default PO Number</label>
+                    <input type="text" id="edit-product-default-po" class="nx-input" placeholder="e.g. 27/1585">
+                </div>
                 <div style="display:flex; gap:10px;">
                     <button type="submit" class="nx-btn nx-btn-green" style="flex:1;"
                             data-en="Save Changes" data-mr="बदल साठवा">Save Changes</button>
@@ -444,15 +452,18 @@
                 const bomBadge = product.hasBOM
                     ? '<span class="nx-badge nx-badge-green">BOM Set</span>'
                     : '<span class="nx-badge nx-badge-yellow" data-en="No BOM ⚠" data-mr="BOM नाही ⚠">No BOM ⚠</span>';
+                const poLabel = product.default_po_number
+                    ? `<div style="font-size:11px; color:var(--mid); font-weight:400; margin-top:2px;">PO: ${product.default_po_number}</div>`
+                    : '';
 
                 const row = document.createElement('tr');
                 row.innerHTML = `
-                    <td class="nx-td-bold">${product.name}</td>
+                    <td class="nx-td-bold">${product.name}${poLabel}</td>
                     <td style="color:var(--mid);">${product.unit}</td>
                     <td>${bomBadge}</td>
                     <td style="text-align:center;">
                         <div style="display:flex; gap:6px; justify-content:center;">
-                            <button onclick="editProduct('${product.id}', '${product.name.replace(/'/g, "\\'")}', '${(product.description || '').replace(/'/g, "\\'")}', '${product.unit}', '${(product.hsn_sac || '').replace(/'/g, "\\'")}')"
+                            <button onclick="editProduct('${product.id}', '${product.name.replace(/'/g, "\\'")}', '${(product.description || '').replace(/'/g, "\\'")}', '${product.unit}', '${(product.hsn_sac || '').replace(/'/g, "\\'")}', '${(product.default_po_number || '').replace(/'/g, "\\'")}')"
                                     class="nx-btn nx-btn-secondary nx-btn-sm"
                                     data-en="Edit" data-mr="संपादित करा">Edit</button>
                             <button onclick="deactivateProduct('${product.id}')"
@@ -599,10 +610,11 @@
                         const { error: reactivateErr } = await supabaseClient
                             .from('p2_products')
                             .update({
-                                is_active:   true,
-                                description: formData.get('description'),
-                                unit:        formData.get('unit'),
-                                hsn_sac:     formData.get('hsn_sac')?.trim() || null
+                                is_active:          true,
+                                description:        formData.get('description'),
+                                unit:               formData.get('unit'),
+                                hsn_sac:             formData.get('hsn_sac')?.trim() || null,
+                                default_po_number:  formData.get('default_po_number')?.trim() || null
                             })
                             .eq('id', existing.id);
 
@@ -624,11 +636,12 @@
                     const { error } = await supabaseClient
                         .from('p2_products')
                         .insert({
-                            name:        productName,
-                            description: formData.get('description'),
-                            unit:        formData.get('unit'),
-                            hsn_sac:     formData.get('hsn_sac')?.trim() || null,
-                            tenant_id:   currentTenantId
+                            name:               productName,
+                            description:        formData.get('description'),
+                            unit:               formData.get('unit'),
+                            hsn_sac:             formData.get('hsn_sac')?.trim() || null,
+                            default_po_number:  formData.get('default_po_number')?.trim() || null,
+                            tenant_id:          currentTenantId
                         });
                     if (error) throw error;
                     const lang = localStorage.getItem('nexflow_lang') || 'en';
@@ -729,10 +742,11 @@
                 const description = document.getElementById('edit-product-description').value;
                 const unit        = document.getElementById('edit-product-unit').value;
                 const hsnSac      = document.getElementById('edit-product-hsn').value.trim();
+                const defaultPo   = document.getElementById('edit-product-default-po').value.trim();
                 try {
                     const { error } = await supabaseClient
                         .from('p2_products')
-                        .update({ name, description, unit, hsn_sac: hsnSac || null })
+                        .update({ name, description, unit, hsn_sac: hsnSac || null, default_po_number: defaultPo || null })
                         .eq('id', id)
                         .eq('tenant_id', currentTenantId);
                     if (error) throw error;
@@ -765,12 +779,13 @@
             }
         }
 
-        function editProduct(id, name, description, unit, hsnSac = '') {
+        function editProduct(id, name, description, unit, hsnSac = '', defaultPo = '') {
             document.getElementById('edit-product-id').value          = id;
             document.getElementById('edit-product-name').value        = name;
             document.getElementById('edit-product-description').value = description;
             document.getElementById('edit-product-unit').value        = unit;
             document.getElementById('edit-product-hsn').value         = hsnSac;
+            document.getElementById('edit-product-default-po').value  = defaultPo;
             document.getElementById('edit-product-modal').style.display = 'flex';
         }
 

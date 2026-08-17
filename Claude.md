@@ -86,7 +86,7 @@ Mobile-first: owners use phones. Must work on mobile browser.
   tenant_id, product_id, price, effective_date, notes, created_at. Same "latest by
   effective_date" idiom as p2_material_prices — order by effective_date desc, keep first
   hit per id. Note the column is `price`, not `price_per_unit` (unlike p2_material_prices).
-- p2_invoices — client billing invoice (proforma, NOT a GST filing document — see GST
+- p2_invoices — client billing tax invoice — legally formatted with SAC/HSN, GSTIN, CGST/SGST split, Original/Duplicate/Triplicate copies, Reverse Charge field. NOT a GST filing tool — invoice generation is in scope, GSTR-1/GSTR-3B submission is not. — see GST
   Scope below). Columns: id, tenant_id, invoice_number, dispatch_order_id (single mode only,
   NULL for consolidated), client_id, client_name/client_address/client_gstin (frozen snapshot,
   same philosophy as challan's client fields), items jsonb (frozen line-item snapshot —
@@ -437,6 +437,9 @@ bom_detail, top_supplier
 - Cron jobid 3 uses anon key (not service role key) — confirmed by reading
   live cron.job table. current_setting('app.settings.service_role_key') is NOT
   configured in this project — never use it.
+- challan.html PO column: showPoCol flag gates ALL changes (thead, tfoot colspan, row cells, Excel
+  indices/merges) — if adding any new challan column in future, update both the static=false and
+  showPoCol=true paths.
 
 ### Proactive Telegram layer
 - Daily briefing (check-low-stock): 8am IST via pg_net cron (jobid 2, 30 2 * * *)
@@ -737,6 +740,16 @@ All four changes mirrored into sendTallyExportIntent() in agent-query/index.ts.
 - ❌ ITC Blocked — in Nexflow GRN but not in JSON (supplier hasn't filed GSTR-1)
 - ❓ Unrecorded — in JSON but no GRN in Nexflow (unrecorded purchase or fraudulent IMS auto-accept)
 
+**cfs:N warning (shipped August 14, 2026):**
+- `cfs` field is read from each supplier block (ctin level) in the b2b array and stored on
+  every invoice entry in the match map
+- Matched rows where `cfs === 'N'` get `cfs_warning: true` flag
+- Matched table shows amber `⚠ Not Filed` badge (`.gstr-cfs-badge`) with tooltip on supplier
+  name cell
+- Matched stat card shows `#statMatchedCfsWarning` div when any matched row has cfs_warning
+- XLSX Matched sheet has `CFS Warning` column — "Not Filed" or blank
+- These rows stay in Matched bucket — do NOT move them to a separate bucket
+
 **Error messages — all plain English, no generic errors:**
 - Plan gate: "GSTR-2B Reconciliation is available on the Pro and Founder plan..."
 - Role gate: "Only the owner or accountant can access this page."
@@ -787,6 +800,72 @@ Saved locally as gstr2b-test-august-2026.json (not committed — contains test d
 Tests: HCL-2608-001 (Matched), TSL-2608-012 (Amount Mismatch — txval 9600 vs 9450),
 BEL-2608-041 (Matched, multi-row GRN), KFP-2608-099 (Unrecorded + NO_ACTION).
 
+## Shipped Aug 17, 2026
+
+**Bug scan P0 — security + data integrity:**
+- agent-query: all confirm_* handlers now verify caller JWT + tenant_id match before executing (was trusting client-supplied tenant_id against service role client — full cross-tenant read/write hole)
+- confirm-dispatch Edge Function: added JWT auth (was completely unauthenticated)
+- confirm_dispatch_transaction RPC: EXECUTE revoked from authenticated, service_role only
+- Stock deduction race: sufficiency check + deduction now in same locked RPC transaction
+- importMaterials() / submitBulkImport(): root cause found — duplicate name within file spanning 50-row batch chunks caused batch 3+ to conflict with rows already committed by batch 1-2. Fix: deduplicate names in previewMaterials()/previewBulkData() before chunking. Additional fix: single-statement insert replaces batch loop (eliminates race entirely), double-invocation guard added, confirm() guard before delete, retry re-enables button on failure.
+- dispatch.html / rm-dispatch.html: orphaned "confirmed" order fixed — status set to confirmed only AFTER RPC succeeds, not before. Double-submit guard added.
+- grn.html: double-submit guard added — was creating duplicate GRN entries on double-click.
+
+**Bug scan P1 — staff tenant resolution + feature correctness:**
+- 7 files used raw user.id instead of user.user_metadata?.tenant_id || user.id — broke every non-owner staff role silently (export.html, reports.html, js/supabase-client.js, receive.html x2, js/agent-chat.js, index.html)
+- export.html: missing role gate added (storekeeper/operator could download full GST export)
+- createAndSendInvoice(): invoice now inserts as draft, flips to sent only after email succeeds
+- confirmMultiGrn(): quantity validation added (was accepting zero/negative qty)
+- dispatch.html showConsumptionModal(): double-subtraction bug fixed — was showing false low-stock warnings after every dispatch
+- all-dispatch-history.html: request-token guard added to openDetail() + openInvoiceModal() — race could show/submit wrong order's invoice data
+
+**Bug scan P2 — listener leaks, double-submit, silent errors, validation:**
+- Window scroll/resize listener leaks fixed: grn.html, production-issue.html, dispatch.html, rm-dispatch.html (leaked on every row add/remove and every amend modal open)
+- Double-submit guards: products.html BOM add, accept-invite.html password form, Cancel Challan across 4 history pages
+- challan.html: note-edit failure now toasts instead of silent console.error
+- gstr2b-reconcile.html: real error message surfaced instead of hardcoded generic string
+- reports.html: overlapping-fetch guard added to Generate Report
+- js/agent-chat.js addConfirmCard(): keeps card on transient network error (was discarding, forcing full retype + quota spend to retry)
+- settings.html: submitBulkImport uses fresh tenantPlan not stale isPro(); deleteClient() blocks if invoices reference client; 6 mutations now filter by tenant_id explicitly
+- invite-staff: role field whitelisted against known roles before DB insert
+- agent-query confirmGenerateInvoice(): negative/non-finite rate now rejected
+- New migrations (run manually): 20260817_invoice_consolidated_dedup_index.sql (partial unique index for consolidated invoice dedup), 20260817_enforce_material_cap_lite.sql (DB trigger backing 250-material Lite cap)
+
+**Per-product PO number:**
+- p2_products.default_po_number: TEXT nullable — standing PO per product, auto-fills dispatch
+- p2_dispatch_items.po_number: TEXT nullable — actual PO used per line item, editable at dispatch time
+- products.html: Default PO field in add/edit form, grey subtitle in product list when set
+- dispatch.html: PO No. inline input per dispatch line item, pre-fills from product default, editable
+- challan.html: PO No column rendered conditionally — only when ≥1 item has po_number set. SS Engineering challans completely unchanged. Excel export updated to match.
+- Migration: 20260817_product_po_numbers.sql — run manually
+
+**Product search on dispatch + production-issue:**
+- dispatch.html: plain <select> replaced with searchable typeahead widget (mirrors rm-dispatch.html pattern)
+- production-issue.html: same — product_code mapped into search badge slot so users can search by code
+
+**Tax invoice scope clarification (CLAUDE.md correction):**
+- p2_invoices generates legally-formatted tax invoices (SAC/HSN, GSTIN, CGST/SGST split, Original/Duplicate/Triplicate, Reverse Charge field) — NOT proforma
+- Scope boundary: invoice generation is IN scope. GSTR-1/GSTR-3B submission is NOT (Tally's job)
+- All marketing copy updated to say "Tax Invoice" not "Proforma Invoice"
+
+**Onboarding tool fixes:**
+- importMaterials() now uses single-statement insert (no batch loop), running-flag guard, confirm() before delete when materials exist, retry re-enables button on failure
+
+**GSTR-2B Excel upload (gstr2b-reconcile.html):**
+- Accepts .json OR .xlsx/.xls — same file input, format auto-detected by extension
+- SheetJS (xlsx@0.18.5) added to page for Excel parsing
+- parseGSTR2BExcel(): reads Sheet1, skips header rows by GSTIN validation,
+  maps columns to same {b2b:[...]} shape as JSON path
+- derivePeriodFromExcel(): derives period from min/max invoice dates in file
+- Period display shows "Period: detected from file" for Excel (no specific month claimed)
+- cfs always "Y" for Excel (portal only exports filed invoices)
+- ims_status always "NO_ACTION" for Excel
+- #excelFormatNote shown for Excel uploads explaining cfs/IMS limitations
+- itcavl="No" rows land in Matched with ₹0 ITC (not Blocked) — same as JSON path
+- Unrecorded rows show real Invoice Date from Excel column [4]
+- runReconciliation(), renderTables(), downloadReport() untouched
+
 ## GST Scope — PERMANENTLY LOCKED
-Nexflow P2 is operational software only. No GST filing, no GSTR generation, no financial reporting layer.
-That is Tally's job. Never revisit this decision.
+Nexflow P2 generates tax invoices for client billing. It does NOT handle GST filing, GSTR
+generation, or financial reporting. GSTR-1/GSTR-3B submission is Tally's job. Never revisit
+this boundary.

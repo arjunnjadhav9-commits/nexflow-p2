@@ -957,79 +957,90 @@
     async function importMaterials() {
         if (!activeTenantId || !materialsRows.length) return;
 
-        // This unconditionally deletes ALL of the tenant's existing materials
-        // before every re-import (e.g. re-uploading after fixing a typo),
-        // reinserting them under brand-new UUIDs — which orphans/cascades
-        // away any BOM lines or stock transactions already referencing the
-        // old material IDs if this tenant already has live data. Confirm
-        // before doing that; a fresh onboarding (empty tenant) skips the
-        // prompt entirely.
-        const { count: existingCount } = await window.supabase
-            .from('p2_raw_materials')
-            .select('id', { count: 'exact', head: true })
-            .eq('tenant_id', activeTenantId);
-
-        if (existingCount && existingCount > 0) {
-            const proceed = confirm(
-                `This tenant already has ${existingCount} materials. Re-importing will DELETE all of them ` +
-                `(and any BOM/stock records still pointing at them) and replace them with this file's rows. Continue?`
-            );
-            if (!proceed) return;
-        }
-
         const btn = document.getElementById('importMaterialsBtn');
+        // Hard guard — if already running, do nothing
+        if (btn.dataset.running === 'true') return;
+        btn.dataset.running = 'true';
         btn.disabled = true;
         btn.textContent = 'Importing…';
 
-        log('step3Log', `Clearing existing materials for this tenant…`, 'info');
-
-        const { error: delError } = await window.supabase
+        // Before the delete, check if materials already exist for this tenant
+        const { count } = await window.supabase
             .from('p2_raw_materials')
-            .delete()
+            .select('*', { count: 'exact', head: true })
             .eq('tenant_id', activeTenantId);
 
-        if (delError) {
-            log('step3Log', 'Delete error: ' + delError.message, 'err');
-            toast('Failed to clear existing materials', 'error');
-            btn.disabled = false;
-            btn.textContent = 'Import Materials →';
-            return;
-        }
-
-        log('step3Log', `✓ Cleared. Starting import of ${materialsRows.length} materials…`, 'info');
-
-        const payload = materialsRows.map(r => ({ ...r, tenant_id: activeTenantId, is_active: true }));
-
-        // Insert in batches of 50
-        let imported = 0, failed = 0;
-        for (let i = 0; i < payload.length; i += 50) {
-            const batch = payload.slice(i, i + 50);
-            const { error } = await window.supabase
-                .from('p2_raw_materials')
-                .insert(batch);
-            if (error) {
-                log('step3Log', `Batch ${Math.floor(i/50)+1} error: ${error.message}`, 'err');
-                failed += batch.length;
-            } else {
-                imported += batch.length;
-                log('step3Log', `Batch ${Math.floor(i/50)+1}: ${batch.length} materials saved`, 'ok');
+        if (count > 0) {
+            const confirmed = confirm(
+                `This tenant already has ${count} materials.\n\nRe-importing will DELETE all existing materials and may orphan BOM and stock records tied to them.\n\nContinue?`
+            );
+            if (!confirmed) {
+                btn.dataset.running = 'false';
+                btn.disabled = false;
+                btn.textContent = 'Import Materials →';
+                return;
             }
         }
 
-        // Now insert opening stock for rows that had current_stock
-        const stockRows = materialsRows.filter(r => r.current_stock !== null);
-        if (stockRows.length > 0) {
-            log('step3Log', `Inserting opening stock for ${stockRows.length} materials…`, 'info');
-            await insertOpeningStockFromMaterials(stockRows);
+        try {
+            // Step 1: Delete ALL existing materials for this tenant
+            // Must fully resolve before any insert begins
+            log('step3Log', 'Clearing existing materials…', 'info');
+            const { error: delError } = await window.supabase
+                .from('p2_raw_materials')
+                .delete()
+                .eq('tenant_id', activeTenantId);
+
+            if (delError) {
+                log('step3Log', 'Clear failed: ' + delError.message, 'err');
+                toast('Failed to clear existing materials: ' + delError.message, 'error');
+                return;
+            }
+            log('step3Log', '✓ Cleared.', 'ok');
+
+            // Step 2: Build full payload
+            const payload = materialsRows.map(r => ({
+                ...r,
+                tenant_id: activeTenantId,
+                is_active: true
+            }));
+
+            // Step 3: Insert ALL rows in one single statement, not batches
+            // Batching was the source of the race — one statement is atomic
+            log('step3Log', `Inserting ${payload.length} materials in one operation…`, 'info');
+            const { error: insertError } = await window.supabase
+                .from('p2_raw_materials')
+                .insert(payload);
+
+            if (insertError) {
+                log('step3Log', 'Insert failed: ' + insertError.message, 'err');
+                toast('Import failed: ' + insertError.message, 'error');
+                return;
+            }
+
+            log('step3Log', `✓ ${payload.length} materials imported.`, 'ok');
+            toast(`${payload.length} materials imported`, 'success');
+
+            // Step 4: Opening stock
+            const stockRows = materialsRows.filter(r => r.current_stock !== null);
+            if (stockRows.length > 0) {
+                log('step3Log', `Inserting opening stock for ${stockRows.length} materials…`, 'info');
+                await insertOpeningStockFromMaterials(stockRows);
+            }
+
+            btn.textContent = '✓ Imported';
+            await loadDbMaterials();
+            document.getElementById('step4Section').style.display = 'block';
+            setStep(4);
+
+        } finally {
+            btn.dataset.running = 'false';
+            // Only leave button disabled if import succeeded (text was changed to ✓ Imported)
+            if (btn.textContent !== '✓ Imported') {
+                btn.disabled = false;
+                btn.textContent = 'Import Materials →';
+            }
         }
-
-        log('step3Log', `✓ Done. ${imported} imported · ${failed} failed`, imported > 0 ? 'ok' : 'err');
-        toast(`${imported} materials imported`, imported > 0 ? 'success' : 'error');
-
-        btn.textContent = '✓ Imported';
-        await loadDbMaterials();
-        document.getElementById('step4Section').style.display = 'block';
-        setStep(4);
     }
 
     async function insertOpeningStockFromMaterials(rows) {
