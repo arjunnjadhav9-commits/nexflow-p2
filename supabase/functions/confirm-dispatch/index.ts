@@ -84,6 +84,23 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
+    // Verify the caller's real identity before touching another tenant's
+    // dispatch order — tenant_id here is the caller's own auth uid for an
+    // owner, but for an invited staff member it's stamped into
+    // user_metadata.tenant_id instead (see invite-staff/index.ts).
+    const authHeader = req.headers.get('Authorization') ?? ''
+    const token = authHeader.replace('Bearer ', '')
+    const { data: { user }, error: userError } = await supabase.auth.getUser(token)
+
+    if (userError || !user) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Unauthorized' }),
+        { status: 401, headers: { 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const callerTenantId = (user.user_metadata as { tenant_id?: string } | null)?.tenant_id || user.id
+
     // (1) Check dispatch status — if already confirmed, return early (idempotent)
     const { data: dispatchOrder, error: dispatchError } = await supabase
       .from('p2_dispatch_orders')
@@ -95,6 +112,13 @@ Deno.serve(async (req) => {
       return new Response(
         JSON.stringify({ success: false, error: 'Dispatch order not found' }),
         { status: 404, headers: { 'Content-Type': 'application/json' } }
+      )
+    }
+
+    if (dispatchOrder.tenant_id !== callerTenantId) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Unauthorized' }),
+        { status: 401, headers: { 'Content-Type': 'application/json' } }
       )
     }
 

@@ -2085,8 +2085,22 @@
                 .select('name').eq('tenant_id', tenantId).eq('is_active', true);
             if (fetchErr) throw fetchErr;
 
+            // Cross-batch duplicate-key guard: existingNames only reflects
+            // what's already in the DB at the moment this function starts —
+            // if the uploaded file itself contains the same name twice, both
+            // occurrences pass this filter and land in toInsert. If they
+            // land in different 50-row chunks below, the second chunk's
+            // insert collides against the first chunk's already-committed
+            // row and throws, aborting the import mid-way with earlier
+            // chunks left committed. Track accepted names as toInsert is
+            // built so a same-file duplicate is skipped, not just a DB one.
             const existingNames = new Set((existing||[]).map(m => m.name.toLowerCase()));
-            const toInsert = bulkRows.filter(r => !existingNames.has(r.name.toLowerCase()));
+            const toInsert = bulkRows.filter(r => {
+                const nameKey = r.name.toLowerCase();
+                if (existingNames.has(nameKey)) return false;
+                existingNames.add(nameKey);
+                return true;
+            });
 
             if (!isPro()) {
                 const currentCount  = existing.length;

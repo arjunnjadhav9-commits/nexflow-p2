@@ -979,7 +979,13 @@
                     po_number:        document.getElementById('poNumber').value.trim() || null,
                     your_challan_ref: document.getElementById('challanRef').value.trim() || null,
                     vehicle_number:   document.getElementById('vehicleNumber').value.trim() || null,
-                    status:           'confirmed',
+                    // Written as 'draft' here — confirm_dispatch_transaction's own
+                    // final UPDATE (below) only flips this to 'confirmed' after
+                    // stock has actually been deducted, so a failure anywhere
+                    // between here and that RPC call leaves the order correctly
+                    // visible as an incomplete draft instead of an orphaned
+                    // "confirmed" challan with no stock ever deducted.
+                    status:           'draft',
                     dispatch_type:    'raw_material',
                     challan_number:   String(challanNumber),
                     dispatch_date:    document.getElementById('dispatchDate').value || new Date().toISOString().split('T')[0],
@@ -1012,6 +1018,11 @@
                     if (error) throw error;
                     orderId = data.id;
                 }
+
+                // Tie any retry within this same call (e.g. after items-insert or
+                // the confirm RPC fails below) to this same order instead of
+                // inserting a duplicate on the next click.
+                currentDispatchId = orderId;
 
                 // Insert items
                 const itemRows = dispatchItems.map(item => ({

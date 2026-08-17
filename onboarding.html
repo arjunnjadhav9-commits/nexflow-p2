@@ -889,6 +889,15 @@
         const tbody = document.getElementById('materialsTableBody');
         tbody.innerHTML = '';
         let valid = 0, errors = 0;
+        // Cross-batch duplicate-key guard: 50-row insert batches in
+        // importMaterials() each commit as their own transaction, so a name
+        // repeated within this same upload (common with merged/filled-down
+        // cells) can land in two different batches — the second batch's
+        // whole insert then collides against the first batch's already-
+        // committed row and fails, silently dropping the rest of that batch
+        // too. Reject duplicates here so materialsRows is name-unique before
+        // it's ever chunked.
+        const seenNames = new Set();
 
         rows.forEach(row => {
             const code       = String(row['material_code'] || '').trim();
@@ -900,14 +909,17 @@
             const curStock   = (rawStock===''||rawStock==null) ? null : parseFloat(rawStock);
             const hsn        = String(row['hsn_sac'] || '').trim() || null;
             const gst        = (row['gst_rate']===''||row['gst_rate']==null) ? 0 : parseFloat(row['gst_rate']);
+            const nameKey    = name.toLowerCase();
 
             const errs = [];
             if (!name)                          errs.push('name missing');
             if (!VALID_UNITS.includes(unit))    errs.push(`unit "${rawUnit}" invalid`);
             if (isNaN(minStock)||minStock<0)    errs.push('min_stock invalid');
+            if (name && seenNames.has(nameKey)) errs.push('duplicate name in file');
 
             const ok = errs.length === 0;
             if (ok) {
+                seenNames.add(nameKey);
                 valid++;
                 materialsRows.push({ material_code:code||null, name, unit, min_stock_level:minStock,
                     current_stock:(curStock!==null&&!isNaN(curStock)&&curStock>0)?curStock:null,
@@ -945,17 +957,32 @@
         btn.disabled = true;
         btn.textContent = 'Importing…';
 
-        log('step3Log', `Starting import of ${materialsRows.length} materials…`, 'info');
+        log('step3Log', `Clearing existing materials for this tenant…`, 'info');
+
+        const { error: delError } = await window.supabase
+            .from('p2_raw_materials')
+            .delete()
+            .eq('tenant_id', activeTenantId);
+
+        if (delError) {
+            log('step3Log', 'Delete error: ' + delError.message, 'err');
+            toast('Failed to clear existing materials', 'error');
+            btn.disabled = false;
+            btn.textContent = 'Import Materials →';
+            return;
+        }
+
+        log('step3Log', `✓ Cleared. Starting import of ${materialsRows.length} materials…`, 'info');
 
         const payload = materialsRows.map(r => ({ ...r, tenant_id: activeTenantId, is_active: true }));
 
-        // Upsert in batches of 50
+        // Insert in batches of 50
         let imported = 0, failed = 0;
         for (let i = 0; i < payload.length; i += 50) {
             const batch = payload.slice(i, i + 50);
             const { error } = await window.supabase
                 .from('p2_raw_materials')
-                .upsert(batch, { onConflict: 'name,tenant_id', ignoreDuplicates: false });
+                .insert(batch);
             if (error) {
                 log('step3Log', `Batch ${Math.floor(i/50)+1} error: ${error.message}`, 'err');
                 failed += batch.length;

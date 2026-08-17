@@ -613,12 +613,23 @@
 
         document.getElementById('grnForm').addEventListener('submit', async e => {
             e.preventDefault();
+
+            // Double-submit guard: get_next_grn_number is an atomic counter that
+            // happily hands out a fresh, valid number on every call rather than
+            // erroring on a resubmission — without this, a double-click (or a
+            // slow network + impatient second click) submits the same rows
+            // twice under two different GRN numbers, double-counting every
+            // received material's stock.
+            const submitButton = document.getElementById('submitButton');
+            if (submitButton.disabled) return;
+            submitButton.disabled = true;
+
             const supplierId = document.getElementById('supplierSelect').value;
             const grnDate    = document.getElementById('grnDate').value;
             const lang       = localStorage.getItem('nexflow_lang') || 'en';
 
-            if (!supplierId) { toast(lang==='mr' ? 'कृपया पुरवठादार निवडा' : 'Please select a supplier', 'error'); document.getElementById('supplierSelect').focus(); return; }
-            if (grnRows.length === 0) { toast(lang==='mr' ? 'कृपया किमान एक ओळ जोडा' : 'Please add at least one row', 'error'); return; }
+            if (!supplierId) { toast(lang==='mr' ? 'कृपया पुरवठादार निवडा' : 'Please select a supplier', 'error'); document.getElementById('supplierSelect').focus(); submitButton.disabled = false; return; }
+            if (grnRows.length === 0) { toast(lang==='mr' ? 'कृपया किमान एक ओळ जोडा' : 'Please add at least one row', 'error'); submitButton.disabled = false; return; }
 
             let hasError = false;
             for (let i = 0; i < grnRows.length; i++) {
@@ -629,10 +640,10 @@
                 if (isNaN(qty) || qty <= 0) { toast(lang==='mr' ? 'ओळ '+(i+1)+': परिमाण ० पेक्षा जास्त असणे आवश्यक आहे' : 'Row '+(i+1)+': Quantity must be greater than 0', 'error'); hasError=true; break; }
                 if (!row.invoice_no || !row.invoice_no.trim()) { toast(lang==='mr' ? 'GST नोंदींसाठी पुरवठादार चलान क्रमांक आवश्यक आहे.' : 'Supplier invoice number is required for GST records.', 'error'); hasError=true; break; }
             }
-            if (hasError) return;
+            if (hasError) { submitButton.disabled = false; return; }
 
             const validRows = grnRows.filter(row => row.material_id && row.quantity && parseFloat(row.quantity) > 0);
-            if (validRows.length === 0) { toast(lang==='mr' ? 'कृपया किमान एक वैध ओळ जोडा' : 'Please add at least one valid material with quantity', 'error'); return; }
+            if (validRows.length === 0) { toast(lang==='mr' ? 'कृपया किमान एक वैध ओळ जोडा' : 'Please add at least one valid material with quantity', 'error'); submitButton.disabled = false; return; }
 
             const { data: { user } } = await window.supabase.auth.getUser();
             const tid = user.id;
@@ -682,6 +693,8 @@
                     friendly = 'A required field is missing: ' + friendly;
                 }
                 toast('Failed to submit GRN: ' + friendly, 'error');
+            } finally {
+                submitButton.disabled = false;
             }
         });
 

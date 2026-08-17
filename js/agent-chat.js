@@ -57,6 +57,17 @@
     return data.user.id;
   }
 
+  // agent-query now verifies tenant_id against the caller's real session
+  // (server can no longer trust the anon key as proof of identity) — every
+  // call site below must send the logged-in user's own access token, not
+  // ANON_KEY. Falls back to ANON_KEY only if no session is available, which
+  // the server will correctly reject as Unauthorized rather than silently
+  // misrouting to the wrong tenant.
+  async function getAuthHeader() {
+    const { data: { session } } = await window.supabase.auth.getSession();
+    return `Bearer ${session?.access_token || ANON_KEY}`;
+  }
+
   // ---------- Styles ----------
   const style = document.createElement('style');
   style.textContent = `
@@ -508,7 +519,7 @@
       try {
         const res = await fetch(EDGE_FUNCTION_URL, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ANON_KEY}` },
+          headers: { 'Content-Type': 'application/json', 'Authorization': await getAuthHeader() },
           body: JSON.stringify({
             action: 'confirm_grn',
             tenant_id: tenantId,
@@ -588,7 +599,7 @@
       try {
         const res = await fetch(EDGE_FUNCTION_URL, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ANON_KEY}` },
+          headers: { 'Content-Type': 'application/json', 'Authorization': await getAuthHeader() },
           body: JSON.stringify({
             action: 'confirm_multi_grn',
             tenant_id: tenantId,
@@ -703,7 +714,7 @@
       try {
         const res = await fetch(EDGE_FUNCTION_URL, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ANON_KEY}` },
+          headers: { 'Content-Type': 'application/json', 'Authorization': await getAuthHeader() },
           body: JSON.stringify({
             action: 'update_grn_rates',
             tenant_id: tenantId,
@@ -770,7 +781,7 @@
       try {
         const res = await fetch(EDGE_FUNCTION_URL, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ANON_KEY}` },
+          headers: { 'Content-Type': 'application/json', 'Authorization': await getAuthHeader() },
           body: JSON.stringify({
             action: 'confirm_production_issue',
             tenant_id: tenantId,
@@ -865,7 +876,7 @@
       try {
         const res = await fetch(EDGE_FUNCTION_URL, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ANON_KEY}` },
+          headers: { 'Content-Type': 'application/json', 'Authorization': await getAuthHeader() },
           body: JSON.stringify({
             action: `confirm_${dispatchType}`,
             tenant_id: tenantId,
@@ -1042,7 +1053,7 @@
       try {
         const res = await fetch(EDGE_FUNCTION_URL, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ANON_KEY}` },
+          headers: { 'Content-Type': 'application/json', 'Authorization': await getAuthHeader() },
           body: JSON.stringify({
             action: 'add_production_issue_client',
             tenant_id: tenantId,
@@ -1090,7 +1101,7 @@
     try {
       const res = await fetch(EDGE_FUNCTION_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ANON_KEY}` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': await getAuthHeader() },
         body: JSON.stringify({ tenant_id: tenantId, message }),
       });
       removeTyping();

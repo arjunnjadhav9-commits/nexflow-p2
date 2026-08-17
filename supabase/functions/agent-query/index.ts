@@ -271,6 +271,39 @@ function respond(body: unknown, status = 200): Response {
   })
 }
 
+// Every handler below trusts a client-supplied tenant_id to scope reads/writes
+// issued through the service-role client (bypasses RLS). Verify it against the
+// caller's real identity before any handler runs — same auth.getUser(token)
+// pattern confirmReceiveGrn already uses for recipient_tenant_id. tenant_id is
+// the caller's own auth uid for an owner, but for an invited staff member it's
+// stamped into user_metadata.tenant_id instead (see invite-staff/index.ts) —
+// resolve the same way js/supabase-client.js's checkAuth() does.
+async function verifyCallerTenant(
+  supabaseClient: ReturnType<typeof createClient>,
+  req: Request,
+  claimedTenantId: string | undefined
+): Promise<{ ok: true } | { ok: false; response: Response }> {
+  if (!claimedTenantId) {
+    return { ok: false, response: respond({ status: 'error', error: 'tenant_id is required' }, 400) }
+  }
+
+  const authHeader = req.headers.get('Authorization') ?? ''
+  const token = authHeader.replace('Bearer ', '')
+  const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token)
+
+  if (userError || !user) {
+    return { ok: false, response: respond({ status: 'error', error: 'Unauthorized' }, 401) }
+  }
+
+  const callerTenantId = (user.user_metadata as { tenant_id?: string } | null)?.tenant_id || user.id
+
+  if (callerTenantId !== claimedTenantId) {
+    return { ok: false, response: respond({ status: 'error', error: 'Unauthorized' }, 401) }
+  }
+
+  return { ok: true }
+}
+
 // Fetches all tenant-scoped data the model needs to answer stock/product
 // questions or draft a GRN. Every query is tenant_id-filtered by hand since
 // this client uses the secret key and bypasses RLS.
@@ -4927,6 +4960,17 @@ Deno.serve(async (req) => {
       Partial<Omit<ResendInvoiceRequest, 'action'>> &
       Partial<Omit<ConfirmConsolidatedInvoiceRequest, 'action'>> &
       { action?: 'confirm_grn' | 'confirm_production_issue' | 'add_production_issue_client' | 'confirm_product_dispatch' | 'confirm_rm_dispatch' | 'confirm_multi_grn' | 'update_grn_rates' | 'confirm_receive_grn' | 'confirm_generate_invoice' | 'resend_invoice' | 'confirm_consolidated_invoice' } = await req.json()
+
+    // Cross-tenant auth guard: every action below (and the plain-message path
+    // further down) takes tenant_id from this same body — verify it against
+    // the caller's real identity before dispatching to any handler.
+    // confirm_receive_grn is exempt: it already runs its own equivalent check
+    // against recipient_tenant_id below, since receive.html's caller is
+    // deliberately a DIFFERENT tenant than the dispatch's own sender.
+    if (body.action !== 'confirm_receive_grn') {
+      const authCheck = await verifyCallerTenant(supabase, req, (body as { tenant_id?: string }).tenant_id)
+      if (!authCheck.ok) return authCheck.response
+    }
 
     if (body.action === 'confirm_grn') {
       return await confirmGrn(supabase, body as Partial<ConfirmGrnRequest>)

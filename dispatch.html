@@ -670,6 +670,17 @@
         async function handleSaveWorkflow(targetStatus) {
             if (targetStatus === 'confirmed' && !validateForm()) return;
 
+            // Double-submit guard: neither button was ever disabled during the
+            // async save, so a double-click (or a slow connection + impatient
+            // second click) could fire this twice concurrently and create two
+            // duplicate dispatch orders — worse, two stock deductions on the
+            // confirm path.
+            const saveDraftBtn = document.getElementById('saveDraftBtn');
+            const confirmModalConfirmBtn = document.getElementById('confirmModalConfirm');
+            if (saveDraftBtn?.disabled || confirmModalConfirmBtn?.disabled) return;
+            if (saveDraftBtn) saveDraftBtn.disabled = true;
+            if (confirmModalConfirmBtn) confirmModalConfirmBtn.disabled = true;
+
             let consumptionArray = [];
 
             try {
@@ -739,7 +750,14 @@
                     po_number: document.getElementById('poNumber')?.value || '',
                     your_challan_ref: document.getElementById('challanRef')?.value || '',
                     vehicle_number: document.getElementById('vehicleNumber')?.value || '',
-                    status: String(targetStatus),
+                    // Written as 'draft' even when targetStatus is 'confirmed' —
+                    // confirm_dispatch_transaction's own final UPDATE (below) only
+                    // flips this to 'confirmed' after stock has actually been
+                    // deducted, so a failure anywhere between here and that RPC
+                    // call leaves the order correctly visible as an incomplete
+                    // draft instead of an orphaned "confirmed" challan with no
+                    // stock ever deducted.
+                    status: targetStatus === 'confirmed' ? 'draft' : String(targetStatus),
                     challan_number: String(rawChallan || '1001'),
                     dispatch_date: document.getElementById('dispatchDate')?.value || new Date().toISOString().split('T')[0],
                     dispatch_type: 'product'
@@ -762,6 +780,12 @@
                     if (error) throw error;
                     orderId = data.id;
                 }
+
+                // Tie any retry within this same call (e.g. after items-insert or
+                // the confirm RPC fails below) to this same order instead of
+                // inserting a duplicate on the next click — previously this was
+                // only set after the entire save had already succeeded.
+                currentDispatchId = orderId;
 
                 const { error: delErr } = await window.supabase
                     .from('p2_dispatch_items')
@@ -856,6 +880,9 @@
             } catch (err) {
                 console.error('Error processing dispatch:', err);
                 showError(err.message || 'Error processing dispatch order.');
+            } finally {
+                if (saveDraftBtn) saveDraftBtn.disabled = false;
+                if (confirmModalConfirmBtn) confirmModalConfirmBtn.disabled = false;
             }
         }
 
