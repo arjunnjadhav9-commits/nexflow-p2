@@ -797,7 +797,11 @@
             try {
                 const { data: { user } } = await window.supabase.auth.getUser();
                 if (!user) return;
-                const tenantId = user.id || localStorage.getItem('nexflow_tenant_id');
+                // user.id is always truthy for a logged-in user, so the old
+                // `user.id || localStorage...` fallback never ran and this
+                // never resolved staff tenant_id via user_metadata like the
+                // rest of the app does.
+                const tenantId = user.user_metadata?.tenant_id || user.id || localStorage.getItem('nexflow_tenant_id');
                 if (!tenantId) return;
                 const { data: settings } = await window.supabase
                     .from('p2_tenant_settings')

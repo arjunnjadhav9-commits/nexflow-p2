@@ -215,7 +215,8 @@
             try {
                 const { data: { user }, error: userError } = await window.supabase.auth.getUser();
                 if (userError || !user) throw new Error('User not authenticated');
-                window.open(`ca-report.html?tenant_id=${user.id}&from=${fromDate}&to=${toDate}`, '_blank');
+                const tenantId = user.user_metadata?.tenant_id || user.id;
+                window.open(`ca-report.html?tenant_id=${tenantId}&from=${fromDate}&to=${toDate}`, '_blank');
                 successDiv.style.display = 'flex';
             } catch (error) {
                 console.error('Error generating CA report:', error);

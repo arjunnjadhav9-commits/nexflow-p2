@@ -50,11 +50,14 @@
   }
 
   async function getTenantId() {
-    // Matches your established pattern: user.id IS the tenant_id, no
-    // separate tenant table lookup.
+    // Owner: user.id IS the tenant_id. Invited staff (supervisor is the one
+    // non-owner role with agent access, per the gate above) have their own
+    // auth uid stamped as user_metadata.tenant_id instead — without this
+    // fallback the AI Copilot was broken for that entire role, sending
+    // every message under the wrong tenant.
     const { data, error } = await window.supabase.auth.getUser();
     if (error || !data?.user) return null;
-    return data.user.id;
+    return data.user.user_metadata?.tenant_id || data.user.id;
   }
 
   // agent-query now verifies tenant_id against the caller's real session

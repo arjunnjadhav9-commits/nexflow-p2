@@ -429,9 +429,11 @@ async function startAutoFillGrn() {
     btn.textContent = 'Checking…';
 
     try {
+        const recipientTenantId = currentSession.user.user_metadata?.tenant_id || currentSession.user.id;
         const { data: existing, error } = await window.supabase
             .from('p2_stock_transactions')
             .select('id')
+            .eq('tenant_id', recipientTenantId)
             .eq('transaction_type', 'grn')
             .ilike('notes', `%dispatch_token:${dispatchToken}%`)
             .limit(1);
@@ -580,7 +582,14 @@ async function confirmReceiveGrn() {
             body: JSON.stringify({
                 action: 'confirm_receive_grn',
                 dispatch_token: dispatchToken,
-                recipient_tenant_id: currentSession.user.id,
+                // Owner: user.id IS the tenant. Invited staff (the shopkeeper/
+                // storekeeper use case this feature was built for) have their
+                // own auth uid stamped as user_metadata.tenant_id instead —
+                // sending the raw uid wrote the received GRN under a tenant
+                // that doesn't exist, silently losing the stock from the real
+                // inventory. Must stay in sync with the matching check in
+                // agent-query's confirmReceiveGrn().
+                recipient_tenant_id: currentSession.user.user_metadata?.tenant_id || currentSession.user.id,
                 invoice_no: invoiceNo.trim() || null,
                 item_rates: rates,
             }),

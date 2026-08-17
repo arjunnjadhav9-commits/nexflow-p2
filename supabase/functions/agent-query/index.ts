@@ -445,6 +445,16 @@ async function confirmMultiGrn(
     return respond({ status: 'error', error: 'Missing required fields' }, 400)
   }
 
+  // confirmGrn (single-item sibling, above) already rejects a non-positive
+  // quantity — this multi-item path never had the equivalent check, so a
+  // zero/negative item.quantity could be written straight into
+  // p2_stock_transactions as a 'grn' row that actually reduces stock while
+  // displaying everywhere as a received GRN.
+  const invalidItem = items.find(item => typeof item.quantity !== 'number' || !Number.isFinite(item.quantity) || item.quantity <= 0)
+  if (invalidItem) {
+    return respond({ status: 'error', error: `quantity must be a positive number (${invalidItem.material_name || invalidItem.material_id})` }, 400)
+  }
+
   const rpcItems = items.map(item => ({
     material_id: item.material_id,
     quantity: item.quantity,
@@ -3953,7 +3963,12 @@ async function createAndSendInvoice(
       date_from: params.dateFrom,
       date_to: params.dateTo,
       dispatch_order_ids: params.dispatchOrderIds,
-      status: 'sent',
+      // status left at its 'draft' default — only flipped to 'sent' after
+      // the email actually succeeds below, same failure-safety as
+      // confirmConsolidatedInvoice/confirmGenerateInvoice. Previously this
+      // was written as 'sent' up front, so a Resend failure (bad API key,
+      // outage) left the invoice permanently marked delivered even though
+      // the client never received it.
     })
     .select('invoice_token')
     .single()
@@ -3983,6 +3998,8 @@ async function createAndSendInvoice(
   if (!emailResult.ok) {
     return { text: `❌ Invoice pathavayala error — ${emailResult.error}`, success: false, errorReason: emailResult.error }
   }
+
+  void supabaseClient.from('p2_invoices').update({ status: 'sent' }).eq('invoice_token', invoiceRow.invoice_token)
 
   const totalFormatted = total.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   const periodSuffix = params.dateFrom && params.dateTo
@@ -4307,7 +4324,14 @@ async function confirmReceiveGrn(
   const token = authHeader.replace('Bearer ', '')
   const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token)
 
-  if (userError || !user || user.id !== recipient_tenant_id) {
+  // Owner: user.id IS the tenant. Invited staff (the shopkeeper/storekeeper
+  // use case this feature was built for) have their own auth uid stamped as
+  // user_metadata.tenant_id instead — comparing against raw user.id here
+  // rejected every non-owner caller receive.html now correctly resolves the
+  // tenant for. Must stay in sync with receive.html's own resolution.
+  const callerTenantId = (user?.user_metadata as { tenant_id?: string } | null)?.tenant_id || user?.id
+
+  if (userError || !user || callerTenantId !== recipient_tenant_id) {
     return respond({ status: 'error', error: 'Unauthorized' }, 401)
   }
 

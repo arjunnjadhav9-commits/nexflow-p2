@@ -456,9 +456,17 @@
         }
 
         // ── DETAIL MODAL ──────────────────────────────────────────────
+        // Tracks which order's Detail modal is currently open — lets
+        // refreshDetailInvoiceSection() below discard a stale async result if
+        // a second row's Detail was opened before the first row's invoice
+        // lookup finished (openDetail is async and un-guarded against this).
+        let currentDetailOrderId = null;
+
         async function openDetail(orderId) {
             const order = allOrders.find(o => o.id === orderId);
             if (!order) return;
+
+            currentDetailOrderId = orderId;
 
             const isDraft     = order.status === 'draft';
             const isCancelled = order.status === 'cancelled';
@@ -553,6 +561,12 @@
                     .eq('invoice_mode', 'single')
                     .maybeSingle();
 
+                // A different row's Detail modal was opened while this lookup
+                // was in flight — its own call will render the (correct)
+                // result, so don't overwrite the now-open modal with data for
+                // an order that's no longer displayed.
+                if (currentDetailOrderId !== orderId) return;
+
                 if (existingInvoice) {
                     invoiceSection.innerHTML = `
                         <button class="nx-btn nx-btn-ghost" style="width:100%; color:var(--orange);"
@@ -637,6 +651,13 @@
                     .eq('dispatch_order_id', orderId)
                     .eq('tenant_id', tenantId);
                 if (error) throw error;
+
+                // The modal was reopened for a different order while this
+                // fetch was in flight — discard this stale result instead of
+                // overwriting invoiceModalItems/the DOM with the wrong
+                // order's data underneath the now-displayed order id.
+                if (invoiceModalOrderId !== orderId) return;
+
                 if (!items || items.length === 0) {
                     document.getElementById('invoiceModalItems').innerHTML =
                         '<tr><td colspan="4" style="text-align:center; color:var(--mid); padding:16px;">No items found.</td></tr>';
@@ -674,6 +695,10 @@
                         });
                     }
                 }
+
+                // Same staleness guard as above — the price-table fetches
+                // just completed were also async.
+                if (invoiceModalOrderId !== orderId) return;
 
                 invoiceModalItems = items.map(it => {
                     const key = usesProductPricing ? it.product_id : it.raw_material_id;

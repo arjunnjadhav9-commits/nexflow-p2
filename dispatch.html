@@ -940,10 +940,14 @@
             lowList.innerHTML = '';
             let hasLow = false;
 
-            for (const [matId, consumed] of Object.entries(aggregated)) {
+            for (const [matId] of Object.entries(aggregated)) {
                 const m = matMap[matId];
                 if (!m) continue;
-                const remaining = (m.current_stock || 0) - consumed;
+                // v_p2_stock_balance is queried above AFTER the confirm_dispatch_transaction
+                // RPC has already deducted this consumption — current_stock is already the
+                // post-dispatch balance, so subtracting `consumed` again here double-counted
+                // it, producing false "below min stock" warnings on every confirmed dispatch.
+                const remaining = m.current_stock || 0;
                 const minLevel = m.min_stock_level || 0;
                 if (minLevel > 0 && remaining < minLevel) {
                     hasLow = true;

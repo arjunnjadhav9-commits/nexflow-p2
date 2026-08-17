@@ -400,7 +400,12 @@ function showWarn(msg) {
 async function getTenantId() {
   const { data: { user } } = await window.supabase.auth.getUser();
   if (!user) throw new Error('Not authenticated. Please log in.');
-  return user.id;
+  // Owner: user.id IS the tenant_id. Invited staff (e.g. an accountant):
+  // their own auth uid is NOT the tenant — the owner's id is stamped into
+  // user_metadata.tenant_id at invite time. Without this fallback, every
+  // export for a non-owner user was silently scoped to their own uid
+  // instead of the real tenant, returning empty/wrong data.
+  return user.user_metadata?.tenant_id || user.id;
 }
 
 // ─── EXPORT ROUTER ───────────────────────────────────────────────────────────
@@ -1060,6 +1065,17 @@ async function exportZohoTransactions() {
 document.addEventListener('DOMContentLoaded', async () => {
   const authed = await checkAuth();
   if (!authed) return;
+
+  // Role gate — this page had none at all (no ROLE_PERMISSIONS entry for
+  // 'export' exists), unlike its sibling CA-facing pages (ca-report.html,
+  // reports.html), letting any role reach the full 17-column GST export
+  // including the GST Summary sheet's ITC/net-payable totals. Mirrors the
+  // same 'reports' gate those pages already use.
+  const role = getUserRole();
+  if (!canAccess(role, 'reports')) {
+    window.location.href = 'index.html?denied=1';
+    return;
+  }
 
   const now  = new Date();
   const y    = now.getFullYear();

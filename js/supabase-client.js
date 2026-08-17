@@ -127,7 +127,13 @@ async function checkAuthAndTenant(requiredTenantId) {
         window.location.href = 'login.html';
         return false;
     }
-    const userTenantId = user.id;
+    // Same resolution as checkAuth() above: user.id IS the tenant for an
+    // owner, but an invited staff member's own uid is not — their tenant_id
+    // is stamped into user_metadata at invite time. Comparing raw user.id
+    // here was locking out legitimate non-owner staff (e.g. an accountant
+    // opening ca-report.html) even after they'd already passed a correct
+    // role check.
+    const userTenantId = user.user_metadata?.tenant_id || user.id;
     if (requiredTenantId && userTenantId !== requiredTenantId) {
         window.location.href = 'login.html';
         return false;
