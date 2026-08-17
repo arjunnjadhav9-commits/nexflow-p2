@@ -407,6 +407,13 @@
             const displayNo = (challanNumber || '').replace(/^CHAL-\d{8}-/, '') || challanNumber;
             if (!confirm(`Cancel issue ${displayNo}? This will reverse the stock deduction and restore materials. This cannot be undone.`)) return;
 
+            // confirm() is blocking but returns before the RPC starts — a fast
+            // double confirm+click could otherwise fire two concurrent cancel
+            // RPCs for the same order.
+            const cancelBtn = document.getElementById('detailCancelBtn');
+            if (cancelBtn?.disabled) return;
+            if (cancelBtn) cancelBtn.disabled = true;
+
             try {
                 const { data, error } = await window.supabase.rpc('cancel_challan', {
                     p_dispatch_order_id: orderId,
@@ -420,6 +427,8 @@
             } catch (err) {
                 console.error('cancelChallanRow:', err);
                 toast('Cancel failed: ' + (err.message || ''), 'error');
+            } finally {
+                if (cancelBtn) cancelBtn.disabled = false;
             }
         };
 
@@ -533,19 +542,22 @@
             const cleanChallan = rawChallan.replace(/^CHAL-\d{8}-/, '');
 
             document.getElementById('detailModalTitle').textContent =
-                `${t('Challan','चालन')} ${cleanChallan}`;
+                `${t('Issue','इश्यू')} ${cleanChallan}`;
 
             let statusBadge = `<span class="nx-badge nx-badge-yellow" style="font-size:11px;">${t('Draft','ड्राफ्ट')}</span>`;
             if (!isDraft && !isCancelled) statusBadge = `<span class="nx-badge nx-badge-green" style="font-size:11px;">${t('Confirmed','निश्चित')}</span>`;
             if (isCancelled) statusBadge = `<span class="nx-badge" style="font-size:11px;background:rgba(239,68,68,0.15);color:#ef4444;border:1px solid rgba(239,68,68,0.3);">${t('Cancelled','रद्द')}</span>`;
 
-            const isRM = order.dispatch_type === 'bom_issue';
+            // This page's loadHistory() only ever fetches dispatch_type ===
+            // 'bom_issue' orders, so a dispatch.html/rm-dispatch.html-style
+            // RM-vs-Product ternary here was always dead code — every issue
+            // on this page was mislabeled "Raw Material Dispatch".
             document.getElementById('detailModalMeta').innerHTML = `
                 <span style="color:var(--white); font-weight:700;">${escapeHtml(order.client_name)}</span><br>
                 ${order.client_address ? escapeHtml(order.client_address) + '<br>' : ''}
                 ${t('Date','तारीख')}: ${dateStr} &nbsp;·&nbsp;
                 ${t('Status','स्थिती')}: ${statusBadge}
-                &nbsp;·&nbsp;<span style="font-size:11px; color:var(--mid);">${isRM ? '📦 ' + t('Raw Material Dispatch','कच्चा माल डिस्पॅच') : '🏭 ' + t('Product Dispatch','उत्पादन डिस्पॅच')}</span>
+                &nbsp;·&nbsp;<span style="font-size:11px; color:var(--mid);">🏭 ${t('Production Issue','उत्पादन इश्यू')}</span>
                 ${order.po_number        ? '<br>' + t('PO','PO') + ': '      + escapeHtml(order.po_number)        : ''}
                 ${order.your_challan_ref ? '<br>' + t('Ref','संदर्भ') + ': '     + escapeHtml(order.your_challan_ref) : ''}
                 ${order.vehicle_number   ? '<br>' + t('Vehicle','वाहन') + ': ' + escapeHtml(order.vehicle_number)   : ''}

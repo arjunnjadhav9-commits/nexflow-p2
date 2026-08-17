@@ -512,13 +512,18 @@
     messagesEl.appendChild(card);
     messagesEl.scrollTop = messagesEl.scrollHeight;
 
-    card.querySelector('.nf-btn-cancel').addEventListener('click', () => {
+    const cancelBtn = card.querySelector('.nf-btn-cancel');
+    const confirmBtn = card.querySelector('.nf-btn-confirm');
+    const confirmBtnLabel = confirmBtn.textContent;
+
+    cancelBtn.addEventListener('click', () => {
       card.remove();
       addMessage(t('Cancelled.', 'रद्द केले.'), 'nf-msg-bot');
     });
 
-    card.querySelector('.nf-btn-confirm').addEventListener('click', async () => {
-      card.querySelectorAll('button').forEach(b => b.disabled = true);
+    confirmBtn.addEventListener('click', async () => {
+      cancelBtn.disabled = true;
+      confirmBtn.disabled = true;
       try {
         const res = await fetch(EDGE_FUNCTION_URL, {
           method: 'POST',
@@ -533,8 +538,9 @@
           }),
         });
         const data = await res.json();
-        card.remove();
-        if (data.confirmed) {
+
+        if (data.confirmed === true) {
+          card.remove();
           addMessage(
             t(
               `✅ Saved: ${data.result.grn_no} — ${data.result.quantity} ${data.result.unit} of ${data.result.material_name}`,
@@ -549,11 +555,23 @@
             unit: data.result.unit,
             transaction_id: data.result.transaction_id,
           }], tenantId);
-        } else {
+        } else if (data.confirmed === false) {
+          card.remove();
           addMessage(data.error || t('Could not save. Please try again.', 'जतन करता आले नाही. पुन्हा प्रयत्न करा.'), 'nf-msg-error');
+        } else {
+          // Malformed/unexpected response — same treatment as a thrown
+          // network error below: keep the card and re-enable it so the user
+          // can retry without re-typing the message (and re-billing daily
+          // agent quota for a fresh parse of the same GRN).
+          cancelBtn.disabled = false;
+          confirmBtn.disabled = false;
+          confirmBtn.textContent = confirmBtnLabel;
+          addMessage(t('Something went wrong — check your connection and try again.', 'काहीतरी चूक झाली — कनेक्शन तपासा आणि पुन्हा प्रयत्न करा.'), 'nf-msg-error');
         }
       } catch (err) {
-        card.remove();
+        cancelBtn.disabled = false;
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = confirmBtnLabel;
         addMessage(t('Something went wrong — check your connection and try again.', 'काहीतरी चूक झाली — कनेक्शन तपासा आणि पुन्हा प्रयत्न करा.'), 'nf-msg-error');
       }
     });

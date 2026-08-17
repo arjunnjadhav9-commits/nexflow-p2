@@ -291,7 +291,13 @@
                     .select('plan')
                     .eq('tenant_id', tenantId)
                     .maybeSingle();
-                canInvoice = !!settingsData && (settingsData.plan === 'pro' || settingsData.plan === 'founder');
+                // Missing settings row defaults to 'founder', same fallback
+                // js/supabase-client.js's checkAuth() uses ("so SS Engineering
+                // won't break") — this was instead treating a missing row as
+                // not-Pro, incorrectly hiding Generate Invoice for a tenant
+                // the rest of the app already grants Pro access to.
+                const plan = settingsData?.plan || 'founder';
+                canInvoice = plan === 'pro' || plan === 'founder';
 
                 setDefaultDates();
                 await loadHistory();
@@ -591,6 +597,13 @@
             const displayNo = (challanNumber || '').replace(/^CHAL-\d{8}-/, '') || challanNumber;
             if (!confirm(`Cancel challan ${displayNo}? This will reverse the stock deduction and restore materials. This cannot be undone.`)) return;
 
+            // confirm() is blocking but returns before the RPC starts — a fast
+            // double confirm+click could otherwise fire two concurrent cancel
+            // RPCs for the same order.
+            const cancelBtn = document.getElementById('detailCancelBtn');
+            if (cancelBtn?.disabled) return;
+            if (cancelBtn) cancelBtn.disabled = true;
+
             try {
                 const { data, error } = await window.supabase.rpc('cancel_challan', {
                     p_dispatch_order_id: orderId,
@@ -604,6 +617,8 @@
             } catch (err) {
                 console.error('cancelChallanRow:', err);
                 toast('Cancel failed: ' + (err.message || ''), 'error');
+            } finally {
+                if (cancelBtn) cancelBtn.disabled = false;
             }
         };
 

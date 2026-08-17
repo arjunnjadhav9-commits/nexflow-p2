@@ -1333,9 +1333,10 @@
             }
 
             if (editMaterialId) {
+                // Defense-in-depth: filtered only by id before, relying solely on RLS.
                 const { error } = await window.supabase.from('p2_raw_materials')
                     .update({ name, unit, min_stock_level: minStock, material_code: materialCode, hsn_sac: hsnSac, gst_rate: gstRate })
-                    .eq('id', editMaterialId);
+                    .eq('id', editMaterialId).eq('tenant_id', tenantId);
                 if (error) throw error;
                 toast(lang==='mr'?'साहित्य यशस्वीरित्या अपडेट केले':'Material updated successfully','success');
             } else {
@@ -1367,7 +1368,10 @@
         const lang = localStorage.getItem('nexflow_lang') || 'en';
         if (!confirm(lang==='mr'?'या साहित्याला निष्क्रिय करायचे आहे का?':'Are you sure you want to deactivate this material?')) return;
         try {
-            const { error } = await window.supabase.from('p2_raw_materials').update({ is_active: false }).eq('id', materialId);
+            const { data: { user } } = await window.supabase.auth.getUser();
+            const tenantId = user.user_metadata?.tenant_id || user.id;
+            // Defense-in-depth: filtered only by id before, relying solely on RLS.
+            const { error } = await window.supabase.from('p2_raw_materials').update({ is_active: false }).eq('id', materialId).eq('tenant_id', tenantId);
             if (error) throw error;
             loadMaterials();
         } catch (error) {
@@ -1481,9 +1485,12 @@
         if (!mobile) { toast(lang==='mr'?'कृपया मोबाईल नंबर प्रविष्ट करा':'Please enter mobile number','error'); return; }
 
         try {
+            const { data: { user } } = await window.supabase.auth.getUser();
+            const tenantId = user.user_metadata?.tenant_id || user.id;
+            // Defense-in-depth: filtered only by id before, relying solely on RLS.
             const { error } = await window.supabase.from('p2_suppliers')
                 .update({ name, mobile, address, gstin: gstin || null })
-                .eq('id', supplierId);
+                .eq('id', supplierId).eq('tenant_id', tenantId);
             if (error) throw error;
             toast(lang==='mr'?'पुरवठादार अद्ययावत झाला':'Supplier updated','success');
             loadSuppliers();
@@ -1497,7 +1504,10 @@
         const lang = localStorage.getItem('nexflow_lang') || 'en';
         if (!confirm(lang==='mr'?'या पुरवठादाराला निष्क्रिय करायचे आहे का?':'Are you sure you want to deactivate this supplier?')) return;
         try {
-            const { error } = await window.supabase.from('p2_suppliers').update({ is_active: false }).eq('id', supplierId);
+            const { data: { user } } = await window.supabase.auth.getUser();
+            const tenantId = user.user_metadata?.tenant_id || user.id;
+            // Defense-in-depth: filtered only by id before, relying solely on RLS.
+            const { error } = await window.supabase.from('p2_suppliers').update({ is_active: false }).eq('id', supplierId).eq('tenant_id', tenantId);
             if (error) throw error;
             loadSuppliers();
         } catch (error) {
@@ -1623,9 +1633,12 @@
         if (email && !isValidEmail(email)) { toast(lang==='mr'?'कृपया वैध ईमेल प्रविष्ट करा':'Please enter a valid email address','error'); return; }
 
         try {
+            const { data: { user } } = await window.supabase.auth.getUser();
+            const tenantId = user.user_metadata?.tenant_id || user.id;
+            // Defense-in-depth: filtered only by id before, relying solely on RLS.
             const { error } = await window.supabase.from('p2_clients')
                 .update({ name, email: email || null, address: address || null, po_number: po_number || null, gstin: gstin || null })
-                .eq('id', clientId);
+                .eq('id', clientId).eq('tenant_id', tenantId);
             if (error) throw error;
             toast(lang==='mr'?'क्लायंट अद्ययावत झाला':'Client updated','success');
             loadClients();
@@ -1640,7 +1653,28 @@
         const lang = localStorage.getItem('nexflow_lang') || 'en';
         if (!confirm(lang==='mr'?'या क्लायंटला काढायचे आहे का?':'Are you sure you want to delete this client?')) return;
         try {
-            const { error } = await window.supabase.from('p2_clients').delete().eq('id', clientId);
+            const { data: { user } } = await window.supabase.auth.getUser();
+            if (!user) throw new Error('Not authenticated');
+            const tenantId = user.user_metadata?.tenant_id || user.id;
+
+            // p2_clients has no is_active column (unlike materials/suppliers,
+            // which soft-deactivate instead of hard-deleting), and
+            // p2_invoices.client_id is a real FK — block the delete instead
+            // of orphaning/cascading away a client's historical invoices.
+            const { count: invoiceCount, error: invErr } = await window.supabase
+                .from('p2_invoices')
+                .select('id', { count: 'exact', head: true })
+                .eq('tenant_id', tenantId)
+                .eq('client_id', clientId);
+            if (invErr) throw invErr;
+            if (invoiceCount && invoiceCount > 0) {
+                toast(lang==='mr'
+                    ? 'हा क्लायंट काढता येणार नाही — त्यांचे इनव्हॉइस रेकॉर्ड आहेत.'
+                    : `Cannot delete this client — ${invoiceCount} invoice(s) reference them.`, 'error');
+                return;
+            }
+
+            const { error } = await window.supabase.from('p2_clients').delete().eq('id', clientId).eq('tenant_id', tenantId);
             if (error) throw error;
             loadClients();
         } catch (error) {
@@ -1754,7 +1788,8 @@
             const stillPending = [];
             for (const invite of (pending || [])) {
                 if (activeEmails.has(invite.email.toLowerCase())) {
-                    window.supabase.from('p2_pending_invites').update({ status: 'accepted' }).eq('id', invite.id);
+                    window.supabase.from('p2_pending_invites').update({ status: 'accepted' }).eq('id', invite.id)
+                        .then(({ error }) => { if (error) console.error('Failed to flip pending invite to accepted:', error); });
                 } else {
                     stillPending.push(invite);
                 }
@@ -1848,7 +1883,10 @@
         const lang = localStorage.getItem('nexflow_lang') || 'en';
         if (!confirm(lang==='mr'?'या कर्मचार्याला काढायचे आहे का?':'Are you sure you want to remove this staff member?')) return;
         try {
-            const { error } = await window.supabase.from('p2_user_roles').delete().eq('user_id', userId);
+            const { data: { user } } = await window.supabase.auth.getUser();
+            const tenantId = user.user_metadata?.tenant_id || user.id;
+            // Defense-in-depth: filtered only by user_id before, relying solely on RLS.
+            const { error } = await window.supabase.from('p2_user_roles').delete().eq('user_id', userId).eq('tenant_id', tenantId);
             if (error) throw error;
             loadStaffList();
         } catch (error) {
@@ -2102,7 +2140,11 @@
                 return true;
             });
 
-            if (!isPro()) {
+            // tenantPlan (fresh-fetched, see its declaration comment above)
+            // not isPro() (stale localStorage cache) — matches the single-add
+            // path's cap check below, which already uses tenantPlan for the
+            // same reason.
+            if (tenantPlan === 'lite') {
                 const currentCount  = existing.length;
                 const afterImport   = currentCount + toInsert.length;
                 if (afterImport > 250) {

@@ -669,6 +669,16 @@
                 const chosenMat  = materialsMap[materialId];
                 const unitValue  = chosenMat ? chosenMat.unit : 'NOS';
 
+                // Double-submit guard: the existing-row check below and the
+                // insert that follows are two separate awaited calls with no
+                // lock between them — a double-click before either resolves
+                // could pass the "not found" check twice and insert two BOM
+                // rows for the same material, silently doubling that
+                // material's consumption on every future dispatch.
+                const submitBtn = e.target.querySelector('button[type="submit"]');
+                if (submitBtn.disabled) return;
+                submitBtn.disabled = true;
+
                 try {
                     const { data: existing, error: checkError } = await supabaseClient
                         .from('p2_product_bom')
@@ -706,6 +716,8 @@
                 } catch (error) {
                     console.error('Error adding ingredient:', error);
                     toast('Failed to add ingredient.', 'error');
+                } finally {
+                    submitBtn.disabled = false;
                 }
             });
 

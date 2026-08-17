@@ -567,7 +567,11 @@
                 btn.textContent = '✏️ Edit Text';
                 btn.classList.replace('nx-btn-green', 'nx-btn-secondary');
 
-                // Persist to DB silently — don't block UI
+                // Persist to DB — doesn't block the UI transition out of edit
+                // mode, but a failure here previously had no user-facing
+                // signal at all (console.error only), so the note silently
+                // reverted to its old value on next reload with the user
+                // believing it had saved.
                 window.supabase
                     .from('p2_dispatch_orders')
                     .update({
@@ -576,7 +580,10 @@
                     })
                     .eq('id', dispatchOrderId)
                     .then(({ error }) => {
-                        if (error) console.error('Failed to save challan note:', error);
+                        if (error) {
+                            console.error('Failed to save challan note:', error);
+                            toast('Failed to save note changes: ' + error.message, 'error');
+                        }
                     });
             }
         }
@@ -644,16 +651,20 @@
                 // Persist client for future autocomplete suggestions
                 const { data: { user } } = await window.supabase.auth.getUser();
                 if (user && clientName) {
+                    // Best-effort autofill-suggestion writes, not the primary
+                    // save (already succeeded above) — a failure here doesn't
+                    // warrant interrupting the user, but it was previously
+                    // discarded with zero trace at all, not even a log.
                     window.supabase.from('p2_clients').upsert(
                         { tenant_id: user.id, name: clientName, address: clientAddress || null },
                         { onConflict: 'tenant_id,name' }
-                    ).then(() => {}).catch(() => {});
+                    ).then(() => {}).catch(err => console.error('Failed to save client autofill:', err));
 
                     if (poNumber) {
                         window.supabase.from('p2_client_po_numbers').upsert(
                             { tenant_id: user.id, client_name: clientName, po_number: poNumber },
                             { onConflict: 'tenant_id,client_name,po_number' }
-                        ).then(() => {}).catch(() => {});
+                        ).then(() => {}).catch(err => console.error('Failed to save PO number autofill:', err));
                     }
                 }
 

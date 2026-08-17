@@ -185,6 +185,12 @@
             const btn = document.getElementById('setPwBtn');
             const errorDiv = document.getElementById('setPwError');
 
+            // btn.dataset.loading only drives CSS pointer-events styling —
+            // it was never actually checked here, and CSS pointer-events
+            // doesn't block a keyboard-triggered submit, so two rapid Enter
+            // presses could fire two concurrent updateUser() calls.
+            if (btn.dataset.loading === 'true') return;
+
             errorDiv.style.display = 'none';
             errorDiv.textContent = '';
 

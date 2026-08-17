@@ -62,6 +62,20 @@ serve(async (req) => {
     }
     const normalizedEmail = String(email).trim().toLowerCase();
 
+    // role reaches this insert unchecked from the client-supplied body — low
+    // impact today since the actual permission grant happens separately when
+    // the owner manually sets metadata on the new auth user (see comment
+    // below), but still an unvalidated value (including "owner") reaching
+    // the database. Whitelist against the same roles this function already
+    // knows how to label.
+    const validRoles = Object.keys(ROLE_LABELS).filter((r) => r !== "owner");
+    if (!validRoles.includes(role)) {
+      return new Response(
+        JSON.stringify({ error: `role must be one of: ${validRoles.join(", ")}` }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
+      );
+    }
+
     // Auth Admin API (generateLink/inviteUserByEmail/createUser) is unreachable
     // in this region — AuthRetryableFetchError on every /auth/v1/admin/* call.
     // Instead of minting an invite link, record the invite as a pending row the

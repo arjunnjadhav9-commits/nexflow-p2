@@ -757,7 +757,10 @@
         const tid  = document.getElementById('manualTenantId').value.trim();
         const name = document.getElementById('manualCompanyName').value.trim();
         if (!tid)  { toast('Enter a Tenant ID', 'error'); return; }
-        if (!/^[0-9a-f-]{36}$/.test(tid)) { toast('Tenant ID format invalid — must be a UUID', 'error'); return; }
+        // Was `/^[0-9a-f-]{36}$/` — only checked character set/length, so a
+        // malformed 36-char string of the right shape (e.g. wrong hyphen
+        // placement) was silently accepted as a valid tenant to import into.
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tid)) { toast('Tenant ID format invalid — must be a UUID', 'error'); return; }
         activeTenantId = tid;
         activeCompany  = name;
         activeEmail    = '(manual entry)';
@@ -953,6 +956,27 @@
 
     async function importMaterials() {
         if (!activeTenantId || !materialsRows.length) return;
+
+        // This unconditionally deletes ALL of the tenant's existing materials
+        // before every re-import (e.g. re-uploading after fixing a typo),
+        // reinserting them under brand-new UUIDs — which orphans/cascades
+        // away any BOM lines or stock transactions already referencing the
+        // old material IDs if this tenant already has live data. Confirm
+        // before doing that; a fresh onboarding (empty tenant) skips the
+        // prompt entirely.
+        const { count: existingCount } = await window.supabase
+            .from('p2_raw_materials')
+            .select('id', { count: 'exact', head: true })
+            .eq('tenant_id', activeTenantId);
+
+        if (existingCount && existingCount > 0) {
+            const proceed = confirm(
+                `This tenant already has ${existingCount} materials. Re-importing will DELETE all of them ` +
+                `(and any BOM/stock records still pointing at them) and replace them with this file's rows. Continue?`
+            );
+            if (!proceed) return;
+        }
+
         const btn = document.getElementById('importMaterialsBtn');
         btn.disabled = true;
         btn.textContent = 'Importing…';

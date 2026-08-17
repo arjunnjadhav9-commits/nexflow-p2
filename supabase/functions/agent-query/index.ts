@@ -4519,6 +4519,15 @@ async function confirmGenerateInvoice(
   if (!tenant_id || !dispatch_order_id || !item_rates?.length) {
     return respond({ status: 'error', error: 'tenant_id, dispatch_order_id, and item_rates are required' }, 400)
   }
+  // rate is the one client-supplied field on this path (qty/unit/description
+  // are always re-fetched server-side above/below) — `Number(x) || 0` only
+  // guarded against NaN/0, not a negative or absurdly large value, which
+  // would flow straight into amount/amount_total on a persisted, publicly-
+  // served invoice.
+  const invalidRate = item_rates.find((r) => !Number.isFinite(r.rate) || r.rate < 0)
+  if (invalidRate) {
+    return respond({ status: 'error', error: 'rate must be a non-negative number for every item' }, 400)
+  }
   const gstType = gst_type === 'igst' || gst_type === 'none' ? gst_type : 'cgst_sgst'
 
   const { data: order, error: orderError } = await supabaseClient

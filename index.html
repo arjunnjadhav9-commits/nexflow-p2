@@ -545,7 +545,11 @@
                     current_stock:   row.current_stock || 0
                 }));
 
-                renderStockLevels(allStockLevels);
+                // Re-applies the active search/status filter instead of always
+                // rendering the unfiltered list — the 5-minute auto-refresh
+                // below was silently resetting a filtered view back to
+                // unfiltered while the search box still showed the typed term.
+                filterMaterials(document.getElementById('materialSearch').value);
                 updateStats(allStockLevels);
                 checkUpgradeBanner(allStockLevels.length);
 
@@ -889,8 +893,14 @@
 
         window.onload = initPage;
 
-        // Auto-refresh every 5 minutes
-        setInterval(fetchStockLevels, 5 * 60 * 1000);
+        // Auto-refresh every 5 minutes — skipped while a Min Stock cell is
+        // mid-edit (renderStockLevels()'s tbody.innerHTML rebuild would
+        // otherwise silently discard the in-progress edit and its unsaved
+        // value with no warning).
+        setInterval(() => {
+            if (document.querySelector('#stockLevelsBody input')) return;
+            fetchStockLevels();
+        }, 5 * 60 * 1000);
 
         // ── DOM READY (search + lang) ─────────────────────────────
         document.addEventListener('DOMContentLoaded', () => {

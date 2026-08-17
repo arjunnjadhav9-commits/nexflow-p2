@@ -823,6 +823,8 @@ async function generateBOM() {
 /* ═══════════════════════════════════════
    RM TYPEAHEAD — for manual rows
 ═══════════════════════════════════════ */
+var _rmTypeaheadListeners = []; // cleanup fns for window scroll/resize listeners registered below
+
 function buildRMTypeahead(idx) {
   var wrap  = document.createElement('div');
   wrap.className = 'mat-ta-wrap';
@@ -951,8 +953,17 @@ function buildRMTypeahead(idx) {
     else if (e.key === 'Enter') { e.preventDefault(); if (kbdIdx >= 0 && items[kbdIdx]) { var el = items[kbdIdx]; selectRM(el.dataset.id, el.dataset.name, el.dataset.unit, el.dataset.code, parseFloat(el.dataset.stock)||0); } }
     else if (e.key === 'Escape') { dd.classList.remove('open'); }
   });
-  window.addEventListener('scroll', function() { if (dd.classList.contains('open')) posDD(); }, true);
-  window.addEventListener('resize', function() { if (dd.classList.contains('open')) posDD(); });
+  var onScroll = function() { if (dd.classList.contains('open')) posDD(); };
+  var onResize = function() { if (dd.classList.contains('open')) posDD(); };
+  window.addEventListener('scroll', onScroll, true);
+  window.addEventListener('resize', onResize);
+  // renderTable() below rebuilds every manual row (not just the changed one)
+  // on every add/delete or language toggle — without this cleanup hook, each
+  // rebuild leaked two more permanent window listeners per manual row.
+  _rmTypeaheadListeners.push(function(){
+    window.removeEventListener('scroll', onScroll, true);
+    window.removeEventListener('resize', onResize);
+  });
   clrBtn.addEventListener('click', clearRM);
 
   return wrap;
@@ -962,6 +973,8 @@ function buildRMTypeahead(idx) {
    RENDER TABLE
 ═══════════════════════════════════════ */
 function renderTable() {
+  _rmTypeaheadListeners.forEach(function(cleanup){ cleanup(); });
+  _rmTypeaheadListeners = [];
   const tbody = document.getElementById('piTbody');
   tbody.innerHTML = '';
 
@@ -1610,6 +1623,7 @@ async function loadRecentIssues() {
         var _amendOrderId = null;
         var _amendTA      = null;
         var _amendRMList  = [];
+        var _amendScrollListener = null; // tracks the one active listener from _buildAmendTA() below, so a reopen doesn't leak another
 
         async function openAmendModal(orderId, challanRef) {
             _amendOrderId = orderId;
@@ -1674,7 +1688,9 @@ async function loadRecentIssues() {
                 else if(e.key==='Enter'){e.preventDefault();if(kbdIdx>=0&&items[kbdIdx]){var el=items[kbdIdx];selIt(el.dataset.id,el.dataset.name,el.dataset.unit,el.dataset.code);}}
                 else if(e.key==='Escape'){dd.style.display='none';}
             });
-            window.addEventListener('scroll',function(){if(dd.style.display!=='none')posDD();},true);
+            if (_amendScrollListener) window.removeEventListener('scroll', _amendScrollListener, true);
+            _amendScrollListener = function(){if(dd.style.display!=='none')posDD();};
+            window.addEventListener('scroll', _amendScrollListener, true);
             clr.addEventListener('click',resetTA);
             return {el:wrap,getId:function(){return selId;},getName:function(){return selName;},getUnit:function(){return selUnit;},getCode:function(){return selCode;}};
         }

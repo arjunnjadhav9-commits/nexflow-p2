@@ -563,7 +563,7 @@ async function runReconciliation() {
     } catch (err) {
         console.error('runReconciliation error:', err);
         document.getElementById('reconcileErrorText').textContent =
-            'Could not run reconciliation. Check your connection and try again.';
+            'Could not run reconciliation: ' + (err.message || 'Check your connection and try again.');
         document.getElementById('reconcileError').style.display = 'flex';
     } finally {
         btn.disabled = false;

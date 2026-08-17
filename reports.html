@@ -228,7 +228,14 @@
         document.getElementById('print-report').addEventListener('click', () => window.print());
 
         // ── MONTHLY REPORT ────────────────────────────────────────
+        // Guards against overlapping fetches: changing Month/Year and
+        // clicking Generate again before the first click's chain of
+        // per-material awaits resolves used to have no cancellation, so a
+        // slower first request could overwrite a faster second one with
+        // stale data for the wrong period.
+        let reportRequestId = 0;
         document.getElementById('generate-report').addEventListener('click', async () => {
+            const requestId = ++reportRequestId;
             const month = document.getElementById('month').value;
             const year  = document.getElementById('year').value;
 
@@ -306,6 +313,8 @@
                     return { name: material.name, openingStock, totalGrn, totalConsumption, netChange, closingStock };
                 }));
 
+                if (requestId !== reportRequestId) return; // a newer click has superseded this request
+
                 materialSummaryBody.innerHTML = '';
 
                 if (materialSummary.length === 0) {
@@ -336,6 +345,7 @@
                     .lte('transaction_date', lastDay.toISOString().split('T')[0]);
 
                 if (supplierError) throw supplierError;
+                if (requestId !== reportRequestId) return; // a newer click has superseded this request
 
                 const supplierTotals = {};
                 supplierGrnData.forEach(item => {
@@ -360,6 +370,7 @@
 
             } catch (error) {
                 console.error('Error generating report:', error);
+                if (requestId !== reportRequestId) return; // a newer click has superseded this request
                 materialSummaryBody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--red);">Error generating report: ${error.message}</td></tr>`;
             }
         });

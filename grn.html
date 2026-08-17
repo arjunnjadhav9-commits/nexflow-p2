@@ -384,6 +384,8 @@
         // materialsArr: array with .id OR .raw_material_id, .name, .unit, .material_code
         // opts: { placeholder, onSelect(id,name,unit) }
         // Returns: { element, getId(), getUnit(), reset(), setValue(id,name,unit) }
+        var _matTypeaheadListeners = []; // cleanup fns for window scroll/resize listeners registered below
+
         function buildMatTypeahead(materialsArr, opts) {
             opts = opts || {};
             var ph       = opts.placeholder || 'Search material...';
@@ -486,8 +488,17 @@
                 clearBtn.classList.toggle('visible', input.value.length>0);
                 renderDd(input.value); positionDd(); dd.classList.add('open');
             });
-            window.addEventListener('scroll', function(){ if(dd.classList.contains('open')) positionDd(); }, true);
-            window.addEventListener('resize', function(){ if(dd.classList.contains('open')) positionDd(); });
+            var onScroll = function(){ if(dd.classList.contains('open')) positionDd(); };
+            var onResize = function(){ if(dd.classList.contains('open')) positionDd(); };
+            window.addEventListener('scroll', onScroll, true);
+            window.addEventListener('resize', onResize);
+            // renderGRNRows() below rebuilds every row (not just the changed
+            // one) on every Add/Remove Row — without this cleanup hook, each
+            // rebuild leaked two more permanent window listeners per row.
+            _matTypeaheadListeners.push(function(){
+                window.removeEventListener('scroll', onScroll, true);
+                window.removeEventListener('resize', onResize);
+            });
             input.addEventListener('blur',function(){ setTimeout(function(){ dd.classList.remove('open'); },160); });
             input.addEventListener('keydown',function(e){
                 var items=dd.querySelectorAll('.mat-dropdown-item');
@@ -552,6 +563,8 @@
         }
 
         function renderGRNRows() {
+            _matTypeaheadListeners.forEach(function(cleanup){ cleanup(); });
+            _matTypeaheadListeners = [];
             const tbody = document.getElementById('grnRowsBody');
             tbody.innerHTML = '';
             grnRows.forEach(row => {

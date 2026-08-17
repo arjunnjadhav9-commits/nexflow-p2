@@ -407,6 +407,13 @@
             const displayNo = (challanNumber || '').replace(/^CHAL-\d{8}-/, '') || challanNumber;
             if (!confirm(`Cancel challan ${displayNo}? This will reverse the stock deduction and restore materials. This cannot be undone.`)) return;
 
+            // confirm() is blocking but returns before the RPC starts — a fast
+            // double confirm+click could otherwise fire two concurrent cancel
+            // RPCs for the same order.
+            const cancelBtn = document.getElementById('detailCancelBtn');
+            if (cancelBtn?.disabled) return;
+            if (cancelBtn) cancelBtn.disabled = true;
+
             try {
                 const { data, error } = await window.supabase.rpc('cancel_challan', {
                     p_dispatch_order_id: orderId,
@@ -420,6 +427,8 @@
             } catch (err) {
                 console.error('cancelChallanRow:', err);
                 toast('Cancel failed: ' + (err.message || ''), 'error');
+            } finally {
+                if (cancelBtn) cancelBtn.disabled = false;
             }
         };
 
