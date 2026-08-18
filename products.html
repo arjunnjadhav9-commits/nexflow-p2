@@ -197,6 +197,9 @@
                             <div class="nx-empty-icon">📦</div>
                             <div data-en="No products added yet." data-mr="अद्याप कोणतेही उत्पादन जोडलेले नाही.">No products added yet.</div>
                         </div>
+                        <div id="productsToggleWrap" style="display:none; text-align:center; margin-top:12px;">
+                            <button id="productsToggleBtn" type="button" class="nx-btn nx-btn-ghost nx-btn-sm"></button>
+                        </div>
                     </div>
                 </div>
 
@@ -388,6 +391,7 @@
         });
 
         let allProductsList = [];
+        let showAllProducts = false;
 
         async function loadProducts() {
             const { data, error } = await supabaseClient
@@ -432,12 +436,15 @@
         }
 
         function renderProductsList(productsArr) {
-            const tbody   = document.getElementById('products-list');
-            const emptyEl = document.getElementById('productsEmpty');
+            const tbody      = document.getElementById('products-list');
+            const emptyEl    = document.getElementById('productsEmpty');
+            const toggleWrap = document.getElementById('productsToggleWrap');
+            const toggleBtn  = document.getElementById('productsToggleBtn');
 
             tbody.innerHTML = '';
 
             if (productsArr.length === 0) {
+                toggleWrap.style.display = 'none';
                 if (allProductsList.length === 0) {
                     emptyEl.style.display = 'block';
                 } else {
@@ -448,7 +455,13 @@
             }
             emptyEl.style.display = 'none';
 
-            productsArr.forEach(product => {
+            const searchInput  = document.getElementById('productsListSearch');
+            const searchActive = !!(searchInput && searchInput.value.length > 0);
+            const LIMIT        = 10;
+            const shouldLimit  = !searchActive && !showAllProducts && productsArr.length > LIMIT;
+            const visibleList  = shouldLimit ? productsArr.slice(0, LIMIT) : productsArr;
+
+            visibleList.forEach(product => {
                 const bomBadge = product.hasBOM
                     ? '<span class="nx-badge nx-badge-green">BOM Set</span>'
                     : '<span class="nx-badge nx-badge-yellow" data-en="No BOM ⚠" data-mr="BOM नाही ⚠">No BOM ⚠</span>';
@@ -477,6 +490,16 @@
 
             if (window.utils && typeof window.utils.updateLanguage === 'function') {
                 window.utils.updateLanguage();
+            }
+
+            if (searchActive || productsArr.length <= LIMIT) {
+                toggleWrap.style.display = 'none';
+            } else {
+                toggleWrap.style.display = 'block';
+                const lang = localStorage.getItem('nexflow_lang') || 'en';
+                toggleBtn.textContent = showAllProducts
+                    ? (lang === 'mr' ? '▲ कमी दाखवा' : '▲ Show Less')
+                    : (lang === 'mr' ? `▼ सर्व पहा (${productsArr.length})` : `▼ View All Products (${productsArr.length})`);
             }
         }
 
@@ -569,6 +592,12 @@
                 productsListSearchInput.value = '';
                 productsListClearBtn.style.display = 'none';
                 filterProductsList('');
+            });
+
+            // Products List — View All / Show Less toggle
+            document.getElementById('productsToggleBtn').addEventListener('click', () => {
+                showAllProducts = !showAllProducts;
+                renderProductsList(allProductsList);
             });
 
             // Add Product

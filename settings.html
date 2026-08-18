@@ -41,6 +41,55 @@
             .nx-price-row { grid-template-columns: 1fr; }
         }
 
+        /* ── Shared material/product typeahead (mirrors dispatch.html) ── */
+        .mat-search-wrap{position:relative;width:100%;}
+        .mat-search-inner{position:relative;display:flex;align-items:center;}
+        .mat-search-icon{
+            position:absolute;left:10px;top:50%;transform:translateY(-50%);
+            color:var(--mid);pointer-events:none;font-size:15px;line-height:1;
+            font-style:normal;
+        }
+        .mat-search-input{
+            width:100%;background:var(--surface3);border:1px solid var(--border2);
+            border-radius:var(--radius-sm);color:var(--text);font-family:var(--font);
+            font-size:13px;padding:8px 30px 8px 32px;outline:none;
+            transition:border-color 0.15s,background 0.15s;box-sizing:border-box;
+        }
+        @media(max-width:900px){.mat-search-input{font-size:16px;min-height:44px;}}
+        .mat-search-input:focus{border-color:var(--orange);}
+        .mat-search-input.mat-selected{border-color:#22c55e;background:rgba(34,197,94,0.05);}
+        .mat-search-input::placeholder{color:var(--mid);opacity:0.7;}
+        .mat-clear-btn{
+            position:absolute;right:8px;top:50%;transform:translateY(-50%);
+            background:none;border:none;color:var(--mid);cursor:pointer;
+            font-size:16px;line-height:1;padding:0 3px;display:none;
+            transition:color 0.12s;
+        }
+        .mat-clear-btn:hover{color:var(--white);}
+        .mat-clear-btn.visible{display:block;}
+        .mat-dropdown{
+            position:absolute;top:calc(100% + 4px);left:0;right:0;
+            background:var(--surface);border:1px solid var(--border2);
+            border-radius:var(--radius-sm);z-index:300;
+            max-height:220px;overflow-y:auto;
+            box-shadow:0 8px 28px rgba(0,0,0,0.45);display:none;
+        }
+        .mat-dropdown.open{display:block;}
+        .mat-dropdown-item{
+            padding:9px 12px;font-size:13px;color:var(--text);
+            cursor:pointer;border-bottom:1px solid var(--border);
+            transition:background 0.08s;
+            display:flex;align-items:center;justify-content:space-between;gap:8px;
+        }
+        .mat-dropdown-item:last-child{border-bottom:none;}
+        .mat-dropdown-item:hover,.mat-dropdown-item.kbd-active{background:var(--surface2);}
+        .mat-dropdown-item:hover .mat-item-name,
+        .mat-dropdown-item.kbd-active .mat-item-name{color:var(--orange);}
+        .mat-item-name{font-weight:500;flex:1;}
+        .mat-item-unit{font-size:11px;color:var(--mid);font-family:monospace;
+            background:var(--surface3);padding:1px 6px;border-radius:3px;flex-shrink:0;}
+        .mat-dropdown-empty{padding:12px;font-size:12px;color:var(--mid);text-align:center;}
+
         /* Unsaved dot indicator */
         .nx-unsaved-dot {
             position: absolute;
@@ -860,7 +909,7 @@
                 <div class="nx-price-row">
                     <div class="nx-form-group" style="margin:0;">
                         <label data-en="Material" data-mr="साहित्य">Material</label>
-                        <select id="single-price-material" class="nx-input"></select>
+                        <div id="singlePriceMatMount"></div>
                     </div>
                     <div class="nx-form-group" style="margin:0;">
                         <label data-en="Price/Unit (₹)" data-mr="किंमत/एकक (₹)">Price/Unit (₹)</label>
@@ -891,7 +940,7 @@
                 <div class="nx-price-row">
                     <div class="nx-form-group" style="margin:0;">
                         <label data-en="Product" data-mr="उत्पादन">Product</label>
-                        <select id="product-price-product" class="nx-input"></select>
+                        <div id="productPriceMount"></div>
                     </div>
                     <div class="nx-form-group" style="margin:0;">
                         <label data-en="Selling Price (₹)" data-mr="विक्री किंमत (₹)">Selling Price (₹)</label>
@@ -909,6 +958,8 @@
                 <button onclick="submitProductPrice()" class="nx-btn nx-btn-primary" data-en="Save Price" data-mr="किंमत सेव्ह करा">Save Price</button>
                 <div id="product-price-status" class="nx-status-msg"></div>
             </div>
+
+            <input type="text" id="product-price-search" class="nx-input" style="margin-bottom:12px; max-width:320px;" placeholder="Search product name…" data-en="Search product name…" data-mr="उत्पादनाच्या नावाने शोधा…">
 
             <div class="nx-table-wrap">
                 <table class="nx-table">
@@ -931,9 +982,7 @@
         <div class="nx-card">
             <div class="nx-card-header">
                 <div class="nx-card-title" data-en="Material Price History" data-mr="साहित्य किंमत इतिहास">Material Price History</div>
-                <select id="price-history-material" onchange="loadMaterialPriceHistory()" class="nx-input" style="width:auto; min-width:220px;">
-                    <option value="" data-en="Select material to view history" data-mr="इतिहास पाहण्यासाठी साहित्य निवडा">Select material to view history</option>
-                </select>
+                <div id="priceHistoryMatMount" style="width:220px;"></div>
             </div>
             <div class="nx-table-wrap">
                 <table class="nx-table">
@@ -2240,6 +2289,125 @@
     // ── PRICE TRACKING ────────────────────────────────────────────────────────
     let priceRows = [];
     let allMaterialsForPrices = [];
+    let allProductsForPrices = [];
+    let singlePriceMatTypeahead   = null;
+    let priceHistoryMatTypeahead  = null;
+    let productPriceTypeahead     = null;
+
+    // ── Shared material/product typeahead (mirrors dispatch.html) ──
+    // materialsArr: array with .id OR .raw_material_id, .name, .unit, .material_code
+    // opts: { placeholder, onSelect(id,name,unit) }
+    // Returns: { element, getId(), getUnit(), reset(), setValue(id,name,unit) }
+    function buildMatTypeahead(materialsArr, opts) {
+        opts = opts || {};
+        var ph       = opts.placeholder || 'Search material...';
+        var onSelect = opts.onSelect    || function(){};
+
+        var wrap = document.createElement('div');
+        wrap.className = 'mat-search-wrap';
+        var inner = document.createElement('div');
+        inner.className = 'mat-search-inner';
+        var icon = document.createElement('i');
+        icon.className = 'mat-search-icon';
+        icon.textContent = '⌕';
+        var input = document.createElement('input');
+        input.type='text'; input.className='mat-search-input';
+        input.placeholder=ph; input.autocomplete='off';
+        var clearBtn = document.createElement('button');
+        clearBtn.type='button'; clearBtn.className='mat-clear-btn';
+        clearBtn.title='Clear'; clearBtn.textContent='×';
+        inner.appendChild(icon); inner.appendChild(input); inner.appendChild(clearBtn);
+        var dd = document.createElement('div');
+        dd.className = 'mat-dropdown';
+        wrap.appendChild(inner); wrap.appendChild(dd);
+
+        var selId='', selUnit='', kbdIdx=-1;
+
+        function getId(m){ return m.raw_material_id || m.id || ''; }
+        function esc(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+        function filter(term){
+            var t=(term||'').toLowerCase().trim();
+            return t==='' ? materialsArr.slice(0,50)
+                : materialsArr.filter(function(m){
+                    return m.name.toLowerCase().includes(t)||
+                           (m.material_code&&m.material_code.toLowerCase().includes(t));
+                  });
+        }
+
+        function renderDd(term){
+            var res=filter(term);
+            dd.innerHTML=''; kbdIdx=-1;
+            if(res.length===0){
+                dd.innerHTML='<div class="mat-dropdown-empty">No materials found</div>';
+                return;
+            }
+            res.forEach(function(m){
+                var d=document.createElement('div');
+                d.className='mat-dropdown-item';
+                d.dataset.id=getId(m); d.dataset.unit=m.unit||''; d.dataset.name=m.name;
+                d.innerHTML='<span class="mat-item-name">'+esc(m.name)+'</span>'+
+                             '<span class="mat-item-unit">'+esc(m.unit||'')+'</span>';
+                d.addEventListener('mousedown',function(e){
+                    e.preventDefault(); sel(this.dataset.id,this.dataset.name,this.dataset.unit);
+                });
+                dd.appendChild(d);
+            });
+        }
+
+        function sel(id,name,unit){
+            selId=id; selUnit=unit;
+            input.value=name;
+            input.classList.add('mat-selected');
+            clearBtn.classList.add('visible');
+            dd.classList.remove('open');
+            onSelect(id,name,unit);
+        }
+
+        function reset(){
+            selId=''; selUnit='';
+            input.value='';
+            input.classList.remove('mat-selected');
+            clearBtn.classList.remove('visible');
+            dd.classList.remove('open');
+            onSelect('','','');
+        }
+
+        input.addEventListener('focus',function(){ renderDd(input.value); dd.classList.add('open'); });
+        input.addEventListener('input',function(){
+            if(selId){ selId=''; selUnit=''; input.classList.remove('mat-selected'); onSelect('','',''); }
+            clearBtn.classList.toggle('visible', input.value.length>0);
+            renderDd(input.value); dd.classList.add('open');
+        });
+        input.addEventListener('blur',function(){ setTimeout(function(){ dd.classList.remove('open'); },160); });
+        input.addEventListener('keydown',function(e){
+            var items=dd.querySelectorAll('.mat-dropdown-item');
+            if(e.key==='ArrowDown'){
+                e.preventDefault();
+                kbdIdx=Math.min(kbdIdx+1,items.length-1);
+                items.forEach(function(el,i){ el.classList.toggle('kbd-active',i===kbdIdx); });
+            } else if(e.key==='ArrowUp'){
+                e.preventDefault();
+                kbdIdx=Math.max(kbdIdx-1,0);
+                items.forEach(function(el,i){ el.classList.toggle('kbd-active',i===kbdIdx); });
+            } else if(e.key==='Enter'){
+                e.preventDefault();
+                if(kbdIdx>=0&&items[kbdIdx]){
+                    var el=items[kbdIdx];
+                    sel(el.dataset.id,el.dataset.name,el.dataset.unit);
+                }
+            } else if(e.key==='Escape'){ dd.classList.remove('open'); }
+        });
+        clearBtn.addEventListener('click',reset);
+
+        return {
+            element:  wrap,
+            getId:    function(){ return selId; },
+            getUnit:  function(){ return selUnit; },
+            reset:    reset,
+            setValue: sel
+        };
+    }
 
     async function loadPricesTab() {
         const { data: { user } } = await window.supabase.auth.getUser();
@@ -2250,32 +2418,31 @@
             .select('id, name, unit, material_code').eq('tenant_id', tenantId).eq('is_active', true).order('name');
         allMaterialsForPrices = materials || [];
 
-        ['single-price-material','price-history-material'].forEach(id => {
-            const sel = document.getElementById(id);
-            sel.innerHTML = '<option value="">Select material</option>';
-            allMaterialsForPrices.forEach(m => {
-                const opt = document.createElement('option');
-                opt.value = m.id;
-                opt.textContent = `${m.name} (${m.unit})`;
-                sel.appendChild(opt);
-            });
+        const singleMount = document.getElementById('singlePriceMatMount');
+        singleMount.innerHTML = '';
+        singlePriceMatTypeahead = buildMatTypeahead(allMaterialsForPrices, { placeholder: 'Search material...' });
+        singleMount.appendChild(singlePriceMatTypeahead.element);
+
+        const historyMount = document.getElementById('priceHistoryMatMount');
+        historyMount.innerHTML = '';
+        priceHistoryMatTypeahead = buildMatTypeahead(allMaterialsForPrices, {
+            placeholder: 'Search material...',
+            onSelect: function() { loadMaterialPriceHistory(); }
         });
+        historyMount.appendChild(priceHistoryMatTypeahead.element);
 
         const { data: products } = await window.supabase.from('p2_products')
             .select('id, name, unit').eq('tenant_id', tenantId).eq('is_active', true).order('name');
-        const prodSel = document.getElementById('product-price-product');
-        prodSel.innerHTML = '<option value="">Select Product</option>';
-        (products||[]).forEach(p => {
-            const opt = document.createElement('option');
-            opt.value = p.id;
-            opt.textContent = `${p.name} (${p.unit})`;
-            prodSel.appendChild(opt);
-        });
+        allProductsForPrices = products || [];
+        const productMount = document.getElementById('productPriceMount');
+        productMount.innerHTML = '';
+        productPriceTypeahead = buildMatTypeahead(allProductsForPrices, { placeholder: 'Search product...' });
+        productMount.appendChild(productPriceTypeahead.element);
 
         const today = new Date().toISOString().split('T')[0];
         document.getElementById('single-price-date').value  = today;
         document.getElementById('product-price-date').value = today;
-        loadProductPriceHistory(tenantId, products||[]);
+        loadProductPriceHistory(tenantId, allProductsForPrices);
         applyLang(localStorage.getItem('nexflow_lang') || 'en');
     }
 
@@ -2302,7 +2469,7 @@
     }
 
     async function loadMaterialPriceHistory() {
-        const matId = document.getElementById('price-history-material').value;
+        const matId = priceHistoryMatTypeahead ? priceHistoryMatTypeahead.getId() : '';
         const tbody = document.getElementById('material-price-history-list');
         if (!matId) {
             tbody.innerHTML = '<tr><td colspan="4" style="padding:20px; text-align:center; color:var(--mid);">Select a material above</td></tr>';
@@ -2328,8 +2495,38 @@
         `).join('');
     }
 
+    function filterProductPrices(term) {
+        const t = term.trim().toLowerCase();
+        const tbody = document.getElementById('product-prices-list');
+
+        const existingNoResults = document.getElementById('product-price-no-results');
+        if (existingNoResults) existingNoResults.remove();
+
+        // Only real data rows (from loadProductPriceHistory) carry td.nx-td-bold
+        // as their first cell — the "Loading..." / "No product prices set yet"
+        // placeholder rows use a plain <td colspan="4"> with no class, so this
+        // excludes them automatically.
+        const dataRows = Array.from(tbody.querySelectorAll('tr')).filter(r => r.querySelector('td.nx-td-bold'));
+        if (dataRows.length === 0) return;
+
+        let visibleCount = 0;
+        dataRows.forEach(row => {
+            const name  = row.querySelector('td.nx-td-bold').textContent.toLowerCase();
+            const match = name.includes(t);
+            row.style.display = match ? '' : 'none';
+            if (match) visibleCount++;
+        });
+
+        if (visibleCount === 0) {
+            const tr = document.createElement('tr');
+            tr.id = 'product-price-no-results';
+            tr.innerHTML = '<td colspan="4" style="padding:20px; text-align:center; color:var(--mid);">No products match your search.</td>';
+            tbody.appendChild(tr);
+        }
+    }
+
     async function submitSinglePrice() {
-        const matId    = document.getElementById('single-price-material').value;
+        const matId    = singlePriceMatTypeahead ? singlePriceMatTypeahead.getId() : '';
         const price    = parseFloat(document.getElementById('single-price-value').value);
         const date     = document.getElementById('single-price-date').value;
         const supplier = document.getElementById('single-price-supplier').value.trim();
@@ -2349,13 +2546,13 @@
             statusEl.className = 'nx-status-msg success'; statusEl.textContent = '✓ Price saved.';
             document.getElementById('single-price-value').value   = '';
             document.getElementById('single-price-supplier').value = '';
-            if (document.getElementById('price-history-material').value === matId) loadMaterialPriceHistory();
+            if (priceHistoryMatTypeahead && priceHistoryMatTypeahead.getId() === matId) loadMaterialPriceHistory();
         }
         statusEl.style.display = 'block';
     }
 
     async function submitProductPrice() {
-        const prodId  = document.getElementById('product-price-product').value;
+        const prodId  = productPriceTypeahead ? productPriceTypeahead.getId() : '';
         const price   = parseFloat(document.getElementById('product-price-value').value);
         const date    = document.getElementById('product-price-date').value;
         const notes   = document.getElementById('product-price-notes').value.trim();
@@ -2674,6 +2871,7 @@
         document.getElementById('tab-agent').addEventListener('click',      () => { switchToTab('agent');      loadAgentTab(); });
         document.getElementById('tab-adjustment').addEventListener('click', () => { switchToTab('adjustment'); loadAdjustmentMaterials(); loadRecentAdjustments(); });
         document.getElementById('tab-prices').addEventListener('click',     () => { switchToTab('prices');     loadPricesTab(); });
+        document.getElementById('product-price-search').addEventListener('input', (e) => filterProductPrices(e.target.value));
         document.getElementById('agent-ca-email-save').addEventListener('click', saveCaEmail);
 
         document.getElementById('btn-minus').addEventListener('click', () => setAdjSign(-1));

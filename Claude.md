@@ -865,6 +865,55 @@ BEL-2608-041 (Matched, multi-row GRN), KFP-2608-099 (Unrecorded + NO_ACTION).
 - Unrecorded rows show real Invoice Date from Excel column [4]
 - runReconciliation(), renderTables(), downloadReport() untouched
 
+**GSTR-2B Excel upload (gstr2b-reconcile.html):**
+- Accepts .json OR .xlsx/.xls — same file input, format auto-detected by extension
+- SheetJS (xlsx@0.18.5) added to page for Excel parsing
+- parseGSTR2BExcel(): reads Sheet1, skips header rows by GSTIN validation (15-char check), maps columns [0]=GSTIN, [1]=name, [2]=invoice_no, [4]=date DD/MM/YYYY text, [8]=txval, [9]=igst, [10]=cgst, [11]=sgst, [15]=itcavl
+- derivePeriodFromExcel(): derives period from min/max invoice dates — firstOfMonth/lastOfMonth spans full invoice date range
+- Period display shows "Period: detected from file" for Excel — never claims a specific month
+- cfs always "Y" for Excel (portal only exports filed invoices) — no amber Not Filed badge ever shown for Excel-sourced results
+- ims_status always "NO_ACTION" for Excel
+- #excelFormatNote shown for Excel uploads explaining cfs/IMS limitations
+- itcavl="No" rows land in Matched with ₹0 ITC (not Blocked) — same as JSON path, intentional
+- Unrecorded rows show real Invoice Date from Excel column [4]
+- runReconciliation(), renderTables(), downloadReport() untouched
+- Confirmed: GST portal exports column [4] as plain DD/MM/YYYY text string, not Excel date serial
+
+**Product search on dispatch + production-issue:**
+- dispatch.html: plain select replaced with searchable typeahead widget (mirrors rm-dispatch.html pattern — buildMatTypeahead factory + .mat-search-*/.mat-dropdown-* CSS classes)
+- production-issue.html: same — product_code mapped into search badge slot so users can search by code
+- Both pass JS syntax check
+
+**Tax invoice scope clarification:**
+- p2_invoices generates legally-formatted tax invoices (SAC/HSN, GSTIN, CGST/SGST split, Original/Duplicate/Triplicate, Reverse Charge field) — NOT proforma
+- Scope boundary: invoice generation IN scope. GSTR-1/GSTR-3B submission NOT in scope (Tally's job)
+- All marketing copy updated to say Tax Invoice not Proforma Invoice
+
+**Onboarding tool fixes:**
+- saveCompanyAndPlan() now upserts p2_tenants row before p2_tenant_settings — fixes FK violation for users who signed up before Aug 3 trigger fix
+- importMaterials() rewritten: single-statement insert (no batch loop — eliminates constraint race), running-flag double-invocation guard, confirm() before delete when materials already exist, button re-enables on any failure path
+
+**Per-product PO number:**
+- p2_products.default_po_number: TEXT nullable — standing PO per product, auto-fills dispatch
+- p2_dispatch_items.po_number: TEXT nullable — actual PO used per line item, editable at dispatch time
+- products.html: Default PO field in add/edit form, grey subtitle in product list when set
+- dispatch.html: PO No. inline input per dispatch line item, pre-fills from product default, editable
+- challan.html: PO No column rendered conditionally — only when ≥1 item has po_number set. SS Engineering challans completely unchanged. Excel export column indices updated to match.
+- Migration: 20260817_product_po_numbers.sql — run manually
+
+**Datta Prasad Enterprises onboarding (tenant: 3b68db90-a07c-491e-8913-c829ca969620):**
+- Materials: 264 rows imported via direct SQL (importMaterials() UI had batch-race bug — fixed after)
+- Suppliers: 28 suppliers with GSTINs imported from GSTR-2B Excel via SQL
+- Plan: Founder
+- GSTIN: 27CVZPS9110H1ZS
+- Note: their GSTR-2B is Excel format (portal download) — tested and working with new Excel upload feature
+
+**cfs:N warning on GSTR-2B reconciliation:**
+- Matched rows where supplier cfs === 'N' show amber ⚠ Not Filed badge (.gstr-cfs-badge)
+- Matched stat card warns when any matched supplier has cfs_warning
+- XLSX Matched sheet has CFS Warning column
+- Rows stay in Matched bucket — never moved to Blocked
+
 ## GST Scope — PERMANENTLY LOCKED
 Nexflow P2 generates tax invoices for client billing. It does NOT handle GST filing, GSTR
 generation, or financial reporting. GSTR-1/GSTR-3B submission is Tally's job. Never revisit
