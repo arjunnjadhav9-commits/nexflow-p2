@@ -950,6 +950,31 @@ BEL-2608-041 (Matched, multi-row GRN), KFP-2608-099 (Unrecorded + NO_ACTION).
   security benefit — the use case is a recipient wanting to forward the
   challan on with a verifiable link, independent of what plan the sender is on.
 
+**PO NO column in the receive.html challan PDF — js/challan-pdf.js +
+receive.html + supabase/functions/receive-dispatch:**
+- js/challan-pdf.js's items table gained a PO NO column matching
+  challan.html's own: SR NO | PO NO | DESCRIPTION | QUANTITY | UNIT. Same
+  gate as challan.html's `showPoCol` — only appears when ≥1 item in the
+  payload has a `po_number`; a dispatch with none renders byte-identical to
+  before this column existed. Values render exactly as stored (`sanitize()`
+  only, which is charset-safety for jsPDF's WinAnsi font — not formatting).
+- `drawItemsHeader()` and the item-row/total-row drawing (previously
+  hardcoded `M + COL_SR + COL_DESC + ...` offsets) were refactored to walk a
+  running x-cursor over a `cols` object (`{SR, PO, DESC, QTY, UNIT,
+  showPoCol}`) computed once per build, so header/rows/total agree on the
+  same layout in both modes without duplicating the column math.
+- `receive-dispatch` Edge Function didn't select or return `po_number` on
+  `p2_dispatch_items` at all — added to both the `.select()` and the
+  `resolvedItems` response shape. **Needs a manual redeploy**
+  (`supabase functions deploy receive-dispatch`) — not done as part of this
+  change, by request.
+- receive.html's `downloadPdf()` now passes `po_number` through into the
+  `buildChallanPdf()` payload alongside the existing description/qty/unit
+  fields.
+- Confirmed via search: no `formatPO()` function exists anywhere in the
+  codebase — PO numbers already rendered as-is in challan.html before this
+  change, nothing to remove there.
+
 ## GST Scope — PERMANENTLY LOCKED
 Nexflow P2 generates tax invoices for client billing. It does NOT handle GST filing, GSTR
 generation, or financial reporting. GSTR-1/GSTR-3B submission is Tally's job. Never revisit

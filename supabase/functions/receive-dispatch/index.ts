@@ -64,7 +64,7 @@ Deno.serve(async (req) => {
 
     const { data: items, error: itemsError } = await supabase
       .from('p2_dispatch_items')
-      .select('material_name, material_code, qty_dispatched, unit, product_id')
+      .select('material_name, material_code, qty_dispatched, unit, product_id, po_number')
       .eq('dispatch_order_id', order.id)
       .eq('tenant_id', order.tenant_id)
 
@@ -79,6 +79,7 @@ Deno.serve(async (req) => {
       qty_dispatched: number
       unit: string | null
       product_id: string | null
+      po_number: string | null
     }
     const itemRows = (items ?? []) as ItemRow[]
 
@@ -123,6 +124,7 @@ Deno.serve(async (req) => {
         material_code: it.material_code ?? product?.product_code ?? null,
         qty_dispatched: it.qty_dispatched,
         unit: it.unit,
+        po_number: it.po_number ?? null,
       }
     })
 

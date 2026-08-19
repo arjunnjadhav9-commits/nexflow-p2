@@ -38,11 +38,14 @@
     const M      = 12;                    // page margin
     const CW     = PAGE_W - M * 2;        // content width = 186
 
-    // Items table columns — must sum to CW.
+    // Items table columns — SR/PO/QTY/UNIT are fixed; DESCRIPTION takes the
+    // rest of CW. PO NO only appears when at least one dispatch item in the
+    // payload carries a po_number (mirrors challan.html's showPoCol gate),
+    // so DESCRIPTION's width is computed per-build, not here.
     const COL_SR   = 14;
+    const COL_PO   = 24;   // matches challan.html's own PO NO column (90px ≈ 24mm)
     const COL_QTY  = 28;
     const COL_UNIT = 20;
-    const COL_DESC = CW - COL_SR - COL_QTY - COL_UNIT;  // 124
 
     const LINE_H     = 4.6;   // baseline step for 9-10pt body text
     const FOOTER_TOP = PAGE_H - M - 8;    // outer border stops here
@@ -189,7 +192,13 @@
         doc.setTextColor(0);
     }
 
-    function drawItemsHeader(doc, y) {
+    /**
+     * @param {Object} cols {SR, PO, DESC, QTY, UNIT, showPoCol} — DESC and
+     *                      showPoCol vary per build, the rest are the module
+     *                      constants; kept together so header/rows/total
+     *                      agree on the same layout without recomputing it.
+     */
+    function drawItemsHeader(doc, y, cols) {
         const h = 8;
         doc.setFillColor(229, 231, 235);   // #e5e7eb, same as the print stylesheet
         doc.rect(M, y, CW, h, 'F');
@@ -197,18 +206,29 @@
         doc.setLineWidth(0.3);
         doc.rect(M, y, CW, h);
 
+        const widths = cols.showPoCol
+            ? [cols.SR, cols.PO, cols.DESC, cols.QTY]
+            : [cols.SR, cols.DESC, cols.QTY];
         let x = M;
-        [COL_SR, COL_DESC, COL_QTY].forEach((w) => {
+        widths.forEach((w) => {
             x += w;
             doc.line(x, y, x, y + h);
         });
 
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(8.5);
-        doc.text('SR NO',       M + COL_SR / 2,                    y + 5.4, { align: 'center' });
-        doc.text('DESCRIPTION', M + COL_SR + 3,                    y + 5.4);
-        doc.text('QUANTITY',    M + COL_SR + COL_DESC + COL_QTY - 3, y + 5.4, { align: 'right' });
-        doc.text('UNIT',        M + COL_SR + COL_DESC + COL_QTY + COL_UNIT / 2, y + 5.4, { align: 'center' });
+        let hx = M;
+        doc.text('SR NO', hx + cols.SR / 2, y + 5.4, { align: 'center' });
+        hx += cols.SR;
+        if (cols.showPoCol) {
+            doc.text('PO NO', hx + 3, y + 5.4);
+            hx += cols.PO;
+        }
+        doc.text('DESCRIPTION', hx + 3, y + 5.4);
+        hx += cols.DESC;
+        doc.text('QUANTITY', hx + cols.QTY - 3, y + 5.4, { align: 'right' });
+        hx += cols.QTY;
+        doc.text('UNIT', hx + cols.UNIT / 2, y + 5.4, { align: 'center' });
 
         return y + h;
     }
@@ -259,7 +279,9 @@
      * @param {string} [p.vehicleNumber]
      * @param {string} [p.note]                defaults to the standard receipt line
      * @param {string} [p.footerNote]
-     * @param {Array<{description:string, qty:(string|number), unit:string}>} p.items
+     * @param {Array<{description:string, qty:(string|number), unit:string, po_number?:(string|null)}>} p.items
+     *                                          po_number renders as-is, no formatting; PO NO
+     *                                          column only appears when >=1 item has one set
      * @param {string} [p.dispatchToken]       QR target; omitted → no QR
      * @param {string} [p.plan]                'pro' | 'founder' → QR rendered
      * @param {boolean} [p.forceShowQr]         recipient-side override (receive.html) —
@@ -386,7 +408,17 @@
         doc.line(M, y, M + CW, y);
 
         // 5 ── items table
-        y = drawItemsHeader(doc, y);
+        // PO NO only appears when at least one item in the payload carries a
+        // po_number — same gate challan.html uses for its own PO column, so
+        // a dispatch with none renders byte-identical to before this column
+        // existed.
+        const showPoCol = items.some((it) => it.po_number != null && it.po_number !== '');
+        const descWidth = showPoCol
+            ? CW - COL_SR - COL_PO - COL_QTY - COL_UNIT   // 100mm
+            : CW - COL_SR - COL_QTY - COL_UNIT;           // 124mm, unchanged
+        const cols = { SR: COL_SR, PO: COL_PO, DESC: descWidth, QTY: COL_QTY, UNIT: COL_UNIT, showPoCol };
+
+        y = drawItemsHeader(doc, y, cols);
 
         const rowsBottom = FOOTER_TOP - 6;
         let total = 0;
@@ -394,30 +426,41 @@
         items.forEach((item, i) => {
             doc.setFont('helvetica', 'normal');
             doc.setFontSize(9);
-            const descLines = doc.splitTextToSize(sanitize(item.description || ''), COL_DESC - 6);
+            const descLines = doc.splitTextToSize(sanitize(item.description || ''), cols.DESC - 6);
             const rowH = Math.max(7.5, descLines.length * LINE_H + 3.2);
 
             if (y + rowH > rowsBottom) {
                 pageNo += 1;
                 doc.addPage();
                 drawPageFrame(doc, pageNo);
-                y = drawItemsHeader(doc, M);
+                y = drawItemsHeader(doc, M, cols);
             }
 
             doc.setDrawColor(0);
             doc.setLineWidth(0.3);
             doc.rect(M, y, CW, rowH);
+            const rowWidths = cols.showPoCol
+                ? [cols.SR, cols.PO, cols.DESC, cols.QTY]
+                : [cols.SR, cols.DESC, cols.QTY];
             let x = M;
-            [COL_SR, COL_DESC, COL_QTY].forEach((w) => {
+            rowWidths.forEach((w) => {
                 x += w;
                 doc.line(x, y, x, y + rowH);
             });
 
             const textY = y + 5.2;
-            doc.text(String(i + 1), M + COL_SR / 2, textY, { align: 'center' });
-            descLines.forEach((line, li) => doc.text(line, M + COL_SR + 3, textY + li * LINE_H));
-            doc.text(sanitize(item.qty), M + COL_SR + COL_DESC + COL_QTY - 3, textY, { align: 'right' });
-            doc.text(sanitize(item.unit), M + COL_SR + COL_DESC + COL_QTY + COL_UNIT / 2, textY, { align: 'center' });
+            let tx = M;
+            doc.text(String(i + 1), tx + cols.SR / 2, textY, { align: 'center' });
+            tx += cols.SR;
+            if (cols.showPoCol) {
+                doc.text(sanitize(item.po_number || ''), tx + 3, textY);
+                tx += cols.PO;
+            }
+            descLines.forEach((line, li) => doc.text(line, tx + 3, textY + li * LINE_H));
+            tx += cols.DESC;
+            doc.text(sanitize(item.qty), tx + cols.QTY - 3, textY, { align: 'right' });
+            tx += cols.QTY;
+            doc.text(sanitize(item.unit), tx + cols.UNIT / 2, textY, { align: 'center' });
 
             total += parseFloat(item.qty) || 0;
             y += rowH;
@@ -429,18 +472,19 @@
             pageNo += 1;
             doc.addPage();
             drawPageFrame(doc, pageNo);
-            y = drawItemsHeader(doc, M);
+            y = drawItemsHeader(doc, M, cols);
         }
         doc.setDrawColor(0);
         doc.setLineWidth(0.3);
         doc.rect(M, y, CW, totalH);
-        doc.line(M + COL_SR + COL_DESC, y, M + COL_SR + COL_DESC, y + totalH);
-        doc.line(M + COL_SR + COL_DESC + COL_QTY, y, M + COL_SR + COL_DESC + COL_QTY, y + totalH);
+        const leftGroupWidth = cols.showPoCol ? cols.SR + cols.PO + cols.DESC : cols.SR + cols.DESC;
+        doc.line(M + leftGroupWidth, y, M + leftGroupWidth, y + totalH);
+        doc.line(M + leftGroupWidth + cols.QTY, y, M + leftGroupWidth + cols.QTY, y + totalH);
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(9.5);
-        doc.text('TOTAL', M + COL_SR + COL_DESC - 3, y + 5.4, { align: 'right' });
+        doc.text('TOTAL', M + leftGroupWidth - 3, y + 5.4, { align: 'right' });
         const totalStr = Number.isInteger(total) ? String(total) : total.toFixed(2);
-        doc.text(totalStr, M + COL_SR + COL_DESC + COL_QTY - 3, y + 5.4, { align: 'right' });
+        doc.text(totalStr, M + leftGroupWidth + cols.QTY - 3, y + 5.4, { align: 'right' });
         y += totalH;
 
         // 6 ── footer note

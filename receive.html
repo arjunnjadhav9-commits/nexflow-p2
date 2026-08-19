@@ -256,7 +256,8 @@ async function downloadPdf() {
                     ? (item.material_name || '')
                     : (item.material_code || item.material_name || ''),
                 qty:  String(item.qty_dispatched ?? ''),
-                unit: item.unit || ''
+                unit: item.unit || '',
+                po_number: item.po_number || null
             })),
             dispatchToken: includeQr ? dispatchToken : null,
             plan: null,
