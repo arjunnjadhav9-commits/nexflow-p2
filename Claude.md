@@ -914,6 +914,42 @@ BEL-2608-041 (Matched, multi-row GRN), KFP-2608-099 (Unrecorded + NO_ACTION).
 - XLSX Matched sheet has CFS Warning column
 - Rows stay in Matched bucket — never moved to Blocked
 
+## Shipped Aug 19, 2026
+
+**Challan print polish — challan.html + js/challan-pdf.js:**
+- Tighter gap between "DELIVERY CHALLAN" heading and company block: new
+  `.ch-title-band`/`.ch-company` padding (8px screen, 4px print), mirrored in
+  js/challan-pdf.js as a smaller post-title `y` offset.
+- Signature area (footer "For [company]" → the line above "Authorized
+  Signatory") was too cramped to actually sign in print — the
+  `#ch-signature-section [style*="margin-top:40px"]` print override raised
+  from 10px to 20px; js/challan-pdf.js's `ruleY` bumped from `y + 22` to
+  `y + 24` for parity (still inside the 34mm `SIG_HEIGHT` reserve).
+- General one-page tightening: `#challan-content` print padding `5mm 8mm` →
+  `4mm 6mm`, `.ch-meta-table td` print padding `4px 8px` → `3px 8px`. The PDF
+  already paginates automatically on overflow, so no equivalent change was
+  needed there.
+
+**QR code toggle — challan.html + receive.html + js/challan-pdf.js:**
+- challan.html: QR1 (the meta-block QR next to Challan No/Date/PO) is always
+  shown once the tenant is Pro/Founder with a `dispatch_token` — unaffected
+  by the toggle. Only QR2 (the "Cut and paste on delivery box" cut-out
+  section) is hidden by default, revealed by a screen-only "Show QR"/"Hide
+  QR" button (`no-print`). `renderQrSections()` still pre-builds both QR
+  canvases up front; only QR2's reveal is gated behind `toggleQr()`.
+- receive.html: had no QR anywhere before this — its only "print" surface is
+  the downloaded PDF (js/challan-pdf.js), which previously hardcoded
+  `dispatchToken: null, plan: null` specifically to never show a QR ("the
+  visitor just scanned one to reach this page"). A new "Show QR" toggle
+  overrides that: when on, `downloadPdf()` passes the real `dispatchToken`
+  plus a new `forceShowQr: true`, which bypasses the sender's Pro/Founder
+  plan check entirely in `buildChallanPdf()`
+  (`showQr = (p.forceShowQr || isQrEligible(p.plan)) && !!p.dispatchToken`).
+  Deliberate: the token is already public in receive.html's own URL, so
+  gating this on the sender's plan would need a backend change for no real
+  security benefit — the use case is a recipient wanting to forward the
+  challan on with a verifiable link, independent of what plan the sender is on.
+
 ## GST Scope — PERMANENTLY LOCKED
 Nexflow P2 generates tax invoices for client billing. It does NOT handle GST filing, GSTR
 generation, or financial reporting. GSTR-1/GSTR-3B submission is Tally's job. Never revisit

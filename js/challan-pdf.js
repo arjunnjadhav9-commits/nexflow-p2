@@ -8,7 +8,11 @@
  *
  * Consumed by:
  *   - receive.html → "Download Challan (PDF)", for the recipient who arrived
- *     via a QR scan or the link in the challan email
+ *     via a QR scan or the link in the challan email. That page's PDF omits
+ *     the QR by default (the recipient already scanned one), but its "Show
+ *     QR" toggle can opt back in via p.forceShowQr — independent of the
+ *     sender's plan, since dispatchToken is already public in that page's
+ *     own URL.
  *
  * Deliberately NOT used by the agent or challan.html: send_challan emails the
  * Excel workbook in a single Edge Function call, and SS Engineering prints
@@ -212,7 +216,7 @@
     function drawSignatureBlock(doc, y, companyName) {
         const leftX  = M + 6;
         const rightX = PAGE_W - M - 6;
-        const ruleY  = y + 22;
+        const ruleY  = y + 24;
 
         doc.setDrawColor(0);
         doc.setLineWidth(0.3);
@@ -258,13 +262,16 @@
      * @param {Array<{description:string, qty:(string|number), unit:string}>} p.items
      * @param {string} [p.dispatchToken]       QR target; omitted → no QR
      * @param {string} [p.plan]                'pro' | 'founder' → QR rendered
+     * @param {boolean} [p.forceShowQr]         recipient-side override (receive.html) —
+     *                                          show the QR regardless of plan; still
+     *                                          requires p.dispatchToken to be set
      * @returns {Promise<string>} base64 PDF, no data-URI prefix
      */
     async function buildChallanPdf(p) {
         await loadPdfLibs();
 
         const items = Array.isArray(p.items) ? p.items : [];
-        const showQr = isQrEligible(p.plan) && !!p.dispatchToken;
+        const showQr = (p.forceShowQr || isQrEligible(p.plan)) && !!p.dispatchToken;
         let qrImage = null;
         if (showQr) {
             try {
@@ -286,14 +293,14 @@
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(15);
         doc.text('DELIVERY CHALLAN', PAGE_W / 2, y + 8.5, { align: 'center' });
-        y += 12;
+        y += 10;
         doc.setLineWidth(0.5);
         doc.line(M, y, M + CW, y);
 
         // 2 ── company band
         doc.setFontSize(13);
-        doc.text(sanitize(p.companyName), PAGE_W / 2, y + 6.5, { align: 'center' });
-        let cy = y + 6.5;
+        doc.text(sanitize(p.companyName), PAGE_W / 2, y + 5.5, { align: 'center' });
+        let cy = y + 5.5;
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(9);
         [p.addressLine1, p.addressLine2,

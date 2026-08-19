@@ -134,6 +134,7 @@
                 </table>
             </div>
             <button id="pdfBtn" class="nx-btn nx-btn-primary section-gap" onclick="downloadPdf()">⬇ Download Challan (PDF)</button>
+            <button id="qrToggleBtn" class="nx-btn nx-btn-ghost nx-btn-sm section-gap" onclick="toggleQr()">Show QR</button>
             <button class="nx-btn nx-btn-secondary section-gap" onclick="downloadExcel()">⬇ Download Challan (Excel)</button>
         </div>
 
@@ -162,6 +163,12 @@ const AGENT_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/agent-query`;
 let currentDispatchData = null;
 let dispatchToken = null;
 let currentSession = null;
+let includeQr = false;
+
+function toggleQr() {
+    includeQr = !includeQr;
+    document.getElementById('qrToggleBtn').textContent = includeQr ? 'Hide QR' : 'Show QR';
+}
 
 function escapeHtml(str) {
     return String(str ?? '').replace(/[&<>"']/g, (c) => ({
@@ -212,8 +219,11 @@ function renderDispatch(data) {
 
 // The only consumer of js/challan-pdf.js — this is where a recipient who
 // arrived by QR scan or by the link in the challan email gets a printable copy.
-// No QR on the PDF on purpose: the visitor just scanned one to reach this page,
-// and receive-dispatch deliberately does not expose plan or dispatch_token.
+// No QR by default: the visitor just scanned one to reach this page. The
+// Show QR toggle lets them opt in anyway (e.g. to forward this challan on to
+// someone else) — forceShowQr bypasses the sender's plan check entirely,
+// since dispatchToken is already public via this page's own URL and
+// receive-dispatch still never exposes the sender's plan.
 async function downloadPdf() {
     if (!currentDispatchData) return;
     const { dispatch, supplier, items } = currentDispatchData;
@@ -248,8 +258,9 @@ async function downloadPdf() {
                 qty:  String(item.qty_dispatched ?? ''),
                 unit: item.unit || ''
             })),
-            dispatchToken: null,
-            plan: null
+            dispatchToken: includeQr ? dispatchToken : null,
+            plan: null,
+            forceShowQr: includeQr
         };
 
         const base64 = await buildChallanPdf(payload);

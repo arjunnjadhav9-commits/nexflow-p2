@@ -73,6 +73,11 @@
 
         .ch-company {
             text-align: center;
+            padding-top: 8px;
+        }
+
+        .ch-title-band {
+            padding-bottom: 8px;
         }
 
         .ch-meta-table {
@@ -124,7 +129,7 @@
                 box-shadow: none;
                 border-radius: 0;
                 margin: 0;
-                padding: 5mm 8mm;
+                padding: 4mm 6mm;
                 font-size: 10px;
             }
             #challan-content * { background: #fff !important; color: #000 !important; }
@@ -138,7 +143,9 @@
                Meta/Items/Footer-note/Signature set their own inline padding
                and need !important (or an id) to be overridden here. */
             .ch-section { padding: 6px 14px; }
-            .ch-meta-table td { padding: 4px 8px; }
+            .ch-title-band { padding-bottom: 4px; }
+            .ch-company { padding-top: 4px; }
+            .ch-meta-table td { padding: 3px 8px; }
 
             /* Header block (company name + address lines under #company-header
                / #company-details) — #company-details has inline font-size:12px
@@ -156,7 +163,7 @@
 
             #ch-signature-section { padding: 6px 16px 6px !important; }
             #ch-signature-section > div { min-height: 40px !important; }
-            #ch-signature-section [style*="margin-top:40px"] { margin-top: 10px !important; }
+            #ch-signature-section [style*="margin-top:40px"] { margin-top: 20px !important; }
 
             #footer-note-section { padding: 4px 16px !important; min-height: 0 !important; }
 
@@ -200,6 +207,10 @@
                     data-en="Print Challan" data-mr="चलान प्रिंट करा">
                 🖨️ Print Challan
             </button>
+            <button id="qrToggleBtn" onclick="toggleQr()" class="nx-btn nx-btn-secondary no-print" style="display:none;"
+                    data-en="Show QR" data-mr="QR दाखवा">
+                Show QR
+            </button>
             <button onclick="downloadExcel()" class="nx-btn nx-btn-secondary no-print"
                     data-en="⬇ Excel" data-mr="⬇ एक्सेल">
                 ⬇ Excel
@@ -226,7 +237,7 @@
       <div class="ch-outer">
 
         <!-- 1. DELIVERY CHALLAN title -->
-        <div class="ch-section" style="border-bottom:2px solid #000;">
+        <div class="ch-section ch-title-band" style="border-bottom:2px solid #000;">
             <div class="ch-title" data-en="DELIVERY CHALLAN" data-mr="डिलिव्हरी चलान">DELIVERY CHALLAN</div>
         </div>
 
@@ -522,13 +533,25 @@
 
             document.getElementById('qr1-canvas').innerHTML = '';
             new QRCode(document.getElementById('qr1-canvas'), { text: receiveUrl, width: 80, height: 80 });
-            document.getElementById('qr1-block').style.display = 'block';
 
             document.getElementById('qr2-canvas').innerHTML = '';
             new QRCode(document.getElementById('qr2-canvas'), { text: receiveUrl, width: 80, height: 80 });
             document.getElementById('qr2-challan-no').textContent = document.getElementById('challan-no').textContent;
             document.getElementById('qr2-company-name').textContent = settings?.company_name || '';
-            document.getElementById('qr2-cutout').style.display = 'block';
+
+            // QR1 (header/meta block) is always shown once eligible — only
+            // QR2 (the cut-out sticker section) is gated behind the toggle,
+            // hidden by default until the user clicks Show QR.
+            document.getElementById('qr1-block').style.display = 'block';
+            document.getElementById('qrToggleBtn').style.display = '';
+        }
+
+        let qrVisible = false;
+
+        function toggleQr() {
+            qrVisible = !qrVisible;
+            document.getElementById('qr2-cutout').style.display = qrVisible ? 'block' : 'none';
+            document.getElementById('qrToggleBtn').textContent  = qrVisible ? 'Hide QR' : 'Show QR';
         }
 
         function handleLogoError() {
