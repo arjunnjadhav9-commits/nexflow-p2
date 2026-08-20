@@ -118,12 +118,13 @@
     .print-only-cell { display: none; }
 
     @media print {
-        @page { size: A4; margin: 10mm; }
+        @page { size: A4; margin: 6mm; }
 
         html, body {
             background: #fff !important;
             margin: 0 !important;
             padding: 0 !important;
+            min-height: 0 !important;
         }
 
         /* Hide everything except the invoice wrapper */
@@ -137,8 +138,9 @@
             margin: 0 !important;
             padding: 0 !important;
             border: 1.5px solid #000 !important;
+            min-height: 0 !important;
         }
-        #content { display: block !important; width: 100% !important; }
+        #content { display: block !important; width: 100% !important; min-height: 0 !important; }
 
         /* Flatten every element to plain black-on-white, strip card chrome */
         #content * {
@@ -151,26 +153,38 @@
             print-color-adjust: exact !important;
         }
 
-        /* Each .nx-card becomes a flush section with a divider line, not a floating card */
+        /* Each .nx-card becomes a flush, compact section with a divider line, not a floating card */
         #content .nx-card {
             border: none !important;
             border-bottom: 1px solid #000 !important;
-            padding: 8px 12px !important;
+            padding: 4px 8px !important;
             margin: 0 !important;
         }
         #content .nx-card:last-of-type { border-bottom: none !important; }
 
-        /* Table: full width, collapsed grid borders, no wrapper radius */
+        /* Non-card spacer divs (e.g. the totals-row wrapper) aren't covered by the
+           .nx-card margin reset above — their screen-sized 16px gap was the main
+           source of the blank space between the items table and the totals/bank
+           section on print; collapse it here. */
+        .section-gap { margin-top: 3px !important; }
+
+        /* Table: full width, collapsed grid borders, no wrapper radius, dense rows */
         #content .nx-table-wrap { border: none !important; }
         #content table, #content .nx-table {
             width: 100% !important;
             border-collapse: collapse !important;
             border: 1px solid #000 !important;
+            font-size: 9px !important;
+            line-height: 1.2 !important;
         }
         #content table th, #content table td {
             border: 1px solid #000 !important;
-            padding: 4px 8px !important;
+            padding: 2px 4px !important;
+            font-size: 9px !important;
+            line-height: 1.2 !important;
+            height: auto !important;
         }
+        #content table tr { min-height: 0 !important; }
 
         /* Grey table header must survive print */
         #content thead tr, #content thead th {
@@ -181,21 +195,44 @@
 
         tr { page-break-inside: avoid !important; }
 
-        #invoiceSignatureSection { page-break-before: avoid !important; page-break-inside: avoid !important; margin-top: 16px !important; }
-        #invoiceFooterNote { page-break-inside: avoid !important; page-break-before: avoid !important; margin-top: 8px !important; padding: 6px !important; }
+        /* Signature block — reduced height (was min-height:70px on the inner
+           flex row, plus a 30px margin above "Authorised Signatory" on
+           screen), font shrunk to match the rest of the compact layout. */
+        #invoiceSignatureSection { page-break-before: avoid !important; page-break-inside: avoid !important; margin-top: 6px !important; }
+        #invoiceSignatureSection div { font-size: 9px !important; }
+        #invoiceSignatureSection [style*="min-height:70px"] { min-height: 24px !important; }
+        #invoiceSignatureSection [style*="margin-top:30px"] { margin-top: 8px !important; }
+        #invoiceFooterNote { page-break-inside: avoid !important; page-break-before: avoid !important; margin-top: 4px !important; padding: 3px !important; font-size: 9px !important; }
 
         /* Trim vertical space in the bank details card — it sits outside
            #content so it doesn't get that block's flattened 8px/12px
            padding, and still carries screen-sized .nx-card padding in print. */
-        #bankCard { padding: 8px 12px !important; page-break-inside: avoid !important; }
+        #bankCard { padding: 4px 8px !important; page-break-inside: avoid !important; }
+        #bankCard .nx-card-title { font-size: 9px !important; margin-bottom: 2px !important; }
         #bankCard .supplier-line { margin: 1px 0 !important; }
 
-        /* Compress the whole invoice proportionally so bank details + the
-           signature block are more likely to land on the same page as the
-           items table, without touching layout/positions. */
+        /* Compress the whole invoice proportionally, then pin every
+           component that carries its own explicit screen-sized font-size
+           (these don't inherit from the blanket rule below since they're
+           specified directly on the element, not just inherited). */
         body, #content {
-            font-size: 11px !important;
+            font-size: 9px !important;
         }
+        #companyName { font-size: 16px !important; margin-bottom: 1px !important; }
+        #companyAddress, #companyContact { font-size: 9px !important; line-height: 1.2 !important; }
+        #invoiceTitleBlock { font-size: 18px !important; margin: 4px 0 !important; padding: 4px 0 !important; }
+        #copyLabelBlock { font-size: 9px !important; line-height: 1.2 !important; margin-top: 2px !important; }
+        #reverseChargeBlock { font-size: 9px !important; margin-top: 2px !important; }
+
+        .invoice-meta { margin-top: 3px !important; padding-top: 3px !important; }
+        .invoice-meta .label, .invoice-meta .value { font-size: 9px !important; line-height: 1.2 !important; }
+        .invoice-period { font-size: 9px !important; line-height: 1.2 !important; margin-top: 2px !important; }
+        .bill-to { font-size: 9px !important; line-height: 1.2 !important; margin-bottom: 2px !important; }
+        .supplier-line { font-size: 9px !important; line-height: 1.2 !important; }
+
+        .totals-row { font-size: 9px !important; line-height: 1.2 !important; padding: 1px 0 !important; }
+        .totals-row.grand { font-size: 9px !important; line-height: 1.2 !important; margin-top: 2px !important; padding-top: 2px !important; }
+        .amount-words { font-size: 9px !important; line-height: 1.2 !important; margin-top: 2px !important; }
 
         /* Company header centered, matching the PDF */
         #companyName, #companyAddress, #companyContact { text-align: center !important; }

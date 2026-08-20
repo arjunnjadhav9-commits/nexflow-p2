@@ -112,15 +112,29 @@ interface ResendInvoiceRequest {
 
 // invoices.html "+ New Consolidated Invoice" modal — merges every confirmed
 // dispatch for one client within [date_from, date_to] into one invoice.
-// Unlike ConfirmGenerateInvoiceRequest, rates are NOT client-supplied here
-// (the modal has no per-item review step) — resolved server-side from
-// p2_material_prices/p2_product_prices via buildInvoiceItemsForOrder, same
-// as the Haiku-driven sendInvoiceConsolidated path.
+// Rates default to p2_material_prices/p2_product_prices via
+// buildInvoiceItemsForOrder (same as the Haiku-driven sendInvoiceConsolidated
+// path), but item_rates lets the invoices.html preview step (Preview Line
+// Items -> edit price -> Confirm) override them per dispatch_item_id, same
+// "trust rate, verify everything else" posture as ConfirmGenerateInvoiceRequest.
 interface ConfirmConsolidatedInvoiceRequest {
   action: 'confirm_consolidated_invoice'
   tenant_id: string
   client_id: string
   client_name: string
+  date_from: string
+  date_to: string
+  gst_type: string
+  item_rates?: Array<{ dispatch_item_id: string; rate: number }>
+}
+
+// invoices.html "+ New Consolidated Invoice" modal, Step 1 -> Step 2 —
+// returns the same computed line items confirm_consolidated_invoice would
+// use, without creating anything, so the owner can review/edit prices first.
+interface PreviewConsolidatedInvoiceRequest {
+  action: 'preview_consolidated_invoice'
+  tenant_id: string
+  client_id: string
   date_from: string
   date_to: string
   gst_type: string
@@ -3804,10 +3818,10 @@ async function buildInvoiceItemsForOrder(
   supabaseClient: ReturnType<typeof createClient>,
   tenantId: string,
   order: Pick<InvoiceOrderRow, 'id' | 'challan_number' | 'dispatch_date'>
-): Promise<{ items: InvoiceItem[] } | { error: string }> {
+): Promise<{ items: (InvoiceItem & { dispatch_item_id: string; product_code: string })[] } | { error: string }> {
   const { data: items, error: itemsError } = await supabaseClient
     .from('p2_dispatch_items')
-    .select('material_name, material_code, qty_dispatched, unit, raw_material_id, product_id')
+    .select('id, material_name, material_code, qty_dispatched, unit, raw_material_id, product_id')
     .eq('tenant_id', tenantId)
     .eq('dispatch_order_id', order.id)
 
@@ -3819,6 +3833,7 @@ async function buildInvoiceItemsForOrder(
   }
 
   type ItemRow = {
+    id: string
     material_name: string | null
     material_code: string | null
     qty_dispatched: number
@@ -3832,18 +3847,18 @@ async function buildInvoiceItemsForOrder(
   // product dispatch items have NULL material_name at the DB level. All
   // product items (not just those missing a name) need this for hsn_sac.
   const productIdsForLookup = [...new Set(itemRows.map((it) => it.product_id).filter(Boolean))] as string[]
-  const productsById = new Map<string, { name: string | null; hsn_sac: string | null }>()
+  const productsById = new Map<string, { name: string | null; hsn_sac: string | null; product_code: string | null }>()
   if (productIdsForLookup.length) {
     const { data: products, error: productsError } = await supabaseClient
       .from('p2_products')
-      .select('id, name, hsn_sac')
+      .select('id, name, hsn_sac, product_code')
       .eq('tenant_id', tenantId)
       .in('id', productIdsForLookup)
     if (productsError) {
       return { error: 'Product details load karta aale nahi.' }
     }
-    for (const p of (products ?? []) as { id: string; name: string | null; hsn_sac: string | null }[]) {
-      productsById.set(p.id, { name: p.name, hsn_sac: p.hsn_sac })
+    for (const p of (products ?? []) as { id: string; name: string | null; hsn_sac: string | null; product_code: string | null }[]) {
+      productsById.set(p.id, { name: p.name, hsn_sac: p.hsn_sac, product_code: p.product_code })
     }
   }
 
@@ -3889,7 +3904,7 @@ async function buildInvoiceItemsForOrder(
     }
   }
 
-  const invoiceItems: InvoiceItem[] = itemRows.map((it) => {
+  const invoiceItems = itemRows.map((it) => {
     const product = it.product_id ? productsById.get(it.product_id) : undefined
     const qty = Number(it.qty_dispatched) || 0
     const rate = it.product_id
@@ -3902,7 +3917,13 @@ async function buildInvoiceItemsForOrder(
       : it.raw_material_id
         ? hsnByMaterialId.get(it.raw_material_id) ?? ''
         : ''
+    // product_code is preview/edit-flow metadata only (invoices.html Step 2
+    // table + item_rates keying) — stripped before anything is persisted to
+    // p2_invoices.items, same as dispatch_item_id.
+    const productCode = it.product_id ? product?.product_code ?? '' : it.material_code ?? ''
     return {
+      dispatch_item_id: it.id,
+      product_code: productCode ?? '',
       challan_number: order.challan_number,
       dispatch_date: order.dispatch_date,
       description: it.material_name ?? product?.name ?? it.material_code ?? 'Unknown Item',
@@ -4134,7 +4155,7 @@ async function sendInvoiceSingle(
     invoiceMode: 'single',
     dispatchOrderId: order.id,
     dispatchOrderIds: [order.id],
-    items: itemsResult.items,
+    items: itemsResult.items.map(({ dispatch_item_id, product_code, ...rest }) => rest),
     gstType: 'cgst_sgst',
     dateFrom: null,
     dateTo: null,
@@ -4216,7 +4237,7 @@ async function sendInvoiceConsolidated(
     if ('error' in itemsResult) {
       return { text: itemsResult.error, success: false, errorReason: 'items_error' }
     }
-    allItems.push(...itemsResult.items)
+    allItems.push(...itemsResult.items.map(({ dispatch_item_id, product_code, ...rest }) => rest))
   }
 
   return await createAndSendInvoice(supabaseClient, tenantId, {
@@ -4717,17 +4738,16 @@ async function confirmGenerateInvoice(
   return respond({ status: 'ok', invoice_number: invoiceNumber, invoice_url: invoiceUrl, total })
 }
 
-// invoices.html "+ New Consolidated Invoice" modal — merges every confirmed
-// dispatch for one client within a date range into one invoice. Mirrors
-// confirmGenerateInvoice's conventions (respond() shape, draft-then-flip
-// status) but reuses the consolidated-mode guards and rate resolution
-// already proven in sendInvoiceConsolidated/buildInvoiceItemsForOrder.
-// Unlike the single-mode UI modal, there's no per-item rate review step
-// here, so rates come from price tables with zero-fallback (never blocks
-// on a missing price) — same as the Haiku-driven send_invoice path.
-async function confirmConsolidatedInvoice(
+// invoices.html "+ New Consolidated Invoice" modal, Step 1 -> Step 2 (Preview
+// Line Items) — computes the same line items/totals confirmConsolidatedInvoice
+// would use, without creating or emailing anything, so the owner can review
+// and edit prices before confirming. Reuses confirmConsolidatedInvoice's
+// exact guard sequence (client resolution, dispatch-order query, duplicate
+// check, cross-mode double-billing guard) so a preview never shows line
+// items for an invoice that couldn't actually be created.
+async function previewConsolidatedInvoice(
   supabaseClient: ReturnType<typeof createClient>,
-  body: Partial<ConfirmConsolidatedInvoiceRequest>
+  body: Partial<PreviewConsolidatedInvoiceRequest>
 ): Promise<Response> {
   const { tenant_id, client_id, date_from, date_to, gst_type } = body
 
@@ -4735,6 +4755,128 @@ async function confirmConsolidatedInvoice(
     return respond({ status: 'error', error: 'tenant_id, client_id, date_from, date_to, and gst_type are required' }, 400)
   }
   const gstType = gst_type === 'igst' || gst_type === 'none' ? gst_type : 'cgst_sgst'
+
+  const { data: client, error: clientError } = await supabaseClient
+    .from('p2_clients')
+    .select('id, name')
+    .eq('id', client_id)
+    .eq('tenant_id', tenant_id)
+    .maybeSingle()
+
+  if (clientError) {
+    return respond({ status: 'error', error: clientError.message }, 500)
+  }
+  if (!client) {
+    return respond({ status: 'error', error: 'Client not found' }, 404)
+  }
+
+  const { data: orders, error: ordersError } = await supabaseClient
+    .from('p2_dispatch_orders')
+    .select(INVOICE_ORDER_COLUMNS)
+    .eq('tenant_id', tenant_id)
+    .eq('client_name', client.name)
+    .eq('status', 'confirmed')
+    .gte('dispatch_date', date_from)
+    .lte('dispatch_date', date_to)
+    .order('dispatch_date', { ascending: true })
+
+  if (ordersError) {
+    return respond({ status: 'error', error: ordersError.message }, 500)
+  }
+  if (!orders?.length) {
+    return respond({ status: 'error', error: 'Ya period madhe koi confirmed dispatch nahi' }, 400)
+  }
+
+  const orderRows = orders as InvoiceOrderRow[]
+  const orderIds = orderRows.map((o) => o.id)
+
+  // Same duplicate check as confirmConsolidatedInvoice, but blocks here
+  // instead of silently resending — no point previewing/editing prices for
+  // an invoice that already exists.
+  const { data: existingInvoice, error: existingError } = await supabaseClient
+    .from('p2_invoices')
+    .select('invoice_number')
+    .eq('tenant_id', tenant_id)
+    .eq('client_id', client_id)
+    .eq('date_from', date_from)
+    .eq('date_to', date_to)
+    .maybeSingle()
+
+  if (existingError) {
+    return respond({ status: 'error', error: existingError.message }, 500)
+  }
+  if (existingInvoice) {
+    return respond({
+      status: 'error',
+      error: `Ya client ani period sathi invoice already exists — ${existingInvoice.invoice_number}.`,
+    }, 400)
+  }
+
+  // Same cross-mode double-billing guard as confirmConsolidatedInvoice.
+  const { data: singleInvoices, error: singleError } = await supabaseClient
+    .from('p2_invoices')
+    .select('dispatch_order_id')
+    .eq('invoice_mode', 'single')
+    .in('dispatch_order_id', orderIds)
+
+  if (singleError) {
+    return respond({ status: 'error', error: singleError.message }, 500)
+  }
+  if (singleInvoices?.length) {
+    const billedIds = new Set(singleInvoices.map((i: { dispatch_order_id: string | null }) => i.dispatch_order_id as string))
+    const billedChallans = orderRows.filter((o) => billedIds.has(o.id)).map((o) => o.challan_number).join(', ')
+    return respond({
+      status: 'error',
+      error: `Ya dispatches paikee kahi already individually billed aahit — ${billedChallans}. Consolidated invoice create karu nahi shaknar.`,
+    }, 400)
+  }
+
+  const allItems: (InvoiceItem & { dispatch_item_id: string; product_code: string })[] = []
+  for (const order of orderRows) {
+    const itemsResult = await buildInvoiceItemsForOrder(supabaseClient, tenant_id, order)
+    if ('error' in itemsResult) {
+      return respond({ status: 'error', error: itemsResult.error }, 400)
+    }
+    allItems.push(...itemsResult.items)
+  }
+
+  const { subtotal, gst, total } = buildInvoiceTotals(allItems, gstType)
+
+  return respond({ status: 'ok', client_name: client.name, items: allItems, subtotal, gst, total })
+}
+
+// invoices.html "+ New Consolidated Invoice" modal, Step 2 (Confirm & Generate
+// Invoice) — merges every confirmed dispatch for one client within a date
+// range into one invoice. Mirrors confirmGenerateInvoice's conventions
+// (respond() shape, draft-then-flip status, item_rates overrides a
+// price-table default) and reuses the consolidated-mode guards and rate
+// resolution already proven in sendInvoiceConsolidated/
+// buildInvoiceItemsForOrder. item_rates is optional — a missing entry (or a
+// direct call with no item_rates at all) falls back to the price-table rate
+// with zero-fallback (never blocks on a missing price), same as the
+// Haiku-driven send_invoice path.
+async function confirmConsolidatedInvoice(
+  supabaseClient: ReturnType<typeof createClient>,
+  body: Partial<ConfirmConsolidatedInvoiceRequest>
+): Promise<Response> {
+  const { tenant_id, client_id, date_from, date_to, gst_type, item_rates } = body
+
+  if (!tenant_id || !client_id || !date_from || !date_to || !gst_type) {
+    return respond({ status: 'error', error: 'tenant_id, client_id, date_from, date_to, and gst_type are required' }, 400)
+  }
+  const gstType = gst_type === 'igst' || gst_type === 'none' ? gst_type : 'cgst_sgst'
+
+  // item_rates is optional (invoices.html's preview step sends it; a direct
+  // call without it falls back to price-table rates, same as before this
+  // field existed) — same non-negative-number guard confirmGenerateInvoice
+  // applies to its item_rates.
+  if (item_rates) {
+    const invalidRate = item_rates.find((r) => !Number.isFinite(r.rate) || r.rate < 0)
+    if (invalidRate) {
+      return respond({ status: 'error', error: 'rate must be a non-negative number for every item' }, 400)
+    }
+  }
+  const rateById = new Map((item_rates ?? []).map((r) => [r.dispatch_item_id, r.rate]))
 
   // Client is resolved server-side from client_id, not trusted from the
   // request's client_name — same "never trust client input for billing"
@@ -4827,7 +4969,12 @@ async function confirmConsolidatedInvoice(
     if ('error' in itemsResult) {
       return respond({ status: 'error', error: itemsResult.error }, 400)
     }
-    allItems.push(...itemsResult.items)
+    for (const { dispatch_item_id, product_code, ...rest } of itemsResult.items) {
+      // Confirmed price from the preview step wins when present; otherwise
+      // keep buildInvoiceItemsForOrder's price-table default.
+      const rate = rateById.has(dispatch_item_id) ? Number(rateById.get(dispatch_item_id)) : rest.rate
+      allItems.push({ ...rest, rate, amount: rest.qty * rate })
+    }
   }
 
   const { subtotal, gst, total } = buildInvoiceTotals(allItems, gstType)
@@ -4992,7 +5139,8 @@ Deno.serve(async (req) => {
       Partial<Omit<ConfirmGenerateInvoiceRequest, 'action'>> &
       Partial<Omit<ResendInvoiceRequest, 'action'>> &
       Partial<Omit<ConfirmConsolidatedInvoiceRequest, 'action'>> &
-      { action?: 'confirm_grn' | 'confirm_production_issue' | 'add_production_issue_client' | 'confirm_product_dispatch' | 'confirm_rm_dispatch' | 'confirm_multi_grn' | 'update_grn_rates' | 'confirm_receive_grn' | 'confirm_generate_invoice' | 'resend_invoice' | 'confirm_consolidated_invoice' } = await req.json()
+      Partial<Omit<PreviewConsolidatedInvoiceRequest, 'action'>> &
+      { action?: 'confirm_grn' | 'confirm_production_issue' | 'add_production_issue_client' | 'confirm_product_dispatch' | 'confirm_rm_dispatch' | 'confirm_multi_grn' | 'update_grn_rates' | 'confirm_receive_grn' | 'confirm_generate_invoice' | 'resend_invoice' | 'confirm_consolidated_invoice' | 'preview_consolidated_invoice' } = await req.json()
 
     // Cross-tenant auth guard: every action below (and the plain-message path
     // further down) takes tenant_id from this same body — verify it against
@@ -5019,6 +5167,10 @@ Deno.serve(async (req) => {
 
     if (body.action === 'confirm_consolidated_invoice') {
       return await confirmConsolidatedInvoice(supabase, body as Partial<ConfirmConsolidatedInvoiceRequest>)
+    }
+
+    if (body.action === 'preview_consolidated_invoice') {
+      return await previewConsolidatedInvoice(supabase, body as Partial<PreviewConsolidatedInvoiceRequest>)
     }
 
     if (body.action === 'confirm_receive_grn') {
