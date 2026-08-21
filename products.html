@@ -204,7 +204,7 @@
                 </div>
 
                 <!-- ── SECTION: BOM ── -->
-                <div class="nx-card">
+                <div class="nx-card" id="bomSection">
                     <div class="nx-card-header">
                         <div class="nx-card-title" data-en="Bill of Materials (BOM)" data-mr="बिल ऑफ मटेरियल्स (BOM)">Bill of Materials (BOM)</div>
                     </div>
@@ -227,9 +227,7 @@
                         <label data-en="Select Product to Manage BOM" data-mr="BOM व्यवस्थापित करण्यासाठी उत्पादन निवडा">
                             Select Product to Manage BOM
                         </label>
-                        <select id="bom-product-select" class="nx-input">
-                            <option value="" data-en="-- Select a Product --" data-mr="-- उत्पादन निवडा --">-- Select a Product --</option>
-                        </select>
+                        <div id="bomProductSelectMount"></div>
                     </div>
 
                     <!-- BOM details (shown after selecting product) -->
@@ -349,6 +347,7 @@
         let currentTenantId  = null;
         let selectedProductId = null;
         let materialsMap     = {};
+        let bomProductTypeahead = null;
 
         document.addEventListener('DOMContentLoaded', async () => {
             const loadingSpinner  = document.getElementById('loadingSpinner');
@@ -423,16 +422,111 @@
 
             allProductsList = data.map(product => ({ ...product, hasBOM: bomCountMap[product.id] > 0 }));
 
-            const bomSelect = document.getElementById('bom-product-select');
-            bomSelect.innerHTML = '<option value="" data-en="-- Select a Product --" data-mr="-- उत्पादन निवडा --">-- Select a Product --</option>';
-            allProductsList.forEach(product => {
-                const option = document.createElement('option');
-                option.value       = product.id;
-                option.textContent = product.name;
-                bomSelect.appendChild(option);
-            });
-
+            buildBomProductSelector();
             renderProductsList(allProductsList);
+        }
+
+        // Rebuilds the "Select Product to Manage BOM" typeahead (mirrors the
+        // "Products to Dispatch" search on dispatch.html — same buildMatTypeahead
+        // widget, same styling). Runs every time allProductsList refreshes, so it
+        // re-selects whatever product was already open (if it still exists) to
+        // avoid dropping the user out of the BOM they were editing.
+        function buildBomProductSelector() {
+            const mount = document.getElementById('bomProductSelectMount');
+            if (!mount) return;
+            mount.innerHTML = '';
+            const lang = localStorage.getItem('nexflow_lang') || 'en';
+            const placeholder = lang === 'mr' ? 'उत्पादन शोधा...' : 'Search product...';
+            const searchItems = allProductsList.map(product => ({
+                id:            product.id,
+                name:          product.name,
+                unit:          product.unit,
+                material_code: product.product_code
+            }));
+            bomProductTypeahead = buildMatTypeahead(searchItems, {
+                placeholder: placeholder,
+                onSelect: function(id) { selectBomProduct(id); }
+            });
+            mount.appendChild(bomProductTypeahead.element);
+
+            if (selectedProductId) {
+                const product = allProductsList.find(p => p.id === selectedProductId);
+                if (product) {
+                    bomProductTypeahead.setValue(product.id, product.name, product.unit);
+                } else {
+                    selectedProductId = null;
+                    document.getElementById('bomDetails').style.display = 'none';
+                }
+            }
+        }
+
+        async function selectBomProduct(productId) {
+            selectedProductId = productId;
+            const details = document.getElementById('bomDetails');
+            if (!productId) {
+                details.style.display = 'none';
+                return;
+            }
+            const product = allProductsList.find(p => p.id === productId);
+            document.getElementById('bom-product-name').textContent = product
+                ? (product.product_code ? `${product.product_code} — ${product.name}` : product.name)
+                : '';
+            details.style.display = 'block';
+            await loadBOM(productId);
+        }
+
+        // Jump straight to a product's BOM from the "No BOM ⚠" badge in the products list.
+        function setBomFor(productId) {
+            const product = allProductsList.find(p => p.id === productId);
+            if (bomProductTypeahead && product) {
+                bomProductTypeahead.setValue(product.id, product.name, product.unit);
+            }
+            const bomSection = document.getElementById('bomSection');
+            if (bomSection) bomSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        function buildBomBadgeHtml(productId, hasBOM) {
+            return hasBOM
+                ? '<span class="nx-badge nx-badge-green">BOM Set</span>'
+                : `<span style="display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                    <span class="nx-badge nx-badge-yellow" data-en="No BOM ⚠" data-mr="BOM नाही ⚠">No BOM ⚠</span>
+                    <button type="button" onclick="setBomFor('${productId}')" class="nx-btn nx-btn-secondary nx-btn-sm"
+                            data-en="Set BOM" data-mr="BOM सेट करा">Set BOM</button>
+                   </span>`;
+        }
+
+        // Re-checks BOM status for a single product (after an ingredient add/remove
+        // in the BOM section) and patches just that row's badge in the products
+        // list — no full loadProducts()/table re-render, so an active search filter
+        // or scroll position in the products list isn't disturbed.
+        async function refreshBomBadge(productId) {
+            if (!productId) return;
+            try {
+                const { count, error } = await supabaseClient
+                    .from('p2_product_bom')
+                    .select('id', { count: 'exact', head: true })
+                    .eq('product_id', productId)
+                    .eq('tenant_id', currentTenantId);
+                if (error) throw error;
+
+                const hasBOM = (count || 0) > 0;
+
+                const product = allProductsList.find(p => p.id === productId);
+                if (product) product.hasBOM = hasBOM;
+
+                const row = document.querySelector(`#products-list tr[data-product-id="${productId}"]`);
+                if (row) {
+                    const bomCell = row.querySelector('.bom-badge-cell');
+                    if (bomCell) {
+                        bomCell.innerHTML = buildBomBadgeHtml(productId, hasBOM);
+                        if (window.utils && typeof window.utils.updateLanguage === 'function') {
+                            window.utils.updateLanguage();
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Error refreshing BOM badge:', error);
+            }
         }
 
         function renderProductsList(productsArr) {
@@ -462,18 +556,16 @@
             const visibleList  = shouldLimit ? productsArr.slice(0, LIMIT) : productsArr;
 
             visibleList.forEach(product => {
-                const bomBadge = product.hasBOM
-                    ? '<span class="nx-badge nx-badge-green">BOM Set</span>'
-                    : '<span class="nx-badge nx-badge-yellow" data-en="No BOM ⚠" data-mr="BOM नाही ⚠">No BOM ⚠</span>';
                 const poLabel = product.default_po_number
                     ? `<div style="font-size:11px; color:var(--mid); font-weight:400; margin-top:2px;">PO: ${product.default_po_number}</div>`
                     : '';
 
                 const row = document.createElement('tr');
+                row.dataset.productId = product.id;
                 row.innerHTML = `
                     <td class="nx-td-bold">${product.name}${poLabel}</td>
                     <td style="color:var(--mid);">${product.unit}</td>
-                    <td>${bomBadge}</td>
+                    <td class="bom-badge-cell">${buildBomBadgeHtml(product.id, product.hasBOM)}</td>
                     <td style="text-align:center;">
                         <div style="display:flex; gap:6px; justify-content:center;">
                             <button onclick="editProduct('${product.id}', '${product.name.replace(/'/g, "\\'")}', '${(product.description || '').replace(/'/g, "\\'")}', '${product.unit}', '${(product.hsn_sac || '').replace(/'/g, "\\'")}', '${(product.default_po_number || '').replace(/'/g, "\\'")}')"
@@ -683,20 +775,6 @@
                 }
             });
 
-            // BOM product selector
-            document.getElementById('bom-product-select').addEventListener('change', async (e) => {
-                selectedProductId = e.target.value;
-                const details = document.getElementById('bomDetails');
-                if (!selectedProductId) {
-                    details.style.display = 'none';
-                    return;
-                }
-                const sel = e.target;
-                document.getElementById('bom-product-name').textContent = sel.options[sel.selectedIndex].text;
-                details.style.display = 'block';
-                await loadBOM(selectedProductId);
-            });
-
             // Add Ingredient
             document.getElementById('add-ingredient-form').addEventListener('submit', async (e) => {
                 e.preventDefault();
@@ -754,7 +832,7 @@
                     if (ingTypeahead) ingTypeahead.reset();
                     document.getElementById('ingredient-material-id').value = '';
                     await loadBOM(selectedProductId);
-                    await loadProducts();
+                    await refreshBomBadge(selectedProductId);
                 } catch (error) {
                     console.error('Error adding ingredient:', error);
                     toast('Failed to add ingredient.', 'error');
@@ -801,7 +879,7 @@
                     .eq('tenant_id', currentTenantId);
                 if (error) throw error;
                 await loadBOM(selectedProductId);
-                await loadProducts();
+                await refreshBomBadge(selectedProductId);
             } catch (error) {
                 console.error('Error deleting ingredient:', error);
                 toast('Failed to remove item.', 'error');

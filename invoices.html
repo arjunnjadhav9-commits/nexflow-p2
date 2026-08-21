@@ -217,6 +217,15 @@
                 </select>
             </div>
 
+            <div class="nx-form-group" style="margin-bottom:16px;">
+                <label>Include Challans</label>
+                <select id="consInvoiceDispatchType" class="nx-input">
+                    <option value="product" selected>Product Dispatches Only</option>
+                    <option value="raw_material">RM Dispatches Only</option>
+                    <option value="both">Both Product + RM</option>
+                </select>
+            </div>
+
             <div id="consInvoiceError" class="nx-alert nx-alert-red" style="display:none; margin-bottom:16px;">
                 <span class="nx-alert-icon">⚠</span>
                 <div id="consInvoiceErrorText"></div>
@@ -275,7 +284,7 @@
         let allInvoices = [];
         let filtered = [];
         let currentRole = 'owner';
-        let consInvoicePreviewState = { clientId: null, clientName: null, dateFrom: null, dateTo: null, gstType: null, items: [] };
+        let consInvoicePreviewState = { clientId: null, clientName: null, dateFrom: null, dateTo: null, gstType: null, dispatchType: null, items: [] };
 
         document.addEventListener('DOMContentLoaded', init);
 
@@ -454,6 +463,7 @@
             document.getElementById('consInvoiceFrom').value = '';
             document.getElementById('consInvoiceTo').value = '';
             document.getElementById('consInvoiceGstType').value = 'cgst_sgst';
+            document.getElementById('consInvoiceDispatchType').value = 'product';
 
             const select = document.getElementById('consInvoiceClient');
             select.innerHTML = '<option value="">Loading...</option>';
@@ -497,6 +507,7 @@
                 const dateFrom = document.getElementById('consInvoiceFrom').value;
                 const dateTo = document.getElementById('consInvoiceTo').value;
                 const gstType = document.getElementById('consInvoiceGstType').value;
+                const dispatchType = document.getElementById('consInvoiceDispatchType').value;
 
                 if (!clientId) { showConsInvoiceError('Please select a client.'); return; }
                 if (!dateFrom || !dateTo) { showConsInvoiceError('Please select both a from and to date.'); return; }
@@ -515,7 +526,8 @@
                             client_id: clientId,
                             date_from: dateFrom,
                             date_to: dateTo,
-                            gst_type: gstType
+                            gst_type: gstType,
+                            dispatch_type: dispatchType
                         })
                     });
                     const data = await res.json();
@@ -526,6 +538,7 @@
                     consInvoicePreviewState.dateFrom = dateFrom;
                     consInvoicePreviewState.dateTo = dateTo;
                     consInvoicePreviewState.gstType = gstType;
+                    consInvoicePreviewState.dispatchType = dispatchType;
 
                     openConsPreviewModal(data);
                 } catch (err) {
@@ -635,6 +648,7 @@
                             date_from: consInvoicePreviewState.dateFrom,
                             date_to: consInvoicePreviewState.dateTo,
                             gst_type: consInvoicePreviewState.gstType,
+                            dispatch_type: consInvoicePreviewState.dispatchType,
                             item_rates: itemRates
                         })
                     });

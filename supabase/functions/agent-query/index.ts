@@ -125,6 +125,7 @@ interface ConfirmConsolidatedInvoiceRequest {
   date_from: string
   date_to: string
   gst_type: string
+  dispatch_type?: 'product' | 'raw_material' | 'both'
   item_rates?: Array<{ dispatch_item_id: string; rate: number }>
 }
 
@@ -138,6 +139,7 @@ interface PreviewConsolidatedInvoiceRequest {
   date_from: string
   date_to: string
   gst_type: string
+  dispatch_type?: 'product' | 'raw_material' | 'both'
 }
 
 // Frozen line-item snapshot stored in p2_invoices.items — challan_number/
@@ -4749,7 +4751,7 @@ async function previewConsolidatedInvoice(
   supabaseClient: ReturnType<typeof createClient>,
   body: Partial<PreviewConsolidatedInvoiceRequest>
 ): Promise<Response> {
-  const { tenant_id, client_id, date_from, date_to, gst_type } = body
+  const { tenant_id, client_id, date_from, date_to, gst_type, dispatch_type } = body
 
   if (!tenant_id || !client_id || !date_from || !date_to || !gst_type) {
     return respond({ status: 'error', error: 'tenant_id, client_id, date_from, date_to, and gst_type are required' }, 400)
@@ -4770,12 +4772,24 @@ async function previewConsolidatedInvoice(
     return respond({ status: 'error', error: 'Client not found' }, 404)
   }
 
-  const { data: orders, error: ordersError } = await supabaseClient
+  let ordersQuery = supabaseClient
     .from('p2_dispatch_orders')
     .select(INVOICE_ORDER_COLUMNS)
     .eq('tenant_id', tenant_id)
     .eq('client_name', client.name)
     .eq('status', 'confirmed')
+  if (dispatch_type === 'raw_material') {
+    ordersQuery = ordersQuery.eq('dispatch_type', 'raw_material')
+  } else if (dispatch_type === 'both') {
+    ordersQuery = ordersQuery.in('dispatch_type', ['product', 'raw_material'])
+  } else {
+    // 'product', or omitted/unrecognized — default to product-only. Never skip
+    // this filter: p2_dispatch_orders.dispatch_type also has a 'bom_issue'
+    // value (internal production issues), which must never land on a client
+    // invoice regardless of what dispatch_type the request sends.
+    ordersQuery = ordersQuery.eq('dispatch_type', 'product')
+  }
+  const { data: orders, error: ordersError } = await ordersQuery
     .gte('dispatch_date', date_from)
     .lte('dispatch_date', date_to)
     .order('dispatch_date', { ascending: true })
@@ -4859,7 +4873,7 @@ async function confirmConsolidatedInvoice(
   supabaseClient: ReturnType<typeof createClient>,
   body: Partial<ConfirmConsolidatedInvoiceRequest>
 ): Promise<Response> {
-  const { tenant_id, client_id, date_from, date_to, gst_type, item_rates } = body
+  const { tenant_id, client_id, date_from, date_to, gst_type, dispatch_type, item_rates } = body
 
   if (!tenant_id || !client_id || !date_from || !date_to || !gst_type) {
     return respond({ status: 'error', error: 'tenant_id, client_id, date_from, date_to, and gst_type are required' }, 400)
@@ -4895,12 +4909,24 @@ async function confirmConsolidatedInvoice(
     return respond({ status: 'error', error: 'Client not found' }, 404)
   }
 
-  const { data: orders, error: ordersError } = await supabaseClient
+  let ordersQuery = supabaseClient
     .from('p2_dispatch_orders')
     .select(INVOICE_ORDER_COLUMNS)
     .eq('tenant_id', tenant_id)
     .eq('client_name', client.name)
     .eq('status', 'confirmed')
+  if (dispatch_type === 'raw_material') {
+    ordersQuery = ordersQuery.eq('dispatch_type', 'raw_material')
+  } else if (dispatch_type === 'both') {
+    ordersQuery = ordersQuery.in('dispatch_type', ['product', 'raw_material'])
+  } else {
+    // 'product', or omitted/unrecognized — default to product-only. Never skip
+    // this filter: p2_dispatch_orders.dispatch_type also has a 'bom_issue'
+    // value (internal production issues), which must never land on a client
+    // invoice regardless of what dispatch_type the request sends.
+    ordersQuery = ordersQuery.eq('dispatch_type', 'product')
+  }
+  const { data: orders, error: ordersError } = await ordersQuery
     .gte('dispatch_date', date_from)
     .lte('dispatch_date', date_to)
     .order('dispatch_date', { ascending: true })
