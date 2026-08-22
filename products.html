@@ -403,24 +403,17 @@
             if (error) throw error;
 
             const productIds = data.map(p => p.id);
-            let bomCountMap  = {};
+            let bomSet = new Set();
 
             if (productIds.length > 0) {
                 const { data: bomCounts, error: bomError } = await supabaseClient
-                    .from('p2_product_bom')
-                    .select('product_id')
-                    .in('product_id', productIds)
-                    .eq('tenant_id', currentTenantId);
+                    .rpc('get_products_with_bom', { p_tenant_id: currentTenantId });
 
                 if (bomError) console.error('Error fetching BOM counts:', bomError);
-                if (bomCounts) {
-                    bomCounts.forEach(bom => {
-                        bomCountMap[bom.product_id] = (bomCountMap[bom.product_id] || 0) + 1;
-                    });
-                }
+                bomSet = new Set((bomCounts || []).map(r => r.product_id));
             }
 
-            allProductsList = data.map(product => ({ ...product, hasBOM: bomCountMap[product.id] > 0 }));
+            allProductsList = data.map(product => ({ ...product, hasBOM: bomSet.has(product.id) }));
 
             buildBomProductSelector();
             renderProductsList(allProductsList);

@@ -289,18 +289,62 @@
             <div class="nx-card-header">
                 <div class="nx-card-title" data-en="Challan Settings" data-mr="चलान सेटिंग्ज">Challan Settings</div>
             </div>
-            <form id="challan-form" class="nx-form">
-                <div class="nx-form-group">
-                    <label data-en="Challan Starting Number" data-mr="चलान सुरुवातीचा क्रमांक">Challan Starting Number</label>
-                    <input type="number" id="challan-sequence" name="challan_sequence" class="nx-input"
-                           placeholder="Enter starting number (e.g., 1001)"
-                           data-en="Enter starting number (e.g., 1001)"
-                           data-mr="सुरुवातीचा क्रमांक प्रविष्ट करा (उदा., १००१)">
-                    <div style="font-size:11px; color:var(--mid); margin-top:6px;" data-en="Next challan will be generated with this number" data-mr="पुढील चलान या क्रमांकासह तयार होईल">
-                        Next challan will be generated with this number
+            <!-- ── CHALLAN STARTING NUMBER / RESET ── standalone, own save button:
+                 needs a fresh DB read + duplicate-collision check at save time,
+                 so it's kept out of the combined challan-form submit below
+                 (same reasoning as the Invoice Starting Number block further
+                 down this tab). Unlike Invoice, this field intentionally
+                 ALLOWS going backward (warn via confirm(), don't block) —
+                 reusing a cancelled challan's number is the whole point. ──── -->
+            <div style="background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:20px;">
+                <div class="nx-section-head" data-en="Challan Starting Number" data-mr="चलान सुरुवातीचा क्रमांक">Challan Starting Number</div>
+                <div class="nx-form-group" style="margin-bottom:10px;">
+                    <input type="number" id="challan-sequence" class="nx-input"
+                           placeholder="e.g. 1001"
+                           data-en="e.g. 1001" data-mr="उदा. १००१">
+                    <div style="font-size:11px; color:var(--mid); margin-top:6px;"
+                         data-en="Sets the minimum next challan number — useful for starting ahead of existing paper challans."
+                         data-mr="किमान पुढील चलान क्रमांक सेट करते — विद्यमान कागदी चलानांच्या पुढे सुरुवात करण्यासाठी उपयुक्त.">
+                        Sets the minimum next challan number — useful for starting ahead of existing paper challans.
                     </div>
+                    <div style="font-size:11px; color:var(--orange); margin-top:6px; line-height:1.6;"
+                         data-en="Note: this only sets the minimum floor. If existing confirmed dispatches have higher numbers, the next challan will continue from MAX+1. Use the one-time override below to force an exact number."
+                         data-mr="टीप: हे फक्त किमान तळ मर्यादा सेट करते. विद्यमान कन्फर्म्ड डिस्पॅचचे क्रमांक यापेक्षा जास्त असल्यास, पुढील चलान MAX+1 पासून सुरू राहील. नेमका क्रमांक सक्तीने सेट करण्यासाठी खालील एक-वेळ ओव्हरराइड वापरा.">
+                        Note: this only sets the minimum floor. If existing confirmed dispatches have higher numbers, the next challan will continue from MAX+1. Use the one-time override below to force an exact number.
+                    </div>
+                    <div id="challan-sequence-current-hint" style="font-size:11px; color:var(--mid); margin-top:4px;"></div>
                 </div>
+                <button type="button" id="save-challan-sequence-btn" class="nx-btn nx-btn-primary" data-en="Save Challan Starting Number" data-mr="चलान क्रमांक साठवा">Save Challan Starting Number</button>
+                <div id="challan-sequence-status" class="nx-status-msg"></div>
+            </div>
 
+            <!-- ── ONE-TIME CHALLAN NUMBER OVERRIDE ── forces the very next
+                 challan (any type/mode) to use this EXACT value, verbatim,
+                 no RM- prefix. Unlike the Starting Number floor above, this
+                 bypasses get_next_challan_number's GREATEST(MAX+1, floor)
+                 logic entirely for one dispatch, via consume_challan_override()
+                 — consumed automatically the moment that one dispatch/issue
+                 is created, then self-clears. See
+                 supabase/migrations/20260822_challan_next_override.sql. ──── -->
+            <div style="background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:20px;">
+                <div class="nx-section-head" data-en="One-time Override" data-mr="एक-वेळ ओव्हरराइड">One-time Override</div>
+                <div class="nx-form-group" style="margin-bottom:10px;">
+                    <label data-en="Force next challan number to exactly:" data-mr="पुढील चलान क्रमांक नेमका सेट करा:">Force next challan number to exactly:</label>
+                    <input type="number" id="challan-override" class="nx-input" min="1"
+                           placeholder="e.g. 3000"
+                           data-en="e.g. 3000" data-mr="उदा. ३०००">
+                    <div style="font-size:11px; color:var(--mid); margin-top:6px;"
+                         data-en="Applies ONLY to the very next challan created (any type), used exactly as typed — no RM- prefix, even for raw material dispatches. Clears itself automatically after that one use."
+                         data-mr="फक्त पुढील तयार होणाऱ्या चलानासाठी लागू (कोणताही प्रकार), टंकलेल्याप्रमाणे नेमके वापरले जाते — कच्चा माल पाठवणीसाठीही RM- उपसर्गाशिवाय. एकदा वापरल्यावर आपोआप रिकामे होते.">
+                        Applies ONLY to the very next challan created (any type), used exactly as typed — no RM- prefix, even for raw material dispatches. Clears itself automatically after that one use.
+                    </div>
+                    <div id="challan-override-current-hint" style="font-size:11px; color:var(--mid); margin-top:4px;"></div>
+                </div>
+                <button type="button" id="save-challan-override-btn" class="nx-btn nx-btn-primary" data-en="Save Override" data-mr="ओव्हरराइड साठवा">Save Override</button>
+                <div id="challan-override-status" class="nx-status-msg"></div>
+            </div>
+
+            <form id="challan-form" class="nx-form">
                 <!-- ── CHALLAN NUMBERING MODE ──────────────────────────────
                      Root cause of layout bugs:
                      1. nexflow-design.css sets `form input { width:100%; display:block }`
@@ -1038,6 +1082,12 @@
     // ── INVOICE SEQUENCE (last-used number, per get_next_invoice_number RPC) ──
     let currentInvoiceSequence = 0;
 
+    // ── CHALLAN SEQUENCE (last-used number, per get_next_challan_number RPC) ──
+    let currentChallanSequence = 0;
+
+    // ── CHALLAN OVERRIDE (one-time, per consume_challan_override RPC) ──────────
+    let currentChallanOverride = null;
+
     // Fresh-fetched once per page load (see DOMContentLoaded) — NOT isLite()/
     // isPro()/localStorage. Those cache nexflow_plan and only refresh on the
     // next checkAuth() cycle, which is too stale for gating logic (see
@@ -1134,7 +1184,11 @@
                 document.getElementById('bank-account').value    = data.bank_account || '';
                 document.getElementById('bank-ifsc').value       = data.bank_ifsc || '';
                 document.getElementById('sac-code').value        = data.sac_code || '';
-                document.getElementById('challan-sequence').value  = data.challan_sequence || 1001;
+                currentChallanSequence = data.challan_sequence || 0;
+                document.getElementById('challan-sequence').value  = currentChallanSequence + 1;
+                updateChallanSequenceHint(currentChallanSequence + 1);
+                currentChallanOverride = data.challan_next_override ?? null;
+                updateChallanOverrideHint(currentChallanOverride);
                 document.getElementById('grn-sequence').value      = data.grn_sequence || '';
                 document.getElementById('telegram-chat-id').value  = data.telegram_chat_id || '';
                 currentInvoiceSequence = data.invoice_sequence || 0;
@@ -1183,10 +1237,12 @@
         }
     });
 
-    // ── SAVE CHALLAN ──────────────────────────────────────────────────────────
+    // ── SAVE CHALLAN MODE + GRN ──────────────────────────────────────────────
+    // challan_sequence is intentionally NOT part of this handler — it moved to
+    // its own standalone save button below (see "SAVE CHALLAN STARTING NUMBER"),
+    // since that field needs a fresh DB read + collision check at save time.
     document.getElementById('challan-form').addEventListener('submit', async (e) => {
         e.preventDefault();
-        const challanSequence = parseInt(document.getElementById('challan-sequence').value);
         const challanMode     = document.querySelector('input[name="challan_mode"]:checked')?.value || 'split';
         const grnSequenceVal  = document.getElementById('grn-sequence').value.trim();
         const grnSequence     = grnSequenceVal ? parseInt(grnSequenceVal) : null;
@@ -1194,7 +1250,7 @@
             const { data: { user } } = await window.supabase.auth.getUser();
             if (!user) { showStatus('challan-status','error','Not authenticated','प्रमाणित नाही'); return; }
             const { error } = await window.supabase.from('p2_tenant_settings')
-                .update({ challan_sequence: challanSequence, challan_mode: challanMode, grn_sequence: grnSequence })
+                .update({ challan_mode: challanMode, grn_sequence: grnSequence })
                 .eq('tenant_id', user.id);
             if (error) throw error;
             showStatus('challan-status','success','Challan & GRN settings saved!','चलान आणि GRN सेटिंग्ज साठवल्या!');
@@ -1204,11 +1260,167 @@
         }
     });
 
+    // ── SAVE CHALLAN STARTING NUMBER (reset/override) ───────────────────────
+    // Field displays/accepts the NEXT challan number, same off-by-one
+    // convention as invoice-sequence below: get_next_challan_number() does
+    // sequence+1, so the stored column must be (typed value - 1).
+    //
+    // Unlike invoice-sequence, this field intentionally ALLOWS going backward
+    // — that's the whole point of "reuse challan 3000 after cancelling it".
+    // Instead of a hard block, it checks for a real collision against
+    // p2_dispatch_orders and warns via confirm() before saving, letting the
+    // owner proceed anyway.
+    //
+    // challan_sequence is a single counter shared by BOTH split-mode series
+    // (plain-number product/bom_issue AND RM-prefixed raw_material) and by
+    // unified mode — see get_next_challan_number RPC / js/utils.js. Resetting
+    // it here resets the "next number" for ALL dispatch types at once; this
+    // is inherent to the existing one-column design, not a new limitation.
+    function updateChallanSequenceHint(nextNumber) {
+        const hintEl = document.getElementById('challan-sequence-current-hint');
+        if (!hintEl) return;
+        const lang = localStorage.getItem('nexflow_lang') || 'en';
+        hintEl.textContent = lang === 'mr'
+            ? `सध्या पुढील क्रमांक असेल: ${nextNumber}`
+            : `Current next would be: ${nextNumber}`;
+    }
+    document.getElementById('save-challan-sequence-btn').addEventListener('click', async () => {
+        const typed = parseInt(document.getElementById('challan-sequence').value, 10);
+        if (!Number.isInteger(typed) || typed < 1) {
+            showStatus('challan-sequence-status','error','Enter a valid starting number','वैध सुरुवातीचा क्रमांक प्रविष्ट करा');
+            return;
+        }
+        try {
+            const { data: { user } } = await window.supabase.auth.getUser();
+            if (!user) { showStatus('challan-sequence-status','error','Not authenticated','प्रमाणित नाही'); return; }
+            const tenantId = user.user_metadata?.tenant_id || user.id;
+
+            // Collision check — both plain and RM-prefixed forms, since
+            // challan_sequence is a single counter shared across both split-mode
+            // series. All statuses included (draft/confirmed/cancelled) —
+            // reusing a CANCELLED number is exactly the motivating scenario for
+            // this feature, so it must still warn, not skip.
+            const candidates = [String(typed), `RM-${typed}`];
+            const { data: collisions, error: collisionErr } = await window.supabase
+                .from('p2_dispatch_orders')
+                .select('challan_number, status')
+                .eq('tenant_id', tenantId)
+                .in('challan_number', candidates);
+            if (collisionErr) throw collisionErr;
+
+            if (collisions && collisions.length > 0) {
+                const lang = localStorage.getItem('nexflow_lang') || 'en';
+                const list = collisions.map(c => `${c.challan_number} (${c.status})`).join(', ');
+                const msg = lang === 'mr'
+                    ? `चलान क्रमांक आधीच अस्तित्वात आहे: ${list}. हा क्रमांक वापरल्याने विद्यमान नोंदींशी संघर्ष होऊ शकतो. तरीही पुढे जायचे?`
+                    : `Challan number already exists: ${list}. Using this number may cause conflicts with existing records. Continue anyway?`;
+                if (!confirm(msg)) return;
+            }
+
+            const { error } = await window.supabase.from('p2_tenant_settings')
+                .update({ challan_sequence: typed - 1 })
+                .eq('tenant_id', tenantId);
+            if (error) throw error;
+
+            currentChallanSequence = typed - 1;
+            document.getElementById('challan-sequence').value = typed;
+            updateChallanSequenceHint(typed);
+            showStatus('challan-sequence-status','success','Challan starting number saved!','चलान सुरुवातीचा क्रमांक साठवला!');
+        } catch (error) {
+            console.error('Error saving challan sequence:', error);
+            showStatus('challan-sequence-status','error','Failed to save challan starting number','चलान क्रमांक साठवण्यात अयशस्वी');
+        }
+    });
+
+    function updateChallanOverrideHint(value) {
+        const hintEl = document.getElementById('challan-override-current-hint');
+        if (!hintEl) return;
+        const lang = localStorage.getItem('nexflow_lang') || 'en';
+        if (value === null || value === undefined) {
+            hintEl.textContent = '';
+            return;
+        }
+        hintEl.textContent = lang === 'mr'
+            ? `सध्या प्रलंबित ओव्हरराइड: ${value} (अद्याप वापरलेले नाही)`
+            : `Currently pending override: ${value} (not yet used)`;
+    }
+
+    // ── SAVE ONE-TIME CHALLAN OVERRIDE ───────────────────────────────────────
+    // Writes challan_next_override DIRECTLY as typed — no off-by-one
+    // adjustment (unlike challan-sequence above, this is a literal "use
+    // exactly this number" value consumed once by consume_challan_override(),
+    // not a running counter). Collision check uses the PLAIN typed value
+    // only — no RM- candidate — since the override is used verbatim
+    // regardless of dispatch type (js/utils.js getNextChallanNumber /
+    // agent-query getNextChallanNumberOrOverride never prefix it).
+    document.getElementById('save-challan-override-btn').addEventListener('click', async () => {
+        const typed = parseInt(document.getElementById('challan-override').value, 10);
+        if (!Number.isInteger(typed) || typed < 1) {
+            showStatus('challan-override-status','error','Enter a valid number','वैध क्रमांक प्रविष्ट करा');
+            return;
+        }
+        try {
+            const { data: { user } } = await window.supabase.auth.getUser();
+            if (!user) { showStatus('challan-override-status','error','Not authenticated','प्रमाणित नाही'); return; }
+            const tenantId = user.user_metadata?.tenant_id || user.id;
+            const lang = localStorage.getItem('nexflow_lang') || 'en';
+
+            // Defensive nice-to-have: warn (don't block) if an unconsumed
+            // override is already pending — re-fetch live, the page-load
+            // snapshot can be stale.
+            const { data: fresh, error: fetchErr } = await window.supabase
+                .from('p2_tenant_settings')
+                .select('challan_next_override')
+                .eq('tenant_id', tenantId)
+                .single();
+            if (fetchErr) throw fetchErr;
+
+            if (fresh?.challan_next_override != null) {
+                const msg = lang === 'mr'
+                    ? `आधीच एक प्रलंबित ओव्हरराइड आहे: ${fresh.challan_next_override} (अद्याप वापरलेले नाही). तो नवीन क्रमांकाने बदलायचा आहे का?`
+                    : `An override is already pending: ${fresh.challan_next_override} (not yet used). Overwrite it with the new value?`;
+                if (!confirm(msg)) return;
+            }
+
+            // Collision check — plain value only, verbatim, no RM- candidate.
+            const { data: collisions, error: collisionErr } = await window.supabase
+                .from('p2_dispatch_orders')
+                .select('challan_number, status')
+                .eq('tenant_id', tenantId)
+                .eq('challan_number', String(typed));
+            if (collisionErr) throw collisionErr;
+
+            if (collisions && collisions.length > 0) {
+                const list = collisions.map(c => `${c.challan_number} (${c.status})`).join(', ');
+                const msg = lang === 'mr'
+                    ? `चलान क्रमांक आधीच अस्तित्वात आहे: ${list}. हा क्रमांक वापरल्याने विद्यमान नोंदींशी संघर्ष होऊ शकतो. तरीही पुढे जायचे?`
+                    : `Challan number already exists: ${list}. Using this number may cause conflicts with existing records. Continue anyway?`;
+                if (!confirm(msg)) return;
+            }
+
+            const { error } = await window.supabase.from('p2_tenant_settings')
+                .update({ challan_next_override: typed })
+                .eq('tenant_id', tenantId);
+            if (error) throw error;
+
+            currentChallanOverride = typed;
+            updateChallanOverrideHint(typed);
+            document.getElementById('challan-override').value = '';
+            showStatus('challan-override-status','success','Override saved — next challan will use this number!','ओव्हरराइड साठवला — पुढील चलान हा क्रमांक वापरेल!');
+        } catch (error) {
+            console.error('Error saving challan override:', error);
+            showStatus('challan-override-status','error','Failed to save override','ओव्हरराइड साठवण्यात अयशस्वी');
+        }
+    });
+
     // ── SAVE INVOICE STARTING NUMBER ──────────────────────────────────────────
     // Field displays/accepts the NEXT invoice number (task spec: type 50 -> next
     // invoice is INV-...-050). get_next_invoice_number() does sequence+1, so the
     // stored column must be (typed value - 1) — deliberately NOT a direct save
-    // like challan_sequence/grn_sequence above.
+    // like grn_sequence above. (challan_sequence uses this same typed-1 pattern
+    // now too, via its own standalone handler — see "SAVE CHALLAN STARTING
+    // NUMBER" above — but unlike this field, it doesn't hard-block going
+    // backward, since reusing a cancelled number is expected there.)
     document.getElementById('save-invoice-sequence-btn').addEventListener('click', async () => {
         const typed = parseInt(document.getElementById('invoice-sequence').value, 10);
         if (!Number.isInteger(typed) || typed < 1) {

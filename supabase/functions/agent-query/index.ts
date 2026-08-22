@@ -546,6 +546,43 @@ async function updateGrnRates(
   return respond({ status: 'ok', confirmed: true })
 }
 
+// Consumes a pending one-time challan-number override (settings.html "Force
+// next challan number to exactly", column p2_tenant_settings.
+// challan_next_override) if one is set; otherwise falls through to the
+// normal get_next_challan_number RPC, UNCHANGED. Returns the same
+// { data, error } shape the raw .rpc('get_next_challan_number', ...) call
+// already returned, so all three call sites below only need to swap the
+// function name/args — their existing destructuring and downstream
+// error-handling stay untouched. Override value is returned verbatim
+// (String(), no RM- prefix or other formatting) regardless of `type`/
+// `challanMode` — see 20260822_challan_next_override.sql.
+async function getNextChallanNumberOrOverride(
+  supabaseClient: ReturnType<typeof createClient>,
+  tenant_id: string,
+  type: string,
+  challanMode: string
+): Promise<{ data: string | null; error: { message: string } | null }> {
+  const { data: overrideValue, error: overrideError } = await supabaseClient
+    .rpc('consume_challan_override', { p_tenant_id: tenant_id })
+
+  if (overrideError) {
+    // Fail open — an override-consumption glitch should never block a
+    // routine dispatch/issue. Falls through to normal sequencing below.
+    console.error('[getNextChallanNumberOrOverride] consume_challan_override failed:', tenant_id, overrideError.message)
+  } else if (overrideValue !== null && overrideValue !== undefined) {
+    return { data: String(overrideValue), error: null }
+  }
+
+  const { data, error } = await supabaseClient
+    .rpc('get_next_challan_number', {
+      p_tenant_id: tenant_id,
+      p_type: type,
+      p_mode: challanMode,
+    })
+
+  return { data: data as string | null, error }
+}
+
 // Re-validates the matched product/BOM via confirm_bom_issue (row-locked,
 // tenant-scoped) and records the production issue. Mirrors confirmGrn()'s
 // re-fetch-at-write-time pattern — nothing from the parse phase is trusted.
@@ -624,13 +661,8 @@ async function confirmProductionIssue(
     }
   })
 
-  // Get next challan number
-  const { data: challanNumber, error: challanError } = await supabaseClient
-    .rpc('get_next_challan_number', {
-      p_tenant_id: tenant_id,
-      p_type: 'bom_issue',
-      p_mode: challanMode,
-    })
+  // Get next challan number (or consume a pending one-time override)
+  const { data: challanNumber, error: challanError } = await getNextChallanNumberOrOverride(supabaseClient, tenant_id, 'bom_issue', challanMode)
 
   if (challanError || !challanNumber) {
     return respond({ status: 'error', error: 'Could not generate challan number' }, 500)
@@ -775,13 +807,8 @@ async function confirmProductDispatch(
     })
   }
 
-  // Get next challan number
-  const { data: challanNumber, error: challanError } = await supabaseClient
-    .rpc('get_next_challan_number', {
-      p_tenant_id: tenant_id,
-      p_type: 'product',
-      p_mode: challanMode,
-    })
+  // Get next challan number (or consume a pending one-time override)
+  const { data: challanNumber, error: challanError } = await getNextChallanNumberOrOverride(supabaseClient, tenant_id, 'product', challanMode)
 
   if (challanError || !challanNumber) {
     console.error('[confirmProductDispatch] get_next_challan_number failed:', tenant_id, challanError?.message ?? 'no challan number returned')
@@ -895,13 +922,8 @@ async function confirmRmDispatch(
 
   const consumptionArray = items.map((item) => ({ material_id: item.raw_material_id, qty: item.quantity }))
 
-  // Get next challan number
-  const { data: challanNumber, error: challanError } = await supabaseClient
-    .rpc('get_next_challan_number', {
-      p_tenant_id: tenant_id,
-      p_type: 'raw_material',
-      p_mode: challanMode,
-    })
+  // Get next challan number (or consume a pending one-time override)
+  const { data: challanNumber, error: challanError } = await getNextChallanNumberOrOverride(supabaseClient, tenant_id, 'raw_material', challanMode)
 
   if (challanError || !challanNumber) {
     return respond({ status: 'error', error: 'Could not generate challan number' }, 500)

@@ -172,6 +172,21 @@ function initNumberInputSanitization() {
  * @returns {string}         - Challan number e.g. "1001" or "RM-1001"
  */
 async function getNextChallanNumber(supabase, tenantId, type) {
+    // One-time override short-circuit -- must run BEFORE the challan_mode
+    // fetch/RPC below so a pending override wins regardless of mode/type.
+    // consume_challan_override() atomically reads+clears the column, so
+    // this is safe under concurrent calls. Returned verbatim, no RM-
+    // prefix or other formatting, per settings.html's "Force next challan
+    // number to exactly" field (see 20260822_challan_next_override.sql).
+    const { data: overrideValue, error: overrideErr } = await supabase.rpc('consume_challan_override', {
+        p_tenant_id: tenantId
+    });
+    if (overrideErr) {
+        console.warn('getNextChallanNumber: consume_challan_override failed, falling back to normal sequencing', overrideErr);
+    } else if (overrideValue !== null && overrideValue !== undefined) {
+        return String(overrideValue);
+    }
+
     const { data: settings, error: settingsErr } = await supabase
         .from('p2_tenant_settings')
         .select('challan_mode')
