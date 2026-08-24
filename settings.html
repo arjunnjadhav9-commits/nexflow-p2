@@ -862,9 +862,7 @@
                 <form id="stock-adjustment-form" novalidate class="nx-form">
                     <div class="nx-form-group">
                         <label data-en="Select Material" data-mr="सामग्री निवडा">Select Material</label>
-                        <select id="adjustment-material" class="nx-input" required>
-                            <option value="" data-en="Select Material" data-mr="सामग्री निवडा">Select Material</option>
-                        </select>
+                        <div id="adjustment-material-mount"></div>
                     </div>
                     <div class="nx-form-group">
                         <label data-en="Adjustment Quantity" data-mr="समायोजन प्रमाण">Adjustment Quantity</label>
@@ -2170,23 +2168,20 @@
     }
 
     // ── ADJUSTMENT MATERIALS ──────────────────────────────────────────────────
+    let adjustmentMatTypeahead = null;
+
     async function loadAdjustmentMaterials() {
         try {
             const { data: { user } } = await window.supabase.auth.getUser();
             if (!user) return;
             const { data, error } = await window.supabase.from('p2_raw_materials')
-                .select('id, name, unit').eq('tenant_id', user.id).eq('is_active', true).order('name');
+                .select('id, name, unit, material_code').eq('tenant_id', user.id).eq('is_active', true).order('name');
             if (error) throw error;
 
-            const select = document.getElementById('adjustment-material');
-            select.innerHTML = '<option value="" data-en="Select Material" data-mr="सामग्री निवडा">Select Material</option>';
-            data.forEach(material => {
-                const option = document.createElement('option');
-                option.value = material.id;
-                option.textContent = `${material.name} (${material.unit})`;
-                select.appendChild(option);
-            });
-            applyLang(localStorage.getItem('nexflow_lang') || 'en');
+            const mount = document.getElementById('adjustment-material-mount');
+            mount.innerHTML = '';
+            adjustmentMatTypeahead = buildMatTypeahead(data || [], { placeholder: 'Search material...' });
+            mount.appendChild(adjustmentMatTypeahead.element);
         } catch (error) {
             console.error('Error loading materials:', error);
         }
@@ -2194,7 +2189,7 @@
 
     document.getElementById('stock-adjustment-form').addEventListener('submit', async (e) => {
         e.preventDefault();
-        const materialId = document.getElementById('adjustment-material').value;
+        const materialId = adjustmentMatTypeahead ? adjustmentMatTypeahead.getId() : '';
         const quantity   = parseFloat(document.getElementById('adjustment-quantity').value) * adjSign;
         const reason     = document.getElementById('adjustment-reason').value.trim();
 
@@ -2213,6 +2208,7 @@
             if (error) throw error;
             showStatus('adjustment-status','success','Adjustment recorded successfully!','समायोजन यशस्वीरित्या नोंदवले!');
             e.target.reset();
+            adjustmentMatTypeahead && adjustmentMatTypeahead.reset();
             loadRecentAdjustments();
         } catch (error) {
             console.error('Error recording adjustment:', error);
