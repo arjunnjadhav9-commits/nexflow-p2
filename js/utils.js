@@ -134,7 +134,9 @@ function initNumberInputSanitization() {
                 value = parts[0] + '.' + parts.slice(1).join('');
             }
 
-            this.value = value;
+            if (value !== this.value) {
+                this.value = value;
+            }
         });
 
         // Validate on form submission
