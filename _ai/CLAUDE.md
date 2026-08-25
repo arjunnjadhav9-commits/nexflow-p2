@@ -19,9 +19,13 @@ Mobile-first: owners use phones. Must work on mobile browser.
 - All tables use prefix: p2_
 - Multi-tenancy via tenant_id column + Row Level Security (RLS) on all tables
 - Auth: Supabase Auth (email/password)
-- **CRITICAL: tenant_id = user.id directly. There is NO separate tenant table, and
-  tenant_id is NOT reliably read from user_metadata in all contexts — some RLS INSERT
-  policies (e.g. p2_dispatch_orders) read tenant_id from JWT user_metadata, not auth.uid().
+- **CRITICAL: p2_tenants EXISTS and is load-bearing — 10 core tables have FK constraints
+  pointing to it (p2_tenant_settings, p2_suppliers, p2_stock_transactions, p2_products,
+  p2_product_bom, p2_dispatch_orders x2, p2_dispatch_items, p2_user_roles,
+  p2_raw_materials). It is the FK anchor for the entire schema, not a settings store.
+  For auth purposes, tenant_id = auth.uid() for owner-role users. tenant_id is NOT
+  reliably read from user_metadata in all contexts — some RLS INSERT policies
+  (e.g. p2_dispatch_orders) read tenant_id from JWT user_metadata, not auth.uid().
   Check which pattern applies per-table before writing new insert logic.**
 
 ## Brand
@@ -121,10 +125,26 @@ Mobile-first: owners use phones. Must work on mobile browser.
   inserts (set_tenant_id trigger overwrites tenant_id otherwise), re-enable after.
 
 ## Tenants
-- Live client: S.S. Engineering, tenant_id 5ab7fb07-2557-42e7-8a8a-5d9fd59048ac,
-  Founder tier. NEVER test writes or run experimental code against this tenant.
-  agent_enabled = true (was incorrectly false — fixed Aug 8), agent_tier = 'standard'
-  (30/day), plan = 'founder'.
+- Live clients — all three are job workers for KPML (Type B). KPML's material
+  is physically present in all three factories right now with no correct ownership
+  record. This is the core problem Step 2 solves.
+
+- S.S. Engineering: tenant_id 5ab7fb07-2557-42e7-8a8a-5d9fd59048ac, Founder tier.
+  Job worker for KPML (confirmed Aug 24 2026). NEVER test writes against this tenant.
+  agent_enabled = true, agent_tier = 'standard' (30/day), plan = 'founder'.
+
+- Datta Prasad Enterprises: tenant_id 3b68db90-a07c-491e-8913-c829ca969620,
+  plan = 'founder', onboarded Aug 17 2026. Type B job worker for KPML under s.143.
+  264 materials imported. 28 suppliers with GSTINs. 97 product price records loaded
+  from KPML SAP PO rates — THESE ARE WRONG for invoicing. Correct job work charge
+  rates needed from client before any invoice is generated.
+  NEVER test writes against this tenant.
+
+- Shivprasad Industries: tenant_id 6fe0680a-c53d-4e4f-b851-308ca905bb3c,
+  plan = 'founder', onboarded Aug 19 2026. Type B job worker for KPML under s.143.
+  Products, materials, prices not yet fully loaded.
+  NEVER test writes against this tenant.
+
 - Demo account: 5f021c96-2ed4-41f8-9fbc-7db517fc840b, plan='pro', agent_enabled=false.
   Company: Nexflow Demo Factory — DO NOT change plan or enable agent.
 - Test tenant: fe2b94fb-9668-405f-9c62-5f54b32f8c7a (arjunjadhav9@gmail.com,
@@ -535,6 +555,14 @@ deliberate simplification for that reason.
   handling, status flips to 'sent' only after the email actually succeeds).
 
 ## Rules for this session
+- p2_tenants confirmed to exist with 10 FK dependents — never write code assuming it does not exist.
+- ALL THREE current clients (SS Engineering, Datta Prasad, Shivprasad) are Type B job workers for KPML. KPML owns all raw material throughout. This is confirmed job work under s.143, not purchase-and-sale.
+- Vendor invoices on KPML must be job charges only under SAC 9988 — never full product value, never product HSN. Datta Prasad already uses SAC 998898 on all products correctly.
+- Datta Prasad p2_product_prices has 97 records loaded from KPML SAP PO rates. These are KPML purchase rates, NOT Datta Prasad job work charges. Do not use these for invoice generation until correct rates are loaded.
+- s.143(2) confirmed: accounting obligation lies with the principal (KPML), not the job worker. Do not pitch s.143 compliance to a job worker as their legal requirement.
+- "Generate Invoice" button must be DISABLED (not hidden) on job-work-return dispatches once movement purpose lands. A wrong job work invoice is a GSTR-1 filing error.
+- No live client has raised a Nexflow invoice on KPML as of Aug 24 2026. Zero exposure confirmed.
+- Consolidated invoice (date range) confirmed working for Datta Prasad use case.
 - Direct, zero sugarcoating, brutal verdict on design/scope/pricing decisions.
 - PowerShell: never use &&, separate git commands on their own lines.
 - Never test writes against the live S.S. Engineering tenant — test tenant only.
@@ -975,7 +1003,86 @@ receive.html + supabase/functions/receive-dispatch:**
   codebase — PO numbers already rendered as-is in challan.html before this
   change, nothing to remove there.
 
+## Shipped Aug 25, 2026
+
+### GSTR-1 Table 13 — Challan Register (export.html)
+- New section on export.html, after existing CA Export
+- Reads p2_dispatch_orders filtered by dispatch_date (NOT created_at) and tenant_id
+- Working set: status IN ('confirmed', 'cancelled') only — drafts excluded
+- Computes: challan_from (MIN of confirmed), challan_to (MAX of confirmed),
+  total_issued (confirmed + cancelled), total_cancelled, net_issued
+- Gap detection: walks integers between from and to, flags missing numbers in working set
+- Challan numbers parsed via regex digit extraction — handles unified and split formats
+- Numeric key = 0 or NaN excluded from range and gap logic entirely
+- Orange warning box if gaps detected
+- Download Excel: single sheet, orange header, one data row
+- Access: owner, accountant, supervisor — all plans
+
+### GSTR-1 Table 12 — HSN/SAC Summary (export.html)
+- New section on export.html, immediately after Table 13
+- Reads p2_invoices filtered by created_at (IST offset) and tenant_id
+- Only status = 'sent' invoices — draft invoices never appear in GST summary
+- Iterates items JSONB array per invoice, groups by hsn_sac × B2B/B2C
+- B2B = client_gstin non-empty after trim; B2C = null or empty
+- GST computed flat-rate per line item: igst = amount × 0.18,
+  cgst = sgst = amount × 0.09 (matches how amount_gst is computed at invoice creation)
+- Renders two stacked tables: B2B Supplies + B2C Supplies, each with totals row
+- Missing hsn_sac grouped under "(Blank)" with a warning
+- Download Excel: two sheets (B2B Supplies, B2C Supplies), orange header, real numeric cells
+- Access: owner, accountant, supervisor — all plans (reuses TABLE13_ROLES const)
+
+### p2_clients schema addition
+- udyam_number text — Udyam registration number
+- enterprise_class text CHECK IN ('micro', 'small', 'medium')
+- registration_activity text CHECK IN ('manufacturing', 'trading', 'services')
+- Added via ALTER TABLE in SQL editor (no migration file — added directly)
+- Required for 43B(h) report (Step 3)
+
 ## GST Scope — PERMANENTLY LOCKED
 Nexflow P2 generates tax invoices for client billing. It does NOT handle GST filing, GSTR
 generation, or financial reporting. GSTR-1/GSTR-3B submission is Tally's job. Never revisit
 this boundary.
+
+Clarification (August 2026): CA-facing aggregation and export reports are IN scope — Table 12
+HSN/SAC summary, Table 13 challan register, and GSTR-2B reconciliation are Excel extracts for
+the owner/CA to use, never submitted by the app. What is permanently out of scope is performing
+GST filing or submission on the client's behalf.
+
+## Job Work Network Plan (August 2026)
+
+Single source of truth: _ai/kpml-network-plan.md
+Critique and reasoning: _ai/kpml-network-critique.md
+Load these files alongside CLAUDE.md for any network feature work.
+
+All three current clients are KPML job workers. KPML's material is in all three
+factories today with no correct ownership record. Step 2 fixes this.
+
+Build sequence:
+- Step 0 — COMPLETE (Aug 24 2026)
+- Step 1 — COMPLETE (Aug 25 2026): GSTR-1 Table 13 challan register + Table 12 HSN/SAC
+  summary shipped to export.html. 43B(h) deferred to Step 3 — requires payment ledger first.
+  Table 12 and Table 13 test data added to test tenant via SQL (Aug 25 2026).
+  Udyam fields (udyam_number, enterprise_class, registration_activity) added to p2_clients.
+- Step 2 — ownership foundation (owned_by + held_by columns, movement purpose,
+            WIP state, pool-aware consumption, confirm_bom_issue pool-blind fix FIRST)
+- Step 3 — payment ledger (receipts model, TDS)
+- Step 4 — notifications (3 types, Edge Function)
+- Step 5 — principal-side one-sided mode (KPML pilot)
+- Step 6 — cross-tenant upgrade + scoped access path
+- Step 7 — gated on named requests only
+
+Step 0 decisions locked:
+- Job work confirmed for all three clients (not purchase-and-sale)
+- p2_tenants exists and is load-bearing
+- s.143(2) obligation is the principal's (KPML), not the job worker's
+- SAC 9988 job charges only on vendor invoices to principal
+- confirm_bom_issue pool-blind fix is Step 2 prerequisite #1
+- Mother-factory pricing: UNDEFINED — settle before Step 5 design begins
+
+Sales strategy:
+- Pitch new clients (job workers) during Step 1 and Step 2
+- Never stop selling while building
+- Pitch to new job worker vendors: "Your principal will ask you for stock numbers,
+  challan records and payment history. Today you cannot answer in less than a day.
+  With this you answer in ten seconds and never get accused."
+- KPML direct contact only after Step 2 is complete and demo exists on real vendor account
