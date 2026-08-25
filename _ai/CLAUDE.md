@@ -47,6 +47,8 @@ Mobile-first: owners use phones. Must work on mobile browser.
   other value) — standard = 30/day (founder clients), power = not yet used, unlimited = test
   tenant only, never reset. New Pro clients (plan='pro') get 50/day via a plan check in
   agent-query, not via agent_tier.
+  is_job_worker boolean NOT NULL DEFAULT false — Step 2F onboarding switch.
+  is_principal boolean NOT NULL DEFAULT false — Step 2F onboarding switch.
 - p2_raw_materials — raw material master (name, unit, min_stock_level, is_active, material_code,
   hsn_sac, gst_rate — both already existed, confirmed present here for reference)
 - p2_suppliers — supplier master (is_active — CSV-imported suppliers default to
@@ -61,6 +63,12 @@ Mobile-first: owners use phones. Must work on mobile browser.
   (added Aug 7 — routes GRN GST math to CGST/SGST vs IGST across CA export, Tally export,
   and Zoho export). invoice_no text — already existed, now mandatory on the GRN form
   (grn.html, added Aug 7).
+  movement_purpose text NOT NULL DEFAULT 'sale' CHECK IN (10 values — see
+  kpml-network-plan.md §8.2) — Step 2E.
+  principal_tenant_id uuid nullable, FK → p2_tenants(id) — Step 2E.
+  owned_by uuid nullable — whose material. NULL = mine.
+  held_by uuid nullable — who physically holds it. NULL = me.
+  FK to p2_clients(id) to be added in 2I after principal groundwork lands.
 - p2_products — finished goods, has product_code (unique index per tenant), hsn_sac text
   (added Aug 7 — HSN/SAC, optional, for CA export)
 - p2_product_bom — recipe. Uses raw_material_id and qty_per_unit (not product_id-only or qty).
@@ -74,6 +82,15 @@ Mobile-first: owners use phones. Must work on mobile browser.
   status values: draft, confirmed, cancelled — NO 'pending'.
   challan_number column (NOT challan_no). NO notes column — use challan_note if needed.
   dispatch_token column: uuid NOT NULL DEFAULT gen_random_uuid(), unique index — added July 26.
+  movement_purpose text NOT NULL DEFAULT 'sale' CHECK IN (10 values — see
+  kpml-network-plan.md §8.2) — Step 2E.
+  principal_tenant_id uuid nullable, FK → p2_tenants(id) — Step 2E.
+  s143_clock_start timestamptz nullable — set on job_work_issue and capital_goods_issue
+  only — Step 2E.
+  s143_clock_deadline timestamptz nullable — clock_start +1yr (inputs) / +3yr (capital
+  goods) / NULL (exempt tooling — needs future is_exempt_tooling flag) — Step 2E.
+  owned_by uuid nullable — whose material this dispatch moves. NULL = own material.
+  FK to p2_clients(id) to be added in 2I after principal groundwork lands.
 - p2_dispatch_items — line items in a dispatch. Columns: id, tenant_id, dispatch_order_id,
   material_name, material_code, qty_dispatched, unit, raw_material_id, product_id, notes, created_at.
   IMPORTANT: product dispatches have NULL material_name at DB level — product name must be
@@ -1063,8 +1080,22 @@ Build sequence:
   summary shipped to export.html. 43B(h) deferred to Step 3 — requires payment ledger first.
   Table 12 and Table 13 test data added to test tenant via SQL (Aug 25 2026).
   Udyam fields (udyam_number, enterprise_class, registration_activity) added to p2_clients.
-- Step 2 — ownership foundation (owned_by + held_by columns, movement purpose,
-            WIP state, pool-aware consumption, confirm_bom_issue pool-blind fix FIRST)
+- Step 2 — ✅ 2A confirm_bom_issue pool-aware (prerequisite only — not full pool-awareness)
+           ✅ 2B owned_by + held_by columns (owned_by missing from p2_dispatch_orders — fixed Aug 25)
+           ✅ 2C v_p2_stock_balance ownership-aware
+           ✅ 2D all direct stock_transactions reads filtered
+           ✅ 2E movement_purpose + principal_tenant_id + s143 clock columns
+           ✅ 2F onboarding switches (is_job_worker, is_principal)
+           ⬜ 2I vendor-side onboarding UI + principal groundwork (next)
+           ⬜ 2H pool-aware consumption
+           ⬜ 2G WIP state
+           ⬜ 2J purpose selector on dispatch
+           ⬜ 2K s.143 clock population
+           ⬜ 2L Type A regression harness (build before 2I, run after each step)
+  Reordering rationale: 2I precedes 2H (needs the principal list for auto-derive);
+  2H precedes 2G (WIP attribution needs real pool data, or every WIP row is hollow);
+  2J needs 2I's gating flags; 2K needs 2J's movement_purpose. 2L's harness is built
+  first and re-run after each step, not treated as a single terminal gate.
 - Step 3 — payment ledger (receipts model, TDS)
 - Step 4 — notifications (3 types, Edge Function)
 - Step 5 — principal-side one-sided mode (KPML pilot)

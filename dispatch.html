@@ -389,6 +389,19 @@
         </div>
     </div>
 
+    <!-- HARD DELETE MODAL -->
+    <div id="hardDeleteModal" class="nx-modal-overlay" style="display:none;z-index:9999;">
+        <div class="nx-modal" style="max-width:460px;">
+            <div class="nx-modal-title" style="color:#ef4444;">Delete Challan Permanently</div>
+            <div id="hardDeleteMeta" style="font-size:13px; color:var(--mid); margin-bottom:16px;"></div>
+            <div id="hardDeleteMessage" style="margin-bottom:16px;"></div>
+            <div style="display:flex; gap:10px;">
+                <button id="hardDeleteConfirmBtn" class="nx-btn nx-btn-danger" style="flex:1;" disabled>Delete Permanently</button>
+                <button id="hardDeleteCancelBtn" class="nx-btn nx-btn-ghost"   style="flex:1;">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         let products = [];
         let dispatchItems = [];
@@ -647,6 +660,11 @@
                     `;
                 } else if (isCancelled) {
                     actionCell = `<span style="color:var(--mid); font-size:12px;">Reversed</span>`;
+                    if (getUserRole() === 'owner') {
+                        actionCell += `
+                            <button onclick="openHardDeleteModal('${dispatch.id}', '${(dispatch.challan_number||'').replace(/'/g,"")}')" class="nx-btn nx-btn-danger nx-btn-sm" style="margin-left:6px;">Delete Permanently</button>
+                        `;
+                    }
                 }
 
                 row.innerHTML = `
@@ -682,6 +700,98 @@
                 window.toast ? window.toast(errMsg, 'error') : alert(errMsg);
             }
         };
+
+        // ── HARD DELETE (permanent) ──────────────────────────────────
+        let hardDeleteTarget = null;
+
+        function hardDeleteReasonText(reasons) {
+            if (!reasons || !reasons.length) return 'This challan cannot be permanently deleted.';
+            if (reasons.includes('OWNER_ONLY')) return 'Only the owner can permanently delete a challan.';
+            if (reasons.includes('NOT_FOUND')) return 'This challan could not be found.';
+            if (reasons.includes('STATUS')) return 'Only draft or cancelled challans can be permanently deleted.';
+            if (reasons.includes('INVOICE_SINGLE') || reasons.includes('INVOICE_CONSOLIDATED')) return 'An invoice has already been generated for this challan — it cannot be permanently deleted.';
+            if (reasons.includes('GRN_LINKED')) return 'A GRN has already been recorded against this challan by the recipient — it cannot be permanently deleted.';
+            return 'This challan cannot be permanently deleted.';
+        }
+
+        window.openHardDeleteModal = async (orderId, challanNumber) => {
+            hardDeleteTarget = { orderId, challanNumber };
+            const modal = document.getElementById('hardDeleteModal');
+            const msg = document.getElementById('hardDeleteMessage');
+            const confirmBtn = document.getElementById('hardDeleteConfirmBtn');
+
+            document.getElementById('hardDeleteMeta').textContent = `Challan ${challanNumber || '—'}`;
+            msg.innerHTML = `<div style="font-size:13px; color:var(--mid);">Checking eligibility…</div>`;
+            confirmBtn.disabled = true;
+            modal.style.display = 'flex';
+
+            try {
+                const { data, error } = await window.supabase.rpc('get_dispatch_delete_eligibility', {
+                    p_dispatch_order_id: orderId,
+                    p_tenant_id: tenantId
+                });
+                if (error) throw error;
+
+                if (data.eligible) {
+                    msg.innerHTML = `
+                        <div class="nx-alert nx-alert-yellow" style="margin-bottom:0;">
+                            <span class="nx-alert-icon">⚠</span>
+                            <span>This will permanently delete challan #${challanNumber || ''} and cannot be undone. The challan number will be available for reuse.</span>
+                        </div>`;
+                    confirmBtn.disabled = false;
+                } else {
+                    msg.innerHTML = `
+                        <div class="nx-alert nx-alert-red" style="margin-bottom:0;">
+                            <span class="nx-alert-icon">⚠</span>
+                            <span>${hardDeleteReasonText(data.reasons)}</span>
+                        </div>`;
+                    confirmBtn.disabled = true;
+                }
+            } catch (err) {
+                console.error('get_dispatch_delete_eligibility:', err);
+                msg.innerHTML = `
+                    <div class="nx-alert nx-alert-red" style="margin-bottom:0;">
+                        <span class="nx-alert-icon">⚠</span>
+                        <span>Could not check eligibility: ${err.message || ''}</span>
+                    </div>`;
+                confirmBtn.disabled = true;
+            }
+        };
+
+        document.getElementById('hardDeleteCancelBtn').addEventListener('click', () => {
+            document.getElementById('hardDeleteModal').style.display = 'none';
+            hardDeleteTarget = null;
+        });
+        document.getElementById('hardDeleteModal').addEventListener('click', e => {
+            if (e.target.id === 'hardDeleteModal') {
+                e.target.style.display = 'none';
+                hardDeleteTarget = null;
+            }
+        });
+        document.getElementById('hardDeleteConfirmBtn').addEventListener('click', async () => {
+            if (!hardDeleteTarget) return;
+            const confirmBtn = document.getElementById('hardDeleteConfirmBtn');
+            if (confirmBtn.disabled) return;
+            confirmBtn.disabled = true;
+
+            try {
+                const { data, error } = await window.supabase.rpc('hard_delete_dispatch', {
+                    p_dispatch_order_id: hardDeleteTarget.orderId,
+                    p_tenant_id: tenantId
+                });
+                if (error) throw error;
+
+                window.toast ? window.toast('Challan permanently deleted', 'ok') : alert('Challan permanently deleted');
+                document.getElementById('hardDeleteModal').style.display = 'none';
+                hardDeleteTarget = null;
+                await loadRecentDispatches();
+            } catch (err) {
+                console.error('hard_delete_dispatch:', err);
+                const errMsg = 'Delete failed: ' + (err.message || '');
+                window.toast ? window.toast(errMsg, 'error') : alert(errMsg);
+                confirmBtn.disabled = false;
+            }
+        });
 
         window.loadDraftToForm = async (orderId) => {
             try {

@@ -255,7 +255,21 @@
             <div style="display:flex; gap:10px;">
                 <button id="detailPrintBtn" class="nx-btn nx-btn-green" style="flex:1;" data-en="View Challan" data-mr="चालन पहा">View Challan</button>
                 <button id="detailCancelBtn" class="nx-btn nx-btn-ghost" style="flex:1; color:#ef4444; display:none;" data-en="Cancel Challan" data-mr="चालन रद्द करा">Cancel Challan</button>
+                <button id="detailHardDeleteBtn" class="nx-btn nx-btn-danger" style="flex:1; display:none;" data-en="Delete Permanently" data-mr="कायमचे हटवा">Delete Permanently</button>
                 <button id="detailCloseBtn" class="nx-btn nx-btn-ghost" style="flex:1;" data-en="Close" data-mr="बंद करा">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- HARD DELETE MODAL -->
+    <div id="hardDeleteModal" class="nx-modal-overlay" style="display:none;z-index:9999;">
+        <div class="nx-modal" style="max-width:460px;">
+            <div class="nx-modal-title" style="color:#ef4444;">Delete Challan Permanently</div>
+            <div id="hardDeleteMeta" style="font-size:13px; color:var(--mid); margin-bottom:16px;"></div>
+            <div id="hardDeleteMessage" style="margin-bottom:16px;"></div>
+            <div style="display:flex; gap:10px;">
+                <button id="hardDeleteConfirmBtn" class="nx-btn nx-btn-danger" style="flex:1;" disabled>Delete Permanently</button>
+                <button id="hardDeleteCancelBtn" class="nx-btn nx-btn-ghost"   style="flex:1;">Cancel</button>
             </div>
         </div>
     </div>
@@ -432,6 +446,99 @@
             }
         };
 
+        // ── HARD DELETE (permanent) ──────────────────────────────────
+        let hardDeleteTarget = null;
+
+        function hardDeleteReasonText(reasons) {
+            if (!reasons || !reasons.length) return t('This challan cannot be permanently deleted.', 'हे चालन कायमचे हटवता येणार नाही.');
+            if (reasons.includes('OWNER_ONLY')) return t('Only the owner can permanently delete a challan.', 'फक्त मालकच चालन कायमचे हटवू शकतो.');
+            if (reasons.includes('NOT_FOUND')) return t('This challan could not be found.', 'हे चालन सापडले नाही.');
+            if (reasons.includes('STATUS')) return t('Only draft or cancelled challans can be permanently deleted.', 'फक्त मसुदा किंवा रद्द केलेली चालने कायमची हटवता येतात.');
+            if (reasons.includes('INVOICE_SINGLE') || reasons.includes('INVOICE_CONSOLIDATED')) return t('An invoice has already been generated for this challan — it cannot be permanently deleted.', 'या चालनासाठी आधीच इनव्हॉइस तयार झाले आहे — ते कायमचे हटवता येणार नाही.');
+            if (reasons.includes('GRN_LINKED')) return t('A GRN has already been recorded against this challan by the recipient — it cannot be permanently deleted.', 'प्राप्तकर्त्याने या चालनासाठी आधीच GRN नोंदवले आहे — ते कायमचे हटवता येणार नाही.');
+            return t('This challan cannot be permanently deleted.', 'हे चालन कायमचे हटवता येणार नाही.');
+        }
+
+        window.openHardDeleteModal = async (orderId, challanNumber, fromDetailModal) => {
+            hardDeleteTarget = { orderId, challanNumber, fromDetailModal: !!fromDetailModal };
+            const modal = document.getElementById('hardDeleteModal');
+            const msg = document.getElementById('hardDeleteMessage');
+            const confirmBtn = document.getElementById('hardDeleteConfirmBtn');
+
+            document.getElementById('hardDeleteMeta').textContent = t('Challan ', 'चालन ') + (challanNumber || '—');
+            msg.innerHTML = `<div style="font-size:13px; color:var(--mid);">${t('Checking eligibility…', 'पात्रता तपासत आहे…')}</div>`;
+            confirmBtn.disabled = true;
+            modal.style.display = 'flex';
+
+            try {
+                const { data, error } = await window.supabase.rpc('get_dispatch_delete_eligibility', {
+                    p_dispatch_order_id: orderId,
+                    p_tenant_id: tenantId
+                });
+                if (error) throw error;
+
+                if (data.eligible) {
+                    msg.innerHTML = `
+                        <div class="nx-alert nx-alert-yellow" style="margin-bottom:0;">
+                            <span class="nx-alert-icon">⚠</span>
+                            <span>${t(`This will permanently delete challan #${challanNumber || ''} and cannot be undone. The challan number will be available for reuse.`,
+                                      `यामुळे चालन #${challanNumber || ''} कायमचे हटवले जाईल आणि हे पूर्ववत करता येणार नाही. चालन क्रमांक पुन्हा वापरण्यासाठी उपलब्ध होईल.`)}</span>
+                        </div>`;
+                    confirmBtn.disabled = false;
+                } else {
+                    msg.innerHTML = `
+                        <div class="nx-alert nx-alert-red" style="margin-bottom:0;">
+                            <span class="nx-alert-icon">⚠</span>
+                            <span>${hardDeleteReasonText(data.reasons)}</span>
+                        </div>`;
+                    confirmBtn.disabled = true;
+                }
+            } catch (err) {
+                console.error('get_dispatch_delete_eligibility:', err);
+                msg.innerHTML = `
+                    <div class="nx-alert nx-alert-red" style="margin-bottom:0;">
+                        <span class="nx-alert-icon">⚠</span>
+                        <span>${t('Could not check eligibility: ', 'पात्रता तपासता आली नाही: ')}${err.message || ''}</span>
+                    </div>`;
+                confirmBtn.disabled = true;
+            }
+        };
+
+        document.getElementById('hardDeleteCancelBtn').addEventListener('click', () => {
+            document.getElementById('hardDeleteModal').style.display = 'none';
+            hardDeleteTarget = null;
+        });
+        document.getElementById('hardDeleteModal').addEventListener('click', e => {
+            if (e.target.id === 'hardDeleteModal') {
+                e.target.style.display = 'none';
+                hardDeleteTarget = null;
+            }
+        });
+        document.getElementById('hardDeleteConfirmBtn').addEventListener('click', async () => {
+            if (!hardDeleteTarget) return;
+            const confirmBtn = document.getElementById('hardDeleteConfirmBtn');
+            if (confirmBtn.disabled) return;
+            confirmBtn.disabled = true;
+
+            try {
+                const { data, error } = await window.supabase.rpc('hard_delete_dispatch', {
+                    p_dispatch_order_id: hardDeleteTarget.orderId,
+                    p_tenant_id: tenantId
+                });
+                if (error) throw error;
+
+                toast(t('Challan permanently deleted', 'चालन कायमचे हटवले'), 'ok');
+                document.getElementById('hardDeleteModal').style.display = 'none';
+                if (hardDeleteTarget.fromDetailModal) document.getElementById('detailModal').style.display = 'none';
+                hardDeleteTarget = null;
+                await loadHistory();
+            } catch (err) {
+                console.error('hard_delete_dispatch:', err);
+                toast(t('Delete failed: ', 'हटवणे अयशस्वी: ') + (err.message || ''), 'error');
+                confirmBtn.disabled = false;
+            }
+        });
+
         // ── RENDER ────────────────────────────────────────────────────
         function renderTable() {
             const tbody = document.getElementById('historyBody');
@@ -507,6 +614,13 @@
                                 ${t('Cancel','रद्द')}
                             </button>` : ''}
                             ${isCancelled ? `<span style="color:var(--mid); font-size:11px;">${t('Reversed','परत केले')}</span>` : ''}
+                            ${isCancelled && getUserRole() === 'owner' ? `
+                            <button
+                                onclick="openHardDeleteModal('${order.id}', '${(order.challan_number||'').replace(/'/g,"")}')"
+                                class="nx-btn nx-btn-danger nx-btn-sm"
+                                title="Delete permanently">
+                                ${t('Delete Permanently','कायमचे हटवा')}
+                            </button>` : ''}
                         </div>
                     </td>
                 `;
@@ -599,6 +713,15 @@
                 cancelBtn.onclick = () => cancelChallanRow(orderId, order.challan_number || '');
             } else {
                 cancelBtn.style.display = 'none';
+            }
+
+            // Delete Permanently button — only for cancelled orders, owner role only
+            const hardDeleteBtn = document.getElementById('detailHardDeleteBtn');
+            if (isCancelled && getUserRole() === 'owner') {
+                hardDeleteBtn.style.display = 'block';
+                hardDeleteBtn.onclick = () => openHardDeleteModal(orderId, order.challan_number || '', true);
+            } else {
+                hardDeleteBtn.style.display = 'none';
             }
 
             document.getElementById('detailModal').style.display = 'flex';
