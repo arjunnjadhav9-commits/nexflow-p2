@@ -100,6 +100,11 @@
   #table13Section { display: none; }
   #table13WarnBox { display: none; }
   #table13Results { display: none; }
+
+  /* GSTR-1 Table 12 section */
+  #table12Section { display: none; }
+  #table12WarnBox { display: none; }
+  #table12Results { display: none; }
 </style>
 </head>
 <body>
@@ -272,6 +277,66 @@
         </table>
       </div>
       <button id="table13DownloadBtn" onclick="downloadTable13Excel()" class="nx-btn nx-btn-primary nx-btn-full">⬇ Download Excel</button>
+    </div>
+  </div>
+
+  <!-- GSTR-1 TABLE 12 — HSN/SAC SUMMARY -->
+  <div id="table12Section" class="nx-card nx-mb-16">
+    <div class="nx-card-header">
+      <div class="nx-card-title">GSTR-1 Table 12 — HSN/SAC Summary</div>
+    </div>
+    <div style="font-size:13px; color:var(--mid); margin-bottom:16px;">
+      HSN/SAC-wise summary of outward supplies (sent invoices only), split B2B / B2C, for the selected month — for Table 12 of your GSTR-1 filing.
+    </div>
+
+    <div class="nx-form-group">
+      <label>Month</label>
+      <input type="month" id="table12Month" class="nx-input" style="color-scheme:dark;">
+    </div>
+
+    <button id="table12GenBtn" onclick="generateTable12()" class="nx-btn nx-btn-secondary nx-mb-16">Generate Summary</button>
+
+    <div id="table12WarnBox" class="nx-alert nx-alert-orange nx-mb-16">
+      <span class="nx-alert-icon">⚠</span>
+      <span id="table12WarnMsg" style="font-size:13px;"></span>
+    </div>
+
+    <div id="table12Results">
+      <div class="nx-td-bold" style="font-size:14px; margin-bottom:8px;">B2B Supplies</div>
+      <div class="nx-table-wrap nx-mb-16">
+        <table class="nx-table">
+          <thead>
+            <tr>
+              <th>HSN/SAC</th>
+              <th style="text-align:right;">Taxable Value</th>
+              <th style="text-align:right;">Integrated Tax</th>
+              <th style="text-align:right;">Central Tax</th>
+              <th style="text-align:right;">State Tax</th>
+            </tr>
+          </thead>
+          <tbody id="t12B2bBody"></tbody>
+          <tfoot id="t12B2bFoot"></tfoot>
+        </table>
+      </div>
+
+      <div class="nx-td-bold" style="font-size:14px; margin-bottom:8px;">B2C Supplies</div>
+      <div class="nx-table-wrap nx-mb-16">
+        <table class="nx-table">
+          <thead>
+            <tr>
+              <th>HSN/SAC</th>
+              <th style="text-align:right;">Taxable Value</th>
+              <th style="text-align:right;">Integrated Tax</th>
+              <th style="text-align:right;">Central Tax</th>
+              <th style="text-align:right;">State Tax</th>
+            </tr>
+          </thead>
+          <tbody id="t12B2cBody"></tbody>
+          <tfoot id="t12B2cFoot"></tfoot>
+        </table>
+      </div>
+
+      <button id="table12DownloadBtn" onclick="downloadTable12Excel()" class="nx-btn nx-btn-primary nx-btn-full">⬇ Download Excel</button>
     </div>
   </div>
 
@@ -1248,6 +1313,192 @@ async function downloadTable13Excel() {
   toast(`Downloaded: ${filename}`, 'ok');
 }
 
+// ─── GSTR-1 TABLE 12 — HSN/SAC SUMMARY ──────────────────────────────────────
+function fmtMoney(n) {
+  const v = Number(n) || 0;
+  return '₹' + v.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function fmtTaxCell(v) {
+  return v > 0 ? fmtMoney(v) : '—';
+}
+function escapeHtml(str) {
+  return String(str ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function showTable12Warn(msg) {
+  const box = document.getElementById('table12WarnBox');
+  document.getElementById('table12WarnMsg').textContent = msg;
+  box.style.display = msg ? 'flex' : 'none';
+}
+
+let table12Data = null; // cached last-generated result, used by the Excel download
+
+function sumTable12Rows(rows) {
+  return rows.reduce((acc, r) => ({
+    taxableValue: acc.taxableValue + r.taxableValue,
+    integratedTax: acc.integratedTax + r.integratedTax,
+    centralTax: acc.centralTax + r.centralTax,
+    stateTax: acc.stateTax + r.stateTax
+  }), { taxableValue: 0, integratedTax: 0, centralTax: 0, stateTax: 0 });
+}
+
+function renderTable12Table(bodyId, footId, rows, totals, emptyLabel) {
+  const tbody = document.getElementById(bodyId);
+  tbody.innerHTML = rows.length ? rows.map(r => `
+    <tr>
+      <td>${escapeHtml(r.hsn)}</td>
+      <td style="text-align:right;">${fmtMoney(r.taxableValue)}</td>
+      <td style="text-align:right;">${fmtTaxCell(r.integratedTax)}</td>
+      <td style="text-align:right;">${fmtTaxCell(r.centralTax)}</td>
+      <td style="text-align:right;">${fmtTaxCell(r.stateTax)}</td>
+    </tr>
+  `).join('') : `<tr><td colspan="5" style="text-align:center; color:var(--mid);">${emptyLabel}</td></tr>`;
+
+  document.getElementById(footId).innerHTML = rows.length ? `
+    <tr style="border-top:2px solid var(--border);">
+      <td class="nx-td-bold">TOTAL</td>
+      <td class="nx-td-bold" style="text-align:right;">${fmtMoney(totals.taxableValue)}</td>
+      <td class="nx-td-bold" style="text-align:right;">${fmtTaxCell(totals.integratedTax)}</td>
+      <td class="nx-td-bold" style="text-align:right;">${fmtTaxCell(totals.centralTax)}</td>
+      <td class="nx-td-bold" style="text-align:right;">${fmtTaxCell(totals.stateTax)}</td>
+    </tr>
+  ` : '';
+}
+
+// Only status='sent' invoices count — draft invoices were never actually
+// billed and must never appear in a GST filing summary. GST computed per
+// line item (flat 18% split, matching how amount_gst itself is computed at
+// invoice-creation time), not proportioned from the invoice total.
+async function generateTable12() {
+  const btn = document.getElementById('table12GenBtn');
+  document.getElementById('table12Results').style.display = 'none';
+  showTable12Warn('');
+  btn.disabled = true;
+  const originalLabel = btn.textContent;
+  btn.textContent = 'Generating...';
+
+  try {
+    const monthVal = document.getElementById('table12Month').value; // "YYYY-MM"
+    if (!monthVal) throw new Error('Select a month.');
+    const [yearStr, monthStr] = monthVal.split('-');
+    const year  = parseInt(yearStr, 10);
+    const month = parseInt(monthStr, 10);
+    const lastDay = new Date(year, month, 0).getDate();
+    const from = `${yearStr}-${monthStr}-01`;
+    const to   = `${yearStr}-${monthStr}-${String(lastDay).padStart(2, '0')}`;
+
+    const tenantId = await getTenantId();
+
+    const { data, error } = await window.supabase
+      .from('p2_invoices')
+      .select('items, client_gstin, gst_type, created_at')
+      .eq('tenant_id', tenantId)
+      .eq('status', 'sent')
+      .gte('created_at', from + 'T00:00:00+05:30')
+      .lte('created_at', to + 'T23:59:59+05:30');
+
+    if (error) throw new Error(`Supabase error: ${error.message}`);
+
+    const invoices = data || [];
+    if (!invoices.length) throw new Error('No sent invoices found for this period.');
+
+    const b2bMap = new Map();
+    const b2cMap = new Map();
+    let missingHsnCount = 0;
+
+    invoices.forEach(inv => {
+      const items = Array.isArray(inv.items) ? inv.items : [];
+      const isB2B = !!(inv.client_gstin && inv.client_gstin.trim());
+      const map = isB2B ? b2bMap : b2cMap;
+
+      items.forEach(item => {
+        const hsn = String(item.hsn_sac || '').trim();
+        if (!hsn) missingHsnCount++;
+        const key = hsn || '(Blank)';
+        const amount = Number(item.amount) || 0;
+
+        let integratedTax = 0, centralTax = 0, stateTax = 0;
+        if (inv.gst_type === 'igst') {
+          integratedTax = amount * 0.18;
+        } else if (inv.gst_type === 'cgst_sgst') {
+          centralTax = amount * 0.09;
+          stateTax   = amount * 0.09;
+        }
+
+        const existing = map.get(key) || { hsn: key, taxableValue: 0, integratedTax: 0, centralTax: 0, stateTax: 0 };
+        existing.taxableValue  += amount;
+        existing.integratedTax += integratedTax;
+        existing.centralTax    += centralTax;
+        existing.stateTax      += stateTax;
+        map.set(key, existing);
+      });
+    });
+
+    if (!b2bMap.size && !b2cMap.size) throw new Error('No line items with HSN/SAC data found for this period.');
+
+    const b2bRows = Array.from(b2bMap.values()).sort((a, b) => a.hsn.localeCompare(b.hsn));
+    const b2cRows = Array.from(b2cMap.values()).sort((a, b) => a.hsn.localeCompare(b.hsn));
+    const b2bTotals = sumTable12Rows(b2bRows);
+    const b2cTotals = sumTable12Rows(b2cRows);
+
+    const FULL_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const periodLabel = `${FULL_MONTHS[month - 1]} ${year}`;
+
+    table12Data = { periodLabel, from, to, b2bRows, b2cRows, b2bTotals, b2cTotals };
+
+    renderTable12Table('t12B2bBody', 't12B2bFoot', b2bRows, b2bTotals, 'No B2B supplies for this period.');
+    renderTable12Table('t12B2cBody', 't12B2cFoot', b2cRows, b2cTotals, 'No B2C supplies for this period.');
+    document.getElementById('table12Results').style.display = 'block';
+
+    if (missingHsnCount > 0) {
+      showTable12Warn(`${missingHsnCount} line item(s) had no HSN/SAC code — grouped under "(Blank)". Add HSN/SAC codes in Products/Settings before filing.`);
+    }
+  } catch (err) {
+    toast(err.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalLabel;
+  }
+}
+
+async function downloadTable12Excel() {
+  if (!table12Data) { toast('Generate the summary first.', 'error'); return; }
+
+  const workbook = new ExcelJS.Workbook();
+
+  const buildSheet = (name, rows, totals) => {
+    const sheet = workbook.addWorksheet(name);
+    sheet.columns = [
+      { header: 'HSN/SAC',        key: 'hsn',           width: 14 },
+      { header: 'Taxable Value',  key: 'taxableValue',  width: 16, numFmt: '#,##0.00' },
+      { header: 'Integrated Tax', key: 'integratedTax', width: 16, numFmt: '#,##0.00' },
+      { header: 'Central Tax',    key: 'centralTax',    width: 16, numFmt: '#,##0.00' },
+      { header: 'State Tax',      key: 'stateTax',       width: 16, numFmt: '#,##0.00' }
+    ];
+    styleHeaderRow(sheet.getRow(1));
+
+    rows.forEach(r => sheet.addRow({
+      hsn: r.hsn, taxableValue: r.taxableValue, integratedTax: r.integratedTax,
+      centralTax: r.centralTax, stateTax: r.stateTax
+    }));
+
+    const totalRow = sheet.addRow({
+      hsn: 'TOTAL', taxableValue: totals.taxableValue, integratedTax: totals.integratedTax,
+      centralTax: totals.centralTax, stateTax: totals.stateTax
+    });
+    totalRow.font = { bold: true };
+
+    sheet.views = [{ state: 'frozen', ySplit: 1 }];
+  };
+
+  buildSheet('B2B Supplies', table12Data.b2bRows, table12Data.b2bTotals);
+  buildSheet('B2C Supplies', table12Data.b2cRows, table12Data.b2cTotals);
+
+  const filename = `GSTR1_Table12_${table12Data.from}_to_${table12Data.to}.xlsx`;
+  await downloadXLSX(workbook, filename);
+  toast(`Downloaded: ${filename}`, 'ok');
+}
+
 // ─── INIT ────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   const authed = await checkAuth();
@@ -1279,6 +1530,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (TABLE13_ROLES.includes(role)) {
     document.getElementById('table13Section').style.display = 'block';
     document.getElementById('table13Month').value = `${y}-${m}`;
+    document.getElementById('table12Section').style.display = 'block';
+    document.getElementById('table12Month').value = `${y}-${m}`;
   }
 });
 </script>
