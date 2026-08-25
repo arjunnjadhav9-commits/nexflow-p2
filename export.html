@@ -580,7 +580,8 @@ async function exportTallyMasters() {
     .select('raw_material_id, quantity')
     .eq('tenant_id', tenantId)
     .eq('transaction_type', 'adjustment')
-    .eq('notes', 'Opening Stock');
+    .eq('notes', 'Opening Stock')
+    .is('owned_by', null);
 
   if (oe) throw new Error(`Opening stock fetch error: ${oe.message}`);
 
@@ -668,6 +669,7 @@ async function exportTallyTransactions() {
       .select(JOIN_COLUMNS)
       .eq('tenant_id', tenantId)
       .eq('transaction_type', 'grn')
+      .is('owned_by', null)
       .gte('transaction_date', from)
       .lte('transaction_date', to),
     window.supabase
@@ -676,6 +678,7 @@ async function exportTallyTransactions() {
       .eq('tenant_id', tenantId)
       .eq('transaction_type', 'adjustment')
       .eq('notes', 'Opening Stock')
+      .is('owned_by', null)
       .gte('transaction_date', from)
       .lte('transaction_date', to),
     window.supabase
@@ -998,7 +1001,8 @@ async function exportZohoMasters() {
     .select('raw_material_id, quantity')
     .eq('tenant_id', tenantId)
     .eq('transaction_type', 'adjustment')
-    .eq('notes', 'Opening Stock');
+    .eq('notes', 'Opening Stock')
+    .is('owned_by', null);
 
   if (oe) throw new Error(`Opening stock fetch error: ${oe.message}`);
   const openingQtyMap = {};
@@ -1084,6 +1088,7 @@ async function exportZohoTransactions() {
     `)
     .eq('tenant_id', tenantId)
     .eq('transaction_type', 'grn')
+    .is('owned_by', null)
     .gte('transaction_date', from)
     .lte('transaction_date', to)
     .order('transaction_date');

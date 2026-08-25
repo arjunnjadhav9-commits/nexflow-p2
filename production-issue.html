@@ -889,7 +889,8 @@ async function fetchStockMap() {
   const { data, error } = await window.supabase
     .from('p2_stock_transactions')
     .select('raw_material_id, quantity')
-    .eq('tenant_id', tenantId);
+    .eq('tenant_id', tenantId)
+    .is('owned_by', null);
 
   if (error) { console.warn('Stock fetch error:', error.message); return; }
   stockMap = {};

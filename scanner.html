@@ -441,7 +441,8 @@
                 .from('p2_stock_transactions')
                 .select('quantity')
                 .eq('raw_material_id', payload.id)
-                .eq('tenant_id', tenantId);
+                .eq('tenant_id', tenantId)
+                .is('owned_by', null);
 
             if (txErr) {
                 setScanStatus(t('Error loading stock: ','साठा लोड करताना त्रुटी: ') + txErr.message, 'error');

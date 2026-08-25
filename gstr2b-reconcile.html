@@ -561,6 +561,7 @@ async function runReconciliation() {
             .select('transaction_date, invoice_no, quantity, rate, supplier_id, supplier_name, purchase_type, raw_material_id, p2_raw_materials(gst_rate), p2_suppliers(gstin)')
             .eq('tenant_id', tenantId)
             .eq('transaction_type', 'grn')
+            .is('owned_by', null)
             .gte('transaction_date', periodInfo.firstOfMonth)
             .lte('transaction_date', periodInfo.lastOfMonth);
 

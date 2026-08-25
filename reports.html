@@ -266,7 +266,8 @@
                         .select('quantity, transaction_type, notes')
                         .eq('raw_material_id', material.id)
                         .eq('tenant_id', tenantId)
-                        .in('transaction_type', ['opening_stock', 'adjustment']);
+                        .in('transaction_type', ['opening_stock', 'adjustment'])
+                        .is('owned_by', null);
 
                     if (openingStockError) throw openingStockError;
 
@@ -287,6 +288,7 @@
                         .eq('raw_material_id', material.id)
                         .eq('tenant_id', tenantId)
                         .eq('transaction_type', 'grn')
+                        .is('owned_by', null)
                         .gte('transaction_date', firstDay.toISOString().split('T')[0])
                         .lte('transaction_date', lastDay.toISOString().split('T')[0]);
 
@@ -299,6 +301,7 @@
                         .eq('raw_material_id', material.id)
                         .eq('tenant_id', tenantId)
                         .eq('transaction_type', 'consumption')
+                        .is('owned_by', null)
                         .gte('transaction_date', firstDay.toISOString().split('T')[0])
                         .lte('transaction_date', lastDay.toISOString().split('T')[0]);
 
@@ -341,6 +344,7 @@
                     .select('supplier_id, p2_suppliers(name), quantity')
                     .eq('tenant_id', tenantId)
                     .eq('transaction_type', 'grn')
+                    .is('owned_by', null)
                     .gte('transaction_date', firstDay.toISOString().split('T')[0])
                     .lte('transaction_date', lastDay.toISOString().split('T')[0]);
 

@@ -879,7 +879,8 @@
                                     .from('p2_stock_transactions')
                                     .select('quantity')
                                     .eq('raw_material_id', ingredient.raw_material_id)
-                                    .eq('tenant_id', tenantIdForCheck);
+                                    .eq('tenant_id', tenantIdForCheck)
+                                    .is('owned_by', null);
 
                                 const currentStock = txData ? txData.reduce((sum, t) => sum + Number(t.quantity), 0) : 0;
 

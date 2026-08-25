@@ -288,6 +288,7 @@
                 .select('id, grn_no, transaction_date, quantity, rate, invoice_no, p2_suppliers(id, name), p2_raw_materials(name, unit)')
                 .eq('tenant_id', tenantId)
                 .eq('transaction_type', 'grn')
+                .is('owned_by', null)
                 .order('transaction_date', { ascending: false })
                 .order('created_at',       { ascending: false });
 

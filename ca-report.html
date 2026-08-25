@@ -370,7 +370,7 @@
             if (materialsError) throw materialsError;
 
             const { data: transactions, error: transactionsError } = await window.supabase
-                .from('p2_stock_transactions').select('*').eq('tenant_id', tenantId).order('transaction_date');
+                .from('p2_stock_transactions').select('*').eq('tenant_id', tenantId).is('owned_by', null).order('transaction_date');
             if (transactionsError) throw transactionsError;
 
             const { data: suppliers, error: suppliersError } = await window.supabase

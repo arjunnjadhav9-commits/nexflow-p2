@@ -766,6 +766,7 @@
                 .from('p2_stock_transactions')
                 .select('id, grn_no, transaction_date, quantity, p2_suppliers(name), p2_raw_materials(name, unit)')
                 .eq('tenant_id', tenantId).eq('transaction_type', 'grn')
+                .is('owned_by', null)
                 .order('transaction_date', { ascending: false }).order('created_at', { ascending: false })
                 .limit(10);
             if (error) { console.error('Error loading recent GRN:', error); return; }
@@ -842,6 +843,7 @@
                 .select('transaction_date, invoice_no, quantity, supplier_name, p2_raw_materials!inner(name, unit)')
                 .eq('tenant_id', tenantId)
                 .eq('transaction_type', 'grn')
+                .is('owned_by', null)
                 .gte('transaction_date', firstOfMonth)
                 .lte('transaction_date', lastOfMonth)
                 .order('supplier_name')
