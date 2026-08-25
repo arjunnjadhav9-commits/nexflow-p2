@@ -95,6 +95,11 @@
 
   /* Warn box */
   #warnBox { display: none; }
+
+  /* GSTR-1 Table 13 section */
+  #table13Section { display: none; }
+  #table13WarnBox { display: none; }
+  #table13Results { display: none; }
 </style>
 </head>
 <body>
@@ -230,6 +235,44 @@
       <div class="nx-card-title">Export Log</div>
     </div>
     <div id="logInner"></div>
+  </div>
+
+  <!-- GSTR-1 TABLE 13 — CHALLAN REGISTER -->
+  <div id="table13Section" class="nx-card nx-mb-16">
+    <div class="nx-card-header">
+      <div class="nx-card-title">GSTR-1 Table 13 — Challan Register</div>
+    </div>
+    <div style="font-size:13px; color:var(--mid); margin-bottom:16px;">
+      Delivery challan serial range, issued and cancelled counts for the selected month — for Table 13 of your GSTR-1 filing.
+    </div>
+
+    <div class="nx-form-group">
+      <label>Month</label>
+      <input type="month" id="table13Month" class="nx-input" style="color-scheme:dark;">
+    </div>
+
+    <button id="table13GenBtn" onclick="generateTable13()" class="nx-btn nx-btn-secondary nx-mb-16">Generate Register</button>
+
+    <div id="table13WarnBox" class="nx-alert nx-alert-orange nx-mb-16">
+      <span class="nx-alert-icon">⚠</span>
+      <span id="table13WarnMsg" style="font-size:13px;"></span>
+    </div>
+
+    <div id="table13Results">
+      <div class="nx-table-wrap nx-mb-16">
+        <table class="nx-table">
+          <tbody>
+            <tr><td class="nx-td-bold">Period</td><td id="t13Period" style="text-align:right;"></td></tr>
+            <tr><td class="nx-td-bold">Challan No. From</td><td id="t13From" style="text-align:right;"></td></tr>
+            <tr><td class="nx-td-bold">Challan No. To</td><td id="t13To" style="text-align:right;"></td></tr>
+            <tr><td class="nx-td-bold">Total Issued</td><td id="t13Issued" style="text-align:right;"></td></tr>
+            <tr><td class="nx-td-bold">Total Cancelled</td><td id="t13Cancelled" style="text-align:right;"></td></tr>
+            <tr><td class="nx-td-bold">Net Issued</td><td id="t13Net" style="text-align:right;"></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <button id="table13DownloadBtn" onclick="downloadTable13Excel()" class="nx-btn nx-btn-primary nx-btn-full">⬇ Download Excel</button>
+    </div>
   </div>
 
 </div>
@@ -1061,6 +1104,150 @@ async function exportZohoTransactions() {
   showStats(rows.length - 1, filename);
 }
 
+// ─── GSTR-1 TABLE 13 — CHALLAN REGISTER ─────────────────────────────────────
+// challan_number is text, not integer: "1001" (unified mode, or product/
+// bom_issue in split mode) or "RM-1001" (raw_material in split mode), or
+// rarely an arbitrary string from a one-time manual override (settings.html).
+// Extract the first digit run for numeric comparison — correct for both real
+// formats; a non-numeric override with no digits is simply excluded from
+// range/gap logic rather than crashing the feature.
+function challanNumKey(challanNumber) {
+  const match = String(challanNumber ?? '').match(/(\d+)/);
+  return match ? parseInt(match[1], 10) : null;
+}
+
+function showTable13Warn(msg) {
+  const box = document.getElementById('table13WarnBox');
+  document.getElementById('table13WarnMsg').textContent = msg;
+  box.style.display = msg ? 'flex' : 'none';
+}
+
+let table13Data = null; // cached last-generated result, used by the Excel download
+
+// draft dispatches are excluded entirely — a draft hasn't left the factory,
+// so it isn't a real document yet for GST purposes, regardless of whether a
+// challan_number was already reserved for it in the DB. Working set is
+// confirmed + cancelled only, for every figure below (from/to, totals, gaps).
+async function generateTable13() {
+  const btn = document.getElementById('table13GenBtn');
+  document.getElementById('table13Results').style.display = 'none';
+  showTable13Warn('');
+  btn.disabled = true;
+  const originalLabel = btn.textContent;
+  btn.textContent = 'Generating...';
+
+  try {
+    const monthVal = document.getElementById('table13Month').value; // "YYYY-MM"
+    if (!monthVal) throw new Error('Select a month.');
+    const [yearStr, monthStr] = monthVal.split('-');
+    const year  = parseInt(yearStr, 10);
+    const month = parseInt(monthStr, 10);
+    const lastDay = new Date(year, month, 0).getDate();
+    const from = `${yearStr}-${monthStr}-01`;
+    const to   = `${yearStr}-${monthStr}-${String(lastDay).padStart(2, '0')}`;
+
+    const tenantId = await getTenantId();
+
+    const { data, error } = await window.supabase
+      .from('p2_dispatch_orders')
+      .select('challan_number, status')
+      .eq('tenant_id', tenantId)
+      .in('status', ['confirmed', 'cancelled'])
+      .gte('dispatch_date', from)
+      .lte('dispatch_date', to);
+
+    if (error) throw new Error(`Supabase error: ${error.message}`);
+
+    const rows = data || [];
+    if (!rows.length) throw new Error('No confirmed or cancelled challans found for this period.');
+
+    const cancelledRows = rows.filter(r => r.status === 'cancelled');
+    const confirmedKeyed = rows
+      .filter(r => r.status === 'confirmed')
+      .map(r => ({ ...r, key: challanNumKey(r.challan_number) }))
+      .filter(r => r.key !== null && !Number.isNaN(r.key) && r.key >= 1);
+
+    if (!confirmedKeyed.length) throw new Error('No confirmed challans with a readable challan number found for this period.');
+
+    let fromRow = confirmedKeyed[0], toRow = confirmedKeyed[0];
+    confirmedKeyed.forEach(r => {
+      if (r.key < fromRow.key) fromRow = r;
+      if (r.key > toRow.key) toRow = r;
+    });
+
+    // Gap = a number in [from, to] with no row at all in the working set
+    // (confirmed or cancelled). A cancelled challan in the middle still
+    // consumed its number, so it is NOT a gap.
+    const allKeys = new Set(rows.map(r => challanNumKey(r.challan_number)).filter(k => k !== null && !Number.isNaN(k) && k >= 1));
+    let hasGap = false;
+    for (let i = fromRow.key; i <= toRow.key; i++) {
+      if (!allKeys.has(i)) { hasGap = true; break; }
+    }
+
+    const totalIssued    = rows.length; // confirmed + cancelled
+    const totalCancelled = cancelledRows.length;
+    const netIssued       = totalIssued - totalCancelled;
+
+    const FULL_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const periodLabel = `${FULL_MONTHS[month - 1]} ${year}`;
+
+    table13Data = {
+      periodLabel, from, to,
+      challanFrom: fromRow.challan_number,
+      challanTo: toRow.challan_number,
+      totalIssued, totalCancelled, netIssued
+    };
+
+    document.getElementById('t13Period').textContent    = periodLabel;
+    document.getElementById('t13From').textContent      = table13Data.challanFrom;
+    document.getElementById('t13To').textContent        = table13Data.challanTo;
+    document.getElementById('t13Issued').textContent    = totalIssued;
+    document.getElementById('t13Cancelled').textContent = totalCancelled;
+    document.getElementById('t13Net').textContent       = netIssued;
+    document.getElementById('table13Results').style.display = 'block';
+
+    if (hasGap) {
+      showTable13Warn('Warning: gaps detected in challan sequence — consult your CA before filing.');
+    }
+  } catch (err) {
+    toast(err.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalLabel;
+  }
+}
+
+async function downloadTable13Excel() {
+  if (!table13Data) { toast('Generate the register first.', 'error'); return; }
+
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet('GSTR-1 Table 13');
+  sheet.columns = [
+    { header: 'Period',            key: 'period',    width: 18 },
+    { header: 'Challan No. From',  key: 'from',       width: 20 },
+    { header: 'Challan No. To',    key: 'to',         width: 20 },
+    { header: 'Total Issued',      key: 'issued',     width: 14 },
+    { header: 'Total Cancelled',   key: 'cancelled',  width: 16 },
+    { header: 'Net Issued',        key: 'net',        width: 14 }
+  ];
+  styleHeaderRow(sheet.getRow(1));
+
+  sheet.addRow({
+    period: table13Data.periodLabel,
+    from: table13Data.challanFrom,
+    to: table13Data.challanTo,
+    issued: table13Data.totalIssued,
+    cancelled: table13Data.totalCancelled,
+    net: table13Data.netIssued
+  });
+
+  sheet.views = [{ state: 'frozen', ySplit: 1 }];
+
+  const filename = `GSTR1_Table13_${table13Data.from}_to_${table13Data.to}.xlsx`;
+  await downloadXLSX(workbook, filename);
+  toast(`Downloaded: ${filename}`, 'ok');
+}
+
 // ─── INIT ────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   const authed = await checkAuth();
@@ -1084,6 +1271,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('fromDate').value = `${y}-${m}-01`;
   document.getElementById('toDate').value   = `${y}-${m}-${last}`;
   updateTemplateHighlight();
+
+  // GSTR-1 Table 13 — owner/accountant/supervisor only, all plans. Direct
+  // role check (not canAccess()) since this set doesn't match any existing
+  // canAccess() page bucket — same precedent as gstr2b-reconcile.html.
+  const TABLE13_ROLES = ['owner', 'accountant', 'supervisor'];
+  if (TABLE13_ROLES.includes(role)) {
+    document.getElementById('table13Section').style.display = 'block';
+    document.getElementById('table13Month').value = `${y}-${m}`;
+  }
 });
 </script>
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js"></script>
