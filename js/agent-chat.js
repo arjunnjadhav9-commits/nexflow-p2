@@ -182,19 +182,17 @@
       40% { transform: scale(1); opacity: 1; }
     }
     #nf-agent-chips {
-      display: flex; flex-wrap: nowrap; overflow-x: auto; gap: 6px;
       padding: 8px 10px; border-top: 1px solid var(--border);
       background: var(--surface);
-      scrollbar-width: none; -webkit-overflow-scrolling: touch;
     }
-    #nf-agent-chips::-webkit-scrollbar { display: none; }
-    .nf-chip {
-      background: var(--surface2); border: 1px solid var(--border2);
-      color: var(--light); font-size: 12px; font-family: var(--font);
-      padding: 4px 10px; border-radius: 20px; cursor: pointer;
-      white-space: nowrap; transition: border-color 0.15s, color 0.15s;
+    .nf-search-toggle-btn {
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      width: 100%; background: var(--surface2); border: 1px solid var(--border2);
+      color: var(--light); font-size: 13px; font-family: var(--font);
+      padding: 7px 10px; border-radius: 20px; cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
     }
-    .nf-chip:hover { border-color: var(--orange); color: var(--orange); }
+    .nf-search-toggle-btn:hover { border-color: var(--orange); color: var(--orange); }
     @media (max-width: 600px) {
       #nf-agent-panel {
         width: calc(100vw - 16px);
@@ -205,13 +203,6 @@
       }
       #nf-agent-send { width: 44px; height: 44px; }
     }
-    .nf-chip-more {
-      background: none; border: 1px solid var(--border2);
-      color: var(--mid); font-size: 14px; font-family: var(--font);
-      padding: 4px 10px; border-radius: 20px; cursor: pointer;
-      transition: border-color 0.15s, color 0.15s; line-height: 1;
-    }
-    .nf-chip-more:hover { border-color: var(--orange); color: var(--orange); }
     #nf-agent-search-wrap {
       display: none; padding: 6px 10px 4px;
       background: var(--surface); border-top: 1px solid var(--border);
@@ -319,9 +310,8 @@
   let isOpen = false;
   let chipsLoaded = false;
 
-  // Fetches the full active-material list (ordered by lowest stock first),
-  // renders the top 6 as tap-to-insert chips, and keeps the full list around
-  // for the "search all materials" panel behind the ⋯ button.
+  // Fetches the full active-material list (ordered by lowest stock first)
+  // for the search panel behind the "Search materials" toggle button.
   async function loadMaterialChips(tenantId) {
     try {
       const { data, error } = await window.supabase
@@ -352,22 +342,10 @@
 
     const wrap = document.createElement('div');
     wrap.id = 'nf-agent-chips';
-    const topSix = materials.slice(0, 6);
-    topSix.forEach(m => {
-      const chip = document.createElement('button');
-      chip.className = 'nf-chip';
-      const code = m.material_code || ''
-      const shortName = m.name.length > 12 ? m.name.slice(0, 12).trim() + '…' : m.name
-      chip.textContent = code ? `${code} · ${shortName}` : m.name
-      chip.title = m.name
-      chip.addEventListener('click', () => insertMaterialName(m.name));
-      wrap.appendChild(chip);
-    });
 
     const moreBtn = document.createElement('button');
-    moreBtn.className = 'nf-chip-more';
-    moreBtn.textContent = '⋯';
-    moreBtn.title = t('Search all materials', 'सर्व साहित्य शोधा');
+    moreBtn.className = 'nf-search-toggle-btn';
+    moreBtn.textContent = t('🔍 Search materials', '🔍 साहित्य शोधा');
     wrap.appendChild(moreBtn);
 
     const inputBar = document.getElementById('nf-agent-inputbar');
@@ -810,6 +788,7 @@
             product_name: confirmData.product_name,
             quantity: confirmData.quantity,
             bom_lines: confirmData.bom_lines,
+            owned_by: confirmData.owned_by,
           }),
         });
         const data = await res.json();
@@ -902,6 +881,7 @@
             action: `confirm_${dispatchType}`,
             tenant_id: tenantId,
             items: confirmData.items,
+            owned_by: confirmData.owned_by,
           }),
         });
         const data = await res.json();
