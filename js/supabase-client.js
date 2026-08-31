@@ -4,6 +4,13 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 window.supabase = supabaseClient;
 
+// Job-work network flags (Step 2I) — deliberately NOT persisted to localStorage/
+// sessionStorage. Re-fetched fresh inside checkAuth() on every page load, same
+// as every other value read here, to avoid the stale-cache class of bug
+// documented for isPro()/getPlan() (see CLAUDE.md "Critical agent gotchas").
+let cachedIsJobWorker = false;
+let cachedIsPrincipal = false;
+
 async function checkAuth() {
     const { data: { user } } = await window.supabase.auth.getUser();
     if (!user) {
@@ -22,13 +29,16 @@ async function checkAuth() {
 
     const { data: settingsData } = await window.supabase
         .from('p2_tenant_settings')
-        .select('plan')
+        .select('plan, is_job_worker, is_principal')
         .eq('tenant_id', tenantId)
         .single();
 
     // Plan: if no row found, default to founder (SS Engineering won't break)
     const plan = settingsData?.plan || 'founder';
     localStorage.setItem('nexflow_plan', plan);
+
+    cachedIsJobWorker = settingsData?.is_job_worker || false;
+    cachedIsPrincipal = settingsData?.is_principal || false;
 
     // Demo-mode flag, read by js/utils.js into window.isDemo (used by agent-chat.js).
     try {
@@ -76,6 +86,17 @@ function isLite() {
 
 function isFounder() {
     return getPlan() === 'founder';
+}
+
+// Job-work network flags (Step 2I). Mirror getPlan()'s call shape (simple
+// synchronous getter, usable anywhere after checkAuth() resolves) but are
+// backed by cachedIsJobWorker/cachedIsPrincipal above, not localStorage.
+function isJobWorker() {
+    return cachedIsJobWorker;
+}
+
+function isPrincipal() {
+    return cachedIsPrincipal;
 }
 
 // Call at top of every Pro-gated page after checkAuth()

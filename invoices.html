@@ -278,12 +278,77 @@
         </div>
     </div>
 
+    <!-- RECORD PAYMENT MODAL -->
+    <div id="recordPaymentModal" class="nx-modal-overlay" style="display:none;">
+        <div class="nx-modal" style="max-width:480px;">
+            <div class="nx-modal-title" style="color:var(--orange);">Record Payment</div>
+            <div id="recordPaymentInvoiceLine" style="font-size:13px; color:var(--mid); margin-bottom:16px;"></div>
+
+            <div style="display:flex; gap:12px; margin-bottom:14px;">
+                <div class="nx-form-group" style="flex:1; margin:0;">
+                    <label>Payment Date</label>
+                    <input type="date" id="rpDate" class="nx-input">
+                </div>
+                <div class="nx-form-group" style="flex:1; margin:0;">
+                    <label>Payment Mode</label>
+                    <select id="rpMode" class="nx-input">
+                        <option value="neft">NEFT</option>
+                        <option value="rtgs">RTGS</option>
+                        <option value="cheque">Cheque</option>
+                        <option value="upi">UPI</option>
+                        <option value="cash">Cash</option>
+                        <option value="adjustment">Adjustment</option>
+                    </select>
+                </div>
+            </div>
+
+            <div style="display:flex; gap:12px; margin-bottom:14px;">
+                <div class="nx-form-group" style="flex:1; margin:0;">
+                    <label>Gross Amount (₹)</label>
+                    <input type="number" step="0.01" min="0" id="rpGross" class="nx-input">
+                </div>
+                <div class="nx-form-group" style="flex:1; margin:0;">
+                    <label>TDS Deducted (₹)</label>
+                    <input type="number" step="0.01" min="0" id="rpTds" class="nx-input" value="0">
+                </div>
+                <div class="nx-form-group" style="flex:1; margin:0;">
+                    <label>Other Deductions (₹)</label>
+                    <input type="number" step="0.01" min="0" id="rpDeductions" class="nx-input" value="0">
+                </div>
+            </div>
+
+            <div class="nx-form-group" style="margin-bottom:14px;">
+                <label>Net Amount</label>
+                <div id="rpNetAmount" class="nx-input" style="display:flex; align-items:center; background:rgba(255,255,255,0.03); color:var(--white); font-weight:700;">₹0.00</div>
+            </div>
+
+            <div class="nx-form-group" style="margin-bottom:14px;">
+                <label>Reference No</label>
+                <input type="text" id="rpReference" class="nx-input" placeholder="Optional">
+            </div>
+
+            <div class="nx-form-group" style="margin-bottom:16px;">
+                <label>Notes</label>
+                <input type="text" id="rpNotes" class="nx-input" placeholder="Optional">
+            </div>
+
+            <div style="display:flex; gap:10px;">
+                <button id="rpConfirm" class="nx-btn nx-btn-green" style="flex:1;">Save Payment</button>
+                <button id="rpCancel" class="nx-btn nx-btn-ghost" style="flex:1;">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         let tenantId = null;
         let authToken = null;
         let allInvoices = [];
         let filtered = [];
         let currentRole = 'owner';
+        let receiptsByInvoice = new Map();
+        let canRecordPayment = false;
+        let recordPaymentInvoiceId = null;
+        const expandedInvoiceIds = new Set();
         let consInvoicePreviewState = { clientId: null, clientName: null, dateFrom: null, dateTo: null, gstType: null, dispatchType: null, items: [] };
 
         document.addEventListener('DOMContentLoaded', init);
@@ -327,6 +392,17 @@
                 const { data: { session } } = await window.supabase.auth.getSession();
                 authToken = session.access_token;
 
+                // Record Payment gate — fresh p2_tenant_settings.plan fetch, never
+                // isPro()/localStorage (plan can change mid-session). Missing settings
+                // row defaults to 'founder', same fallback used elsewhere in this codebase.
+                const { data: settingsData } = await window.supabase
+                    .from('p2_tenant_settings')
+                    .select('plan')
+                    .eq('tenant_id', tenantId)
+                    .maybeSingle();
+                const plan = settingsData?.plan || 'founder';
+                canRecordPayment = plan === 'pro' || plan === 'founder';
+
                 loadingSpinner.style.display = 'none';
 
                 document.getElementById('newInvoiceHeaderActions').style.display = 'flex';
@@ -334,6 +410,7 @@
                 setupFilterHandlers();
                 setupConsolidatedModalHandlers();
                 setupConsPreviewModalHandlers();
+                setupRecordPaymentModalHandlers();
                 await loadInvoices();
             } catch (err) {
                 console.error('invoices.html init error:', err);
@@ -352,9 +429,105 @@
             if (error) throw error;
 
             allInvoices = data || [];
+            await loadReceiptsForInvoices(allInvoices.map(inv => inv.id));
             populateClientFilterOptions();
             applyFilters();
         }
+
+        // One batched query for all invoice ids on the page — never per-row.
+        async function loadReceiptsForInvoices(invoiceIds) {
+            receiptsByInvoice = new Map();
+            if (invoiceIds.length === 0) return;
+
+            const { data, error } = await window.supabase
+                .from('p2_payment_receipts')
+                .select('*')
+                .eq('tenant_id', tenantId)
+                .in('invoice_id', invoiceIds)
+                .order('payment_date', { ascending: true });
+            if (error) throw error;
+
+            (data || []).forEach(r => {
+                if (!receiptsByInvoice.has(r.invoice_id)) receiptsByInvoice.set(r.invoice_id, []);
+                receiptsByInvoice.get(r.invoice_id).push(r);
+            });
+        }
+
+        // Re-fetches receipts for a single invoice after Record Payment succeeds —
+        // no full-page reload.
+        async function refreshInvoiceReceipts(invoiceId) {
+            const { data, error } = await window.supabase
+                .from('p2_payment_receipts')
+                .select('*')
+                .eq('tenant_id', tenantId)
+                .eq('invoice_id', invoiceId)
+                .order('payment_date', { ascending: true });
+            if (error) throw error;
+            receiptsByInvoice.set(invoiceId, data || []);
+        }
+
+        // Mirrors v_p2_invoice_payment_status's CASE logic client-side — the view
+        // itself is never queried from the browser.
+        function derivePaymentStatus(inv, receipts) {
+            if (inv.status !== 'sent') return 'not_applicable';
+            const totalReceived = receipts.reduce((sum, r) => sum + (Number(r.net_amount) || 0), 0);
+            const amountTotal = Number(inv.amount_total) || 0;
+            if (totalReceived >= amountTotal) return 'paid';
+            if (totalReceived > 0) return 'partial';
+            const cutoffMs = Date.now() - 45 * 24 * 60 * 60 * 1000;
+            if (new Date(inv.created_at).getTime() < cutoffMs) return 'overdue';
+            return 'pending';
+        }
+
+        const PAYMENT_STATUS_BADGE = {
+            paid:    { cls: 'nx-badge-green',  label: 'Paid' },
+            partial: { cls: 'nx-badge-orange', label: 'Partial' },
+            overdue: { cls: 'nx-badge-red',    label: 'Overdue' },
+            pending: { cls: 'nx-badge-grey',   label: 'Pending' }
+        };
+
+        const PAYMENT_MODE_LABEL = {
+            neft: 'NEFT', rtgs: 'RTGS', cheque: 'Cheque', upi: 'UPI', cash: 'Cash', adjustment: 'Adjustment'
+        };
+
+        function renderReceiptsSubRow(receipts) {
+            const rows = receipts.map(r => `
+                <tr>
+                    <td>${fmtDate(r.payment_date)}</td>
+                    <td style="text-align:right;">${fmtMoney(r.gross_amount)}</td>
+                    <td style="text-align:right;">${fmtMoney(r.tds_amount)}</td>
+                    <td style="text-align:right;">${fmtMoney(r.net_amount)}</td>
+                    <td>${escInvHtml(PAYMENT_MODE_LABEL[r.payment_mode] || r.payment_mode || '-')}</td>
+                    <td>${escInvHtml(r.reference_no || '-')}</td>
+                </tr>
+            `).join('');
+
+            return `
+                <tr>
+                    <td colspan="8" style="background:rgba(255,255,255,0.02); padding:12px 16px;">
+                        <table class="nx-table" style="font-size:12px;">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th style="text-align:right;">Gross</th>
+                                    <th style="text-align:right;">TDS</th>
+                                    <th style="text-align:right;">Net</th>
+                                    <th>Mode</th>
+                                    <th>Reference</th>
+                                </tr>
+                            </thead>
+                            <tbody>${rows}</tbody>
+                        </table>
+                    </td>
+                </tr>
+            `;
+        }
+
+        window.toggleReceiptsRow = (invoiceId) => {
+            if (expandedInvoiceIds.has(invoiceId)) expandedInvoiceIds.delete(invoiceId);
+            else expandedInvoiceIds.add(invoiceId);
+            renderInvoices();
+        };
 
         function populateClientFilterOptions() {
             const select = document.getElementById('filterClient');
@@ -387,7 +560,6 @@
         function renderInvoices() {
             const tbody = document.getElementById('invoicesBody');
             const empty = document.getElementById('emptyState');
-            tbody.innerHTML = '';
 
             const totalAmount = filtered.reduce((sum, inv) => sum + (Number(inv.amount_total) || 0), 0);
             document.getElementById('statTotalCount').textContent = filtered.length;
@@ -395,12 +567,14 @@
             document.getElementById('statTotalAmount').textContent = fmtMoney(totalAmount);
 
             if (filtered.length === 0) {
+                tbody.innerHTML = '';
                 empty.style.display = 'block';
                 return;
             }
             empty.style.display = 'none';
 
-            filtered.forEach(inv => {
+            tbody.innerHTML = filtered.map(inv => {
+                const receipts = receiptsByInvoice.get(inv.id) || [];
                 const isConsolidated = inv.invoice_mode === 'consolidated';
                 const modeBadge = isConsolidated
                     ? `<span class="nx-badge nx-badge-orange">Consolidated</span>`
@@ -413,26 +587,51 @@
                     : inv.status === 'sent'
                     ? `<span class="nx-badge nx-badge-green">Sent</span>`
                     : `<span class="nx-badge nx-badge-yellow">Draft</span>`;
+
+                const paymentStatus = derivePaymentStatus(inv, receipts);
+                const paymentBadgeInfo = PAYMENT_STATUS_BADGE[paymentStatus];
+                const paymentBadge = (inv.status === 'sent' && paymentBadgeInfo)
+                    ? `<span class="nx-badge ${paymentBadgeInfo.cls}">${paymentBadgeInfo.label}</span>`
+                    : '';
+
                 const cancelBtn = (inv.status === 'cancelled' || currentRole === 'accountant')
                     ? ''
                     : `<button onclick="cancelInvoice('${inv.id}')" class="nx-btn nx-btn-ghost nx-btn-sm" style="color:var(--red);">Cancel</button>`;
 
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td class="nx-td-mono">${escInvHtml(inv.invoice_number)}</td>
-                    <td>${fmtDate(inv.created_at)}</td>
-                    <td class="nx-td-bold">${escInvHtml(inv.client_name || '-')}</td>
-                    <td>${modeBadge}</td>
-                    <td>${period}</td>
-                    <td style="text-align:right;">${fmtMoney(inv.amount_total)}</td>
-                    <td>${statusBadge}</td>
-                    <td style="text-align:center; display:flex; gap:6px; justify-content:center;">
-                        <button onclick="window.open('/invoice.html?token=${inv.invoice_token}','_blank')" class="nx-btn nx-btn-ghost nx-btn-sm">View / Print</button>
-                        ${cancelBtn}
-                    </td>
+                const canPay = inv.status === 'sent' && paymentStatus !== 'paid' && canRecordPayment;
+                const recordPaymentBtn = canPay
+                    ? `<button onclick="openRecordPaymentModal('${inv.id}')" class="nx-btn nx-btn-ghost nx-btn-sm" style="color:var(--orange);">Record Payment</button>`
+                    : '';
+
+                const isExpanded = expandedInvoiceIds.has(inv.id);
+                const receiptsToggleBtn = receipts.length > 0
+                    ? `<button onclick="toggleReceiptsRow('${inv.id}')" class="nx-btn nx-btn-ghost nx-btn-sm">${isExpanded ? '▲' : '▼'} Receipts</button>`
+                    : '';
+
+                const mainRow = `
+                    <tr>
+                        <td class="nx-td-mono">${escInvHtml(inv.invoice_number)}</td>
+                        <td>${fmtDate(inv.created_at)}</td>
+                        <td class="nx-td-bold">${escInvHtml(inv.client_name || '-')}</td>
+                        <td>${modeBadge}</td>
+                        <td>${period}</td>
+                        <td style="text-align:right;">${fmtMoney(inv.amount_total)}</td>
+                        <td><div style="display:flex; gap:6px; flex-wrap:wrap;">${statusBadge}${paymentBadge}</div></td>
+                        <td style="text-align:center;">
+                            <div style="display:flex; gap:6px; justify-content:center; flex-wrap:wrap;">
+                                <button onclick="window.open('/invoice.html?token=${inv.invoice_token}','_blank')" class="nx-btn nx-btn-ghost nx-btn-sm">View / Print</button>
+                                ${recordPaymentBtn}
+                                ${receiptsToggleBtn}
+                                ${cancelBtn}
+                            </div>
+                        </td>
+                    </tr>
                 `;
-                tbody.appendChild(row);
-            });
+
+                const receiptsRow = (isExpanded && receipts.length > 0) ? renderReceiptsSubRow(receipts) : '';
+
+                return mainRow + receiptsRow;
+            }).join('');
         }
 
         // ── CANCEL INVOICE ──────────────────────────────────────────────
@@ -665,6 +864,97 @@
                 } finally {
                     btn.disabled = false;
                     btn.textContent = 'Confirm & Generate Invoice';
+                }
+            });
+        }
+
+        // ── RECORD PAYMENT MODAL ────────────────────────────────────────
+        window.openRecordPaymentModal = (invoiceId) => {
+            const inv = allInvoices.find(i => i.id === invoiceId);
+            if (!inv) return;
+
+            recordPaymentInvoiceId = invoiceId;
+            document.getElementById('recordPaymentInvoiceLine').textContent =
+                `${inv.invoice_number} — ${inv.client_name || ''}`;
+            document.getElementById('rpDate').value = new Date().toISOString().slice(0, 10);
+            document.getElementById('rpMode').value = 'neft';
+            document.getElementById('rpGross').value = '';
+            document.getElementById('rpTds').value = '0';
+            document.getElementById('rpDeductions').value = '0';
+            document.getElementById('rpReference').value = '';
+            document.getElementById('rpNotes').value = '';
+            updateRpNetAmount();
+
+            document.getElementById('recordPaymentModal').style.display = 'flex';
+        };
+
+        function updateRpNetAmount() {
+            const gross = Number(document.getElementById('rpGross').value) || 0;
+            const tds = Number(document.getElementById('rpTds').value) || 0;
+            const deductions = Number(document.getElementById('rpDeductions').value) || 0;
+            document.getElementById('rpNetAmount').textContent = fmtMoney(gross - tds - deductions);
+        }
+
+        function setupRecordPaymentModalHandlers() {
+            ['rpGross', 'rpTds', 'rpDeductions'].forEach(id => {
+                document.getElementById(id).addEventListener('input', updateRpNetAmount);
+            });
+
+            document.getElementById('rpCancel').addEventListener('click', () => {
+                document.getElementById('recordPaymentModal').style.display = 'none';
+            });
+            document.getElementById('recordPaymentModal').addEventListener('click', e => {
+                if (e.target.id === 'recordPaymentModal') e.target.style.display = 'none';
+            });
+
+            document.getElementById('rpConfirm').addEventListener('click', async () => {
+                const grossAmount = Number(document.getElementById('rpGross').value);
+                const tdsAmount = Number(document.getElementById('rpTds').value) || 0;
+                const otherDeductions = Number(document.getElementById('rpDeductions').value) || 0;
+                const paymentDate = document.getElementById('rpDate').value;
+                const paymentMode = document.getElementById('rpMode').value;
+                const referenceNo = document.getElementById('rpReference').value.trim();
+                const notes = document.getElementById('rpNotes').value.trim();
+
+                if (!grossAmount || grossAmount <= 0) { toast('Gross amount must be greater than zero.', 'error'); return; }
+                if (!paymentDate) { toast('Please select a payment date.', 'error'); return; }
+                if (tdsAmount + otherDeductions >= grossAmount) {
+                    toast('TDS + other deductions must be less than the gross amount.', 'error');
+                    return;
+                }
+
+                const btn = document.getElementById('rpConfirm');
+                btn.disabled = true;
+                btn.textContent = 'Saving…';
+
+                try {
+                    // net_amount is a GENERATED column — never sent in the insert payload.
+                    const { error } = await window.supabase
+                        .from('p2_payment_receipts')
+                        .insert({
+                            invoice_id: recordPaymentInvoiceId,
+                            tenant_id: tenantId,
+                            payment_date: paymentDate,
+                            gross_amount: grossAmount,
+                            tds_amount: tdsAmount,
+                            other_deductions: otherDeductions,
+                            payment_mode: paymentMode,
+                            reference_no: referenceNo || null,
+                            notes: notes || null
+                        });
+                    if (error) throw error;
+
+                    document.getElementById('recordPaymentModal').style.display = 'none';
+                    await refreshInvoiceReceipts(recordPaymentInvoiceId);
+                    expandedInvoiceIds.add(recordPaymentInvoiceId);
+                    renderInvoices();
+                    toast('Payment recorded', 'ok');
+                } catch (err) {
+                    console.error('recordPayment:', err);
+                    toast(err.message || 'Could not record the payment.', 'error');
+                } finally {
+                    btn.disabled = false;
+                    btn.textContent = 'Save Payment';
                 }
             });
         }

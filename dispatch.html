@@ -11,9 +11,11 @@
     <link rel="stylesheet" href="css/nexflow-design.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="js/supabase-client.js"></script>
+    <script src="js/movement-purpose.js"></script>
     <script src="js/roles.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/utils.js"></script>
+    <script src="js/notifications.js"></script>
     <script src="js/navbar.js"></script>
 
     <style>
@@ -210,6 +212,11 @@
                                        data-en="Enter vehicle number" data-mr="वाहन क्रमांक प्रविष्ट करा"
                                        placeholder="Enter vehicle number">
                             </div>
+                        </div>
+
+                        <div class="nx-form-group" id="purposeFieldRow" style="display:none;">
+                            <label id="purposeLabel" data-en="Purpose" data-mr="उद्देश">Purpose</label>
+                            <select id="movementPurpose" class="nx-input"></select>
                         </div>
                     </div>
 
@@ -526,6 +533,16 @@
 
         document.addEventListener('DOMContentLoaded', init);
 
+        function initMovementPurposeField() {
+            const lang = localStorage.getItem('nexflow_lang') || 'en';
+            const select = document.getElementById('movementPurpose');
+            select.innerHTML = MOVEMENT_PURPOSES.map(p =>
+                `<option value="${p.value}">${lang === 'mr' ? p.label_mr : p.label_en}</option>`
+            ).join('');
+            document.getElementById('purposeFieldRow').style.display =
+                (isJobWorker() || isPrincipal()) ? '' : 'none';
+        }
+
         async function init() {
             const loadingSpinner = document.getElementById('loadingSpinner');
             const errorState = document.getElementById('errorState');
@@ -534,6 +551,7 @@
             try {
                 const authed = await checkAuth();
                 if (!authed) return;
+                initMovementPurposeField();
                 const role = getUserRole();
                 if (!canAccess(role, 'dispatch')) {
                     window.location.href = 'index.html?denied=1';
@@ -1043,7 +1061,10 @@
                     status: targetStatus === 'confirmed' ? 'draft' : String(targetStatus),
                     challan_number: String(rawChallan || '1001'),
                     dispatch_date: document.getElementById('dispatchDate')?.value || new Date().toISOString().split('T')[0],
-                    dispatch_type: 'product'
+                    dispatch_type: 'product',
+                    movement_purpose: (isJobWorker() || isPrincipal())
+                        ? (document.getElementById('movementPurpose')?.value || 'sale')
+                        : 'sale'
                 };
 
                 let orderId = currentDispatchId;
@@ -1143,6 +1164,9 @@
 
                 if (targetStatus === 'confirmed') {
                     await savePONumber(payload.client_name, payload.po_number);
+                    sendNotification(window.supabase, 'challan_dispatched', 'Challan dispatched',
+                        `Challan ${displayChallanNumber} dispatched to ${payload.client_name}.`,
+                        { dispatch_order_id: orderId, challan_number: displayChallanNumber, client_name: payload.client_name });
                 }
 
                 resetWorkspaceForm();
@@ -1184,17 +1208,7 @@
             const matMap = {};
             (matRows || []).forEach(m => { matMap[m.raw_material_id] = m; });
 
-            const lowIds = (matRows || [])
-                .filter(m => m.min_stock_level != null && m.current_stock < m.min_stock_level)
-                .map(m => m.raw_material_id)
-            if (lowIds.length > 0) {
-                const tid = tenantId || localStorage.getItem('supabase_tenant_id')
-                fetch('https://jhqxvpihauvhfclosuxn.supabase.co/functions/v1/check-low-stock-instant', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
-                    body: JSON.stringify({ tenant_id: tid, material_ids: lowIds })
-                }).catch(() => {})
-            }
+            checkAndNotifyLowStock(window.supabase, materialIds);
 
             // Aggregate consumption (same material may appear from multiple products)
             const aggregated = {};

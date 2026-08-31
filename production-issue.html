@@ -64,6 +64,7 @@
       font-size: 11px; font-weight: 700; color: var(--mid);
       text-transform: uppercase; letter-spacing: 0.5px;
     }
+    .pool-confirm-text { font-size: 13px; color: var(--mid); font-weight: 400; line-height: 1.5; }
     .fg select,
     .fg input[type="number"],
     .fg input[type="date"] {
@@ -358,6 +359,7 @@
 <script src="js/roles.js"></script>
 <script src="js/auth.js"></script>
 <script src="js/utils.js"></script>
+<script src="js/notifications.js"></script>
 <script src="js/navbar.js"></script>
 
 <div class="nx-main">
@@ -416,6 +418,8 @@
         <label data-en="Issue Date" data-mr="इश्यू तारीख">Issue Date</label>
         <input type="date" id="issueDate" />
       </div>
+
+      <div class="fg" id="poolFieldWrap" style="display:none;"></div>
 
       <div class="fg">
         <button class="btn btn-primary" id="generateBtn" onclick="generateBOM()">
@@ -495,6 +499,30 @@
     </div>
 
   </div><!-- /bomSection -->
+
+  <!-- WORK IN PROGRESS ──────────────────────────────── -->
+  <div id="wipSection" style="margin-top:20px;">
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+        <div class="card-title" style="margin:0;" data-en="Work in Progress" data-mr="प्रगतीपथावरील उत्पादन">Work in Progress</div>
+      </div>
+      <div class="nx-table-wrap">
+        <table class="nx-table" style="font-size:13px;">
+          <thead>
+            <tr>
+              <th data-en="Product" data-mr="उत्पादन">Product</th>
+              <th data-en="Pool" data-mr="पूल">Pool</th>
+              <th data-en="Open WIP" data-mr="खुले WIP">Open WIP</th>
+              <th style="text-align:center;" data-en="Action" data-mr="क्रिया">Action</th>
+            </tr>
+          </thead>
+          <tbody id="wipBody">
+            <tr><td colspan="4" style="text-align:center; color:var(--mid); padding:16px;">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
 
   <!-- RECENT ISSUES ─────────────────────────────────── -->
   <div id="recentIssuesSection" style="margin-top:20px;">
@@ -610,9 +638,9 @@
 
 
     <!-- AMENDMENT MODAL -->
-    <div id="amendModal" class="nx-modal-overlay" style="display:none;z-index:9999;">
-        <div class="nx-modal" style="max-width:440px;">
-            <div class="nx-modal-title" style="color:#fbbf24;">&#9888; Add Missing Deduction</div>
+    <div class="modal-overlay" id="amendModal">
+        <div class="modal-box" style="max-width:440px;">
+            <div class="modal-title" style="color:#fbbf24;">&#9888; Add Missing Deduction</div>
             <div id="amendChallanRef" style="font-size:12px; color:var(--mid); margin-bottom:16px;"></div>
             <div class="nx-form-group">
                 <label style="font-size:12px;">Raw Material</label>
@@ -640,10 +668,31 @@
         </div>
     </div>
 
+    <!-- CLOSE WIP MODAL -->
+    <div class="modal-overlay" id="wipCloseModal">
+        <div class="modal-box" style="max-width:420px;">
+            <div class="modal-title">Close WIP Batch</div>
+            <div id="wipCloseMeta" style="font-size:12px; color:var(--mid); margin-bottom:16px;"></div>
+            <div class="nx-form-group">
+                <label style="font-size:12px;">Quantity Finished</label>
+                <input type="number" id="wipCloseQty" class="nx-input" placeholder="0" min="0" step="any">
+            </div>
+            <div class="nx-form-group">
+                <label style="font-size:12px;">Notes <span style="color:var(--mid);">(optional — e.g. shortfall reason)</span></label>
+                <input type="text" id="wipCloseNotes" class="nx-input" placeholder="e.g. 10 units scrapped">
+            </div>
+            <div id="wipCloseError" style="display:none; color:#ef4444; font-size:12px; margin-bottom:10px;"></div>
+            <div style="display:flex; gap:10px;">
+                <button id="wipCloseConfirmBtn" class="nx-btn nx-btn-primary" style="flex:1;">Close Batch</button>
+                <button id="wipCloseCancelBtn"  class="nx-btn nx-btn-ghost"   style="flex:1;">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <!-- HARD DELETE MODAL -->
-    <div id="hardDeleteModal" class="nx-modal-overlay" style="display:none;z-index:9999;">
-        <div class="nx-modal" style="max-width:460px;">
-            <div class="nx-modal-title" style="color:#ef4444;">Delete Challan Permanently</div>
+    <div class="modal-overlay" id="hardDeleteModal">
+        <div class="modal-box" style="max-width:460px;">
+            <div class="modal-title" style="color:#ef4444;">Delete Challan Permanently</div>
             <div id="hardDeleteMeta" style="font-size:13px; color:var(--mid); margin-bottom:16px;"></div>
             <div id="hardDeleteMessage" style="margin-bottom:16px;"></div>
             <div style="display:flex; gap:10px;">
@@ -705,6 +754,8 @@ let products     = [];
 let bomRows      = [];
 let stockMap     = {};
 let rawMaterials = [];   // for manual row RM typeahead
+let principals     = [];   // p2_clients rows where is_job_work_principal = true
+let selectedPoolId = null; // null = own stock; else a p2_clients.id
 let company    = { name: '', address: '' };
 let manualSeed = 0;
 let currentIssueOrderId = null;      // set by submitIssue(), used by createDispatchChallan()
@@ -869,8 +920,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   const { data: { user } } = await window.supabase.auth.getUser();
   tenantId = user.user_metadata?.tenant_id || user.id;
 
-  await Promise.all([fetchProducts(), fetchStockMap(), fetchCompany(), fetchClients(), fetchRawMaterials()]);
+  await Promise.all([fetchProducts(), fetchStockMap(), fetchCompany(), fetchClients(), fetchRawMaterials(), fetchPrincipals()]);
   loadRecentIssues();
+  loadWipPanel();
 
   applyLang(); // apply initial language after data loaded
 });
@@ -882,7 +934,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 async function fetchProducts() {
   const { data, error } = await window.supabase
     .from('p2_products')
-    .select('id, name, product_code')
+    .select('id, name, product_code, unit')
     .eq('tenant_id', tenantId)
     .eq('is_active', true)
     .order('name');
@@ -899,11 +951,12 @@ async function fetchProducts() {
 
 async function fetchStockMap() {
   // Sum p2_stock_transactions directly — same pattern as dispatch.html (RLS-safe)
-  const { data, error } = await window.supabase
+  let query = window.supabase
     .from('p2_stock_transactions')
     .select('raw_material_id, quantity')
-    .eq('tenant_id', tenantId)
-    .is('owned_by', null);
+    .eq('tenant_id', tenantId);
+  query = selectedPoolId ? query.eq('owned_by', selectedPoolId) : query.is('owned_by', null);
+  const { data, error } = await query;
 
   if (error) { console.warn('Stock fetch error:', error.message); return; }
   stockMap = {};
@@ -923,6 +976,49 @@ async function fetchCompany() {
   if (data) {
     company.name    = data.company_name || '';
     company.address = data.address      || '';
+  }
+}
+
+async function fetchPrincipals() {
+  const { data, error } = await window.supabase
+    .from('p2_clients')
+    .select('id, name')
+    .eq('tenant_id', tenantId)
+    .eq('is_job_work_principal', true)
+    .order('name');
+
+  if (error) { console.warn('fetchPrincipals error:', error.message); return; }
+  principals = data || [];
+  renderPoolField();
+}
+
+function renderPoolField() {
+  const wrap = document.getElementById('poolFieldWrap');
+  if (!wrap) return;
+
+  if (principals.length === 0) {
+    wrap.style.display = 'none';
+    selectedPoolId = null;
+    return;
+  }
+
+  wrap.style.display = '';
+
+  if (principals.length === 1) {
+    selectedPoolId = principals[0].id;
+    wrap.innerHTML = `
+      <label data-en="Material Pool" data-mr="साहित्य पूल">Material Pool</label>
+      <div class="pool-confirm-text">${t('Consuming from:', 'कडून वापर:')} <strong>${esc(principals[0].name)}</strong></div>`;
+  } else {
+    selectedPoolId = null; // never pre-selected
+    const options = principals.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
+    wrap.innerHTML = `
+      <label data-en="Material Pool *" data-mr="साहित्य पूल *">Material Pool *</label>
+      <select id="poolSelect" class="nx-input" onchange="selectedPoolId = (this.value === 'own') ? null : (this.value || null);">
+        <option value="" disabled selected>${t('— Select —', '— निवडा —')}</option>
+        <option value="own">${t('Own stock', 'स्वतःचा स्टॉक')}</option>
+        ${options}
+      </select>`;
   }
 }
 
@@ -947,6 +1043,10 @@ async function generateBOM() {
 
   if (!productId) { toast(t('Select a product first', 'आधी उत्पादन निवडा'), 'warn'); return; }
   if (!batchQty || batchQty < 1) { toast(t('Enter a valid batch quantity', 'योग्य बॅच प्रमाण टाका'), 'warn'); return; }
+  if (principals.length > 1 && !selectedPoolId) {
+    toast(t('Select which material pool this is for', 'हे कोणत्या साहित्य पूलसाठी आहे ते निवडा'), 'warn');
+    return;
+  }
 
   const btn = document.getElementById('generateBtn').querySelector('[data-en]');
   const genBtn = document.getElementById('generateBtn');
@@ -1043,7 +1143,7 @@ function buildRMTypeahead(idx) {
       item.dataset.name = m.name;
       item.dataset.unit = m.unit || '';
       item.dataset.code = m.material_code || '';
-      item.dataset.stock = m.current_stock || 0;
+      item.dataset.stock = stockMap[m.raw_material_id] || 0;
       item.innerHTML =
         '<span class="mat-ta-iname">' + esc(m.name) + '</span>' +
         (m.material_code ? '<span class="mat-ta-ibadge code">' + esc(m.material_code) + '</span>' : '') +
@@ -1342,11 +1442,24 @@ function openConfirm() {
   const p     = products.find(x => x.id === (productTypeahead ? productTypeahead.getId() : ''));
   const batch = document.getElementById('batchQty').value;
 
-  document.getElementById('modalSub').textContent =
+  const modalSub = document.getElementById('modalSub');
+  modalSub.textContent = ''; // clear before rebuilding as nodes (no innerHTML — see pool line below)
+  modalSub.appendChild(document.createTextNode(
     t(
       `${deductRows.length} material(s) will be deducted from stock for ${p?.name || ''} × ${batch} units. Cannot be undone.`,
       `${p?.name || ''} × ${batch} साठी ${deductRows.length} साहित्य स्टॉकमधून कमी होईल. हे पूर्ववत होणार नाही.`
-    );
+    )
+  ));
+  if (selectedPoolId) {
+    const poolName = principals.find(pr => pr.id === selectedPoolId)?.name || '';
+    if (poolName) {
+      modalSub.appendChild(document.createElement('br'));
+      modalSub.appendChild(document.createTextNode(t('Consuming from: ', 'कडून वापर: ')));
+      const poolStrong = document.createElement('strong');
+      poolStrong.textContent = poolName;
+      modalSub.appendChild(poolStrong);
+    }
+  }
 
   const warnDiv    = document.getElementById('shortfallWarn');
   const confirmBtn = document.getElementById('confirmBtn');
@@ -1391,6 +1504,11 @@ async function submitIssue() {
   const batchQty  = document.getElementById('batchQty').value;
   const issueDate = document.getElementById('issueDate').value;
   const notes     = document.getElementById('issueNotes').value.trim();
+
+  if (principals.length > 1 && !selectedPoolId) {
+    toast(t('Select which material pool this is for', 'हे कोणत्या साहित्य पूलसाठी आहे ते निवडा'), 'warn');
+    return;
+  }
 
   confirmBtn.disabled = true;
   if (btnLabel) btnLabel.textContent = t('Issuing…', 'इश्यू होत आहे…');
@@ -1437,7 +1555,9 @@ async function submitIssue() {
     p_notes            : notes,
     p_consumption_json : JSON.stringify(consumptionArray),
     p_manual_json      : JSON.stringify(manualArray),
-    p_force            : force
+    p_force            : force,
+    p_owned_by         : selectedPoolId,
+    p_product_id       : p?.id || null
   });
 
   let { data, error } = await callIssueRpc(false);
@@ -1492,13 +1612,10 @@ async function submitIssue() {
   renderTable();
 
   const consumedIds = deductRows.map(r => r.rawMaterialId).filter(Boolean)
-  if (consumedIds.length > 0) {
-    fetch('https://jhqxvpihauvhfclosuxn.supabase.co/functions/v1/check-low-stock-instant', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
-      body: JSON.stringify({ tenant_id: tenantId, material_ids: consumedIds })
-    }).catch(() => {})
-  }
+  sendNotification(window.supabase, 'challan_dispatched', 'Production issue dispatched',
+    `Challan ${currentIssueChallanNumber} issued for ${p?.name || ''}.`,
+    { dispatch_order_id: currentIssueOrderId, challan_number: currentIssueChallanNumber, product_name: p?.name || '' });
+  checkAndNotifyLowStock(window.supabase, consumedIds);
 
   confirmBtn.disabled = false;
   if (btnLabel) btnLabel.textContent = t('Confirm Issue', 'इश्यू पुष्टी करा');
@@ -1757,7 +1874,7 @@ window.openHardDeleteModal = async (orderId, challanNumber) => {
   document.getElementById('hardDeleteMeta').textContent = t('Challan ', 'चालन ') + (challanNumber || '—');
   msg.innerHTML = `<div style="font-size:13px; color:var(--mid);">${t('Checking eligibility…', 'पात्रता तपासत आहे…')}</div>`;
   confirmBtn.disabled = true;
-  modal.style.display = 'flex';
+  modal.classList.add('open');
 
   try {
     const { data, error } = await window.supabase.rpc('get_dispatch_delete_eligibility', {
@@ -1794,12 +1911,12 @@ window.openHardDeleteModal = async (orderId, challanNumber) => {
 };
 
 document.getElementById('hardDeleteCancelBtn').addEventListener('click', () => {
-  document.getElementById('hardDeleteModal').style.display = 'none';
+  document.getElementById('hardDeleteModal').classList.remove('open');
   hardDeleteTarget = null;
 });
 document.getElementById('hardDeleteModal').addEventListener('click', e => {
   if (e.target.id === 'hardDeleteModal') {
-    e.target.style.display = 'none';
+    e.target.classList.remove('open');
     hardDeleteTarget = null;
   }
 });
@@ -1817,7 +1934,7 @@ document.getElementById('hardDeleteConfirmBtn').addEventListener('click', async 
     if (error) throw error;
 
     toast(t('Challan permanently deleted', 'चालन कायमचे हटवले'), 'ok');
-    document.getElementById('hardDeleteModal').style.display = 'none';
+    document.getElementById('hardDeleteModal').classList.remove('open');
     hardDeleteTarget = null;
     await loadRecentIssues();
   } catch (err) {
@@ -1890,6 +2007,105 @@ async function loadRecentIssues() {
   }
 }
 
+
+// ── WORK IN PROGRESS (Step 2G) ────────────────────────────────────────
+async function loadWipPanel() {
+  const tbody = document.getElementById('wipBody');
+  if (!tbody) return;
+  try {
+    const { data: rows, error } = await window.supabase
+      .from('v_p2_wip_balance')
+      .select('product_id, owned_by, wip_qty')
+      .eq('tenant_id', tenantId);
+
+    if (error) throw error;
+
+    if (!rows || rows.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:var(--mid); padding:16px;">${t('No open WIP.', 'कोणतेही खुले WIP नाही.')}</td></tr>`;
+      return;
+    }
+
+    const canClose = ['owner', 'supervisor'].includes(getUserRole());
+
+    tbody.innerHTML = '';
+    rows.forEach(r => {
+      const prod      = products.find(p => p.id === r.product_id);
+      const pool      = r.owned_by ? principals.find(c => c.id === r.owned_by) : null;
+      const poolLabel = pool ? esc(pool.name) : t('Own stock', 'स्वतःचा साठा');
+      const prodName  = prod?.name || t('Unknown product', 'अज्ञात उत्पादन');
+      const unit      = prod?.unit || '';
+      const closeBtn  = canClose
+        ? `<button class="btn btn-outline btn-sm" style="font-size:11px; padding:4px 10px;"
+             onclick="openCloseWipModal('${r.product_id}', ${r.owned_by ? `'${r.owned_by}'` : 'null'}, ${r.wip_qty}, '${esc(prodName).replace(/'/g, '')}')">${t('Close', 'बंद करा')}</button>`
+        : '—';
+
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="nx-td-bold">${esc(prodName)}</td>
+        <td>${poolLabel}</td>
+        <td>${r.wip_qty} ${esc(unit)}</td>
+        <td style="text-align:center;">${closeBtn}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:var(--mid); padding:12px;">${t('Could not load WIP.', 'WIP लोड करता आले नाही.')}</td></tr>`;
+  }
+}
+
+let _wipCloseProductId = null;
+let _wipCloseOwnedBy   = null;
+
+function openCloseWipModal(productId, ownedBy, currentQty, productName) {
+  _wipCloseProductId = productId;
+  _wipCloseOwnedBy   = ownedBy;
+  document.getElementById('wipCloseMeta').textContent =
+    `${productName} — ${t('open WIP', 'खुले WIP')}: ${currentQty}`;
+  document.getElementById('wipCloseQty').value   = currentQty;
+  document.getElementById('wipCloseQty').max     = currentQty;
+  document.getElementById('wipCloseNotes').value = '';
+  document.getElementById('wipCloseError').style.display = 'none';
+  document.getElementById('wipCloseModal').classList.add('open');
+  document.getElementById('wipCloseCancelBtn').onclick  = function(){ document.getElementById('wipCloseModal').classList.remove('open'); };
+  document.getElementById('wipCloseConfirmBtn').onclick = _wipCloseConfirmFn;
+}
+
+async function _wipCloseConfirmFn() {
+  const errEl = document.getElementById('wipCloseError');
+  errEl.style.display = 'none';
+  const qty = parseFloat(document.getElementById('wipCloseQty').value);
+  if (!qty || qty <= 0) {
+    errEl.textContent = t('Enter a valid quantity.', 'वैध प्रमाण टाका.');
+    errEl.style.display = 'block';
+    return;
+  }
+  const notes = document.getElementById('wipCloseNotes').value.trim();
+  const btn = document.getElementById('wipCloseConfirmBtn');
+  btn.disabled = true; btn.textContent = t('Closing…', 'बंद होत आहे…');
+  try {
+    const { error } = await window.supabase.rpc('close_wip', {
+      p_tenant_id  : tenantId,
+      p_product_id : _wipCloseProductId,
+      p_qty        : qty,
+      p_close_date : new Date().toISOString().slice(0, 10),
+      p_owned_by   : _wipCloseOwnedBy,
+      p_notes      : notes || null
+    });
+    if (error) throw error;
+    document.getElementById('wipCloseModal').classList.remove('open');
+    toast(t('WIP batch closed', 'WIP बॅच बंद केली'), 'ok');
+    loadWipPanel();
+  } catch (err) {
+    errEl.textContent = /WIP_EXCEEDS_BALANCE/.test(err.message || '')
+      ? t('That exceeds the open WIP balance.', 'हे खुल्या WIP शिल्लकपेक्षा जास्त आहे.')
+      : err.message;
+    errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false; btn.textContent = t('Close Batch', 'बॅच बंद करा');
+  }
+}
+
+
         // ── AMENDMENT ─────────────────────────────────────────────────────
         var _amendOrderId = null;
         var _amendTA      = null;
@@ -1914,9 +2130,9 @@ async function loadRecentIssues() {
             mount.innerHTML = '';
             _amendTA = _buildAmendTA(_amendRMList);
             mount.appendChild(_amendTA.el);
-            document.getElementById('amendModal').style.display = 'flex';
+            document.getElementById('amendModal').classList.add('open');
             setTimeout(function(){ var inp=mount.querySelector('input'); if(inp) inp.focus(); }, 80);
-            document.getElementById('amendCancelBtn').onclick  = function(){ document.getElementById('amendModal').style.display='none'; };
+            document.getElementById('amendCancelBtn').onclick  = function(){ document.getElementById('amendModal').classList.remove('open'); };
             document.getElementById('amendConfirmBtn').onclick = _amendConfirmFn;
         }
 
@@ -1987,7 +2203,7 @@ async function loadRecentIssues() {
                     p_reason:reason||null
                 });
                 if(res.error) throw res.error;
-                document.getElementById('amendModal').style.display='none';
+                document.getElementById('amendModal').classList.remove('open');
                 toast('Missing deduction added — stock updated.','ok');
                 _amendRMList=[];
             } catch(err){

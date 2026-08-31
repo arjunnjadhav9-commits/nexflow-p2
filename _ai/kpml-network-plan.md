@@ -906,12 +906,12 @@ already run this, here is your s.143 exposure"* is a product sale with reference
 
 ---
 
-## 14. Current Status — August 23, 2026
+## 14. Current Status — August 29, 2026
 
 | Item | Status |
 |---|---|
 | SS Engineering (Type A) | Live, Founder plan, free permanently |
-| Datta Prasad Enterprises (Type B) | Onboarded Aug 19 |
+| Datta Prasad Enterprises (Type B) | Onboarded Aug 17, Pro conversion agreed ₹1,35,000, payment due 10 Sep 2026 |
 | Shivprasad Industries (Type B) | Onboarding Aug 19 |
 | **Job work relationship confirmed** | ✅ Shivprasad material list + KPML SAP PO |
 | Auto-GRN via QR (`receive.html`) | Live |
@@ -925,15 +925,16 @@ already run this, here is your s.143 exposure"* is a product sale with reference
 | GSTR-1 Table 12 summary | Not built — Step 1 |
 | Rule 55 challan compliance | Not built — Step 1 |
 | 43B(h) fields + report | Not built — Step 1 |
-| Ownership columns + retrofit | Not built — Step 2 |
-| WIP state | Not built — Step 2 |
-| Movement purpose | Not built — Step 2 |
-| Pool-aware consumption + substitution | Not built — Step 2 |
-| Corrected s.143 timer | Not built — Step 2 |
-| Vendor-side one-sided mode | Not built — Step 2 |
-| Standalone regression test | Not built — Step 2, blocking |
-| Payment ledger (receipts model) | Not built — Step 3 |
-| Notifications (3 types, Edge Function) | Not built — Step 4 |
+| Ownership columns + retrofit | ✅ COMPLETE (Aug 26 2026) |
+| WIP state | ✅ COMPLETE (Aug 26 2026) |
+| Movement purpose | ✅ COMPLETE (Aug 26 2026) |
+| Pool-aware consumption + substitution | ✅ COMPLETE (Aug 26 2026) |
+| Corrected s.143 timer | ✅ COMPLETE (Aug 26 2026) |
+| Vendor-side one-sided mode | ✅ COMPLETE (Aug 26 2026) |
+| Standalone regression test | ✅ COMPLETE (Aug 26 2026) |
+| Payment ledger (receipts model) | ✅ COMPLETE (Aug 28 2026) — p2_payment_receipts, payment UI on invoices.html, 43B(h) report on export.html, Telegram overdue digest |
+| Supplier advance ledger (Step 3.5) | ⏳ Deferred — after Step 4, Datta Prasad request |
+| Notifications (3 types, Edge Function) | 🔄 Next — starting now |
 | Principal-side one-sided mode | Not built — Step 5 |
 | `p2_network_links` + scoped access path | Not built — Step 6 |
 | Everything in Step 7 | Not built, and gated on a named request |
@@ -971,7 +972,7 @@ client.**
 
 | Timeframe | Goal |
 |---|---|
-| **Now – 1 month** | Step 0 decisions · Step 1 CA-facing wins to existing clients · Step 2 foundation begun. Datta Prasad and Shivprasad fully stable |
+| **Now – 1 month** | Steps 1, 2, 3 complete. Step 4 notifications in progress. Datta Prasad Pro conversion due 10 Sep 2026 |
 | **1–3 months** | Step 2 complete (the "KPML's copper / your copper" demo exists) · Step 3 payments · referrals, clients 4 and 5 |
 | **3–4 months** | Step 4 notifications · Step 5 built · first KPML contact through a vendor relationship |
 | **4–6 months** | KPML meeting with a **live demo on a real vendor's account**, not a slide |

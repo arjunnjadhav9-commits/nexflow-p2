@@ -105,6 +105,11 @@
   #table12Section { display: none; }
   #table12WarnBox { display: none; }
   #table12Results { display: none; }
+
+  /* Section 43B(h) — MSME Payment Compliance */
+  #table43bhSection { display: none; }
+  #table43bhWarnBox { display: none; }
+  #table43bhResults { display: none; }
 </style>
 </head>
 <body>
@@ -337,6 +342,57 @@
       </div>
 
       <button id="table12DownloadBtn" onclick="downloadTable12Excel()" class="nx-btn nx-btn-primary nx-btn-full">⬇ Download Excel</button>
+    </div>
+  </div>
+
+  <!-- SECTION 43B(h) — MSME PAYMENT COMPLIANCE -->
+  <div id="table43bhSection" class="nx-card nx-mb-16">
+    <div class="nx-card-header">
+      <div class="nx-card-title">Section 43B(h) — MSME Payment Compliance</div>
+    </div>
+    <div style="font-size:13px; color:var(--mid); margin-bottom:16px;">
+      Job charge invoices to Udyam-registered Micro/Small manufacturing or services vendors, outstanding beyond the payment deadline, for the selected month.
+    </div>
+
+    <div class="nx-form-group">
+      <label>Month</label>
+      <input type="month" id="table43bhMonth" class="nx-input" style="color-scheme:dark;">
+    </div>
+
+    <button id="table43bhGenBtn" onclick="generateTable43bh()" class="nx-btn nx-btn-secondary nx-mb-16">Generate Report</button>
+
+    <div id="table43bhWarnBox" class="nx-alert nx-alert-orange nx-mb-16">
+      <span class="nx-alert-icon">⚠</span>
+      <span id="table43bhWarnMsg" style="font-size:13px;"></span>
+    </div>
+
+    <div id="table43bhResults">
+      <div class="nx-table-wrap nx-mb-16">
+        <table class="nx-table" style="font-size:12px;">
+          <thead>
+            <tr>
+              <th>Client</th>
+              <th>Udyam No</th>
+              <th>Class</th>
+              <th>Invoice No</th>
+              <th>Invoice Date</th>
+              <th>Due Date</th>
+              <th style="text-align:right;">Amount</th>
+              <th style="text-align:right;">Amount Received</th>
+              <th style="text-align:right;">Balance Due</th>
+              <th style="text-align:right;">Days Overdue</th>
+              <th style="text-align:right;">Est. Interest</th>
+              <th style="text-align:right;">Disallowed (31 Mar)</th>
+            </tr>
+          </thead>
+          <tbody id="t43bhBody"></tbody>
+          <tfoot id="t43bhFoot"></tfoot>
+        </table>
+      </div>
+
+      <div style="font-size:11px; color:var(--mid); margin-bottom:16px;" id="table43bhDisclaimer"></div>
+
+      <button id="table43bhDownloadBtn" onclick="downloadTable43bhExcel()" class="nx-btn nx-btn-primary nx-btn-full">⬇ Download Excel</button>
     </div>
   </div>
 
@@ -1504,6 +1560,261 @@ async function downloadTable12Excel() {
   toast(`Downloaded: ${filename}`, 'ok');
 }
 
+// ─── SECTION 43B(h) — MSME PAYMENT COMPLIANCE ───────────────────────────────
+const TABLE43BH_DISCLAIMER = 'Interest estimated at 3× RBI bank rate (6.5% as of Aug 2026), simple interest — MSMED s.16 actually compounds monthly, so this understates true exposure. Assumes a written job-work agreement is in place for every vendor (45-day limit); vendors without one have only a 15-day limit and higher exposure. Verify current rate, compounding, and agreement status with your CA before filing.';
+
+function showTable43bhWarn(msg) {
+  const box = document.getElementById('table43bhWarnBox');
+  document.getElementById('table43bhWarnMsg').textContent = msg;
+  box.style.display = msg ? 'flex' : 'none';
+}
+
+// Scope limits per kpml-network-plan.md §10.4 — Micro/Small only (Medium
+// excluded), Udyam-registered only, never trading registrations.
+function isEligible43bhClient(client) {
+  if (!client) return false;
+  const ec = client.enterprise_class;
+  const ra = client.registration_activity;
+  const udyam = (client.udyam_number || '').trim();
+  return (ec === 'micro' || ec === 'small') && (ra === 'manufacturing' || ra === 'services') && udyam !== '';
+}
+
+let table43bhData = null; // cached last-generated result, used by the Excel download
+
+function renderTable43bh(rows, totals) {
+  document.getElementById('t43bhBody').innerHTML = rows.map(r => `
+    <tr>
+      <td>${escapeHtml(r.clientName)}</td>
+      <td>${escapeHtml(r.udyamNumber)}</td>
+      <td style="text-transform:capitalize;">${escapeHtml(r.enterpriseClass)}</td>
+      <td class="nx-td-mono">${escapeHtml(r.invoiceNumber)}</td>
+      <td>${fmtDDMMYYYY(r.invoiceDate)}</td>
+      <td>${fmtDDMMYYYY(r.dueDate)}</td>
+      <td style="text-align:right;">${fmtMoney(r.amountTotal)}</td>
+      <td style="text-align:right;">${fmtMoney(r.totalReceived)}</td>
+      <td style="text-align:right;">${fmtMoney(r.balanceDue)}</td>
+      <td style="text-align:right;">${r.daysOverdue}</td>
+      <td style="text-align:right;">${r.interestAmount > 0 ? fmtMoney(r.interestAmount) : '—'}</td>
+      <td style="text-align:right;">${r.disallowedAmount > 0 ? fmtMoney(r.disallowedAmount) : '—'}</td>
+    </tr>
+  `).join('');
+
+  document.getElementById('t43bhFoot').innerHTML = `
+    <tr style="border-top:2px solid var(--border);">
+      <td class="nx-td-bold" colspan="8">TOTAL</td>
+      <td class="nx-td-bold" style="text-align:right;">${fmtMoney(totals.balanceDue)}</td>
+      <td class="nx-td-bold" style="text-align:right;">—</td>
+      <td class="nx-td-bold" style="text-align:right;">${fmtMoney(totals.interestAmount)}</td>
+      <td class="nx-td-bold" style="text-align:right;">${fmtMoney(totals.disallowedAmount)}</td>
+    </tr>
+  `;
+
+  document.getElementById('table43bhDisclaimer').textContent = TABLE43BH_DISCLAIMER;
+}
+
+// Data sources: p2_invoices (status='sent', in range) joined to p2_clients for
+// the Udyam/class/activity fields, plus a second batched p2_payment_receipts
+// query for the matched invoice ids. Both run client-side — no new Edge
+// Function, matching Table 12/13's own pattern.
+async function generateTable43bh() {
+  const btn = document.getElementById('table43bhGenBtn');
+  document.getElementById('table43bhResults').style.display = 'none';
+  showTable43bhWarn('');
+  btn.disabled = true;
+  const originalLabel = btn.textContent;
+  btn.textContent = 'Generating...';
+
+  try {
+    const monthVal = document.getElementById('table43bhMonth').value; // "YYYY-MM"
+    if (!monthVal) throw new Error('Select a month.');
+    const [yearStr, monthStr] = monthVal.split('-');
+    const year  = parseInt(yearStr, 10);
+    const month = parseInt(monthStr, 10);
+    const lastDay = new Date(year, month, 0).getDate();
+    const from = `${yearStr}-${monthStr}-01`;
+    const to   = `${yearStr}-${monthStr}-${String(lastDay).padStart(2, '0')}`;
+
+    const tenantId = await getTenantId();
+
+    const { data, error } = await window.supabase
+      .from('p2_invoices')
+      .select('id, invoice_number, client_id, client_name, amount_total, created_at, status')
+      .eq('tenant_id', tenantId)
+      .eq('status', 'sent')
+      .gte('created_at', from + 'T00:00:00+05:30')
+      .lte('created_at', to + 'T23:59:59+05:30')
+      .order('created_at', { ascending: true });
+
+    if (error) throw new Error(`Supabase error: ${error.message}`);
+
+    const invoices = data || [];
+    if (!invoices.length) throw new Error('No sent invoices found for this period.');
+
+    // Separate batched query + Map join — same pattern used throughout this
+    // codebase (never an embedded PostgREST relationship) — for the Udyam/
+    // class/activity fields on each invoice's client.
+    const clientIds = [...new Set(invoices.map(inv => inv.client_id).filter(Boolean))];
+    const { data: clientRows, error: clientError } = await window.supabase
+      .from('p2_clients')
+      .select('id, name, udyam_number, enterprise_class, registration_activity')
+      .in('id', clientIds);
+    if (clientError) throw new Error(`Supabase error: ${clientError.message}`);
+
+    const clientsById = new Map((clientRows || []).map(c => [c.id, c]));
+
+    // Udyam-completeness warning — counted across ALL sent invoices in the
+    // period, before the Micro/Small/services eligibility filter below, since
+    // a client missing Udyam data might otherwise have qualified.
+    const clientsInPeriod = new Map();
+    invoices.forEach(inv => {
+      if (inv.client_id && !clientsInPeriod.has(inv.client_id)) {
+        clientsInPeriod.set(inv.client_id, clientsById.get(inv.client_id));
+      }
+    });
+    const missingUdyamCount = Array.from(clientsInPeriod.values())
+      .filter(c => !c || !(c.udyam_number || '').trim()).length;
+
+    const eligibleInvoices = invoices.filter(inv => isEligible43bhClient(clientsById.get(inv.client_id)));
+    if (!eligibleInvoices.length) {
+      throw new Error('No qualifying Udyam-registered Micro/Small (manufacturing/services) invoices found for this period.');
+    }
+
+    const invoiceIds = eligibleInvoices.map(inv => inv.id);
+    const { data: receiptRows, error: receiptError } = await window.supabase
+      .from('p2_payment_receipts')
+      .select('invoice_id, net_amount, payment_date')
+      .eq('tenant_id', tenantId)
+      .in('invoice_id', invoiceIds);
+    if (receiptError) throw new Error(`Supabase error: ${receiptError.message}`);
+
+    const receiptsByInvoice = new Map();
+    (receiptRows || []).forEach(r => {
+      if (!receiptsByInvoice.has(r.invoice_id)) receiptsByInvoice.set(r.invoice_id, []);
+      receiptsByInvoice.get(r.invoice_id).push(r);
+    });
+
+    // 31 March of the FY containing the selected month (Apr–Mar FY).
+    const fyEndYear = month >= 4 ? year + 1 : year;
+    const fyEndDate = new Date(fyEndYear, 2, 31);
+    const todayDate = new Date();
+    const todayMid = new Date(todayDate.getFullYear(), todayDate.getMonth(), todayDate.getDate());
+
+    const RBI_BANK_RATE = 0.065; // Aug 2026 — see disclaimer
+
+    const rows = eligibleInvoices.map(inv => {
+      const client = clientsById.get(inv.client_id);
+      const receipts = receiptsByInvoice.get(inv.id) || [];
+      const totalReceived = receipts.reduce((sum, r) => sum + (Number(r.net_amount) || 0), 0);
+      const amountTotal = Number(inv.amount_total) || 0;
+      const balanceDue = Math.max(0, amountTotal - totalReceived);
+
+      const invoiceDate = new Date(inv.created_at);
+      const dueDate = new Date(invoiceDate.getTime() + 45 * 24 * 60 * 60 * 1000); // hardcoded 45 days — no agreement_days column exists
+      const dueDateMid = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate());
+      const daysOverdue = Math.max(0, Math.round((todayMid - dueDateMid) / 86400000));
+
+      const interestAmount = daysOverdue > 0
+        ? balanceDue * (3 * RBI_BANK_RATE) * (daysOverdue / 365)
+        : 0;
+
+      // Disallowed on 31 March = whatever is still unpaid as of that cutoff
+      // (receipts dated before it count as "received before 31 March").
+      const receivedBeforeFyEnd = receipts
+        .filter(r => new Date(r.payment_date) < fyEndDate)
+        .reduce((sum, r) => sum + (Number(r.net_amount) || 0), 0);
+      const disallowedAmount = Math.max(0, amountTotal - receivedBeforeFyEnd);
+
+      return {
+        clientName: client?.name || inv.client_name || '-',
+        udyamNumber: client?.udyam_number || '-',
+        enterpriseClass: client?.enterprise_class || '-',
+        invoiceNumber: inv.invoice_number,
+        invoiceDate, dueDate,
+        amountTotal, totalReceived, balanceDue,
+        daysOverdue, interestAmount, disallowedAmount
+      };
+    });
+
+    const totals = rows.reduce((acc, r) => ({
+      balanceDue: acc.balanceDue + r.balanceDue,
+      interestAmount: acc.interestAmount + r.interestAmount,
+      disallowedAmount: acc.disallowedAmount + r.disallowedAmount
+    }), { balanceDue: 0, interestAmount: 0, disallowedAmount: 0 });
+
+    const FULL_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const periodLabel = `${FULL_MONTHS[month - 1]} ${year}`;
+
+    table43bhData = { periodLabel, from, to, rows, totals };
+
+    renderTable43bh(rows, totals);
+    document.getElementById('table43bhResults').style.display = 'block';
+
+    if (missingUdyamCount > 0) {
+      showTable43bhWarn(`${missingUdyamCount} client(s) have no Udyam number — disallowance exposure may be understated. Add Udyam details in Settings → Clients.`);
+    }
+  } catch (err) {
+    toast(err.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalLabel;
+  }
+}
+
+async function downloadTable43bhExcel() {
+  if (!table43bhData) { toast('Generate the report first.', 'error'); return; }
+
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet('43B(h) MSME Compliance');
+  sheet.columns = [
+    { header: 'Client',              key: 'client',      width: 24 },
+    { header: 'Udyam No',            key: 'udyam',       width: 18 },
+    { header: 'Class',               key: 'cls',         width: 10 },
+    { header: 'Invoice No',          key: 'invoiceNo',   width: 18 },
+    { header: 'Invoice Date',        key: 'invoiceDate', width: 14 },
+    { header: 'Due Date',            key: 'dueDate',     width: 14 },
+    { header: 'Amount',              key: 'amount',      width: 14, numFmt: '#,##0.00' },
+    { header: 'Amount Received',     key: 'received',    width: 16, numFmt: '#,##0.00' },
+    { header: 'Balance Due',         key: 'balance',     width: 14, numFmt: '#,##0.00' },
+    { header: 'Days Overdue',        key: 'daysOverdue', width: 14 },
+    { header: 'Est. Interest',       key: 'interest',    width: 14, numFmt: '#,##0.00' },
+    { header: 'Disallowed (31 Mar)', key: 'disallowed',  width: 18, numFmt: '#,##0.00' }
+  ];
+  styleHeaderRow(sheet.getRow(1));
+
+  table43bhData.rows.forEach(r => sheet.addRow({
+    client: r.clientName,
+    udyam: r.udyamNumber,
+    cls: r.enterpriseClass,
+    invoiceNo: r.invoiceNumber,
+    invoiceDate: fmtDDMMYYYY(r.invoiceDate),
+    dueDate: fmtDDMMYYYY(r.dueDate),
+    amount: r.amountTotal,
+    received: r.totalReceived,
+    balance: r.balanceDue,
+    daysOverdue: r.daysOverdue,
+    interest: r.interestAmount,
+    disallowed: r.disallowedAmount
+  }));
+
+  const totalsRow = sheet.addRow({
+    client: 'TOTAL',
+    balance: table43bhData.totals.balanceDue,
+    interest: table43bhData.totals.interestAmount,
+    disallowed: table43bhData.totals.disallowedAmount
+  });
+  totalsRow.font = { bold: true };
+
+  const disclaimerRow = sheet.addRow({ client: TABLE43BH_DISCLAIMER });
+  disclaimerRow.font = { italic: true, size: 10 };
+  sheet.mergeCells(`A${disclaimerRow.number}:L${disclaimerRow.number}`);
+
+  sheet.views = [{ state: 'frozen', ySplit: 1 }];
+
+  const filename = `Section43Bh_${table43bhData.from}_to_${table43bhData.to}.xlsx`;
+  await downloadXLSX(workbook, filename);
+  toast(`Downloaded: ${filename}`, 'ok');
+}
+
 // ─── INIT ────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   const authed = await checkAuth();
@@ -1537,6 +1848,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('table13Month').value = `${y}-${m}`;
     document.getElementById('table12Section').style.display = 'block';
     document.getElementById('table12Month').value = `${y}-${m}`;
+    document.getElementById('table43bhSection').style.display = 'block';
+    document.getElementById('table43bhMonth').value = `${y}-${m}`;
   }
 });
 </script>

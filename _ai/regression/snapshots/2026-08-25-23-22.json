@@ -1,0 +1,2383 @@
+{
+  "meta": {
+    "tenant_id": "5ab7fb07-2557-42e7-8a8a-5d9fd59048ac",
+    "company_name": "S.S. Engineering",
+    "captured_at_ist": "2026-08-25 23:22 IST"
+  },
+  "stockBalances": [
+    {
+      "raw_material_id": "b5946d39-2d28-4021-a5ab-5a7140dae593",
+      "name": "\"BEARING BUSH 28x36x30 4\"\" WF MOTOR\"",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 1407,
+      "material_code": "1DORMBUSH-28X36X30"
+    },
+    {
+      "raw_material_id": "2607ab84-a0e8-4c0a-be65-c03af7f71742",
+      "name": "\"THRUST BRG ASSY 4\"\" WF MOTOR\"",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 397,
+      "material_code": "1DBRGTHRST-4WF"
+    },
+    {
+      "raw_material_id": "002944aa-4d44-4e1c-9e7e-02e9cee74319",
+      "name": "1.5HP ROTOR ECO",
+      "unit": "PC",
+      "min_stock_level": 0,
+      "current_stock": 0,
+      "material_code": "2GRT-KS4-1.5ECO"
+    },
+    {
+      "raw_material_id": "1fe9b47d-6338-4413-b1e9-c57d23a94536",
+      "name": "2ASLY-KS4LBH-NEO KS4 MOTRO LBH SUB ASSEM",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 11,
+      "material_code": "2ASLY-KS4LBH-NEO"
+    },
+    {
+      "raw_material_id": "537f1e53-9e36-4928-93e4-ecb45d5760a7",
+      "name": "2ASLY-NEOI-UBH",
+      "unit": "PC",
+      "min_stock_level": 5,
+      "current_stock": 0,
+      "material_code": "2ASLY-NEOI-UBH"
+    },
+    {
+      "raw_material_id": "02b0d054-a6d2-455c-b674-0901f907c42a",
+      "name": "2HP NEMA ROTOR",
+      "unit": "PC",
+      "min_stock_level": 0,
+      "current_stock": 0,
+      "material_code": "2GRT-KS4NEMA-L225N"
+    },
+    {
+      "raw_material_id": "fde84f48-f8a0-4dc7-a572-7ffb123161f7",
+      "name": "2HP REGULAR  ROTOR",
+      "unit": "PC",
+      "min_stock_level": 0,
+      "current_stock": 0,
+      "material_code": "2GRT-KS4-L225N"
+    },
+    {
+      "raw_material_id": "5e9dc96f-010c-4ed8-867a-cd95e4063b2b",
+      "name": "3HP ROTOR REGULAR",
+      "unit": "PC",
+      "min_stock_level": 0,
+      "current_stock": 0,
+      "material_code": "2GRT-KS4-L300N"
+    },
+    {
+      "raw_material_id": "ba43ea35-ba49-4533-8173-a57eed4ae6b3",
+      "name": "800 THINNER FOR CLEANING AND DILUTING",
+      "unit": "L",
+      "min_stock_level": 0,
+      "current_stock": 40,
+      "material_code": "4DPROL-THINNER800"
+    },
+    {
+      "raw_material_id": "57cc1f74-0b21-46e7-aa7b-4ce93863083e",
+      "name": "ALLEN BOLT M6 X 10",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 2949,
+      "material_code": "1DHWBA-ALLENM6X10"
+    },
+    {
+      "raw_material_id": "24863924-04d2-4818-8ab0-81260c4de4e6",
+      "name": "ANABOND 403 E",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 20,
+      "material_code": "4DCBLADHV-403E"
+    },
+    {
+      "raw_material_id": "eac17247-260d-4721-b5aa-25c9265b962c",
+      "name": "Bearing Bush 28X36X36L For KS4 Motor",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 2087,
+      "material_code": "1DORMBUSH-28X36X35"
+    },
+    {
+      "raw_material_id": "ba2b8763-d465-4529-bcb1-461ef0d19e77",
+      "name": "BREATHER DIAPHRAGM 4\" NEMA WF MOTOR",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 1021,
+      "material_code": "1DMAPDIPHRM-4NE"
+    },
+    {
+      "raw_material_id": "c0fbb54a-110b-46c9-ac56-3d3fac6bd0d1",
+      "name": "BUSH 38x48x35L T-BOLT",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 105,
+      "material_code": "1DORMBUSH-38X48X35"
+    },
+    {
+      "raw_material_id": "417c87cb-c115-424d-ad69-18cce34bfebd",
+      "name": "CED COATED ADAPTOR 6\"SUB MOTOR T-BOLT",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 49,
+      "material_code": "1DCCI-CADP6WF"
+    },
+    {
+      "raw_material_id": "297af0a3-5735-4412-99ac-63421847f0f1",
+      "name": "CED COATED FINSIH LBHG 4\" WF NEMA",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 19,
+      "material_code": "1DCCI-CLBH4WFN"
+    },
+    {
+      "raw_material_id": "2461b4f6-1c9a-40cc-a836-4e1a1b53ae36",
+      "name": "CED COATED FINSIH MOTOR BASE 4\" WF NEMA",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 119,
+      "material_code": "1DCCI-CMB4WFN"
+    },
+    {
+      "raw_material_id": "cac03d59-9ef9-49d1-88dd-7a141214e415",
+      "name": "CED COATED UBH 4\" WF NEMA",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 155,
+      "material_code": "1DCCI-CUBH4NE"
+    },
+    {
+      "raw_material_id": "1f342bfd-02f5-430d-90a7-9f7cf64a4569",
+      "name": "CHEESE HEAD SCREW M6x10 mm L",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 2463,
+      "material_code": "1DHWSRW-M6X10MML"
+    },
+    {
+      "raw_material_id": "ae9a5887-d4c3-403b-a823-4c9784543f81",
+      "name": "CIRCLIP LIGHT 4\" WF MOTOR 70C6 /A20",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 790,
+      "material_code": "1DMAPCRCLP-4WF"
+    },
+    {
+      "raw_material_id": "33350916-db6b-4b85-9666-da0d40c7659b",
+      "name": "CLAMPING PLATE FOR GROMMET 4\"WF MOTOR",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 1295,
+      "material_code": "1DORMCLMP-PLTKS4"
+    },
+    {
+      "raw_material_id": "410000ae-ead4-4f65-88bf-7b0001620bea",
+      "name": "COATED LBH 6\" SUB MOTOR T-BOLT",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 10,
+      "material_code": "1DCCI-CLBH6WF"
+    },
+    {
+      "raw_material_id": "4b9342b8-5b2f-4d63-9e3a-68078c3fcb58",
+      "name": "Coated Lower Bearing Housing 4\" WF Mot",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 0,
+      "material_code": "1DCCI-CLBH4WF"
+    },
+    {
+      "raw_material_id": "85f2ec78-2e99-4f16-b3d6-420152ce5d1c",
+      "name": "Coated Motor Base 4\" WF Motor",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 275,
+      "material_code": "1DCCI-CMB4WF"
+    },
+    {
+      "raw_material_id": "78087b09-b9dc-4744-924f-68c8c10801e6",
+      "name": "COATED MOTOR BASE 6\"SUB T-BOLT",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 13,
+      "material_code": "1DCCI-CMB6WF"
+    },
+    {
+      "raw_material_id": "a5c5919f-ad61-489f-a7a8-36a02c5d4117",
+      "name": "COATED UBH 6\"SUB MOTOR T-BOLT",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 31,
+      "material_code": "1DCCI-CUBH6WF"
+    },
+    {
+      "raw_material_id": "3704a573-afd3-4fcb-8e93-f82206fe0ad5",
+      "name": "Coated Upper Bearing Housing 4\" WF Mot",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 0,
+      "material_code": "1DCCI-CUBH4WF"
+    },
+    {
+      "raw_material_id": "61dc681b-e742-4424-b3b8-d935aab2bcf3",
+      "name": "COVER PLATE  SS  6\"MOTOR  3_20HP",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 32,
+      "material_code": "1DMAPCPLT-6INCHWF"
+    },
+    {
+      "raw_material_id": "ef4f4ccb-cd32-437e-bf76-d8f9612ac20a",
+      "name": "Cover Plate For Motor Base 4\" WF Motor",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 923,
+      "material_code": "1DMAPCVR-KS4"
+    },
+    {
+      "raw_material_id": "3fd1ab63-4042-43ff-bebe-d0444639eb67",
+      "name": "CYLINDER OF ARGON GAS",
+      "unit": "PC",
+      "min_stock_level": 1,
+      "current_stock": 0,
+      "material_code": "4DFNGGAS-ARGONM3"
+    },
+    {
+      "raw_material_id": "6872a741-f0a7-48b4-a0c6-181a9a115c67",
+      "name": "DIAPHRAGM FOR KOS PUMP",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 53,
+      "material_code": "1DMAPDIPHRM-6WF"
+    },
+    {
+      "raw_material_id": "70f305ec-87ce-472f-a13b-72d25a81a165",
+      "name": "DIAPHRAGM PLATE 4\" NEMA WF MOTOR",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 921,
+      "material_code": "1DMAPPLT-4WFNEMA"
+    },
+    {
+      "raw_material_id": "490eee2b-37c9-4379-b4ee-a6521a78d1f1",
+      "name": "Diphragm 4\" WF motor",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 1061,
+      "material_code": "1DMAPDIPHRM-4WF"
+    },
+    {
+      "raw_material_id": "ab313f36-443e-46a6-a73a-72d530da8a0f",
+      "name": "FIBRE PLATE LBH 6 INCH T-TYPE MOTOR(DK)",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 0,
+      "material_code": "1DMAPPLT-6INCHWF"
+    },
+    {
+      "raw_material_id": "970daec6-75fd-4972-b996-4fa1d8a1883f",
+      "name": "FILLING PLUG (M8)",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 1282,
+      "material_code": "1DMAPPLUG-M8FIL"
+    },
+    {
+      "raw_material_id": "b6c7958a-1b5a-46f3-be74-ee7b84689c91",
+      "name": "FILLING PLUG M12X1.75P",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 29,
+      "material_code": "1DMAPPLUG-M12X1.75"
+    },
+    {
+      "raw_material_id": "867ccf40-ea9d-47cc-9880-58db342d6f84",
+      "name": "GENERAL PURPOSE SILICAN SEALENT",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 10,
+      "material_code": "4DCBLSEAL-SILISLNT"
+    },
+    {
+      "raw_material_id": "e3a5ee1b-577e-474b-8c2b-5928ed49e613",
+      "name": "Grommet (1.5 Sq. mm) 4\" WF Motor",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 699,
+      "material_code": "1DMAPGROMT-1.5MM4I"
+    },
+    {
+      "raw_material_id": "8bb324b8-f3b9-45f7-93de-5ea27a4c1617",
+      "name": "GROMMET (2.5 SQ MM) 4\" WF MOTOR",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 1130,
+      "material_code": "1DMAPGROMT-2.5MM4I"
+    },
+    {
+      "raw_material_id": "b9fed431-319d-4e6b-8403-1f9866972dcb",
+      "name": "ISOPOXY 800",
+      "unit": "KG",
+      "min_stock_level": 0,
+      "current_stock": 21.294,
+      "material_code": "4DPROL-ISOPOXY800"
+    },
+    {
+      "raw_material_id": "b3be0c07-0a76-47be-9925-2a5ab6a524ca",
+      "name": "KEY (12X6X4)",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 1419,
+      "material_code": "1DMAPK-6X4X12"
+    },
+    {
+      "raw_material_id": "ccb8acaf-c54c-4f3f-82cf-66e33d074cfa",
+      "name": "KS4 1.5 HP STATOR",
+      "unit": "PC",
+      "min_stock_level": 1,
+      "current_stock": 5,
+      "material_code": "2WST-KS4-1PH-1.5HP"
+    },
+    {
+      "raw_material_id": "8056d7ca-b076-4d78-8e7c-8f9739ddc845",
+      "name": "KS4 5 HP ROTOR 24SL",
+      "unit": "PC",
+      "min_stock_level": 5,
+      "current_stock": 0,
+      "material_code": "2GRT-KS4-L350N"
+    },
+    {
+      "raw_material_id": "cd1e9140-f488-4fc1-a76b-c60ae61ed259",
+      "name": "KS4 END RING SS410 MTL.",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 388,
+      "material_code": "1DKS4SS410ENDRING"
+    },
+    {
+      "raw_material_id": "00e237ff-e530-4226-a88c-4de3742170b5",
+      "name": "KS4 LOWER THREADED COLLAR SS410 MTL.",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 124,
+      "material_code": "1DKS4SS410THLWCOL"
+    },
+    {
+      "raw_material_id": "8d7a9d0e-ca5b-4973-bb2d-335e56980bf4",
+      "name": "KS4 MOTOR BASE SUB ASSEMBLY 24SLOT",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 28,
+      "material_code": "2ASLY-KS4BASE-24SL"
+    },
+    {
+      "raw_material_id": "56954448-0e11-464d-aba8-43dea0c5cf2e",
+      "name": "KS4 MOTOR BASE SUB ASSEMBLY NEO",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 6,
+      "material_code": "2ASLY-KS4BASE-NEO"
+    },
+    {
+      "raw_material_id": "f6d07dec-f39b-4b45-a445-4d08d671932d",
+      "name": "KS4 MOTOR UBH SUB ASSEMBLY 24SLOT",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 29,
+      "material_code": "2ASLY-KS4UBH-24SL"
+    },
+    {
+      "raw_material_id": "32293641-703b-426f-a6d5-ddb34b58ca93",
+      "name": "KS4 MOTOR UBH SUB ASSEMBLY NEO 28ID",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 150,
+      "material_code": "2ASLY-KS4UBH-NEO"
+    },
+    {
+      "raw_material_id": "e4fa66cb-cb76-4d06-bcde-219cad355f5f",
+      "name": "KS4 MOTRO LBH SUB ASSEMBLY 24SLOT",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 79,
+      "material_code": "2ASLY-KS4LBH-24SL"
+    },
+    {
+      "raw_material_id": "afd1bfec-b235-46af-b0d3-fa64ce1af758",
+      "name": "KS4 UPPER THREADED COLLAR SS410 MTL.",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 131,
+      "material_code": "1DKS4SS410THUPCOL"
+    },
+    {
+      "raw_material_id": "31af858b-5d91-4751-b2a9-47559e7c6dfa",
+      "name": "KS6 MOTOR ADAPTOR SUB ASSMBLY",
+      "unit": "PC",
+      "min_stock_level": 0,
+      "current_stock": 0,
+      "material_code": "2ASLY-KS6ADAPTOR"
+    },
+    {
+      "raw_material_id": "5f6ec195-6477-4a44-91c9-07a7854a5647",
+      "name": "KS6 MOTOR BASE SUB ASSEMBLY",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 0,
+      "material_code": "2ASLY-KS6BASE"
+    },
+    {
+      "raw_material_id": "e7bc7b56-92db-4696-b82e-3272936cf490",
+      "name": "LOWER SPACER KS4I/NEOi 90X87X85",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 158,
+      "material_code": "1DKS4LOWERSPACER"
+    },
+    {
+      "raw_material_id": "5f173f2a-dcf9-4c4b-8dac-0e87d9cee619",
+      "name": "MAGNET 15X15X20 6\" Water Filled",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 11,
+      "material_code": "1DMAPMGNT-15X15X20"
+    },
+    {
+      "raw_material_id": "f1aa9054-3b54-416c-9832-c0091e7e8b29",
+      "name": "MOTOR ASSEMBLY KS6 3PH 10HP CL280",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 4,
+      "material_code": "2MASLY-KS6-3PH-10H"
+    },
+    {
+      "raw_material_id": "8c50d83c-dc07-41a2-ae85-9fc24b52f60d",
+      "name": "MOTOR ASSEMBLY KS6 3PH 4HP CL135",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 4,
+      "material_code": "2MASLY-KS6-3PH-4HP"
+    },
+    {
+      "raw_material_id": "f5b53744-f924-4cf2-a65e-76f1876a1f7d",
+      "name": "MOTOR ASSEMBLY KS6 3PH 5HP CL160",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 5,
+      "material_code": "2MASLY-KS6-3PH-5HP"
+    },
+    {
+      "raw_material_id": "493ff0f4-c3e8-41a1-9981-01151cfd34d1",
+      "name": "NUT NYLOC SS MAT M6x1",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 704,
+      "material_code": "1DHWNUT-SSM6X1"
+    },
+    {
+      "raw_material_id": "2f16f239-95c7-41f6-b3bf-857beca6b22e",
+      "name": "O RING ID 6x2mm C/S NATURAL RUBBER",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 4266,
+      "material_code": "1DMAPORG-6X2MM"
+    },
+    {
+      "raw_material_id": "e9649865-3dad-43da-83a9-bbe8725e9d92",
+      "name": "O Ring ID 8X2mm C/S NATURAL RUBBER",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 10477,
+      "material_code": "1DMAPORG-8X2MM"
+    },
+    {
+      "raw_material_id": "52f68b57-cd18-4d32-a340-afa53f846b1f",
+      "name": "O RING ID 8xØ4mm NATURAL RUBBER",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 0,
+      "material_code": "1DMAPORG-8X4MM6WF"
+    },
+    {
+      "raw_material_id": "7f6bc84d-f8ab-4c0d-8f54-2be286bf7709",
+      "name": "OIL SEAL (NITRILE WITH SS SPRING)",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 12,
+      "material_code": "1DMAPSEAL-OILSEAL"
+    },
+    {
+      "raw_material_id": "73707ac3-c095-4be1-a4f7-6d5d7858d1e1",
+      "name": "OIL SEAL 16 IDx24 ODx4mm THICK FOR KU4",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 806,
+      "material_code": "1DMAPSEAL-16X24X4"
+    },
+    {
+      "raw_material_id": "d9ccb2a2-c8c8-4941-919f-fd89b917d50e",
+      "name": "OIL SEAL 25 IDx35 ODx7 mm THICK A TIPE",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 1238,
+      "material_code": "1DMAPSEAL-25X35X07"
+    },
+    {
+      "raw_material_id": "2760045c-c0d8-435a-bd72-683b9c6c2baf",
+      "name": "PACKING 4\" SUB MOTOR 0.5-7.5 HP",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 886,
+      "material_code": "1DMAPGASKT-4WF"
+    },
+    {
+      "raw_material_id": "d315e7a0-bf9c-4274-a595-1067bf661282",
+      "name": "PVC COATED COPPER WIRE 0.40/0.70MM KG",
+      "unit": "KG",
+      "min_stock_level": 0,
+      "current_stock": 39.827,
+      "material_code": "1DPCW0.40/0.70MMKG"
+    },
+    {
+      "raw_material_id": "d4b1ba86-6bc8-482d-8e58-e5ae1cf74a3b",
+      "name": "PVC COATED COPPER WIRE 0.50/0.80MM KG",
+      "unit": "KG",
+      "min_stock_level": 0,
+      "current_stock": 54.4,
+      "material_code": "1DPCW0.50/0.80MMKG"
+    },
+    {
+      "raw_material_id": "7469b796-fcc9-489f-9ddc-0dc33a44bd27",
+      "name": "PVC COATED COPPER WIRE 0.60/0.90MM KG",
+      "unit": "KG",
+      "min_stock_level": 0,
+      "current_stock": 46.537,
+      "material_code": "1DPCW0.60/0.90MMKG"
+    },
+    {
+      "raw_material_id": "30218758-c0bf-4cfc-a389-bf2e9da1d605",
+      "name": "PVC COATED COPPER WIRE 0.60/1.00MM KG",
+      "unit": "KG",
+      "min_stock_level": 0,
+      "current_stock": 33.433,
+      "material_code": "1DPCW0.60/1.00MMKG"
+    },
+    {
+      "raw_material_id": "386c5af5-3604-43cf-9ea5-3e3e841bc739",
+      "name": "PVC COATED COPPER WIRE 0.70/1.00MM KG",
+      "unit": "KG",
+      "min_stock_level": 0,
+      "current_stock": 16.379,
+      "material_code": "1DPCW0.70/1.00MMKG"
+    },
+    {
+      "raw_material_id": "8c1e1590-dc4e-4adf-8121-d680b0e9e02e",
+      "name": "PVC COATED COPPER WIRE 0.700/1.10MM KG",
+      "unit": "KG",
+      "min_stock_level": 0,
+      "current_stock": 161.356,
+      "material_code": "1DPCW0.70/1.10MMKG"
+    },
+    {
+      "raw_material_id": "c0aaec14-51d2-4c69-82ae-35a1bfd82c39",
+      "name": "PVC COATED COPPER WIRE 0.80/1.10MM KG",
+      "unit": "KG",
+      "min_stock_level": 0,
+      "current_stock": 74.457,
+      "material_code": "1DPCW0.80/1.10MMKG"
+    },
+    {
+      "raw_material_id": "7dd403b5-ea56-4d81-9f04-a712dccfc2cf",
+      "name": "PVC COATED COPPER WIRE 0.800/1.20MM KG",
+      "unit": "KG",
+      "min_stock_level": 0,
+      "current_stock": 93.723,
+      "material_code": "1DPCW0.80/1.20MMKG"
+    },
+    {
+      "raw_material_id": "3ad65301-5766-4699-8a75-9de0fe908507",
+      "name": "PVC COATED COPPER WIRE 0.90/1.30MM KG",
+      "unit": "KG",
+      "min_stock_level": 0,
+      "current_stock": 155.721,
+      "material_code": "1DPCW0.90/1.30MMKG"
+    },
+    {
+      "raw_material_id": "37111892-9e56-4859-91b4-e94fdd52111d",
+      "name": "PVC COATED COPPER WIRE 1.00/1.400MM KG",
+      "unit": "KG",
+      "min_stock_level": 0,
+      "current_stock": 354.661,
+      "material_code": "1DPCW1.00/1.40MMKG"
+    },
+    {
+      "raw_material_id": "8a60d3e1-77bd-405b-865a-530dacdec8aa",
+      "name": "PVC COATED COPPER WIRE 1.10/1.50MM KG",
+      "unit": "KG",
+      "min_stock_level": 0,
+      "current_stock": 209.937,
+      "material_code": "1DPCW1.10/1.50MMKG"
+    },
+    {
+      "raw_material_id": "c643d37b-e752-4461-b62c-0fb1e5ab40d6",
+      "name": "PVC COATED COPPER WIRE 1.10/1.55MM KG",
+      "unit": "KG",
+      "min_stock_level": 0,
+      "current_stock": 15.112,
+      "material_code": "1DPCW1.10/1.55MMKG"
+    },
+    {
+      "raw_material_id": "e3a68052-94a9-4aa6-a3d3-8ab811311d33",
+      "name": "PVC COATED COPPER WIRE 1.20/1.55MM KG",
+      "unit": "KG",
+      "min_stock_level": 0,
+      "current_stock": 176.674,
+      "material_code": "1DPCW1.20/1.55MMKG"
+    },
+    {
+      "raw_material_id": "c9c58f13-52da-4e2c-904b-56cdfe2f7347",
+      "name": "PVC COATED COPPER WIRE 1.30/1.70MM KG",
+      "unit": "KG",
+      "min_stock_level": 0,
+      "current_stock": 356.631,
+      "material_code": "1DPCW1.30/1.70MMKG"
+    },
+    {
+      "raw_material_id": "4615a895-768c-4bfc-8465-088baf96ac6f",
+      "name": "PVC COATED COPPER WIRE 1.50/1.90MM KG",
+      "unit": "KG",
+      "min_stock_level": 0,
+      "current_stock": 13.781,
+      "material_code": "1DPCW1.50/1.90MMKG"
+    },
+    {
+      "raw_material_id": "1df64723-5d38-4c15-b6c6-decca708c2ea",
+      "name": "PVC COATED COPPER WIRE 1.500/1.950MM KG",
+      "unit": "KG",
+      "min_stock_level": 0,
+      "current_stock": 45.123,
+      "material_code": "1DPCW1.50/1.95MMKG"
+    },
+    {
+      "raw_material_id": "cee8453f-82a0-4b8d-948c-cbc0bdd5bf47",
+      "name": "PVC SHEATED CABLE 1.5SQ 3CORE FLAT BLUE",
+      "unit": "MTR",
+      "min_stock_level": 0,
+      "current_stock": 781.55,
+      "material_code": "1DLW1.5SQMM3COREBU"
+    },
+    {
+      "raw_material_id": "be202fab-ed60-4913-9c48-8092520cbb50",
+      "name": "PVC SHEATED CABLE 2.5 SQ. MM 3 CORE FLAT",
+      "unit": "MTR",
+      "min_stock_level": 0,
+      "current_stock": 923.8,
+      "material_code": "1DLW-2.5SQMM3CORE"
+    },
+    {
+      "raw_material_id": "97a14c6d-bbfb-42aa-b8e3-b168a83c0510",
+      "name": "PVC SHEATED CABLE 2.5SQ 3CORE FLAT BLUE",
+      "unit": "MTR",
+      "min_stock_level": 0,
+      "current_stock": 1262.35,
+      "material_code": "1DLW2.5SQMM3COREBU"
+    },
+    {
+      "raw_material_id": "1deb9230-4001-43ee-8762-37af36d3eb87",
+      "name": "PVC SHEATED CABLE 4.0 SQ. MM 3 CORE FLAT",
+      "unit": "MTR",
+      "min_stock_level": 0,
+      "current_stock": 467.7,
+      "material_code": "1DLW-4.0SQMM3CORE"
+    },
+    {
+      "raw_material_id": "296169ea-0e14-451c-a4ab-a9fb23bdba1f",
+      "name": "PVC SHEATED CABLE 4.0SQ 3CORE FLAT BLUE",
+      "unit": "MTR",
+      "min_stock_level": 0,
+      "current_stock": 37,
+      "material_code": "1DLW4.0SQMM3COREBU"
+    },
+    {
+      "raw_material_id": "0e960e71-70b3-4b98-9ac3-57ea27728575",
+      "name": "ROCKER 4' WF MOTOR",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 752,
+      "material_code": "1DMAPOTR-ROC4WF"
+    },
+    {
+      "raw_material_id": "da7f0b74-2e12-4b95-92a9-0ee6baa6e011",
+      "name": "ROCKER 6\"SUB MOTOR 3 TO 30 HP (DK)",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 0,
+      "material_code": "1DMAPOTR-6INCHWF"
+    },
+    {
+      "raw_material_id": "87fbaf6a-4aa6-4a84-a4a6-2f594490e3b2",
+      "name": "ROTOR SHAFT KS4 0.50HP 100L ALU 24SL 1P",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 0,
+      "material_code": "2GRT-KS4-0.50ECO"
+    },
+    {
+      "raw_material_id": "1270a669-030d-438f-b722-9b1b345d055b",
+      "name": "ROTOR SHAFT KS4 1.00HP 160L ALU 24SL",
+      "unit": "PC",
+      "min_stock_level": 5,
+      "current_stock": 0,
+      "material_code": "2GRT-KS4-1.0ECO"
+    },
+    {
+      "raw_material_id": "a3d60a20-42c9-4537-a590-1a3337c7ea81",
+      "name": "ROTOR SHAFT KS4 2.00HP 225L ALU 24SL",
+      "unit": "PC",
+      "min_stock_level": 2,
+      "current_stock": 0,
+      "material_code": "2GRT-KS4-2.0ECO"
+    },
+    {
+      "raw_material_id": "8639ffae-fd9d-4a02-be5e-9821eb629303",
+      "name": "ROTOR SHAFT KS4 6.00HP 410L 24SL 1PH",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 6,
+      "material_code": "2GRT-KS4-L410N"
+    },
+    {
+      "raw_material_id": "9dd40748-e068-4e47-a4ed-6cc25bd07d87",
+      "name": "ROTOR SHAFT KS4 7.50HP 480 24SL",
+      "unit": "PC",
+      "min_stock_level": 2,
+      "current_stock": 0,
+      "material_code": "2GRT-KS4-L480N"
+    },
+    {
+      "raw_material_id": "0a22845f-0b4d-4c26-beb2-c97c0a31fcb4",
+      "name": "ROTOR SHAFT KS4 NE 4.00HP 300L 24SL 1PH",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 0,
+      "material_code": "2GRT-KS4NEMA-L410N"
+    },
+    {
+      "raw_material_id": "cea7a498-4a3e-4855-b166-d0b8fcc06c2a",
+      "name": "ROTOR SHAFT KS4 NE 5.00HP 350L 24SL",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 0,
+      "material_code": "2GRT-KS4NEMA-L350N"
+    },
+    {
+      "raw_material_id": "e4efe865-4cc3-4e20-93dc-c64ac70d35da",
+      "name": "ROTOR SHAFT KS4 NE 7.5HP 480L 24SL 1PH",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 0,
+      "material_code": "2GRT-KS4NEMA-L480N"
+    },
+    {
+      "raw_material_id": "6784ed0c-690a-4fa4-9e64-b1cda89bf523",
+      "name": "RUST PREVENTIVE OIL",
+      "unit": "L",
+      "min_stock_level": 1,
+      "current_stock": 26,
+      "material_code": "4DPROL-RUSTSEAL66G"
+    },
+    {
+      "raw_material_id": "2c5044e4-bad7-4ac0-bb57-d191951bb30a",
+      "name": "Sand Guard 4\" WF Motor",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 2432,
+      "material_code": "1DMAPSNGURD-4WF"
+    },
+    {
+      "raw_material_id": "1511c525-6696-4493-a383-6191730a437a",
+      "name": "Sand Guard Fixed For 4\" WF Motor",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 616,
+      "material_code": "1DMAPSNGURD-4WFF"
+    },
+    {
+      "raw_material_id": "af76ef67-62ac-49c0-9fde-edf415141aad",
+      "name": "SAND GUARD MATALIC 6 INCH T-TYPE MOTOR",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 0,
+      "material_code": "1DMAPSNGURD-M6WF"
+    },
+    {
+      "raw_material_id": "bc96894a-8568-4b36-bae8-c015900c91f2",
+      "name": "SAND SEAL COVER",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 1250,
+      "material_code": "1DMAPSNGURD-4CVR"
+    },
+    {
+      "raw_material_id": "c6a16264-18e1-4d58-800e-6182cc5bb0a5",
+      "name": "SCREW CHEASE HEAD M5x0.8x08 mm L F.T.SS",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 1311,
+      "material_code": "1DHWSRW-M5X0.8X08"
+    },
+    {
+      "raw_material_id": "8eb8f7ca-97d8-43af-bfbe-b04343bd3574",
+      "name": "Slot Head Screw (M5X10)",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 1190,
+      "material_code": "1DHWSRW-M5X10"
+    },
+    {
+      "raw_material_id": "ac125803-d6ec-4285-87fc-cc6097a2fd78",
+      "name": "SOCKET HEAD CAP SCREW (M6X30)",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 4457,
+      "material_code": "1DHWSRW-M6X30SHC"
+    },
+    {
+      "raw_material_id": "514d8e30-48eb-46cf-9d72-ddbcb6d033ce",
+      "name": "STATOR END RING KS6 6\"WF",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 383,
+      "material_code": "1D-ST-ENDRING-KS6"
+    },
+    {
+      "raw_material_id": "85b8e25b-f01f-4f5c-8829-e9530866e577",
+      "name": "STATOR HOUSING NEOI (KP4) 0.5HP L315",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 3,
+      "material_code": "1DHOUSINGNEOI0.5HP"
+    },
+    {
+      "raw_material_id": "f557a1fd-a777-46f6-b85b-9fc67372dce1",
+      "name": "STATOR HOUSING NEOI (KP4) 1.0HP L335",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 47,
+      "material_code": "1DHOUSINGNEOI1.0HP"
+    },
+    {
+      "raw_material_id": "d24a4b99-6fd2-4430-b4b7-3c0fed5b0ce2",
+      "name": "STATOR HOUSING NEOI (KP4) 1.5HP L385",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 16,
+      "material_code": "1DHOUSINGNEOI1.5HP"
+    },
+    {
+      "raw_material_id": "299d98e3-f183-4f57-af39-59f6c793314d",
+      "name": "STATOR HOUSING NEOI (KP4) 2.0HP L410",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 28,
+      "material_code": "1DHOUSINGNEOI2.0HP"
+    },
+    {
+      "raw_material_id": "86f51106-5eeb-4838-a078-6ceee4ec8b31",
+      "name": "STATOR KS4 5.0HP-3PH CL350 SS ENDRING",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 29,
+      "material_code": "2WST-KS4-3PH-5HPSS"
+    },
+    {
+      "raw_material_id": "8688004a-aed6-4486-8a05-ac29dd7c749e",
+      "name": "STATOR KS4-18 SLOT CL470-7.5HP 3PH",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 18,
+      "material_code": "2WST-KS4-3PH-7.5"
+    },
+    {
+      "raw_material_id": "9173b75c-384d-4f11-81b0-31519db01b61",
+      "name": "STATOR KS6 CL110 2.0HP",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 0,
+      "material_code": "2WST-KS6-3PH-2HP"
+    },
+    {
+      "raw_material_id": "2faa516c-92ea-44ef-b763-75d90c4877ab",
+      "name": "STATOR LAMINATON KS4 24SLOT 92.5X50X30",
+      "unit": "KG",
+      "min_stock_level": 0,
+      "current_stock": 735.134,
+      "material_code": "2LSL-24KS4"
+    },
+    {
+      "raw_material_id": "f4ff992a-38c9-4582-b9b3-a0c6669a325c",
+      "name": "STATOR STACK-KP4-CL140",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 76,
+      "material_code": "2STK-KP4-L140"
+    },
+    {
+      "raw_material_id": "88a07677-3675-4b3b-b5e0-92b56e3db987",
+      "name": "STATOR STACK-KP4-CL165",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 90,
+      "material_code": "2STK-KP4-L165"
+    },
+    {
+      "raw_material_id": "23608219-3b36-4f8c-b981-e175e7d831f6",
+      "name": "STATOR STACK-KP4-CL70",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 6,
+      "material_code": "2STK-KP4-L70"
+    },
+    {
+      "raw_material_id": "674046e4-1f5c-4d20-82e4-c61abed63c2f",
+      "name": "STATOR STACK-KP4-CL90",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 21,
+      "material_code": "2STK-KP4-L90"
+    },
+    {
+      "raw_material_id": "efe0a9e3-8b7a-4608-a517-39cd0da92f19",
+      "name": "STATOR STACK-V6-CL110",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 5,
+      "material_code": "2STK-V6-L110"
+    },
+    {
+      "raw_material_id": "588b9d32-03bb-4276-92cf-c33053c613e4",
+      "name": "STATOR STACK-V6-CL120",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 5,
+      "material_code": "2STK-V6-L120"
+    },
+    {
+      "raw_material_id": "df6fe16f-dae8-4b1a-b538-1afde8a6d11b",
+      "name": "STATOR STACK-V6-CL135",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 3,
+      "material_code": "2STK-V6-L135"
+    },
+    {
+      "raw_material_id": "a9bab334-dd60-494b-9fd3-8064cfb80b43",
+      "name": "STATOR STACK-V6-CL190",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 16,
+      "material_code": "2STK-V6-L190"
+    },
+    {
+      "raw_material_id": "f1eb5e81-8d84-4a2e-925c-9facffa3b277",
+      "name": "STATOR STACK-V6-CL230",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 0,
+      "material_code": "2STK-V6-L230"
+    },
+    {
+      "raw_material_id": "fae317e2-5726-4573-83f8-886039dba3a8",
+      "name": "STATOR STACK-V6-CL280",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 18,
+      "material_code": "2STK-V6-L280"
+    },
+    {
+      "raw_material_id": "f1d82160-a0d9-4184-9f1c-96ab8fd719ab",
+      "name": "STUD(SS) M6x 1.0x85 MM (6 & 25 MM THRDS)",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 24,
+      "material_code": "1DHWSTUD-M6X1.0X85"
+    },
+    {
+      "raw_material_id": "2b16ee7c-6c8d-457a-ac7d-8e787280687c",
+      "name": "STUD(SS)M12x1.75x45mm(15 & 22 mm THRDS)",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 0,
+      "material_code": "1DSTUD-M12X1.75X45"
+    },
+    {
+      "raw_material_id": "7181fbde-672b-449e-9198-98297c2f8c37",
+      "name": "THINNER AQUASOLVE",
+      "unit": "KG",
+      "min_stock_level": 0,
+      "current_stock": 215.857,
+      "material_code": "4DPROL-THINNERAQUA"
+    },
+    {
+      "raw_material_id": "f069b889-c0f8-496c-b999-efa19532bde1",
+      "name": "TIE-ROD (M8X1.25X38MM-SS304)",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 3870,
+      "material_code": "1DTROD-M8X1.25X38"
+    },
+    {
+      "raw_material_id": "b1d1a71c-056b-4499-ac7e-0105470ddc36",
+      "name": "WASHER - M6",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 776,
+      "material_code": "1DHWWSR-M6"
+    },
+    {
+      "raw_material_id": "905a2151-69ca-49bd-9d76-746f98bbc823",
+      "name": "WND STR TUBE-KS4\"WF-CL100 0.5HP AN/BN",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 1,
+      "material_code": "2WST-KS4-1PH-0.5HP"
+    },
+    {
+      "raw_material_id": "9d50021a-be6b-4057-b6b3-85f0168d984a",
+      "name": "WND STR TUBE-KS4\"WF-CL160 1HP AN/BN",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 6,
+      "material_code": "2WST-KS4-1PH-1HP"
+    },
+    {
+      "raw_material_id": "64621424-babf-4f39-9ef5-370f68a3bcce",
+      "name": "WND STR TUBE-KS4\"WF-CL225 2HP AN/BN",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 74,
+      "material_code": "2WST-KS4-1PH-2HP"
+    },
+    {
+      "raw_material_id": "93867433-877c-4fff-8390-16c8441aaa3e",
+      "name": "WOUND STA 6'' T BOLT 3P 12.5HP LV",
+      "unit": "PC",
+      "min_stock_level": 1,
+      "current_stock": 1,
+      "material_code": "2WST-KS6-12.5HPLV"
+    },
+    {
+      "raw_material_id": "3c25c7ad-ddeb-4e8a-af5a-c21ae0d42689",
+      "name": "WOUND STATOR 6HP410",
+      "unit": "PC",
+      "min_stock_level": 2,
+      "current_stock": 0,
+      "material_code": "2WST-KS4-3P-6HP410"
+    },
+    {
+      "raw_material_id": "9cd21c0c-85b1-4c9f-a68f-694ca7e7929b",
+      "name": "WOUND STATOR KS4-3PH 3.0HP CL300 24SL",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 12,
+      "material_code": "2WST-KS4-3PH-3HP"
+    },
+    {
+      "raw_material_id": "507a9064-6489-40f8-9cb8-de26ebdaea7e",
+      "name": "WOUND STATOR KS4-CL350-3PH 5HP",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 2,
+      "material_code": "2WST-KS4-3PH-5HP"
+    },
+    {
+      "raw_material_id": "521857b1-cd38-451c-9637-8d22473b930d",
+      "name": "WOUND STATOR KS6 6.0HP LV CL210",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 2,
+      "material_code": "2WST-KS6-3PH-6HPLV"
+    },
+    {
+      "raw_material_id": "a696518b-865d-418a-82b4-a541741b8a16",
+      "name": "WOUND STATOR NEOI(KP4) 0.5HP CL70",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 3,
+      "material_code": "2WST-NEOI-0.5HP"
+    },
+    {
+      "raw_material_id": "9e45dc56-c256-4f2c-b0f6-95e28bd86475",
+      "name": "WOUND STATOR NEOI(KP4) 1.0HP CL90",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 19,
+      "material_code": "2WST-NEOI-1.0HP"
+    },
+    {
+      "raw_material_id": "8ac0a4d3-54b5-46c7-b83a-f34cb0cd9587",
+      "name": "WOUND STATOR NEOI(KP4) 1.5HP CL140",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 26,
+      "material_code": "2WST-NEOI-1.5HP"
+    },
+    {
+      "raw_material_id": "02b55715-2d8f-4429-b6f1-418cf3b3afa2",
+      "name": "WOUND STATOR NEOI(KP4) 2.0HP CL165",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 7,
+      "material_code": "2WST-NEOI-2.0HP"
+    },
+    {
+      "raw_material_id": "6a6b2144-d006-4b5f-879a-523c2b602f6d",
+      "name": "WOUND STATOR-KS4-4\"WF 92.50-CL300 3HP",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 22,
+      "material_code": "2WST-KS4-1PH-3HP"
+    },
+    {
+      "raw_material_id": "cc5b5249-6cc4-4fba-8bd8-3305640591b4",
+      "name": "WOUND STATOR-KS6-6\"WF-CL120 3HP",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 3,
+      "material_code": "2WST-KS6-3PH-3HP"
+    },
+    {
+      "raw_material_id": "c8a60c4e-9758-4ae9-82bf-0ef129b878b0",
+      "name": "WOUND STATOR-KS6-6\"WF-CL135 4HP",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 34,
+      "material_code": "2WST-KS6-3PH-4HP"
+    },
+    {
+      "raw_material_id": "ebccda01-353a-4593-aefc-6f41df8c5464",
+      "name": "WOUND STATOR-KS6-6\"WF-CL160 5HP",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 9,
+      "material_code": "2WST-KS6-3PH-5HP"
+    },
+    {
+      "raw_material_id": "7abfbc1b-ea65-467a-bc58-94085b048bc9",
+      "name": "WOUND STATOR-KS6-6\"WF-CL190 6HP",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 13,
+      "material_code": "2WST-KS6-3PH-6HP"
+    },
+    {
+      "raw_material_id": "ea2b74b4-d16d-4d4d-a151-8948affe768d",
+      "name": "WOUND STATOR-KS6-6\"WF-CL230 7.5HP",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 2,
+      "material_code": "2WST-KS6-3PH-7.5HP"
+    },
+    {
+      "raw_material_id": "143e5ba2-f8e7-446e-a947-0c5e994ae896",
+      "name": "WOUND STATOR-KS6-6\"WF-CL280 10HP",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "current_stock": 10,
+      "material_code": "2WST-KS6-3PH-10HP"
+    }
+  ],
+  "activeMaterials": [
+    {
+      "id": "b5946d39-2d28-4021-a5ab-5a7140dae593",
+      "name": "\"BEARING BUSH 28x36x30 4\"\" WF MOTOR\"",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DORMBUSH-28X36X30",
+      "is_active": true
+    },
+    {
+      "id": "2607ab84-a0e8-4c0a-be65-c03af7f71742",
+      "name": "\"THRUST BRG ASSY 4\"\" WF MOTOR\"",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DBRGTHRST-4WF",
+      "is_active": true
+    },
+    {
+      "id": "002944aa-4d44-4e1c-9e7e-02e9cee74319",
+      "name": "1.5HP ROTOR ECO",
+      "unit": "PC",
+      "min_stock_level": 0,
+      "material_code": "2GRT-KS4-1.5ECO",
+      "is_active": true
+    },
+    {
+      "id": "1fe9b47d-6338-4413-b1e9-c57d23a94536",
+      "name": "2ASLY-KS4LBH-NEO KS4 MOTRO LBH SUB ASSEM",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "2ASLY-KS4LBH-NEO",
+      "is_active": true
+    },
+    {
+      "id": "537f1e53-9e36-4928-93e4-ecb45d5760a7",
+      "name": "2ASLY-NEOI-UBH",
+      "unit": "PC",
+      "min_stock_level": 5,
+      "material_code": "2ASLY-NEOI-UBH",
+      "is_active": true
+    },
+    {
+      "id": "02b0d054-a6d2-455c-b674-0901f907c42a",
+      "name": "2HP NEMA ROTOR",
+      "unit": "PC",
+      "min_stock_level": 0,
+      "material_code": "2GRT-KS4NEMA-L225N",
+      "is_active": true
+    },
+    {
+      "id": "fde84f48-f8a0-4dc7-a572-7ffb123161f7",
+      "name": "2HP REGULAR  ROTOR",
+      "unit": "PC",
+      "min_stock_level": 0,
+      "material_code": "2GRT-KS4-L225N",
+      "is_active": true
+    },
+    {
+      "id": "5e9dc96f-010c-4ed8-867a-cd95e4063b2b",
+      "name": "3HP ROTOR REGULAR",
+      "unit": "PC",
+      "min_stock_level": 0,
+      "material_code": "2GRT-KS4-L300N",
+      "is_active": true
+    },
+    {
+      "id": "ba43ea35-ba49-4533-8173-a57eed4ae6b3",
+      "name": "800 THINNER FOR CLEANING AND DILUTING",
+      "unit": "L",
+      "min_stock_level": 0,
+      "material_code": "4DPROL-THINNER800",
+      "is_active": true
+    },
+    {
+      "id": "57cc1f74-0b21-46e7-aa7b-4ce93863083e",
+      "name": "ALLEN BOLT M6 X 10",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DHWBA-ALLENM6X10",
+      "is_active": true
+    },
+    {
+      "id": "24863924-04d2-4818-8ab0-81260c4de4e6",
+      "name": "ANABOND 403 E",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "4DCBLADHV-403E",
+      "is_active": true
+    },
+    {
+      "id": "eac17247-260d-4721-b5aa-25c9265b962c",
+      "name": "Bearing Bush 28X36X36L For KS4 Motor",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DORMBUSH-28X36X35",
+      "is_active": true
+    },
+    {
+      "id": "ba2b8763-d465-4529-bcb1-461ef0d19e77",
+      "name": "BREATHER DIAPHRAGM 4\" NEMA WF MOTOR",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DMAPDIPHRM-4NE",
+      "is_active": true
+    },
+    {
+      "id": "c0fbb54a-110b-46c9-ac56-3d3fac6bd0d1",
+      "name": "BUSH 38x48x35L T-BOLT",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DORMBUSH-38X48X35",
+      "is_active": true
+    },
+    {
+      "id": "417c87cb-c115-424d-ad69-18cce34bfebd",
+      "name": "CED COATED ADAPTOR 6\"SUB MOTOR T-BOLT",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DCCI-CADP6WF",
+      "is_active": true
+    },
+    {
+      "id": "297af0a3-5735-4412-99ac-63421847f0f1",
+      "name": "CED COATED FINSIH LBHG 4\" WF NEMA",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DCCI-CLBH4WFN",
+      "is_active": true
+    },
+    {
+      "id": "2461b4f6-1c9a-40cc-a836-4e1a1b53ae36",
+      "name": "CED COATED FINSIH MOTOR BASE 4\" WF NEMA",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DCCI-CMB4WFN",
+      "is_active": true
+    },
+    {
+      "id": "cac03d59-9ef9-49d1-88dd-7a141214e415",
+      "name": "CED COATED UBH 4\" WF NEMA",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DCCI-CUBH4NE",
+      "is_active": true
+    },
+    {
+      "id": "1f342bfd-02f5-430d-90a7-9f7cf64a4569",
+      "name": "CHEESE HEAD SCREW M6x10 mm L",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DHWSRW-M6X10MML",
+      "is_active": true
+    },
+    {
+      "id": "ae9a5887-d4c3-403b-a823-4c9784543f81",
+      "name": "CIRCLIP LIGHT 4\" WF MOTOR 70C6 /A20",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DMAPCRCLP-4WF",
+      "is_active": true
+    },
+    {
+      "id": "33350916-db6b-4b85-9666-da0d40c7659b",
+      "name": "CLAMPING PLATE FOR GROMMET 4\"WF MOTOR",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DORMCLMP-PLTKS4",
+      "is_active": true
+    },
+    {
+      "id": "410000ae-ead4-4f65-88bf-7b0001620bea",
+      "name": "COATED LBH 6\" SUB MOTOR T-BOLT",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DCCI-CLBH6WF",
+      "is_active": true
+    },
+    {
+      "id": "4b9342b8-5b2f-4d63-9e3a-68078c3fcb58",
+      "name": "Coated Lower Bearing Housing 4\" WF Mot",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DCCI-CLBH4WF",
+      "is_active": true
+    },
+    {
+      "id": "85f2ec78-2e99-4f16-b3d6-420152ce5d1c",
+      "name": "Coated Motor Base 4\" WF Motor",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DCCI-CMB4WF",
+      "is_active": true
+    },
+    {
+      "id": "78087b09-b9dc-4744-924f-68c8c10801e6",
+      "name": "COATED MOTOR BASE 6\"SUB T-BOLT",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DCCI-CMB6WF",
+      "is_active": true
+    },
+    {
+      "id": "a5c5919f-ad61-489f-a7a8-36a02c5d4117",
+      "name": "COATED UBH 6\"SUB MOTOR T-BOLT",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DCCI-CUBH6WF",
+      "is_active": true
+    },
+    {
+      "id": "3704a573-afd3-4fcb-8e93-f82206fe0ad5",
+      "name": "Coated Upper Bearing Housing 4\" WF Mot",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DCCI-CUBH4WF",
+      "is_active": true
+    },
+    {
+      "id": "61dc681b-e742-4424-b3b8-d935aab2bcf3",
+      "name": "COVER PLATE  SS  6\"MOTOR  3_20HP",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DMAPCPLT-6INCHWF",
+      "is_active": true
+    },
+    {
+      "id": "ef4f4ccb-cd32-437e-bf76-d8f9612ac20a",
+      "name": "Cover Plate For Motor Base 4\" WF Motor",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DMAPCVR-KS4",
+      "is_active": true
+    },
+    {
+      "id": "3fd1ab63-4042-43ff-bebe-d0444639eb67",
+      "name": "CYLINDER OF ARGON GAS",
+      "unit": "PC",
+      "min_stock_level": 1,
+      "material_code": "4DFNGGAS-ARGONM3",
+      "is_active": true
+    },
+    {
+      "id": "6872a741-f0a7-48b4-a0c6-181a9a115c67",
+      "name": "DIAPHRAGM FOR KOS PUMP",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DMAPDIPHRM-6WF",
+      "is_active": true
+    },
+    {
+      "id": "70f305ec-87ce-472f-a13b-72d25a81a165",
+      "name": "DIAPHRAGM PLATE 4\" NEMA WF MOTOR",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DMAPPLT-4WFNEMA",
+      "is_active": true
+    },
+    {
+      "id": "490eee2b-37c9-4379-b4ee-a6521a78d1f1",
+      "name": "Diphragm 4\" WF motor",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DMAPDIPHRM-4WF",
+      "is_active": true
+    },
+    {
+      "id": "ab313f36-443e-46a6-a73a-72d530da8a0f",
+      "name": "FIBRE PLATE LBH 6 INCH T-TYPE MOTOR(DK)",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DMAPPLT-6INCHWF",
+      "is_active": true
+    },
+    {
+      "id": "970daec6-75fd-4972-b996-4fa1d8a1883f",
+      "name": "FILLING PLUG (M8)",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DMAPPLUG-M8FIL",
+      "is_active": true
+    },
+    {
+      "id": "b6c7958a-1b5a-46f3-be74-ee7b84689c91",
+      "name": "FILLING PLUG M12X1.75P",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DMAPPLUG-M12X1.75",
+      "is_active": true
+    },
+    {
+      "id": "867ccf40-ea9d-47cc-9880-58db342d6f84",
+      "name": "GENERAL PURPOSE SILICAN SEALENT",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "4DCBLSEAL-SILISLNT",
+      "is_active": true
+    },
+    {
+      "id": "e3a5ee1b-577e-474b-8c2b-5928ed49e613",
+      "name": "Grommet (1.5 Sq. mm) 4\" WF Motor",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DMAPGROMT-1.5MM4I",
+      "is_active": true
+    },
+    {
+      "id": "8bb324b8-f3b9-45f7-93de-5ea27a4c1617",
+      "name": "GROMMET (2.5 SQ MM) 4\" WF MOTOR",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DMAPGROMT-2.5MM4I",
+      "is_active": true
+    },
+    {
+      "id": "b9fed431-319d-4e6b-8403-1f9866972dcb",
+      "name": "ISOPOXY 800",
+      "unit": "KG",
+      "min_stock_level": 0,
+      "material_code": "4DPROL-ISOPOXY800",
+      "is_active": true
+    },
+    {
+      "id": "b3be0c07-0a76-47be-9925-2a5ab6a524ca",
+      "name": "KEY (12X6X4)",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DMAPK-6X4X12",
+      "is_active": true
+    },
+    {
+      "id": "ccb8acaf-c54c-4f3f-82cf-66e33d074cfa",
+      "name": "KS4 1.5 HP STATOR",
+      "unit": "PC",
+      "min_stock_level": 1,
+      "material_code": "2WST-KS4-1PH-1.5HP",
+      "is_active": true
+    },
+    {
+      "id": "8056d7ca-b076-4d78-8e7c-8f9739ddc845",
+      "name": "KS4 5 HP ROTOR 24SL",
+      "unit": "PC",
+      "min_stock_level": 5,
+      "material_code": "2GRT-KS4-L350N",
+      "is_active": true
+    },
+    {
+      "id": "cd1e9140-f488-4fc1-a76b-c60ae61ed259",
+      "name": "KS4 END RING SS410 MTL.",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DKS4SS410ENDRING",
+      "is_active": true
+    },
+    {
+      "id": "00e237ff-e530-4226-a88c-4de3742170b5",
+      "name": "KS4 LOWER THREADED COLLAR SS410 MTL.",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DKS4SS410THLWCOL",
+      "is_active": true
+    },
+    {
+      "id": "8d7a9d0e-ca5b-4973-bb2d-335e56980bf4",
+      "name": "KS4 MOTOR BASE SUB ASSEMBLY 24SLOT",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "2ASLY-KS4BASE-24SL",
+      "is_active": true
+    },
+    {
+      "id": "56954448-0e11-464d-aba8-43dea0c5cf2e",
+      "name": "KS4 MOTOR BASE SUB ASSEMBLY NEO",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "2ASLY-KS4BASE-NEO",
+      "is_active": true
+    },
+    {
+      "id": "f6d07dec-f39b-4b45-a445-4d08d671932d",
+      "name": "KS4 MOTOR UBH SUB ASSEMBLY 24SLOT",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "2ASLY-KS4UBH-24SL",
+      "is_active": true
+    },
+    {
+      "id": "32293641-703b-426f-a6d5-ddb34b58ca93",
+      "name": "KS4 MOTOR UBH SUB ASSEMBLY NEO 28ID",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "2ASLY-KS4UBH-NEO",
+      "is_active": true
+    },
+    {
+      "id": "e4fa66cb-cb76-4d06-bcde-219cad355f5f",
+      "name": "KS4 MOTRO LBH SUB ASSEMBLY 24SLOT",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "2ASLY-KS4LBH-24SL",
+      "is_active": true
+    },
+    {
+      "id": "afd1bfec-b235-46af-b0d3-fa64ce1af758",
+      "name": "KS4 UPPER THREADED COLLAR SS410 MTL.",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DKS4SS410THUPCOL",
+      "is_active": true
+    },
+    {
+      "id": "31af858b-5d91-4751-b2a9-47559e7c6dfa",
+      "name": "KS6 MOTOR ADAPTOR SUB ASSMBLY",
+      "unit": "PC",
+      "min_stock_level": 0,
+      "material_code": "2ASLY-KS6ADAPTOR",
+      "is_active": true
+    },
+    {
+      "id": "5f6ec195-6477-4a44-91c9-07a7854a5647",
+      "name": "KS6 MOTOR BASE SUB ASSEMBLY",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "2ASLY-KS6BASE",
+      "is_active": true
+    },
+    {
+      "id": "e7bc7b56-92db-4696-b82e-3272936cf490",
+      "name": "LOWER SPACER KS4I/NEOi 90X87X85",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DKS4LOWERSPACER",
+      "is_active": true
+    },
+    {
+      "id": "5f173f2a-dcf9-4c4b-8dac-0e87d9cee619",
+      "name": "MAGNET 15X15X20 6\" Water Filled",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DMAPMGNT-15X15X20",
+      "is_active": true
+    },
+    {
+      "id": "f1aa9054-3b54-416c-9832-c0091e7e8b29",
+      "name": "MOTOR ASSEMBLY KS6 3PH 10HP CL280",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "2MASLY-KS6-3PH-10H",
+      "is_active": true
+    },
+    {
+      "id": "8c50d83c-dc07-41a2-ae85-9fc24b52f60d",
+      "name": "MOTOR ASSEMBLY KS6 3PH 4HP CL135",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "2MASLY-KS6-3PH-4HP",
+      "is_active": true
+    },
+    {
+      "id": "f5b53744-f924-4cf2-a65e-76f1876a1f7d",
+      "name": "MOTOR ASSEMBLY KS6 3PH 5HP CL160",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "2MASLY-KS6-3PH-5HP",
+      "is_active": true
+    },
+    {
+      "id": "493ff0f4-c3e8-41a1-9981-01151cfd34d1",
+      "name": "NUT NYLOC SS MAT M6x1",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DHWNUT-SSM6X1",
+      "is_active": true
+    },
+    {
+      "id": "2f16f239-95c7-41f6-b3bf-857beca6b22e",
+      "name": "O RING ID 6x2mm C/S NATURAL RUBBER",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DMAPORG-6X2MM",
+      "is_active": true
+    },
+    {
+      "id": "e9649865-3dad-43da-83a9-bbe8725e9d92",
+      "name": "O Ring ID 8X2mm C/S NATURAL RUBBER",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DMAPORG-8X2MM",
+      "is_active": true
+    },
+    {
+      "id": "52f68b57-cd18-4d32-a340-afa53f846b1f",
+      "name": "O RING ID 8xØ4mm NATURAL RUBBER",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DMAPORG-8X4MM6WF",
+      "is_active": true
+    },
+    {
+      "id": "7f6bc84d-f8ab-4c0d-8f54-2be286bf7709",
+      "name": "OIL SEAL (NITRILE WITH SS SPRING)",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DMAPSEAL-OILSEAL",
+      "is_active": true
+    },
+    {
+      "id": "73707ac3-c095-4be1-a4f7-6d5d7858d1e1",
+      "name": "OIL SEAL 16 IDx24 ODx4mm THICK FOR KU4",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DMAPSEAL-16X24X4",
+      "is_active": true
+    },
+    {
+      "id": "d9ccb2a2-c8c8-4941-919f-fd89b917d50e",
+      "name": "OIL SEAL 25 IDx35 ODx7 mm THICK A TIPE",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DMAPSEAL-25X35X07",
+      "is_active": true
+    },
+    {
+      "id": "2760045c-c0d8-435a-bd72-683b9c6c2baf",
+      "name": "PACKING 4\" SUB MOTOR 0.5-7.5 HP",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DMAPGASKT-4WF",
+      "is_active": true
+    },
+    {
+      "id": "d315e7a0-bf9c-4274-a595-1067bf661282",
+      "name": "PVC COATED COPPER WIRE 0.40/0.70MM KG",
+      "unit": "KG",
+      "min_stock_level": 0,
+      "material_code": "1DPCW0.40/0.70MMKG",
+      "is_active": true
+    },
+    {
+      "id": "d4b1ba86-6bc8-482d-8e58-e5ae1cf74a3b",
+      "name": "PVC COATED COPPER WIRE 0.50/0.80MM KG",
+      "unit": "KG",
+      "min_stock_level": 0,
+      "material_code": "1DPCW0.50/0.80MMKG",
+      "is_active": true
+    },
+    {
+      "id": "7469b796-fcc9-489f-9ddc-0dc33a44bd27",
+      "name": "PVC COATED COPPER WIRE 0.60/0.90MM KG",
+      "unit": "KG",
+      "min_stock_level": 0,
+      "material_code": "1DPCW0.60/0.90MMKG",
+      "is_active": true
+    },
+    {
+      "id": "30218758-c0bf-4cfc-a389-bf2e9da1d605",
+      "name": "PVC COATED COPPER WIRE 0.60/1.00MM KG",
+      "unit": "KG",
+      "min_stock_level": 0,
+      "material_code": "1DPCW0.60/1.00MMKG",
+      "is_active": true
+    },
+    {
+      "id": "386c5af5-3604-43cf-9ea5-3e3e841bc739",
+      "name": "PVC COATED COPPER WIRE 0.70/1.00MM KG",
+      "unit": "KG",
+      "min_stock_level": 0,
+      "material_code": "1DPCW0.70/1.00MMKG",
+      "is_active": true
+    },
+    {
+      "id": "8c1e1590-dc4e-4adf-8121-d680b0e9e02e",
+      "name": "PVC COATED COPPER WIRE 0.700/1.10MM KG",
+      "unit": "KG",
+      "min_stock_level": 0,
+      "material_code": "1DPCW0.70/1.10MMKG",
+      "is_active": true
+    },
+    {
+      "id": "c0aaec14-51d2-4c69-82ae-35a1bfd82c39",
+      "name": "PVC COATED COPPER WIRE 0.80/1.10MM KG",
+      "unit": "KG",
+      "min_stock_level": 0,
+      "material_code": "1DPCW0.80/1.10MMKG",
+      "is_active": true
+    },
+    {
+      "id": "7dd403b5-ea56-4d81-9f04-a712dccfc2cf",
+      "name": "PVC COATED COPPER WIRE 0.800/1.20MM KG",
+      "unit": "KG",
+      "min_stock_level": 0,
+      "material_code": "1DPCW0.80/1.20MMKG",
+      "is_active": true
+    },
+    {
+      "id": "3ad65301-5766-4699-8a75-9de0fe908507",
+      "name": "PVC COATED COPPER WIRE 0.90/1.30MM KG",
+      "unit": "KG",
+      "min_stock_level": 0,
+      "material_code": "1DPCW0.90/1.30MMKG",
+      "is_active": true
+    },
+    {
+      "id": "37111892-9e56-4859-91b4-e94fdd52111d",
+      "name": "PVC COATED COPPER WIRE 1.00/1.400MM KG",
+      "unit": "KG",
+      "min_stock_level": 0,
+      "material_code": "1DPCW1.00/1.40MMKG",
+      "is_active": true
+    },
+    {
+      "id": "8a60d3e1-77bd-405b-865a-530dacdec8aa",
+      "name": "PVC COATED COPPER WIRE 1.10/1.50MM KG",
+      "unit": "KG",
+      "min_stock_level": 0,
+      "material_code": "1DPCW1.10/1.50MMKG",
+      "is_active": true
+    },
+    {
+      "id": "c643d37b-e752-4461-b62c-0fb1e5ab40d6",
+      "name": "PVC COATED COPPER WIRE 1.10/1.55MM KG",
+      "unit": "KG",
+      "min_stock_level": 0,
+      "material_code": "1DPCW1.10/1.55MMKG",
+      "is_active": true
+    },
+    {
+      "id": "e3a68052-94a9-4aa6-a3d3-8ab811311d33",
+      "name": "PVC COATED COPPER WIRE 1.20/1.55MM KG",
+      "unit": "KG",
+      "min_stock_level": 0,
+      "material_code": "1DPCW1.20/1.55MMKG",
+      "is_active": true
+    },
+    {
+      "id": "c9c58f13-52da-4e2c-904b-56cdfe2f7347",
+      "name": "PVC COATED COPPER WIRE 1.30/1.70MM KG",
+      "unit": "KG",
+      "min_stock_level": 0,
+      "material_code": "1DPCW1.30/1.70MMKG",
+      "is_active": true
+    },
+    {
+      "id": "4615a895-768c-4bfc-8465-088baf96ac6f",
+      "name": "PVC COATED COPPER WIRE 1.50/1.90MM KG",
+      "unit": "KG",
+      "min_stock_level": 0,
+      "material_code": "1DPCW1.50/1.90MMKG",
+      "is_active": true
+    },
+    {
+      "id": "1df64723-5d38-4c15-b6c6-decca708c2ea",
+      "name": "PVC COATED COPPER WIRE 1.500/1.950MM KG",
+      "unit": "KG",
+      "min_stock_level": 0,
+      "material_code": "1DPCW1.50/1.95MMKG",
+      "is_active": true
+    },
+    {
+      "id": "cee8453f-82a0-4b8d-948c-cbc0bdd5bf47",
+      "name": "PVC SHEATED CABLE 1.5SQ 3CORE FLAT BLUE",
+      "unit": "MTR",
+      "min_stock_level": 0,
+      "material_code": "1DLW1.5SQMM3COREBU",
+      "is_active": true
+    },
+    {
+      "id": "be202fab-ed60-4913-9c48-8092520cbb50",
+      "name": "PVC SHEATED CABLE 2.5 SQ. MM 3 CORE FLAT",
+      "unit": "MTR",
+      "min_stock_level": 0,
+      "material_code": "1DLW-2.5SQMM3CORE",
+      "is_active": true
+    },
+    {
+      "id": "97a14c6d-bbfb-42aa-b8e3-b168a83c0510",
+      "name": "PVC SHEATED CABLE 2.5SQ 3CORE FLAT BLUE",
+      "unit": "MTR",
+      "min_stock_level": 0,
+      "material_code": "1DLW2.5SQMM3COREBU",
+      "is_active": true
+    },
+    {
+      "id": "1deb9230-4001-43ee-8762-37af36d3eb87",
+      "name": "PVC SHEATED CABLE 4.0 SQ. MM 3 CORE FLAT",
+      "unit": "MTR",
+      "min_stock_level": 0,
+      "material_code": "1DLW-4.0SQMM3CORE",
+      "is_active": true
+    },
+    {
+      "id": "296169ea-0e14-451c-a4ab-a9fb23bdba1f",
+      "name": "PVC SHEATED CABLE 4.0SQ 3CORE FLAT BLUE",
+      "unit": "MTR",
+      "min_stock_level": 0,
+      "material_code": "1DLW4.0SQMM3COREBU",
+      "is_active": true
+    },
+    {
+      "id": "0e960e71-70b3-4b98-9ac3-57ea27728575",
+      "name": "ROCKER 4' WF MOTOR",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DMAPOTR-ROC4WF",
+      "is_active": true
+    },
+    {
+      "id": "da7f0b74-2e12-4b95-92a9-0ee6baa6e011",
+      "name": "ROCKER 6\"SUB MOTOR 3 TO 30 HP (DK)",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DMAPOTR-6INCHWF",
+      "is_active": true
+    },
+    {
+      "id": "87fbaf6a-4aa6-4a84-a4a6-2f594490e3b2",
+      "name": "ROTOR SHAFT KS4 0.50HP 100L ALU 24SL 1P",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "2GRT-KS4-0.50ECO",
+      "is_active": true
+    },
+    {
+      "id": "1270a669-030d-438f-b722-9b1b345d055b",
+      "name": "ROTOR SHAFT KS4 1.00HP 160L ALU 24SL",
+      "unit": "PC",
+      "min_stock_level": 5,
+      "material_code": "2GRT-KS4-1.0ECO",
+      "is_active": true
+    },
+    {
+      "id": "a3d60a20-42c9-4537-a590-1a3337c7ea81",
+      "name": "ROTOR SHAFT KS4 2.00HP 225L ALU 24SL",
+      "unit": "PC",
+      "min_stock_level": 2,
+      "material_code": "2GRT-KS4-2.0ECO",
+      "is_active": true
+    },
+    {
+      "id": "8639ffae-fd9d-4a02-be5e-9821eb629303",
+      "name": "ROTOR SHAFT KS4 6.00HP 410L 24SL 1PH",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "2GRT-KS4-L410N",
+      "is_active": true
+    },
+    {
+      "id": "9dd40748-e068-4e47-a4ed-6cc25bd07d87",
+      "name": "ROTOR SHAFT KS4 7.50HP 480 24SL",
+      "unit": "PC",
+      "min_stock_level": 2,
+      "material_code": "2GRT-KS4-L480N",
+      "is_active": true
+    },
+    {
+      "id": "0a22845f-0b4d-4c26-beb2-c97c0a31fcb4",
+      "name": "ROTOR SHAFT KS4 NE 4.00HP 300L 24SL 1PH",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "2GRT-KS4NEMA-L410N",
+      "is_active": true
+    },
+    {
+      "id": "cea7a498-4a3e-4855-b166-d0b8fcc06c2a",
+      "name": "ROTOR SHAFT KS4 NE 5.00HP 350L 24SL",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "2GRT-KS4NEMA-L350N",
+      "is_active": true
+    },
+    {
+      "id": "e4efe865-4cc3-4e20-93dc-c64ac70d35da",
+      "name": "ROTOR SHAFT KS4 NE 7.5HP 480L 24SL 1PH",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "2GRT-KS4NEMA-L480N",
+      "is_active": true
+    },
+    {
+      "id": "6784ed0c-690a-4fa4-9e64-b1cda89bf523",
+      "name": "RUST PREVENTIVE OIL",
+      "unit": "L",
+      "min_stock_level": 1,
+      "material_code": "4DPROL-RUSTSEAL66G",
+      "is_active": true
+    },
+    {
+      "id": "2c5044e4-bad7-4ac0-bb57-d191951bb30a",
+      "name": "Sand Guard 4\" WF Motor",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DMAPSNGURD-4WF",
+      "is_active": true
+    },
+    {
+      "id": "1511c525-6696-4493-a383-6191730a437a",
+      "name": "Sand Guard Fixed For 4\" WF Motor",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DMAPSNGURD-4WFF",
+      "is_active": true
+    },
+    {
+      "id": "af76ef67-62ac-49c0-9fde-edf415141aad",
+      "name": "SAND GUARD MATALIC 6 INCH T-TYPE MOTOR",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DMAPSNGURD-M6WF",
+      "is_active": true
+    },
+    {
+      "id": "bc96894a-8568-4b36-bae8-c015900c91f2",
+      "name": "SAND SEAL COVER",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DMAPSNGURD-4CVR",
+      "is_active": true
+    },
+    {
+      "id": "c6a16264-18e1-4d58-800e-6182cc5bb0a5",
+      "name": "SCREW CHEASE HEAD M5x0.8x08 mm L F.T.SS",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DHWSRW-M5X0.8X08",
+      "is_active": true
+    },
+    {
+      "id": "8eb8f7ca-97d8-43af-bfbe-b04343bd3574",
+      "name": "Slot Head Screw (M5X10)",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DHWSRW-M5X10",
+      "is_active": true
+    },
+    {
+      "id": "ac125803-d6ec-4285-87fc-cc6097a2fd78",
+      "name": "SOCKET HEAD CAP SCREW (M6X30)",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DHWSRW-M6X30SHC",
+      "is_active": true
+    },
+    {
+      "id": "514d8e30-48eb-46cf-9d72-ddbcb6d033ce",
+      "name": "STATOR END RING KS6 6\"WF",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1D-ST-ENDRING-KS6",
+      "is_active": true
+    },
+    {
+      "id": "85b8e25b-f01f-4f5c-8829-e9530866e577",
+      "name": "STATOR HOUSING NEOI (KP4) 0.5HP L315",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DHOUSINGNEOI0.5HP",
+      "is_active": true
+    },
+    {
+      "id": "f557a1fd-a777-46f6-b85b-9fc67372dce1",
+      "name": "STATOR HOUSING NEOI (KP4) 1.0HP L335",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DHOUSINGNEOI1.0HP",
+      "is_active": true
+    },
+    {
+      "id": "d24a4b99-6fd2-4430-b4b7-3c0fed5b0ce2",
+      "name": "STATOR HOUSING NEOI (KP4) 1.5HP L385",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DHOUSINGNEOI1.5HP",
+      "is_active": true
+    },
+    {
+      "id": "299d98e3-f183-4f57-af39-59f6c793314d",
+      "name": "STATOR HOUSING NEOI (KP4) 2.0HP L410",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DHOUSINGNEOI2.0HP",
+      "is_active": true
+    },
+    {
+      "id": "86f51106-5eeb-4838-a078-6ceee4ec8b31",
+      "name": "STATOR KS4 5.0HP-3PH CL350 SS ENDRING",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "2WST-KS4-3PH-5HPSS",
+      "is_active": true
+    },
+    {
+      "id": "8688004a-aed6-4486-8a05-ac29dd7c749e",
+      "name": "STATOR KS4-18 SLOT CL470-7.5HP 3PH",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "2WST-KS4-3PH-7.5",
+      "is_active": true
+    },
+    {
+      "id": "9173b75c-384d-4f11-81b0-31519db01b61",
+      "name": "STATOR KS6 CL110 2.0HP",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "2WST-KS6-3PH-2HP",
+      "is_active": true
+    },
+    {
+      "id": "2faa516c-92ea-44ef-b763-75d90c4877ab",
+      "name": "STATOR LAMINATON KS4 24SLOT 92.5X50X30",
+      "unit": "KG",
+      "min_stock_level": 0,
+      "material_code": "2LSL-24KS4",
+      "is_active": true
+    },
+    {
+      "id": "f4ff992a-38c9-4582-b9b3-a0c6669a325c",
+      "name": "STATOR STACK-KP4-CL140",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "2STK-KP4-L140",
+      "is_active": true
+    },
+    {
+      "id": "88a07677-3675-4b3b-b5e0-92b56e3db987",
+      "name": "STATOR STACK-KP4-CL165",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "2STK-KP4-L165",
+      "is_active": true
+    },
+    {
+      "id": "23608219-3b36-4f8c-b981-e175e7d831f6",
+      "name": "STATOR STACK-KP4-CL70",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "2STK-KP4-L70",
+      "is_active": true
+    },
+    {
+      "id": "674046e4-1f5c-4d20-82e4-c61abed63c2f",
+      "name": "STATOR STACK-KP4-CL90",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "2STK-KP4-L90",
+      "is_active": true
+    },
+    {
+      "id": "efe0a9e3-8b7a-4608-a517-39cd0da92f19",
+      "name": "STATOR STACK-V6-CL110",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "2STK-V6-L110",
+      "is_active": true
+    },
+    {
+      "id": "588b9d32-03bb-4276-92cf-c33053c613e4",
+      "name": "STATOR STACK-V6-CL120",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "2STK-V6-L120",
+      "is_active": true
+    },
+    {
+      "id": "df6fe16f-dae8-4b1a-b538-1afde8a6d11b",
+      "name": "STATOR STACK-V6-CL135",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "2STK-V6-L135",
+      "is_active": true
+    },
+    {
+      "id": "a9bab334-dd60-494b-9fd3-8064cfb80b43",
+      "name": "STATOR STACK-V6-CL190",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "2STK-V6-L190",
+      "is_active": true
+    },
+    {
+      "id": "f1eb5e81-8d84-4a2e-925c-9facffa3b277",
+      "name": "STATOR STACK-V6-CL230",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "2STK-V6-L230",
+      "is_active": true
+    },
+    {
+      "id": "fae317e2-5726-4573-83f8-886039dba3a8",
+      "name": "STATOR STACK-V6-CL280",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "2STK-V6-L280",
+      "is_active": true
+    },
+    {
+      "id": "f1d82160-a0d9-4184-9f1c-96ab8fd719ab",
+      "name": "STUD(SS) M6x 1.0x85 MM (6 & 25 MM THRDS)",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DHWSTUD-M6X1.0X85",
+      "is_active": true
+    },
+    {
+      "id": "2b16ee7c-6c8d-457a-ac7d-8e787280687c",
+      "name": "STUD(SS)M12x1.75x45mm(15 & 22 mm THRDS)",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DSTUD-M12X1.75X45",
+      "is_active": true
+    },
+    {
+      "id": "7181fbde-672b-449e-9198-98297c2f8c37",
+      "name": "THINNER AQUASOLVE",
+      "unit": "KG",
+      "min_stock_level": 0,
+      "material_code": "4DPROL-THINNERAQUA",
+      "is_active": true
+    },
+    {
+      "id": "f069b889-c0f8-496c-b999-efa19532bde1",
+      "name": "TIE-ROD (M8X1.25X38MM-SS304)",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DTROD-M8X1.25X38",
+      "is_active": true
+    },
+    {
+      "id": "b1d1a71c-056b-4499-ac7e-0105470ddc36",
+      "name": "WASHER - M6",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "1DHWWSR-M6",
+      "is_active": true
+    },
+    {
+      "id": "905a2151-69ca-49bd-9d76-746f98bbc823",
+      "name": "WND STR TUBE-KS4\"WF-CL100 0.5HP AN/BN",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "2WST-KS4-1PH-0.5HP",
+      "is_active": true
+    },
+    {
+      "id": "9d50021a-be6b-4057-b6b3-85f0168d984a",
+      "name": "WND STR TUBE-KS4\"WF-CL160 1HP AN/BN",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "2WST-KS4-1PH-1HP",
+      "is_active": true
+    },
+    {
+      "id": "64621424-babf-4f39-9ef5-370f68a3bcce",
+      "name": "WND STR TUBE-KS4\"WF-CL225 2HP AN/BN",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "2WST-KS4-1PH-2HP",
+      "is_active": true
+    },
+    {
+      "id": "93867433-877c-4fff-8390-16c8441aaa3e",
+      "name": "WOUND STA 6'' T BOLT 3P 12.5HP LV",
+      "unit": "PC",
+      "min_stock_level": 1,
+      "material_code": "2WST-KS6-12.5HPLV",
+      "is_active": true
+    },
+    {
+      "id": "3c25c7ad-ddeb-4e8a-af5a-c21ae0d42689",
+      "name": "WOUND STATOR 6HP410",
+      "unit": "PC",
+      "min_stock_level": 2,
+      "material_code": "2WST-KS4-3P-6HP410",
+      "is_active": true
+    },
+    {
+      "id": "9cd21c0c-85b1-4c9f-a68f-694ca7e7929b",
+      "name": "WOUND STATOR KS4-3PH 3.0HP CL300 24SL",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "2WST-KS4-3PH-3HP",
+      "is_active": true
+    },
+    {
+      "id": "507a9064-6489-40f8-9cb8-de26ebdaea7e",
+      "name": "WOUND STATOR KS4-CL350-3PH 5HP",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "2WST-KS4-3PH-5HP",
+      "is_active": true
+    },
+    {
+      "id": "521857b1-cd38-451c-9637-8d22473b930d",
+      "name": "WOUND STATOR KS6 6.0HP LV CL210",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "2WST-KS6-3PH-6HPLV",
+      "is_active": true
+    },
+    {
+      "id": "a696518b-865d-418a-82b4-a541741b8a16",
+      "name": "WOUND STATOR NEOI(KP4) 0.5HP CL70",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "2WST-NEOI-0.5HP",
+      "is_active": true
+    },
+    {
+      "id": "9e45dc56-c256-4f2c-b0f6-95e28bd86475",
+      "name": "WOUND STATOR NEOI(KP4) 1.0HP CL90",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "2WST-NEOI-1.0HP",
+      "is_active": true
+    },
+    {
+      "id": "8ac0a4d3-54b5-46c7-b83a-f34cb0cd9587",
+      "name": "WOUND STATOR NEOI(KP4) 1.5HP CL140",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "2WST-NEOI-1.5HP",
+      "is_active": true
+    },
+    {
+      "id": "02b55715-2d8f-4429-b6f1-418cf3b3afa2",
+      "name": "WOUND STATOR NEOI(KP4) 2.0HP CL165",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "2WST-NEOI-2.0HP",
+      "is_active": true
+    },
+    {
+      "id": "6a6b2144-d006-4b5f-879a-523c2b602f6d",
+      "name": "WOUND STATOR-KS4-4\"WF 92.50-CL300 3HP",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "2WST-KS4-1PH-3HP",
+      "is_active": true
+    },
+    {
+      "id": "cc5b5249-6cc4-4fba-8bd8-3305640591b4",
+      "name": "WOUND STATOR-KS6-6\"WF-CL120 3HP",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "2WST-KS6-3PH-3HP",
+      "is_active": true
+    },
+    {
+      "id": "c8a60c4e-9758-4ae9-82bf-0ef129b878b0",
+      "name": "WOUND STATOR-KS6-6\"WF-CL135 4HP",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "2WST-KS6-3PH-4HP",
+      "is_active": true
+    },
+    {
+      "id": "ebccda01-353a-4593-aefc-6f41df8c5464",
+      "name": "WOUND STATOR-KS6-6\"WF-CL160 5HP",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "2WST-KS6-3PH-5HP",
+      "is_active": true
+    },
+    {
+      "id": "7abfbc1b-ea65-467a-bc58-94085b048bc9",
+      "name": "WOUND STATOR-KS6-6\"WF-CL190 6HP",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "2WST-KS6-3PH-6HP",
+      "is_active": true
+    },
+    {
+      "id": "ea2b74b4-d16d-4d4d-a151-8948affe768d",
+      "name": "WOUND STATOR-KS6-6\"WF-CL230 7.5HP",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "2WST-KS6-3PH-7.5HP",
+      "is_active": true
+    },
+    {
+      "id": "143e5ba2-f8e7-446e-a947-0c5e994ae896",
+      "name": "WOUND STATOR-KS6-6\"WF-CL280 10HP",
+      "unit": "PCS",
+      "min_stock_level": 0,
+      "material_code": "2WST-KS6-3PH-10HP",
+      "is_active": true
+    }
+  ],
+  "dispatchCounts": {
+    "confirmed": 119,
+    "cancelled": 4
+  }
+}

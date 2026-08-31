@@ -73,6 +73,28 @@
 /* Right controls */
 .nx-right{display:flex;align-items:center;gap:8px;flex-shrink:0;margin-left:auto}
 
+/* Notification bell */
+.nx-notif{position:relative;flex-shrink:0}
+.nx-notif-bell{position:relative;display:flex;align-items:center;justify-content:center;width:34px;height:34px;background:transparent;border:1px solid var(--border2);border-radius:var(--radius-sm);cursor:pointer;font-size:15px;transition:all .15s;color:var(--mid)}
+.nx-notif-bell:hover{border-color:rgba(255,92,26,0.4);color:var(--text)}
+.nx-notif-badge{position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;padding:0 4px;background:var(--orange);color:#fff;border-radius:8px;font-family:var(--condensed);font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;line-height:1;border:2px solid rgba(12,14,20,0.97)}
+.nx-notif-panel{position:absolute;top:calc(100% + 8px);right:0;width:340px;max-height:420px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 12px 32px rgba(0,0,0,0.4);overflow:hidden;display:flex;flex-direction:column;z-index:401}
+.nx-notif-panel-header{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--border);flex-shrink:0}
+.nx-notif-panel-title{font-family:var(--condensed);font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:0.6px;color:var(--text)}
+.nx-notif-markall{font-family:var(--condensed);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--orange);background:none;border:none;cursor:pointer;padding:0}
+.nx-notif-markall:hover{text-decoration:underline}
+.nx-notif-list{overflow-y:auto;flex:1;-webkit-overflow-scrolling:touch}
+.nx-notif-item{display:flex;gap:10px;padding:11px 14px;border-bottom:1px solid var(--border)}
+.nx-notif-item:last-child{border-bottom:none}
+.nx-notif-item.unread{background:rgba(255,92,26,0.06)}
+.nx-notif-icon{flex-shrink:0;font-size:15px;line-height:1.3}
+.nx-notif-body{min-width:0;flex:1}
+.nx-notif-title{font-size:12px;font-weight:700;color:var(--text);margin-bottom:2px}
+.nx-notif-text{font-size:11.5px;color:var(--mid);line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nx-notif-time{font-size:10px;color:var(--mid);margin-top:3px;opacity:0.7}
+.nx-notif-unread-dot{flex-shrink:0;width:6px;height:6px;border-radius:50%;background:var(--orange);margin-top:5px}
+.nx-notif-empty{padding:28px 14px;text-align:center;font-size:12px;color:var(--mid)}
+
 /* Language toggle */
 .nx-lang{font-family:var(--condensed);font-size:11px;font-weight:800;letter-spacing:0.8px;text-transform:uppercase;color:var(--mid);background:transparent;border:1px solid var(--border2);padding:5px 11px;border-radius:var(--radius-sm);cursor:pointer;transition:all .15s;white-space:nowrap}
 .nx-lang:hover{color:var(--orange);border-color:rgba(255,92,26,0.4)}
@@ -144,6 +166,7 @@ body{padding-top:56px}
   .nx-drawer-header{height:52px}
   body{padding-top:52px}
   .nx-logo{font-size:14px;letter-spacing:1px}
+  .nx-notif-panel{position:fixed;top:52px;left:8px;right:8px;width:auto;max-height:70vh}
 }
 </style>
 <nav id="nx-navbar">
@@ -154,6 +177,21 @@ body{padding-top:56px}
     <div class="nx-links">${linksHTML}</div>
     <div class="nx-right">
       <button id="nx-lang-btn" class="nx-lang" aria-label="Toggle language">मराठी</button>
+      <div class="nx-notif" id="nx-notif">
+        <button class="nx-notif-bell" id="nx-notif-bell" aria-label="Notifications">
+          🔔
+          <span class="nx-notif-badge" id="nx-notif-badge" style="display:none">0</span>
+        </button>
+        <div class="nx-notif-panel" id="nx-notif-panel" style="display:none">
+          <div class="nx-notif-panel-header">
+            <span class="nx-notif-panel-title">Notifications</span>
+            <button class="nx-notif-markall" id="nx-notif-markall">Mark all read</button>
+          </div>
+          <div class="nx-notif-list" id="nx-notif-list">
+            <div class="nx-notif-empty">No notifications yet.</div>
+          </div>
+        </div>
+      </div>
       <div class="nx-user-badge" id="nx-user-badge" style="display:none">
         <div class="nx-avatar" id="nx-avatar">--</div>
         <div class="nx-user-details">
@@ -313,6 +351,153 @@ body{padding-top:56px}
         });
     }
 
+    let notifTenantId = null;
+
+    function escapeHtmlNotif(str) {
+        const div = document.createElement('div');
+        div.textContent = str || '';
+        return div.innerHTML;
+    }
+
+    function notifIcon(type) {
+        if (type === 'low_stock') return '⚠️';
+        if (type === 'payment_overdue') return '💰';
+        return '🔔';
+    }
+
+    function timeAgo(iso) {
+        const diffMs = Date.now() - new Date(iso).getTime();
+        const mins = Math.floor(diffMs / 60000);
+        if (mins < 1) return 'just now';
+        if (mins < 60) return `${mins}m ago`;
+        const hrs = Math.floor(mins / 60);
+        if (hrs < 24) return `${hrs}h ago`;
+        const days = Math.floor(hrs / 24);
+        return `${days}d ago`;
+    }
+
+    function updateNotifBadge(count) {
+        const badge = document.getElementById('nx-notif-badge');
+        if (!badge) return;
+        if (count > 0) {
+            badge.textContent = count > 99 ? '99+' : String(count);
+            badge.style.display = 'flex';
+        } else {
+            badge.style.display = 'none';
+        }
+    }
+
+    async function fetchUnreadCount() {
+        if (!window.supabase || !notifTenantId) return;
+        const { count } = await window.supabase
+            .from('p2_notifications')
+            .select('id', { count: 'exact', head: true })
+            .eq('tenant_id', notifTenantId)
+            .is('read_at', null);
+        updateNotifBadge(count || 0);
+    }
+
+    async function loadNotifications() {
+        const list = document.getElementById('nx-notif-list');
+        if (!list || !window.supabase || !notifTenantId) return;
+
+        const { data, error } = await window.supabase
+            .from('p2_notifications')
+            .select('id, type, title, body, read_at, created_at')
+            .eq('tenant_id', notifTenantId)
+            .order('created_at', { ascending: false })
+            .limit(10);
+
+        if (error || !data || data.length === 0) {
+            list.innerHTML = '<div class="nx-notif-empty">No notifications yet.</div>';
+            return;
+        }
+
+        list.innerHTML = data.map(n => {
+            const truncated = n.body.length > 60 ? n.body.slice(0, 60) + '…' : n.body;
+            return `<div class="nx-notif-item${n.read_at ? '' : ' unread'}" data-id="${n.id}">
+                <span class="nx-notif-icon">${notifIcon(n.type)}</span>
+                <div class="nx-notif-body">
+                    <div class="nx-notif-title">${escapeHtmlNotif(n.title)}</div>
+                    <div class="nx-notif-text">${escapeHtmlNotif(truncated)}</div>
+                    <div class="nx-notif-time">${timeAgo(n.created_at)}</div>
+                </div>
+                ${n.read_at ? '' : '<span class="nx-notif-unread-dot"></span>'}
+            </div>`;
+        }).join('');
+
+        const visibleIds = data.filter(n => !n.read_at).map(n => n.id);
+        if (visibleIds.length > 0) {
+            await window.supabase
+                .from('p2_notifications')
+                .update({ read_at: new Date().toISOString() })
+                .in('id', visibleIds)
+                .is('read_at', null);
+            updateNotifBadge(0);
+            list.querySelectorAll('.nx-notif-item.unread').forEach(el => {
+                el.classList.remove('unread');
+                el.querySelector('.nx-notif-unread-dot')?.remove();
+            });
+        }
+    }
+
+    async function markAllNotifsRead() {
+        if (!window.supabase || !notifTenantId) return;
+        await window.supabase
+            .from('p2_notifications')
+            .update({ read_at: new Date().toISOString() })
+            .eq('tenant_id', notifTenantId)
+            .is('read_at', null);
+        updateNotifBadge(0);
+        document.querySelectorAll('.nx-notif-item.unread').forEach(el => {
+            el.classList.remove('unread');
+            el.querySelector('.nx-notif-unread-dot')?.remove();
+        });
+    }
+
+    function toggleNotifPanel(force) {
+        const panel = document.getElementById('nx-notif-panel');
+        if (!panel) return;
+        const shouldOpen = force !== undefined ? force : panel.style.display === 'none';
+        panel.style.display = shouldOpen ? 'flex' : 'none';
+        if (shouldOpen) loadNotifications();
+    }
+
+    async function initNotifications() {
+        if (!window.supabase) return;
+        const { data: { user } } = await window.supabase.auth.getUser();
+        if (!user) return;
+        notifTenantId = user.user_metadata?.tenant_id || user.id;
+
+        await fetchUnreadCount();
+
+        document.getElementById('nx-notif-bell')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleNotifPanel();
+        });
+
+        document.getElementById('nx-notif-markall')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            markAllNotifsRead();
+        });
+
+        document.addEventListener('click', (e) => {
+            const wrap = document.getElementById('nx-notif');
+            if (wrap && !wrap.contains(e.target)) toggleNotifPanel(false);
+        });
+
+        // Realtime — increments the badge live, never auto-opens the panel.
+        try {
+            window.supabase
+                .channel('notifications:' + notifTenantId)
+                .on('postgres_changes', {
+                    event: 'INSERT', schema: 'public', table: 'p2_notifications',
+                    filter: `tenant_id=eq.${notifTenantId}`
+                }, () => { fetchUnreadCount(); })
+                .subscribe();
+        } catch (_) {}
+    }
+
     async function initNavbar() {
         document.querySelectorAll('nav').forEach(el => el.remove());
         document.getElementById('nx-overlay')?.remove();
@@ -340,6 +525,7 @@ body{padding-top:56px}
         initLang();
         initBurger();
         await initUserInfo();
+        await initNotifications();
     }
 
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initNavbar);

@@ -49,6 +49,13 @@ Mobile-first: owners use phones. Must work on mobile browser.
   agent-query, not via agent_tier.
   is_job_worker boolean NOT NULL DEFAULT false — Step 2F onboarding switch.
   is_principal boolean NOT NULL DEFAULT false — Step 2F onboarding switch.
+  is_job_work_setup_seen boolean NOT NULL DEFAULT false — Step 2I. Generic
+  "⚙ Advanced settings" gate. True once the tenant has expanded the section.
+  Prevents standalone tenants from seeing job-work UI (Type A guarantee).
+  Also added: p2_clients gains is_job_work_principal boolean NOT NULL DEFAULT
+  false and linked_tenant_id uuid nullable (Step 2I principal groundwork).
+  owned_by on p2_stock_transactions and p2_dispatch_orders now has FK →
+  p2_clients(id) (added Step 2I, was unconstrained in 2B).
 - p2_raw_materials — raw material master (name, unit, min_stock_level, is_active, material_code,
   hsn_sac, gst_rate — both already existed, confirmed present here for reference)
 - p2_suppliers — supplier master (is_active — CSV-imported suppliers default to
@@ -68,16 +75,26 @@ Mobile-first: owners use phones. Must work on mobile browser.
   principal_tenant_id uuid nullable, FK → p2_tenants(id) — Step 2E.
   owned_by uuid nullable — whose material. NULL = mine.
   held_by uuid nullable — who physically holds it. NULL = me.
-  FK to p2_clients(id) to be added in 2I after principal groundwork lands.
+  FK → p2_clients(id) — added Step 2I.
 - p2_products — finished goods, has product_code (unique index per tenant), hsn_sac text
   (added Aug 7 — HSN/SAC, optional, for CA export)
 - p2_product_bom — recipe. Uses raw_material_id and qty_per_unit (not product_id-only or qty).
+- p2_wip_transactions — append-only WIP ledger (Step 2G). Columns: id, tenant_id,
+  product_id FK → p2_products(id), owned_by uuid nullable FK → p2_clients(id),
+  quantity (+ open, − close), reference_id (bom_issue dispatch_order_id),
+  transaction_date, notes, created_at. Balance = SUM — never stored directly.
+  v_p2_wip_balance is the view.
 - p2_dispatch_orders — each dispatch = one challan. Has RPCs: confirm_bom_issue,
   cancel_challan, add_missing_challan_item, get_next_grn_number.
   confirm_bom_issue (v2, Aug 7): server-side stock check aggregates required qty per
   material_id across all BOM lines (GROUP BY) before checking balance, using a FOR UPDATE
   subquery lock; raises INSUFFICIENT_STOCK: {material} — Need {x}, Available {y}.
   production-issue.html catches this and shows a clean toast.
+  confirm_bom_issue (v3, Aug 25 2026 — Step 2H): now accepts p_owned_by uuid DEFAULT
+  NULL. Sufficiency check uses IS NOT DISTINCT FROM p_owned_by (covers both NULL
+  own-stock and non-null principal pool in one expression). Consumption rows and
+  dispatch header both write owned_by = p_owned_by. Pool label in INSUFFICIENT_STOCK
+  message resolved via scoped p2_clients lookup.
   dispatch_type values: bom_issue, raw_material, product.
   status values: draft, confirmed, cancelled — NO 'pending'.
   challan_number column (NOT challan_no). NO notes column — use challan_note if needed.
@@ -88,9 +105,17 @@ Mobile-first: owners use phones. Must work on mobile browser.
   s143_clock_start timestamptz nullable — set on job_work_issue and capital_goods_issue
   only — Step 2E.
   s143_clock_deadline timestamptz nullable — clock_start +1yr (inputs) / +3yr (capital
-  goods) / NULL (exempt tooling — needs future is_exempt_tooling flag) — Step 2E.
+  goods) / NULL (exempt tooling, via is_exempt_tooling flag added Step 2K — no UI yet)
+  — Step 2E.
+  s143_extension_until timestamptz nullable — Commissioner extension field,
+  write-only stub (Step 2K).
+  is_exempt_tooling boolean NOT NULL DEFAULT false — exempt tooling flag, nulls
+  the deadline (Step 2K). No UI yet.
+  trg_s143_clock_population trigger: sets s143_clock_start and s143_clock_deadline
+  on confirm transition for job_work_issue (+1yr) and capital_goods_issue (+3yr)
+  only.
   owned_by uuid nullable — whose material this dispatch moves. NULL = own material.
-  FK to p2_clients(id) to be added in 2I after principal groundwork lands.
+  FK → p2_clients(id) — added Step 2I.
 - p2_dispatch_items — line items in a dispatch. Columns: id, tenant_id, dispatch_order_id,
   material_name, material_code, qty_dispatched, unit, raw_material_id, product_id, notes, created_at.
   IMPORTANT: product dispatches have NULL material_name at DB level — product name must be
@@ -126,6 +151,29 @@ Mobile-first: owners use phones. Must work on mobile browser.
   values (consolidated rows) are exempt since Postgres doesn't enforce uniqueness across NULLs.
   get_next_invoice_number(tenant_id) RPC — same row-locked-counter shape as get_next_grn_number,
   format INV-YYYYMM-NNN.
+- p2_payment_receipts — payment ledger against p2_invoices (Step 3, Aug 28 2026). Columns: id,
+  tenant_id, invoice_id (FK → p2_invoices), payment_date, gross_amount, tds_amount,
+  other_deductions, net_amount (GENERATED ALWAYS AS gross_amount - tds_amount -
+  other_deductions, STORED — never include in INSERT payloads), payment_mode
+  (neft/rtgs/cheque/upi/cash/adjustment), reference_no, notes, created_at. RLS: tenant_own
+  (tenant_id = auth.uid()), same as p2_invoices. Obligations (the invoice) stay separate from
+  receipts (each actual money movement) — payment status is derived by summing receipts, never
+  stored on the invoice itself. v_p2_invoice_payment_status is the view (paid/partial/overdue/
+  pending/not_applicable, 45-day hardcoded overdue threshold) — read server-side only
+  (check-low-stock); never queried from the browser.
+- p2_notifications — durable per-event notification record (Step 4, Aug 31 2026). Columns: id,
+  tenant_id, type CHECK IN ('challan_dispatched','payment_overdue','low_stock'), title, body,
+  metadata jsonb DEFAULT '{}', status CHECK IN ('queued','sent','failed') DEFAULT 'queued',
+  error_reason, read_at, created_at. RLS: three command-scoped policies (SELECT/INSERT/UPDATE,
+  no DELETE) on tenant_id = get_my_tenant_id() — deliberately NOT auth.uid() (that pattern is
+  the known-broken one live on p2_payment_receipts, silently failing for non-owner staff).
+  No auto-stamp trigger — tenant_id is always passed explicitly by the inserting caller
+  (js/notifications.js client-side, or check-low-stock server-side), since a trigger deriving
+  from get_my_tenant_id() would clobber a service-role insert's explicit tenant_id with NULL
+  (no auth.uid() in that context). Indexes: (tenant_id, created_at DESC) and (tenant_id,
+  read_at) WHERE read_at IS NULL (unread badge count). Realtime enabled via ALTER PUBLICATION
+  supabase_realtime ADD TABLE p2_notifications — required for the navbar bell's live badge
+  update. See "Shipped Aug 31, 2026" below for the full notify/telegram-webhook/bell pipeline.
 
 ## Key Business Rules
 - Stock balance = SUM of all p2_stock_transactions for that material — never store
@@ -156,6 +204,11 @@ Mobile-first: owners use phones. Must work on mobile browser.
   from KPML SAP PO rates — THESE ARE WRONG for invoicing. Correct job work charge
   rates needed from client before any invoice is generated.
   NEVER test writes against this tenant.
+  Pro conversion agreed: ₹1,35,000 upfront (Standard Pro Year 1 — ₹35K setup +
+  ₹1,00,000/yr), payment expected 10 Sep 2026. Guarantee: no cost increase for
+  3 years after Year 1; all new features included at no extra cost. plan stays
+  'founder' in DB until payment is confirmed — do NOT change plan value before
+  payment is received. See Pricing section below for full agreement detail.
 
 - Shivprasad Industries: tenant_id 6fe0680a-c53d-4e4f-b851-308ca905bb3c,
   plan = 'founder', onboarded Aug 19 2026. Type B job worker for KPML under s.143.
@@ -183,7 +236,7 @@ Mobile-first: owners use phones. Must work on mobile browser.
 
 ## Pricing (August 2026)
 
-Founder plan (clients 1-5 only):
+### Founder plan (clients 1–5 only)
 - Year 1: ₹20,000 setup + ₹44,000/yr = ₹64,000 total
 - Payment: ₹20K day 1 · ₹15K day 30 · ₹15K day 60 · ₹14K day 90 · 9 months free
 - Monthly option: ₹20K setup + ₹6,500/month, 3-month minimum
@@ -191,28 +244,77 @@ Founder plan (clients 1-5 only):
 - Rate locked 2 years. After 2 years → standard Pro pricing.
 - Agreement: Nexflow_Founder_Agreement_v5.1.docx
 
-Standard Lite (client 6+):
+### Standard Lite (client 6+)
 - Year 1: ₹20,000 setup + ₹56,000/yr = ₹76,000 total
 - Payment: ₹20K day 1 · ₹20K day 30 · ₹16K day 90 · 9 months free
 - Monthly option: ₹20K setup + ₹6,500/month, 3-month minimum
-- Features: GRN, dispatch, challan, invoice generation, CA export, 250 material limit, single user
-- No agent access
+- Features: GRN, dispatch, challan, invoice generation, CA export,
+  250 material limit, single user, no agent
 - Agreement: Nexflow_Standard_Agreement_v1.2.docx
 
-Standard Pro (client 6+):
+### Standard Pro (client 6+)
 - Year 1: ₹35,000 setup + ₹1,00,000/yr = ₹1,35,000 total
 - Payment: ₹35K day 1 · ₹35K day 30 · ₹35K day 60 · ₹30K day 90 · 9 months free
 - Monthly option: ₹35K setup + ₹11,500/month, 3-month minimum
-- Features: everything in Lite + AI Copilot 50/day, multi-user, unlimited materials,
-  owner visibility, QR scanner
+- Features: everything in Lite + AI Copilot 50/day, multi-user,
+  unlimited materials, owner visibility, QR scanner
 - Agreement: Nexflow_Standard_Agreement_v1.2.docx
 
-Demo account (5f021c96-2ed4-41f8-9fbc-7db517fc840b):
-- plan = 'pro', agent_enabled = false
-- Landing page demo — do not change plan or enable agent
+### Principal account — KPML model (client 6+, network principals only)
+- Setup: ₹1,25,000 – ₹1,50,000 (item-code mapping, vendor master,
+  opening balances per vendor, agreement records)
+- Platform fee: ₹2,50,000 – ₹3,00,000/year (dashboards, s.143 exposure,
+  ITC-04 working paper, 43B(h) report, reconciliation, dispute register)
+- Vendor overage: ₹5,000 – ₹7,000/vendor/year for every vendor
+  beyond 20 shown in the principal account
+- Pilot offer: 5 vendors, 90 days, ₹75,000 — fully credited against
+  annual fee if they proceed. Deliverable via one-sided mode
+  (no vendor onboarding required)
+- Pricing anchor: one 43B(h) disallowance on ₹40L unpaid vendor bills
+  ≈ ₹12L extra tax. One s.143 breach on a ₹10L challan ≈ ₹1.8L GST
+  plus 18% interest from dispatch date. One month of manual
+  reconciliation across three departments exceeds the monthly fee.
+- Price on active principal-side links, never on a tenant-level flag —
+  roles are per-relationship, not per-tenant
+
+### Vendor network revenue model (how KPML multiplies revenue)
+- Each KPML vendor is a separate Nexflow tenant paying their own
+  Standard Pro subscription (₹1,00,000/year)
+- Pro is mandatory for all KPML vendors — 250-material Lite cap is
+  hit immediately by any serious job worker
+- KPML mandates adoption; Nexflow does not need to sell to each vendor
+  individually — KPML is the distribution channel
+- Vendor value proposition independent of KPML: own stock tracking,
+  own GST exports, own CA reports, own invoices, own 43B(h) receivable
+  position — vendors pay because the software is valuable to them,
+  not only because KPML requires it
+- Revenue ceiling at 70+ vendors: ₹70L+/year in vendor subscriptions
+  alone, plus ₹2.5–3L principal platform fee, plus vendor overages
+- Compounding growth: as Nexflow makes KPML's reconciliation cleaner,
+  KPML can manage more vendors with the same headcount — each new
+  vendor is automatically a warm Nexflow prospect introduced by KPML
 
 ### SS Engineering (client 1)
 - Full Pro + agent — free, permanently. Never changes.
+
+### Datta Prasad Enterprises (client 2)
+- Agreed: Standard Pro — ₹1,35,000 upfront
+  (₹35K setup + ₹1,00,000 Year 1)
+- Payment expected: 10 September 2026
+- Guarantee: no price increase for 3 years
+  after Year 1; all new features at no
+  extra cost (non-Founder agreement variant)
+- plan in DB: stays 'founder' until payment
+  received, then update to 'pro'
+- agent_tier: stays 'standard' (30/day —
+  same as founder tier, no change needed)
+- Agreement: Nexflow_Standard_Agreement_v1.2.docx
+  (with 3-year price lock addendum —
+  draft before 10 Sep)
+
+### Demo account (5f021c96-2ed4-41f8-9fbc-7db517fc840b)
+- plan = 'pro', agent_enabled = false
+- Landing page demo — do not change plan or enable agent
 
 ## Plan gating (August 2026)
 
@@ -482,9 +584,24 @@ bom_detail, top_supplier
 - Daily briefing (check-low-stock): 8am IST via pg_net cron (jobid 2, 30 2 * * *)
   Sections: low stock, yesterday's GRNs (grouped by material), draft dispatches >2 days,
   no GRN in 3 days. Sends nothing if all clear. All bullets use • not -.
-- Instant alert (check-low-stock-instant): fires after production issue, dispatch confirm,
-  RM dispatch. Wired into production-issue.html, dispatch.html, rm-dispatch.html.
-  Fire-and-forget, never blocks UI.
+- Instant alert (check-low-stock-instant): STILL LIVE — called by agent-query (lines 748,
+  922, 1040) after confirm_grn / confirm_production_issue / confirm_rm_dispatch. The three
+  HTML dispatch pages (dispatch.html, production-issue.html, rm-dispatch.html) were migrated
+  to p2_notifications in Step 4. check-low-stock-instant retirement is blocked until agent
+  write intents are redesigned (deferred — see agent redesign note). Do not delete this
+  function or assume it is dead.
+- p2_notifications fan-out (Step 4, Aug 31 2026): single insert-then-fan-out pipeline —
+  js/notifications.js's sendNotification() inserts a queued p2_notifications row, then
+  fire-and-forget POSTs {notification_id} to the notify Edge Function, which delivers to
+  Telegram (respecting quiet_hours_start/end) and flips status to sent/failed. Covers
+  challan_dispatched (dispatch.html, production-issue.html, rm-dispatch.html — replacing
+  check-low-stock-instant on those three pages only, see above) and low_stock
+  (checkAndNotifyLowStock() helper) client-side; payment_overdue server-side via
+  check-low-stock's payment_overdue_notify mode (jobid 8, daily 9am IST, dedup'd per
+  invoice per 24h — distinct from and additive to the older payment_overdue_digest mode/
+  message). In-app delivery: navbar bell (js/navbar.js) with unread badge + Realtime live
+  update. Chat binding: telegram-webhook Edge Function handles /start <telegram_bind_token>
+  deep links from settings.html's Connect Telegram flow. Full detail: "Shipped Aug 31, 2026".
 
 ### Usage logging
 - Table: p2_agent_logs (tenant_id, message, intent, extracted jsonb, match_status,
@@ -566,6 +683,8 @@ deliberate simplification for that reason.
   pre-fill: p2_product_prices for product dispatch, p2_material_prices for raw_material/
   bom_issue, both "latest by effective_date" — blank (not zero) if no price row, since a human
   is reviewing this one before it goes out.
+  (Correction Aug 25 2026: button was only ever in all-dispatch-history.html Detail modal —
+  never shipped on the three dispatch pages.)
 - **Agent side**: see "send_invoice — critical implementation notes" and
   "confirm_generate_invoice" above for the full write-path breakdown (two invoice modes,
   zero-fallback rates in the agent flow only, cross-mode double-billing guard, duplicate/resend
@@ -1055,6 +1174,220 @@ receive.html + supabase/functions/receive-dispatch:**
 - Added via ALTER TABLE in SQL editor (no migration file — added directly)
 - Required for 43B(h) report (Step 3)
 
+### Step 2G — WIP State
+- New table p2_wip_transactions (append-only ledger, tenant_id, product_id, owned_by
+  FK → p2_clients, quantity, reference_id, transaction_date, notes, created_at). RLS
+  via get_my_tenant_id().
+- New view v_p2_wip_balance: SUM(quantity) GROUP BY tenant_id, product_id, owned_by,
+  HAVING <> 0 (fully-closed batches drop out).
+- p2_dispatch_orders gains product_id uuid nullable FK → p2_products(id).
+- confirm_bom_issue v4: adds p_product_id uuid DEFAULT NULL. Inserts WIP row when
+  non-null. Stale 9-param overload from pre-2H dropped via DROP FUNCTION.
+- New close_wip RPC: row-locks WIP balance, raises WIP_EXCEEDS_BALANCE if over-close
+  attempted, inserts negative row.
+- production-issue.html: WIP panel (product/pool/qty/close action), close modal,
+  role-gated (owner/supervisor). p_product_id threaded through submitIssue().
+- agent-query: p_product_id threaded through confirmProductionIssue().
+- Out of scope: CA/Tally/GSTR exports, auto-close from dispatch, scrap attribution,
+  agent WIP intent.
+
+### Step 2J — Purpose selector on dispatch
+- New file js/movement-purpose.js — single source of truth for 10 movement purpose
+  values with ownershipChanges/custodyChanges flags. kpml-network-plan.md §8.2 rule 3.
+- dispatch.html — Purpose selector in Client Information card, visible only when
+  isJobWorker() or isPrincipal() = true. Writes movement_purpose to p2_dispatch_orders
+  at insert time.
+- rm-dispatch.html — same. Both saveDraft() and confirmDispatch() orderData objects
+  updated (dual-payload fix).
+- all-dispatch-history.html — Generate Invoice disabled (not hidden) when
+  movement_purpose != 'sale'. Visible reason text shown. Correction: button was only
+  ever in all-dispatch-history.html, not on dispatch.html/rm-dispatch.html as
+  CLAUDE.md previously stated.
+- SS Engineering: selector hidden, 'sale' always written at insert.
+
+### Step 2K — s.143 Clock Population
+- ADD COLUMN s143_extension_until timestamptz NULL to p2_dispatch_orders
+  (write-only stub — no UI yet).
+- ADD COLUMN is_exempt_tooling boolean NOT NULL DEFAULT false to
+  p2_dispatch_orders (stub — no UI yet; when true, s143_clock_deadline is
+  NULL regardless of purpose).
+- New trigger trg_s143_clock_population (BEFORE INSERT OR UPDATE, FOR EACH
+  ROW) via set_s143_clock() function. Fires only on transition into
+  status = 'confirmed'. Sets s143_clock_start = COALESCE(dispatch_date, now())
+  and s143_clock_deadline = clock_start + 1yr (job_work_issue) or + 3yrs
+  (capital_goods_issue), NULL if is_exempt_tooling. All other purposes
+  including rework_return leave clock columns untouched.
+- No display surface in this step — data written, nothing shown yet.
+- Known gap: capital_goods_issue always gets +3yr deadline until
+  is_exempt_tooling gets a UI — false alarms on exempt tooling are harmless
+  until a breach-detection surface reads these columns.
+
+## Shipped Aug 26, 2026
+
+### Step 2M — Pool-aware product dispatch
+- confirm_dispatch_transaction RPC: added p_owned_by uuid DEFAULT NULL
+  (5th param). Sufficiency check now uses IS NOT DISTINCT FROM p_owned_by.
+  Consumption rows and dispatch header both write owned_by = p_owned_by.
+  Pool label in INSUFFICIENT_STOCK message resolved via scoped p2_clients
+  lookup. Stale 4-arg overload dropped via DROP FUNCTION before recreating
+  (same overload hazard fix as Step 2G). GRANT EXECUTE restated after DROP.
+  TODO: INSUFFICIENT_STOCK message shows mat_id not mat_name — fix when
+  dispatch consumption JSON carries material_name.
+- agent-query: confirmProductDispatch() now auto-derives pool via
+  getJobWorkPrincipals() (reusing Step 2H helper), threads p_owned_by
+  into RPC, re-validates owned_by at write time. Parse phase uses
+  pool-aware stockMap when ownedBy != null. principal_name extraction
+  added to create_product_dispatch Haiku block.
+- js/agent-chat.js bug fixed: addDispatchConfirmCard and
+  addProductionIssueConfirmCard were not forwarding owned_by from
+  confirm_data to the confirm POST body. Both now include
+  owned_by: confirmData.owned_by. This was silently breaking pool
+  attribution for agent-driven production issues since Step 2H.
+- dispatch.html / rm-dispatch.html UI changes deferred to Step 5.
+- confirmRmDispatch() in agent-query does not pass p_owned_by —
+  intentionally deferred to Step 5 alongside rm-dispatch.html UI.
+
+## Shipped Aug 28, 2026
+
+### Step 3 — Payment Ledger
+- **Schema**: p2_payment_receipts table (migration: 20260828_payment_ledger.sql) — gross_amount,
+  tds_amount, other_deductions, net_amount (GENERATED ALWAYS AS gross_amount - tds_amount -
+  other_deductions, STORED — never sent in INSERT payloads), payment_date, payment_mode
+  (neft/rtgs/cheque/upi/cash/adjustment), reference_no, notes. RLS: tenant_own (tenant_id =
+  auth.uid()), same pattern as p2_invoices. Indexed on tenant_id and invoice_id. Obligations (the
+  invoice) stay separate from receipts (each actual money movement) — TDS-aware, partial-payment
+  safe.
+- **v_p2_invoice_payment_status view**: derives payment_status (paid/partial/overdue/pending/
+  not_applicable) from SUM(net_amount) vs amount_total, 45-day hardcoded overdue threshold on
+  created_at — status is never stored, always derived. Read server-side only (check-low-stock);
+  never queried from the browser — invoices.html/export.html derive the same CASE logic
+  client-side from a batched p2_payment_receipts query instead.
+- **invoices.html**: batched p2_payment_receipts query in loadInvoices() (Map<invoice_id,
+  receipt[]>, no per-row queries). Payment status badge next to the existing status badge (green
+  Paid / orange Partial / red Overdue / grey Pending), shown only when status='sent'. "Record
+  Payment" button gated on status='sent' AND payment_status != 'paid' AND a fresh
+  p2_tenant_settings.plan fetch (Pro/Founder only, never isPro()/localStorage) — this page has no
+  page-wide plan gate today (removed for Lite access, see July 30 entry), so the gate is scoped
+  to the new button/modal only. Per-row "▼ Receipts" expand toggle, built from scratch — no prior
+  per-row-expand pattern existed in this codebase. #recordPaymentModal follows the existing
+  .nx-modal-overlay/.nx-modal structure; live net-amount calculation; toast() newly used on this
+  page (loaded via js/utils.js but previously unused here — existing alert() calls elsewhere in
+  the file untouched).
+- **export.html**: new "Section 43B(h) — MSME Payment Compliance" card after Table 12, gated by
+  the existing TABLE13_ROLES (owner/accountant/supervisor, all plans — no plan gate, matching
+  Table 12/13). Filters: enterprise_class IN (micro, small), registration_activity IN
+  (manufacturing, services), udyam_number required — excludes Medium and trading registrations.
+  Warning banner counts clients missing Udyam data across all sent invoices in the period, before
+  the eligibility filter. Per-row due_date = invoice_date + 45 days (hardcoded — no
+  agreement_days column exists); interest estimated at 3× RBI bank rate (6.5%, simple interest,
+  not compounded); 31-March disallowance computed against the FY containing the selected month.
+  Disclaimer covers both the simple-vs-compounded-interest gap (MSMED s.16 actually compounds
+  monthly) and the 45-day-assumes-a-written-agreement gap (kpml-network-plan.md §10.4: 15 days
+  without one). Client join uses a separate batched p2_clients query + Map, not a PostgREST
+  embed — no precedent for embedding relationships in this codebase's client-side queries.
+  Excel download mirrors downloadTable12Excel()'s shape (ExcelJS, orange header, sheet "43B(h)
+  MSME Compliance", summary + disclaimer rows at the bottom).
+- **check-low-stock/index.ts**: new payment_overdue_digest mode branch, checked before the
+  existing gstr2b_nudge and main digest logic — same early-return pattern. Reads
+  v_p2_invoice_payment_status server-side — the one place that view is meant to be read from.
+  Skips tenants with no telegram_chat_id; skips tenants with zero overdue invoices (no message
+  sent). Message caps at 5 invoices, "+N more" beyond that. No new cron entry, no new Edge
+  Function file.
+- Supplier advance ledger (p2_supplier_advances): scoped and deferred to Step 3.5,
+  after Step 4. Datta Prasad confirmed need — lump-sum supplier prepayments drawn down
+  by GRNs over time.
+
+## Shipped Aug 31, 2026
+
+### Step 4 — Notifications
+Three types only: challan_dispatched, payment_overdue, low_stock. Runtime is Supabase Edge
+Functions exclusively — no Vercel API routes, no Supabase-to-Vercel webhooks. Single fan-out
+point, single message catalogue, per kpml-network-plan.md §9 Step 4.
+
+- **Schema** (migration 20260831_notifications.sql): p2_notifications table — see Database
+  Tables section above for full column/RLS/index detail. p2_tenant_settings gains
+  telegram_bind_token uuid DEFAULT NULL (deep-link binding), quiet_hours_start smallint DEFAULT
+  NULL, quiet_hours_end smallint DEFAULT NULL (IST hour 0-23, both NULL = disabled, the
+  default). RLS deliberately uses get_my_tenant_id() instead of the spec's original
+  tenant_id = auth.uid() — that literal pattern is the one already live (and known-broken for
+  non-owner staff) on p2_payment_receipts; using it here would have silently blocked
+  supervisor/storekeeper-triggered notifications, since Phase 5 fires after dispatch/BOM-issue
+  confirms staff routinely perform.
+- **notify Edge Function** (supabase/functions/notify/index.ts, verify_jwt=false, SB_SECRET_KEY):
+  the single fan-out point. Takes {notification_id}, fetches the row, resolves
+  telegram_chat_id + quiet_hours from p2_tenant_settings, checks quiet hours
+  (midnight-wraparound aware: start<end → hour in [start,end); start>end → hour>=start OR
+  hour<end; start===end or either null → disabled), sends plain text (title + '\n' + body, no
+  parse_mode) via Telegram sendMessage, flips status to sent/failed with error_reason. Always
+  returns HTTP 200 (except OPTIONS→204) — every caller is fire-and-forget and must never see a
+  request "fail". Called only by js/notifications.js (after its own insert) and
+  check-low-stock's payment_overdue_notify mode.
+- **telegram-webhook Edge Function** (supabase/functions/telegram-webhook/index.ts,
+  verify_jwt=false, SB_SECRET_KEY): receives Telegram's inbound Updates. Handles
+  /start <bind_token> only — validates UUID format, looks up p2_tenant_settings WHERE
+  telegram_bind_token = token, on match sets telegram_chat_id = chat_id::text and clears the
+  bind token, replies with a connected confirmation naming company_name. Everything else
+  ignored silently. Always returns 200 (Telegram retries on non-200). Webhook registration
+  (setWebhook curl with TELEGRAM_BOT_TOKEN) is a manual step — Claude cannot read Edge Function
+  secret values back (supabase secrets list only returns digests), so this must be run by hand.
+- **js/notifications.js**: bare global functions (no ES modules anywhere in this codebase —
+  matches js/movement-purpose.js's convention, not the spec's literal "named export" wording).
+  sendNotification(supabase, type, title, body, metadata) resolves tenant_id client-side
+  (user.user_metadata?.tenant_id || user.id, same as checkAuth()) and passes it explicitly on
+  insert — no auto-stamp trigger, see p2_notifications schema note above — then fire-and-forget
+  POSTs to notify with the bare SUPABASE_ANON_KEY (same pattern the three dispatch pages already
+  used for check-low-stock-instant). checkAndNotifyLowStock(supabase, materialIds) replicates
+  check-low-stock-instant's exact v_p2_stock_balance query/comparison and always re-queries
+  fresh rather than trusting a page-local materials array (rm-dispatch.html's/
+  production-issue.html's local stock state is stale at the point a dispatch/issue confirms).
+- **Wired into dispatch.html, production-issue.html, rm-dispatch.html only** — the check-low-
+  stock-instant fetch was removed from these three pages' confirm flows (dispatch.html's
+  showConsumptionModal() low-stock check, plus a new sendNotification() call placed in
+  handleSaveWorkflow() *before* resetWorkspaceForm() — the old fetch fired after the reset had
+  already wiped clientName, which would have made challan_dispatched notifications silently
+  lose client_name). agent-query's own three check-low-stock-instant call sites (lines 748, 922,
+  1040, after confirm_grn/confirm_production_issue/confirm_rm_dispatch) were NOT touched — see
+  Proactive Telegram layer note above. check-low-stock-instant itself was not deleted or
+  modified in this step.
+- **check-low-stock/index.ts**: new payment_overdue_notify mode branch, checked immediately
+  before the existing gstr2b_nudge check (both before the main digest fallthrough). Distinct
+  from and additive to the existing payment_overdue_digest mode (Aug 28) — that one sends a
+  single combined Telegram-only digest message and writes nothing to p2_notifications; this one
+  creates a durable, deduped p2_notifications row per overdue invoice (dedup key: type +
+  tenant_id + metadata->>invoice_id + created_at within the last 24h) so overdue payments also
+  show in the in-app bell. Uses amount_total from v_p2_invoice_payment_status (not balance_due —
+  the two are numerically identical for payment_status='overdue' rows, since total_received is
+  always 0 at that point). New cron jobid 8, 'payment-overdue-notify-daily', 0 4 * * * (9am
+  IST), anon key in the Authorization header — same pattern confirmed live for jobid 2/3
+  (check-low-stock has verify_jwt=false, so the header is never validated as a real JWT;
+  SUPABASE_SERVICE_ROLE_KEY inside the function is what actually grants DB access). Migration:
+  20260831_setup_cron_payment_overdue_notify.sql.
+- **js/navbar.js**: notification bell + unread badge + anchored dropdown panel, added to
+  .nx-right before .nx-user-badge. First use of Supabase Realtime (supabase.channel(...)) and
+  first anchored-dropdown-popover component anywhere in this codebase — no prior pattern to
+  extend, both built net-new (the only prior "panel" pattern was the mobile slide-in drawer,
+  which this does not reuse). Channel 'notifications:' + tenantId, subscribes to INSERT on
+  p2_notifications, only refreshes the badge count — never auto-opens the dropdown. Dropdown:
+  10 most recent rows, type icon (🔔 challan / ⚠️ low_stock / 💰 payment_overdue), title, body
+  truncated to 60 chars, relative time; opening it marks visible unread rows read; "Mark all
+  read" button. Full-width panel below 480px. Requires ALTER PUBLICATION supabase_realtime ADD
+  TABLE p2_notifications (migration 20260831_notifications_realtime.sql) for the live badge
+  update — without it the bell still works fully, just not live until next page load.
+- **settings.html**: #content-telegram panel replaced entirely. Old single telegram-chat-id
+  text field + manual BotFather/userinfobot instructions removed. New: connection status
+  (green/grey dot, Connect Telegram / Disconnect buttons), Connect generates
+  crypto.randomUUID() as bind_token, upserts it to p2_tenant_settings, shows the
+  t.me/nexflow_alerts_bot4?start={token} link, polls p2_tenant_settings every 3s for up to 2
+  minutes until telegram_chat_id is set. Disconnect confirms then nulls both
+  telegram_chat_id and telegram_bind_token. Quiet hours: enable checkbox + From/Until hour
+  inputs (0-23), saved to quiet_hours_start/end. All new handlers resolve tenant_id via
+  user.user_metadata?.tenant_id || user.id — the old handler upserted tenant_id: user.id
+  directly (an owner-only assumption never caught before since only owners had used this tab).
+  No telegram_bot_token field existed in the prior UI to remove — it was always a
+  server-only Edge Function secret, never user-configurable.
+- **Not built in this step** (explicitly out of scope per kpml-network-plan.md §9 Step 4):
+  email notifications, push notifications, per-type notification preferences.
+
 ## GST Scope — PERMANENTLY LOCKED
 Nexflow P2 generates tax invoices for client billing. It does NOT handle GST filing, GSTR
 generation, or financial reporting. GSTR-1/GSTR-3B submission is Tally's job. Never revisit
@@ -1080,24 +1413,34 @@ Build sequence:
   summary shipped to export.html. 43B(h) deferred to Step 3 — requires payment ledger first.
   Table 12 and Table 13 test data added to test tenant via SQL (Aug 25 2026).
   Udyam fields (udyam_number, enterprise_class, registration_activity) added to p2_clients.
-- Step 2 — ✅ 2A confirm_bom_issue pool-aware (prerequisite only — not full pool-awareness)
+- Step 2 — COMPLETE (Aug 26 2026)
+           ✅ 2A confirm_bom_issue pool-aware (prerequisite only — not full pool-awareness)
            ✅ 2B owned_by + held_by columns (owned_by missing from p2_dispatch_orders — fixed Aug 25)
            ✅ 2C v_p2_stock_balance ownership-aware
            ✅ 2D all direct stock_transactions reads filtered
            ✅ 2E movement_purpose + principal_tenant_id + s143 clock columns
            ✅ 2F onboarding switches (is_job_worker, is_principal)
-           ⬜ 2I vendor-side onboarding UI + principal groundwork (next)
-           ⬜ 2H pool-aware consumption
-           ⬜ 2G WIP state
-           ⬜ 2J purpose selector on dispatch
-           ⬜ 2K s.143 clock population
-           ⬜ 2L Type A regression harness (build before 2I, run after each step)
+           ✅ 2I vendor-side onboarding UI + principal groundwork
+           ✅ 2H pool-aware consumption
+           ✅ 2G WIP state
+           ✅ 2J purpose selector on dispatch
+           ✅ 2K s.143 clock population
+           ✅ 2M pool-aware product dispatch (backend only — UI deferred to Step 5)
+           ✅ 2L Type A regression harness (build before 2H, run after each step)
   Reordering rationale: 2I precedes 2H (needs the principal list for auto-derive);
   2H precedes 2G (WIP attribution needs real pool data, or every WIP row is hollow);
   2J needs 2I's gating flags; 2K needs 2J's movement_purpose. 2L's harness is built
   first and re-run after each step, not treated as a single terminal gate.
+  2L baseline snapshot: _ai/regression/snapshots/baseline-pre-2H.json
+  — captured Aug 25 2026 before 2H lands. Run diff against this after
+  every remaining Step 2 sub-step.
 - Step 3 — payment ledger (receipts model, TDS)
-- Step 4 — notifications (3 types, Edge Function)
+- Step 4 — COMPLETE (Aug 31 2026): p2_notifications table, notify + telegram-webhook Edge
+  Functions, js/notifications.js, in-app bell (js/navbar.js), Telegram deep-link binding +
+  quiet hours (settings.html), payment_overdue_notify cron (jobid 8). check-low-stock-instant
+  NOT retired — agent-query still calls it (see Proactive Telegram layer note). See "Shipped
+  Aug 31, 2026" for full detail. Deferred to post-Step-5: Notification Centre v2
+  (notifications.html, Gmail-style, Telegram deep link) — see Backlog.
 - Step 5 — principal-side one-sided mode (KPML pilot)
 - Step 6 — cross-tenant upgrade + scoped access path
 - Step 7 — gated on named requests only
@@ -1116,4 +1459,55 @@ Sales strategy:
 - Pitch to new job worker vendors: "Your principal will ask you for stock numbers,
   challan records and payment history. Today you cannot answer in less than a day.
   With this you answer in ten seconds and never get accused."
+
+## Backlog — Deferred Features
+
+### Step 3.5 — Supplier Advance Ledger
+- Requested by: Datta Prasad Enterprises
+- What: lump-sum advance payments to suppliers,
+  drawn down by GRNs. Balance = advance paid
+  minus sum of (qty × rate) on GRNs from that
+  supplier in the same period.
+- New table needed: p2_supplier_advances
+  (tenant_id, supplier_id, payment_date,
+  amount, reference_no, notes)
+- UI: new tab or section, likely in
+  suppliers area of settings.html
+- Dependency: GRNs must have rate filled in
+  for drawdown math to work — verify Datta
+  Prasad's GRN data before building
+- Build after Step 4 is complete
+
+### Coil Winder Sub-contracting Flow
+- Requested by: Datta Prasad Enterprises
+- What: wire dispatched to external coil winder
+  via inter_jobworker_transfer, finished coils
+  received back via GRN, separate product
+  variants (outsourced BOM) for motors where
+  winding is outsourced vs in-house
+- Current workaround: Option A — two separate
+  product variants per motor model
+  (in-house BOM uses wire, outsourced BOM
+  uses finished coil)
+- Not urgent — Datta Prasad has already
+  dispatched wire for current batch,
+  next review in ~1 month
+- Build after Step 3.5
 - KPML direct contact only after Step 2 is complete and demo exists on real vendor account
+
+### Notification Centre v2
+- What: replace the current navbar bell dropdown with a full
+  notifications.html page (Gmail-style — filters, pagination,
+  mark read/unread, search, all notification types)
+- Navbar dropdown becomes a preview: latest 5 notifications +
+  "View all" link to notifications.html
+- Telegram messages get a link to notifications.html at the bottom
+  of every message — one tap from Telegram lands on the full centre
+- Telegram message format change: title\nbody\n\n🔔 View alerts:
+  https://<app-url>/notifications.html (one-line change in notify
+  Edge Function — trivial, deferred until the page exists)
+- Build after Step 5 — current 3 notification types don't justify
+  a full page yet; Step 5 adds principal-side events (s.143 clock
+  warnings, vendor stock alerts) that will change that
+- Dependency: notify Edge Function already built,
+  p2_notifications table already exists — no schema changes needed

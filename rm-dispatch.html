@@ -11,9 +11,11 @@
     <link rel="stylesheet" href="css/nexflow-design.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="js/supabase-client.js"></script>
+    <script src="js/movement-purpose.js"></script>
     <script src="js/roles.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/utils.js"></script>
+    <script src="js/notifications.js"></script>
     <script src="js/navbar.js"></script>
 
     <style>
@@ -218,6 +220,11 @@
                                 <label data-en="Transport" data-mr="ट्रान्सपोर्ट">Transport</label>
                                 <input type="text" id="vehicleNumber" class="nx-input" data-en="Optional" data-mr="पर्यायी" placeholder="Optional">
                             </div>
+                        </div>
+
+                        <div class="nx-form-group" id="purposeFieldRow" style="display:none;">
+                            <label data-en="Purpose" data-mr="उद्देश">Purpose</label>
+                            <select id="movementPurpose" class="nx-input"></select>
                         </div>
                     </div>
 
@@ -540,12 +547,22 @@
             return (localStorage.getItem('nexflow_lang') || 'en') === 'mr' ? mr : en;
         }
 
+        function initMovementPurposeField() {
+            const select = document.getElementById('movementPurpose');
+            select.innerHTML = MOVEMENT_PURPOSES.map(p =>
+                `<option value="${p.value}">${t(p.label_en, p.label_mr)}</option>`
+            ).join('');
+            document.getElementById('purposeFieldRow').style.display =
+                (isJobWorker() || isPrincipal()) ? '' : 'none';
+        }
+
         document.addEventListener('DOMContentLoaded', init);
 
         async function init() {
             try {
                 const authed = await checkAuth();
                 if (!authed) return;
+                initMovementPurposeField();
                 const role = getUserRole();
                 if (!canAccess(role, 'rm_dispatch')) {
                     window.location.href = 'index.html?denied=1';
@@ -994,7 +1011,10 @@
                     status:           'draft',
                     dispatch_type:    'raw_material',
                     dispatch_date:    document.getElementById('dispatchDate').value || new Date().toISOString().split('T')[0],
-                    created_by:       tenantId
+                    created_by:       tenantId,
+                    movement_purpose: (isJobWorker() || isPrincipal())
+                        ? (document.getElementById('movementPurpose').value || 'sale')
+                        : 'sale'
                 };
 
                 let orderId;
@@ -1103,7 +1123,10 @@
                     challan_number:   String(challanNumber),
                     dispatch_date:    document.getElementById('dispatchDate').value || new Date().toISOString().split('T')[0],
                     created_by:       tenantId,
-                    confirmed_at:     new Date().toISOString()
+                    confirmed_at:     new Date().toISOString(),
+                    movement_purpose: (isJobWorker() || isPrincipal())
+                        ? (document.getElementById('movementPurpose').value || 'sale')
+                        : 'sale'
                 };
 
                 let orderId;
@@ -1174,13 +1197,11 @@
                 if (confirmErr) throw new Error(`Stock deduction failed: ${confirmErr.message}`);
 
                 const consumedRmIds = consumptionArray.map(c => c.material_id).filter(Boolean)
-                if (consumedRmIds.length > 0) {
-                    fetch('https://jhqxvpihauvhfclosuxn.supabase.co/functions/v1/check-low-stock-instant', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
-                        body: JSON.stringify({ tenant_id: tenantId, material_ids: consumedRmIds })
-                    }).catch(() => {})
-                }
+                const materialNames = dispatchItems.map(item => item.name).filter(Boolean).join(', ');
+                sendNotification(window.supabase, 'challan_dispatched', 'Material dispatched',
+                    `Challan ${challanNumber} — ${materialNames} dispatched to ${clientName}.`,
+                    { dispatch_order_id: orderId, challan_number: challanNumber });
+                checkAndNotifyLowStock(window.supabase, consumedRmIds);
 
                 await upsertClient(clientName, clientAddress, document.getElementById('poNumber').value.trim());
                 await savePONumber(clientName, document.getElementById('poNumber').value.trim());

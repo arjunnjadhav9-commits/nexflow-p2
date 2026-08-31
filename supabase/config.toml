@@ -39,3 +39,9 @@ verify_jwt = false
 
 [functions.invoice-view]
 verify_jwt = false
+
+[functions.notify]
+verify_jwt = false
+
+[functions.telegram-webhook]
+verify_jwt = false

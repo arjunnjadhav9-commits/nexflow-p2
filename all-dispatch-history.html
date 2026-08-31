@@ -11,6 +11,7 @@
     <link rel="stylesheet" href="css/nexflow-design.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="js/supabase-client.js"></script>
+    <script src="js/movement-purpose.js"></script>
     <script src="js/roles.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/utils.js"></script>
@@ -345,7 +346,7 @@
             // Single query — ALL dispatch types, no filter on dispatch_type unless user picked one
             let q = window.supabase
                 .from('p2_dispatch_orders')
-                .select('id, challan_number, dispatch_date, created_at, client_name, client_address, po_number, your_challan_ref, vehicle_number, status, dispatch_type')
+                .select('id, challan_number, dispatch_date, created_at, client_name, client_address, po_number, your_challan_ref, vehicle_number, status, dispatch_type, movement_purpose')
                 .eq('tenant_id', tenantId)
                 .order('created_at', { ascending: false });
 
@@ -571,14 +572,14 @@
             if (isDraft || isCancelled) {
                 invoiceSection.innerHTML = '';
             } else {
-                await refreshDetailInvoiceSection(orderId);
+                await refreshDetailInvoiceSection(orderId, order.movement_purpose);
             }
         }
 
         // On-demand existing-invoice lookup — fires only when a Detail modal is opened
         // for a confirmed dispatch, never on page load (replaces the old batched
         // page-load query that used to back the list-row invoice button).
-        async function refreshDetailInvoiceSection(orderId) {
+        async function refreshDetailInvoiceSection(orderId, movementPurpose) {
             const invoiceSection = document.getElementById('detailInvoiceSection');
             invoiceSection.innerHTML = '<div style="font-size:12px; color:var(--mid);">Checking invoice…</div>';
 
@@ -603,6 +604,14 @@
                             onclick="window.open('/invoice.html?token=${existingInvoice.invoice_token}','_blank')">View Invoice →</button>
                         <div style="font-size:11px; color:var(--mid); margin-top:6px; text-align:center;">
                             Invoice ${escapeHtml(existingInvoice.invoice_number || '')} · ${escapeHtml(existingInvoice.status || '')}
+                        </div>`;
+                } else if (movementPurpose && movementPurpose !== 'sale' && canInvoice && currentRole !== 'accountant') {
+                    const purposeLabel = getMovementPurpose(movementPurpose).label_en;
+                    invoiceSection.innerHTML = `
+                        <button class="nx-btn nx-btn-secondary" style="width:100%;" disabled
+                            title="This is a ${escapeHtml(purposeLabel)} movement, not a sale — no tax invoice can be raised on it.">Generate Invoice</button>
+                        <div style="font-size:11px; color:var(--mid); margin-top:6px; text-align:center;">
+                            Disabled — ${escapeHtml(purposeLabel)}, not a sale
                         </div>`;
                 } else if (canInvoice && currentRole !== 'accountant') {
                     invoiceSection.innerHTML = `
@@ -914,7 +923,7 @@
 
                     document.getElementById('invoiceModal').style.display = 'none';
                     window.open(data.invoice_url, '_blank');
-                    await refreshDetailInvoiceSection(invoiceModalOrderId);
+                    await refreshDetailInvoiceSection(invoiceModalOrderId, allOrders.find(o => o.id === invoiceModalOrderId)?.movement_purpose);
                 } catch (err) {
                     console.error('confirm_generate_invoice:', err);
                     showInvoiceModalError(err.message || 'Could not generate invoice.');

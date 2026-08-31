@@ -267,6 +267,7 @@ interface HaikuResult {
     recipient_name?: string | null // send_challan only — explicit client override; null/absent means "use the order's client_name"
     product_name?: string // stock_check_product, product_code_lookup, bom_detail
     quantity?: number // stock_check_product — how many units to produce
+    principal_name?: string | null // create_production_issue AND create_product_dispatch — free-text name of the job-work principal this issue/dispatch draws material from ("own"/"own stock" or absent means own material); only meaningful at tenants with 2+ principals, ignored otherwise
     top_n?: number // top_consumption, top_received — how many to show, default 5
     date_from?: string // send_tally_export, send_invoice, invoice_total, grn_completeness — YYYY-MM-DD, absent means all-time / single-dispatch mode (grn_completeness: absent means current calendar month)
     date_to?: string // send_tally_export, send_invoice, invoice_total, grn_completeness — YYYY-MM-DD; if date_from is set but this isn't, defaults to today (send_tally_export only)
@@ -583,6 +584,32 @@ async function getNextChallanNumberOrOverride(
   return { data: data as string | null, error }
 }
 
+// Fetches this tenant's job-work principals (p2_clients rows flagged
+// is_job_work_principal = true) — used to auto-derive which pool a
+// production issue draws from. Called independently from both the parse
+// phase (to build the confirm card / ask a clarifying question) and
+// confirmProductionIssue (to re-validate a client-supplied owned_by at
+// write time) — same re-fetch-at-write-time discipline this file already
+// applies to product/BOM.
+async function getJobWorkPrincipals(
+  supabaseClient: ReturnType<typeof createClient>,
+  tenantId: string
+): Promise<{ id: string; name: string }[]> {
+  const { data, error } = await supabaseClient
+    .from('p2_clients')
+    .select('id, name')
+    .eq('tenant_id', tenantId)
+    .eq('is_job_work_principal', true)
+    .order('name')
+
+  if (error) {
+    console.error('[getJobWorkPrincipals] fetch failed:', tenantId, error.message)
+    return []
+  }
+
+  return (data ?? []) as { id: string; name: string }[]
+}
+
 // Re-validates the matched product/BOM via confirm_bom_issue (row-locked,
 // tenant-scoped) and records the production issue. Mirrors confirmGrn()'s
 // re-fetch-at-write-time pattern — nothing from the parse phase is trusted.
@@ -590,7 +617,7 @@ async function confirmProductionIssue(
   supabaseClient: ReturnType<typeof createClient>,
   body: Partial<ConfirmProductionIssueRequest>
 ): Promise<Response> {
-  const { tenant_id, product_id, product_name, quantity, bom_lines } = body
+  const { tenant_id, product_id, product_name, quantity, bom_lines, owned_by } = body
 
   if (!tenant_id || !product_id || !product_name || !quantity || !bom_lines?.length) {
     return respond({ status: 'error', error: 'Missing required fields for production issue' }, 400)
@@ -672,7 +699,21 @@ async function confirmProductionIssue(
   // else in this file (getISTDateRange) rather than Intl-based date parsing.
   const issueDate = getISTDateRange(0).since.split('T')[0]
 
-  // Call confirm_bom_issue RPC — 9-parameter overload
+  // Re-validate owned_by against real principals at write time — never trust
+  // confirm_data as it round-trips through the client between parse and
+  // confirm. Same re-fetch-at-write-time discipline as the product/BOM
+  // re-fetches above.
+  if (owned_by) {
+    const principalsList = await getJobWorkPrincipals(supabaseClient, tenant_id)
+    if (!principalsList.some(p => p.id === owned_by)) {
+      return respond({ status: 'error', error: 'Invalid material pool for this tenant.' }, 400)
+    }
+  }
+
+  // Call confirm_bom_issue RPC. product_id (re-fetched/validated above, not
+  // the raw request field) drives the Step 2G WIP row the RPC writes when
+  // p_product_id is non-null — same re-fetch-at-write-time discipline as
+  // everything else in this function.
   const { data: rpcResult, error: rpcError } = await supabaseClient.rpc('confirm_bom_issue', {
     p_tenant_id: tenant_id,
     p_challan_number: challanNumber,
@@ -683,6 +724,8 @@ async function confirmProductionIssue(
     p_consumption_json: JSON.stringify(consumption),
     p_manual_json: '[]',
     p_force: false,
+    p_owned_by: owned_by ?? null,
+    p_product_id: product.id,
   })
 
   if (rpcError) {
@@ -737,7 +780,7 @@ async function confirmProductDispatch(
   supabaseClient: ReturnType<typeof createClient>,
   body: Partial<ConfirmProductDispatchRequest>
 ): Promise<Response> {
-  const { tenant_id, items } = body
+  const { tenant_id, items, owned_by } = body
 
   if (!tenant_id || !items?.length) {
     return respond({ status: 'error', error: 'Missing required fields for product dispatch' }, 400)
@@ -807,6 +850,16 @@ async function confirmProductDispatch(
     })
   }
 
+  // Re-validate owned_by against real principals at write time — never trust
+  // confirm_data as it round-trips through the client between parse and
+  // confirm. Same re-fetch-at-write-time discipline as confirmProductionIssue.
+  if (owned_by) {
+    const principalsList = await getJobWorkPrincipals(supabaseClient, tenant_id)
+    if (!principalsList.some(p => p.id === owned_by)) {
+      return respond({ status: 'error', error: 'Invalid material pool for this tenant.' }, 400)
+    }
+  }
+
   // Get next challan number (or consume a pending one-time override)
   const { data: challanNumber, error: challanError } = await getNextChallanNumberOrOverride(supabaseClient, tenant_id, 'product', challanMode)
 
@@ -854,6 +907,7 @@ async function confirmProductDispatch(
     p_tenant_id: tenant_id,
     p_consumption_json: JSON.stringify(consumptionArray),
     p_challan_number: challanNumber,
+    p_owned_by: owned_by ?? null,
   })
 
   if (rpcError) {
@@ -1315,28 +1369,33 @@ Classify the message as one of:
   - "This week konty supplier ne jast delivery keli?" -> { "days": 7 }
   - "Konty supplier ne sarvat jast maal dila?" -> { "days": 30 }
 - "create_production_issue" — user wants to issue materials for production of a product (BOM explosion). User mentions a product name and how many units to produce.
-  extracted fields: { "product_name": string, "quantity": number }
+  extracted fields: { "product_name": string, "quantity": number, "principal_name"?: string }
   Rules:
   - "product_name" is exactly as the user said it — do not resolve to DB.
   - "quantity" is the number of units to produce. Default to 1 if not mentioned.
+  - "principal_name" — ONLY if the message names a company/client whose material this production draws from (e.g. "for KPML", "KPML kadun", "KPML cha material vaparun"). Extract it exactly as said, do not resolve to DB. Omit entirely if no such company is named — do NOT guess or infer one.
   - Strip Hinglish/Marathi filler: "issue karo" = issue/do, "banva" = make/produce, "batch" = batch.
   Examples:
   - "KS4 motor 5 issue karo" -> { "product_name": "KS4 motor", "quantity": 5 }
   - "KS6-1.5HP 10 banva" -> { "product_name": "KS6-1.5HP", "quantity": 10 }
   - "3 pump assembly issue" -> { "product_name": "pump assembly", "quantity": 3 }
+  - "KS4 motor 5 KPML sathi issue karo" -> { "product_name": "KS4 motor", "quantity": 5, "principal_name": "KPML" }
+  - "Panel 2 apla stock madhun banva" -> { "product_name": "Panel", "quantity": 2, "principal_name": "own" }
   IMPORTANT: Only use this intent when the user wants to ISSUE/CONSUME materials for production, not just check stock. "Enough stock aahe ka?" = stock_check_product. "Issue karo / banva" = create_production_issue.
 - "create_product_dispatch" — user wants to dispatch/ship finished product(s) OUT to a client (not consume materials for internal production). User names product(s) and quantity to send.
-  extracted fields: { "dispatch_items": [{ "product_name": string, "quantity": number }] }
+  extracted fields: { "dispatch_items": [{ "product_name": string, "quantity": number }], "principal_name"?: string }
   Rules:
   - "dispatch_items" is always an array, even for a single product.
   - "product_name" exactly as the user said it — partial/loose names are fine, do not resolve to DB.
   - "quantity" defaults to 1 if not mentioned.
   - Strip Hinglish/Marathi filler: "dispatch karo"/"pathva"/"bhejaycha aahe"/"send karo" = dispatch/send, "aani" = and (item separator).
+  - "principal_name" — ONLY if the message names a company/client whose material this dispatch draws from (e.g. "for KPML", "KPML kadun", "KPML cha material vaparun"). Extract it exactly as said, do not resolve to DB. Omit entirely if no such company is named — do NOT guess or infer one.
   Examples:
   - "Panel 5 dispatch karo" -> { "dispatch_items": [{ "product_name": "Panel", "quantity": 5 }] }
   - "KS4 motor 10 ani KS6 pump 3 pathav" -> { "dispatch_items": [{ "product_name": "KS4 motor", "quantity": 10 }, { "product_name": "KS6 pump", "quantity": 3 }] }
   - "KS4 1 ani KS6 1 dispatch karo" -> { "dispatch_items": [{ "product_name": "KS4", "quantity": 1 }, { "product_name": "KS6", "quantity": 1 }] }
   - "KS4 motor ani panel dispatch karo" -> { "dispatch_items": [{ "product_name": "KS4 motor", "quantity": 1 }, { "product_name": "panel", "quantity": 1 }] }
+  - "KS4 motor 10 KPML sathi dispatch karo" -> { "dispatch_items": [{ "product_name": "KS4 motor", "quantity": 10 }], "principal_name": "KPML" }
   IMPORTANT: Only when user wants to DISPATCH/SEND products out to a client. "Issue karo"/"banva" for internal production consumption = create_production_issue. "Dispatch karo / pathav" = create_product_dispatch.
   IMPORTANT: If the user mentions names that match known products (listed above as Known products), always use create_product_dispatch, never create_rm_dispatch. create_rm_dispatch is ONLY for raw materials. When in doubt and the names could be either, prefer create_product_dispatch.
 - "create_rm_dispatch" — user wants to dispatch raw material(s) OUT directly (to a client or elsewhere), not report receiving them.
@@ -1462,6 +1521,7 @@ interface ConfirmProductionIssueRequest {
   product_name: string
   quantity: number
   bom_lines: BomLine[]
+  owned_by: string | null
 }
 
 // Lighter than BomLine — confirmProductDispatch re-fetches BOM at write time
@@ -1487,6 +1547,7 @@ interface ConfirmProductDispatchRequest {
   action: 'confirm_product_dispatch'
   tenant_id: string
   items: ConfirmProductDispatchItem[]
+  owned_by: string | null
 }
 
 interface ConfirmRmDispatchItem {
@@ -5413,9 +5474,78 @@ Deno.serve(async (req) => {
         return respond({ status: 'ok', intent: 'create_production_issue', confirm: { status: 'blocked', reason: `${product.name} cha BOM define nahi aahe. Please products.html madhun BOM add kara.` } })
       }
 
+      // Derive which pool this issue draws from — never ask when it's
+      // unambiguous (0 or 1 principal), only when there's a genuine choice.
+      const principalsList = await getJobWorkPrincipals(supabase, tenant_id)
+      let ownedBy: string | null = null
+      let poolName: string | null = null
+
+      if (principalsList.length === 1) {
+        ownedBy = principalsList[0].id
+        poolName = principalsList[0].name
+      } else if (principalsList.length > 1) {
+        const principalName = haikuResult.extracted.principal_name?.trim()
+
+        if (!principalName) {
+          const names = principalsList.map(p => p.name).join(', ')
+          void logInteraction(supabase, tenant_id, message, 'create_production_issue', haikuResult.extracted as Record<string, unknown>, null, false, 'principal_ambiguous')
+          return respond({
+            status: 'ok',
+            intent: 'create_production_issue',
+            confirm: {
+              status: 'blocked',
+              reason: `This tenant has multiple job-work principals — which pool is this for? Options: ${names}, or "own stock". Please re-send the full request naming one, e.g. "${product.name} ${quantity} issue karo for <name>".`
+            }
+          })
+        }
+
+        if (!/^own/i.test(principalName)) {
+          const matchResult = matchClientName(principalName, principalsList)
+          if ('error' in matchResult) {
+            void logInteraction(supabase, tenant_id, message, 'create_production_issue', haikuResult.extracted as Record<string, unknown>, matchResult.errorKind, false, 'principal_no_match')
+            return respond({ status: 'ok', intent: 'create_production_issue', confirm: { status: 'blocked', reason: matchResult.error } })
+          }
+          ownedBy = matchResult.client.id
+          poolName = matchResult.client.name
+        }
+      }
+
       // Build BOM lines with stock sufficiency check
       const materialMap = new Map(context.materials.map(m => [m.id, m]))
-      const stockMap = new Map(context.stockBalances.map(b => [b.raw_material_id, b]))
+      let stockMap: Map<string, { raw_material_id: string; name: string; unit: string; current_stock: number; material_code: string | null }>
+
+      if (ownedBy === null) {
+        stockMap = new Map(context.stockBalances.map(b => [b.raw_material_id, b]))
+      } else {
+        const { data: poolStockRows, error: poolStockError } = await supabase
+          .from('p2_stock_transactions')
+          .select('raw_material_id, quantity')
+          .eq('tenant_id', tenant_id)
+          .eq('owned_by', ownedBy)
+
+        if (poolStockError) {
+          void logInteraction(supabase, tenant_id, message, 'create_production_issue', haikuResult.extracted as Record<string, unknown>, null, false, 'pool stock fetch error')
+          return respond({ status: 'error', error: 'Could not verify pool stock.' }, 500)
+        }
+
+        const poolBalances = new Map<string, number>()
+        for (const row of (poolStockRows ?? []) as { raw_material_id: string; quantity: number }[]) {
+          poolBalances.set(row.raw_material_id, (poolBalances.get(row.raw_material_id) ?? 0) + row.quantity)
+        }
+
+        stockMap = new Map(
+          Array.from(poolBalances.entries()).map(([materialId, qty]) => {
+            const mat = materialMap.get(materialId)
+            return [materialId, {
+              raw_material_id: materialId,
+              name: mat?.name ?? 'Unknown',
+              unit: mat?.unit ?? '',
+              current_stock: qty,
+              material_code: mat?.material_code ?? null,
+            }]
+          })
+        )
+      }
 
       const bomLines: BomLine[] = (bomRows as { raw_material_id: string; qty_per_unit: number; unit: string }[]).map(row => {
         const mat = materialMap.get(row.raw_material_id)
@@ -5458,7 +5588,8 @@ Deno.serve(async (req) => {
         return `• ${line.material_name}${codeStr} — ${line.required_qty} ${line.unit}  ${stockStr}`
       })
 
-      const confirmText = `📦 Production Issue — ${product.name} × ${quantity}\n\nMaterial deductions:\n${lines.join('\n')}`
+      const poolPrefix = poolName ? `Consuming from: ${poolName}\n\n` : ''
+      const confirmText = `${poolPrefix}📦 Production Issue — ${product.name} × ${quantity}\n\nMaterial deductions:\n${lines.join('\n')}`
 
       void logInteraction(supabase, tenant_id, message, 'create_production_issue', haikuResult.extracted as Record<string, unknown>, 'matched', true, null)
 
@@ -5473,6 +5604,7 @@ Deno.serve(async (req) => {
             product_name: product.name,
             quantity,
             bom_lines: bomLines,
+            owned_by: ownedBy,
           }
         }
       })
@@ -5486,8 +5618,82 @@ Deno.serve(async (req) => {
         return respond({ status: 'ok', intent: 'create_product_dispatch', confirm: { status: 'blocked', reason: 'Please mention at least one product to dispatch.' } })
       }
 
+      // Derive which pool this dispatch draws from — same discipline as
+      // create_production_issue (Step 2H): never ask when it's unambiguous
+      // (0 or 1 principal), only when there's a genuine choice.
+      const principalsList = await getJobWorkPrincipals(supabase, tenant_id)
+      let ownedBy: string | null = null
+      let poolName: string | null = null
+
+      if (principalsList.length === 1) {
+        ownedBy = principalsList[0].id
+        poolName = principalsList[0].name
+      } else if (principalsList.length > 1) {
+        const principalName = haikuResult.extracted.principal_name?.trim()
+
+        if (!principalName) {
+          const names = principalsList.map(p => p.name).join(', ')
+          void logInteraction(supabase, tenant_id, message, 'create_product_dispatch', haikuResult.extracted as Record<string, unknown>, null, false, 'principal_ambiguous')
+          return respond({
+            status: 'ok',
+            intent: 'create_product_dispatch',
+            confirm: {
+              status: 'blocked',
+              reason: `This tenant has multiple job-work principals — which pool is this dispatch for? Options: ${names}, or "own stock". Please re-send the full request naming one.`
+            }
+          })
+        }
+
+        if (!/^own/i.test(principalName)) {
+          const matchResult = matchClientName(principalName, principalsList)
+          if ('error' in matchResult) {
+            void logInteraction(supabase, tenant_id, message, 'create_product_dispatch', haikuResult.extracted as Record<string, unknown>, matchResult.errorKind, false, 'principal_no_match')
+            return respond({ status: 'ok', intent: 'create_product_dispatch', confirm: { status: 'blocked', reason: matchResult.error } })
+          }
+          ownedBy = matchResult.client.id
+          poolName = matchResult.client.name
+        }
+      }
+
       const materialMap = new Map(context.materials.map(m => [m.id, m]))
-      const stockMap = new Map(context.stockBalances.map(b => [b.raw_material_id, b]))
+
+      // Stock lookup follows the derived pool — own-stock context.stockBalances
+      // when ownedBy is null (byte-identical to today), else a pool-scoped
+      // p2_stock_transactions balance, same swap create_production_issue uses.
+      let stockMap: Map<string, { raw_material_id: string; name: string; unit: string; current_stock: number; material_code: string | null }>
+
+      if (ownedBy === null) {
+        stockMap = new Map(context.stockBalances.map(b => [b.raw_material_id, b]))
+      } else {
+        const { data: poolStockRows, error: poolStockError } = await supabase
+          .from('p2_stock_transactions')
+          .select('raw_material_id, quantity')
+          .eq('tenant_id', tenant_id)
+          .eq('owned_by', ownedBy)
+
+        if (poolStockError) {
+          void logInteraction(supabase, tenant_id, message, 'create_product_dispatch', haikuResult.extracted as Record<string, unknown>, null, false, 'pool stock fetch error')
+          return respond({ status: 'error', error: 'Could not verify pool stock.' }, 500)
+        }
+
+        const poolBalances = new Map<string, number>()
+        for (const row of (poolStockRows ?? []) as { raw_material_id: string; quantity: number }[]) {
+          poolBalances.set(row.raw_material_id, (poolBalances.get(row.raw_material_id) ?? 0) + row.quantity)
+        }
+
+        stockMap = new Map(
+          Array.from(poolBalances.entries()).map(([materialId, qty]) => {
+            const mat = materialMap.get(materialId)
+            return [materialId, {
+              raw_material_id: materialId,
+              name: mat?.name ?? 'Unknown',
+              unit: mat?.unit ?? '',
+              current_stock: qty,
+              material_code: mat?.material_code ?? null,
+            }]
+          })
+        )
+      }
 
       const okItems: { product: Product; quantity: number; unit: string; bomLines: BomLine[] }[] = []
       const blockedReasons: string[] = []
@@ -5566,7 +5772,8 @@ Deno.serve(async (req) => {
       }
 
       const confirmLines = okItems.map(it => `• ${it.quantity} × ${it.product.name}${codeTag(it.product.product_code)} (${it.unit})`)
-      const confirmText = `🚚 Product Dispatch\n\nItems:\n${confirmLines.join('\n')}\n\nClient info required after confirm.`
+      const poolPrefix = poolName ? `Consuming from: ${poolName}\n\n` : ''
+      const confirmText = `${poolPrefix}🚚 Product Dispatch\n\nItems:\n${confirmLines.join('\n')}\n\nClient info required after confirm.`
 
       void logInteraction(supabase, tenant_id, message, 'create_product_dispatch', haikuResult.extracted as Record<string, unknown>, 'matched', true, null)
 
@@ -5584,6 +5791,7 @@ Deno.serve(async (req) => {
               unit: it.unit,
               bom_lines: it.bomLines.map(l => ({ raw_material_id: l.raw_material_id, qty: l.required_qty })),
             })),
+            owned_by: ownedBy,
           },
         },
       })

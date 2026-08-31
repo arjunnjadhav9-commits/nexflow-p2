@@ -39,6 +39,20 @@ interface NudgeTenantSettings {
   agent_enabled?: boolean
 }
 
+interface PaymentTenantSettings {
+  company_name: string
+  telegram_chat_id?: string
+}
+
+interface OverdueInvoiceRow {
+  invoice_id: string
+  invoice_number: string
+  client_name: string
+  balance_due: number
+  invoice_date: string
+  payment_status: string
+}
+
 async function sendTelegramMessage(chatId: string, message: string): Promise<boolean> {
   if (!TELEGRAM_BOT_TOKEN) {
     console.error('TELEGRAM_BOT_TOKEN not configured')
@@ -118,6 +132,180 @@ async function sendGstr2bNudge(supabase: any): Promise<Response> {
   )
 }
 
+// Payment overdue digest — triggered manually or by a future cron extension
+// (cron wiring is out of scope here), same `mode` flag pattern as
+// sendGstr2bNudge above. Reads v_p2_invoice_payment_status server-side —
+// the one place that view is meant to be read from.
+// deno-lint-ignore no-explicit-any
+async function sendPaymentOverdueDigest(supabase: any): Promise<Response> {
+  const { data: tenants, error: tenantsError } = await supabase
+    .from('p2_tenants')
+    .select(`
+      id,
+      p2_tenant_settings (
+        company_name,
+        telegram_chat_id
+      )
+    `)
+
+  if (tenantsError) {
+    return new Response(
+      JSON.stringify({ success: false, error: `Failed to fetch tenants: ${tenantsError.message}` }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    )
+  }
+
+  const results: Array<{ tenant: string; success: boolean }> = []
+
+  for (const tenant of tenants || []) {
+    const settings = (Array.isArray(tenant.p2_tenant_settings)
+      ? tenant.p2_tenant_settings[0]
+      : tenant.p2_tenant_settings) as PaymentTenantSettings | undefined
+
+    const telegramChatId = settings?.telegram_chat_id
+    if (!telegramChatId) continue
+
+    const { data: overdueRows, error: overdueError } = await supabase
+      .from('v_p2_invoice_payment_status')
+      .select('invoice_id, invoice_number, client_name, balance_due, invoice_date, payment_status')
+      .eq('tenant_id', tenant.id)
+      .eq('payment_status', 'overdue')
+      .eq('invoice_status', 'sent')
+
+    if (overdueError) {
+      console.error(`Error fetching overdue invoices for tenant ${tenant.id}:`, overdueError)
+      continue
+    }
+
+    const overdueInvoices = (overdueRows || []) as OverdueInvoiceRow[]
+    if (overdueInvoices.length === 0) continue
+
+    const companyName = settings?.company_name || 'Unknown Company'
+
+    let message = `💰 <b>Overdue Payments — ${companyName}</b>\n${overdueInvoices.length} invoice(s) are overdue:\n`
+    overdueInvoices.slice(0, 5).forEach((inv) => {
+      const daysOverdue = Math.floor((Date.now() - new Date(inv.invoice_date).getTime()) / (1000 * 60 * 60 * 24)) - 45
+      message += `• Invoice ${inv.invoice_number} — ${inv.client_name} — ₹${Number(inv.balance_due).toLocaleString('en-IN')} overdue by ${daysOverdue} days\n`
+    })
+    if (overdueInvoices.length > 5) {
+      message += `+ ${overdueInvoices.length - 5} more\n`
+    }
+
+    const success = await sendTelegramMessage(telegramChatId, message)
+    results.push({ tenant: companyName, success })
+  }
+
+  return new Response(
+    JSON.stringify({
+      success: true,
+      message: `Payment overdue digest sent to ${results.length} tenant(s)`,
+      results,
+      timestamp: new Date().toISOString()
+    }),
+    { status: 200, headers: { 'Content-Type': 'application/json' } }
+  )
+}
+
+// payment_overdue_notify (Step 4) — per-invoice p2_notifications rows fanned
+// out through the notify Edge Function, distinct from sendPaymentOverdueDigest
+// above (which sends one combined Telegram-only message and writes nothing to
+// p2_notifications). This one is additive — both continue to run — and gives
+// overdue payments a durable record + in-app bell entry, deduped per invoice
+// per 24h so the daily cron doesn't re-notify on an invoice that's still
+// overdue tomorrow. amount_total (not balance_due) per spec: for rows where
+// payment_status = 'overdue', total_received is always 0, so the two are
+// numerically identical here anyway.
+// deno-lint-ignore no-explicit-any
+async function sendPaymentOverdueNotify(supabase: any): Promise<Response> {
+  const { data: tenants, error: tenantsError } = await supabase
+    .from('p2_tenants')
+    .select('id')
+
+  if (tenantsError) {
+    return new Response(
+      JSON.stringify({ success: false, error: `Failed to fetch tenants: ${tenantsError.message}` }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    )
+  }
+
+  const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+  const notifyUrl = `${Deno.env.get('SUPABASE_URL') ?? ''}/functions/v1/notify`
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+
+  let inserted = 0
+  let deduped = 0
+
+  for (const tenant of tenants || []) {
+    const { data: overdueRows, error: overdueError } = await supabase
+      .from('v_p2_invoice_payment_status')
+      .select('invoice_id, invoice_number, client_name, amount_total')
+      .eq('tenant_id', tenant.id)
+      .eq('payment_status', 'overdue')
+      .eq('invoice_status', 'sent')
+
+    if (overdueError) {
+      console.error(`payment_overdue_notify: error fetching overdue invoices for tenant ${tenant.id}:`, overdueError)
+      continue
+    }
+
+    for (const inv of (overdueRows || []) as { invoice_id: string; invoice_number: string; client_name: string; amount_total: number }[]) {
+      const { data: existing, error: existingError } = await supabase
+        .from('p2_notifications')
+        .select('id')
+        .eq('tenant_id', tenant.id)
+        .eq('type', 'payment_overdue')
+        .eq('metadata->>invoice_id', inv.invoice_id)
+        .gte('created_at', since)
+        .limit(1)
+
+      if (existingError) {
+        console.error(`payment_overdue_notify: dedup check failed for invoice ${inv.invoice_id}:`, existingError)
+        continue
+      }
+      if (existing && existing.length > 0) { deduped++; continue }
+
+      const { data: row, error: insertError } = await supabase
+        .from('p2_notifications')
+        .insert({
+          tenant_id: tenant.id,
+          type: 'payment_overdue',
+          title: 'Payment overdue',
+          body: `Invoice ${inv.invoice_number} for ${inv.client_name} — ₹${Number(inv.amount_total).toLocaleString('en-IN')} overdue.`,
+          metadata: {
+            invoice_id: inv.invoice_id,
+            invoice_number: inv.invoice_number,
+            client_name: inv.client_name,
+            amount_total: inv.amount_total
+          },
+          status: 'queued'
+        })
+        .select('id')
+        .single()
+
+      if (insertError || !row) {
+        console.error(`payment_overdue_notify: insert failed for invoice ${inv.invoice_id}:`, insertError)
+        continue
+      }
+
+      inserted++
+      fetch(notifyUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${anonKey}` },
+        body: JSON.stringify({ notification_id: row.id })
+      }).catch(() => {})
+    }
+  }
+
+  return new Response(
+    JSON.stringify({
+      success: true,
+      message: `payment_overdue_notify: ${inserted} notification(s) created, ${deduped} deduped`,
+      timestamp: new Date().toISOString()
+    }),
+    { status: 200, headers: { 'Content-Type': 'application/json' } }
+  )
+}
+
 Deno.serve(async (req) => {
   try {
     // Initialize Supabase client with service role key for admin access
@@ -129,8 +317,14 @@ Deno.serve(async (req) => {
     // jobid 3 (monthly GSTR-2B nudge) posts {"mode":"gstr2b_nudge"} to this
     // same function instead of getting its own — see sendGstr2bNudge above.
     const body = await req.json().catch(() => ({} as Record<string, unknown>))
+    if (body && (body as Record<string, unknown>).mode === 'payment_overdue_notify') {
+      return await sendPaymentOverdueNotify(supabase)
+    }
     if (body && (body as Record<string, unknown>).mode === 'gstr2b_nudge') {
       return await sendGstr2bNudge(supabase)
+    }
+    if (body && (body as Record<string, unknown>).mode === 'payment_overdue_digest') {
+      return await sendPaymentOverdueDigest(supabase)
     }
 
     // Step 1: Fetch all tenants with their settings

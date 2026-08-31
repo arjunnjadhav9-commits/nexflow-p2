@@ -272,6 +272,42 @@
                            placeholder="e.g. 998898"
                            data-en="e.g. 998898" data-mr="उदा. 998898">
                 </div>
+                <!-- Generic collapsible trigger — visible to every tenant, including
+                     standalone ones. Deliberately unnamed/neutral: the Type A
+                     guarantee requires standalone tenants never learn job-work
+                     features exist, and a labelled "Set up job work" link would
+                     itself be a leak even if never clicked. Expanding it (or an
+                     already-true is_job_worker/is_principal/is_job_work_setup_seen
+                     from a prior session) is the only way the two switches below
+                     ever become visible. -->
+                <div class="nx-form-group" style="border-top:1px solid var(--border2); padding-top:14px; margin-top:4px;">
+                    <div id="advanced-settings-trigger" style="cursor:pointer; color:var(--mid); font-size:13px; user-select:none;" data-en="⚙ Advanced settings" data-mr="⚙ प्रगत सेटिंग्ज">⚙ Advanced settings</div>
+                    <div id="advanced-settings-section" style="display:none; margin-top:12px;">
+                        <!-- Job-work network onboarding switches (Step 2I). Each row is
+                             shown only while its own DB value is false; checking it saves
+                             immediately and hides the row (see is-job-worker-toggle /
+                             is-principal-toggle change handlers below) — not part of this
+                             form's submit. -->
+                        <div class="nx-form-group" id="jobworker-toggle-row" style="display:none;">
+                            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:400;">
+                                <input type="checkbox" id="is-job-worker-toggle" style="width:16px; height:16px; cursor:pointer;">
+                                <span data-en="We do job work for another company" data-mr="आम्ही दुसऱ्या कंपनीसाठी जॉब वर्क करतो">We do job work for another company</span>
+                            </label>
+                        </div>
+                        <div class="nx-form-group" id="jobworker-confirmed-row" style="display:none;">
+                            <span style="color:#22c55e; font-size:13px; font-weight:600;" data-en="✓ Job work enabled" data-mr="✓ जॉब वर्क सक्षम केले">✓ Job work enabled</span>
+                        </div>
+                        <div class="nx-form-group" id="principal-toggle-row" style="display:none;">
+                            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:400;">
+                                <input type="checkbox" id="is-principal-toggle" style="width:16px; height:16px; cursor:pointer;">
+                                <span data-en="We send material to job workers" data-mr="आम्ही जॉब वर्कर्सना माल पाठवतो">We send material to job workers</span>
+                            </label>
+                        </div>
+                        <div class="nx-form-group" id="principal-confirmed-row" style="display:none;">
+                            <span style="color:#22c55e; font-size:13px; font-weight:600;" data-en="✓ Principal mode enabled" data-mr="✓ प्रिन्सिपल मोड सक्षम केले">✓ Principal mode enabled</span>
+                        </div>
+                    </div>
+                </div>
                 <div style="position:relative; display:inline-block; width:100%;">
                     <button type="submit" id="saveCompanyBtn" class="nx-btn nx-btn-primary nx-btn-full" data-en="Save Company Details" data-mr="कंपनी तपशील साठवा">
                         Save Company Details
@@ -479,49 +515,62 @@
     <div id="content-telegram" class="tab-panel">
         <div class="nx-card" style="max-width:620px;">
             <div class="nx-card-header">
-                <div class="nx-card-title" data-en="Telegram Low Stock Alerts" data-mr="टेलीग्राम कमी साठा अलर्ट">Telegram Low Stock Alerts</div>
+                <div class="nx-card-title" data-en="Telegram Alerts" data-mr="टेलीग्राम अलर्ट">Telegram Alerts</div>
             </div>
 
-            <div class="nx-alert nx-alert-orange nx-mb-24">
-                <span class="nx-alert-icon">📱</span>
-                <div>
-                    <div class="nx-bold nx-mb-16" data-en="Setup Instructions" data-mr="सेटअप सूचना">Setup Instructions</div>
-                    <ol style="padding-left:16px; font-size:12px; line-height:2; list-style:decimal; color:var(--light);">
-                        <li data-en="Search for @BotFather on Telegram" data-mr="टेलीग्रामवर @BotFather शोधा">Search for @BotFather on Telegram</li>
-                        <li data-en="Send /newbot and follow instructions" data-mr="/newbot पाठवा आणि सूचनांचे पालन करा">Send /newbot and follow instructions</li>
-                        <li data-en="Save your bot token (keep it secret!)" data-mr="तुमचे बॉट टोकन सेव्ह करा (गुप्त ठेवा!)">Save your bot token (keep it secret!)</li>
-                        <li data-en="Search for @userinfobot on Telegram" data-mr="टेलीग्रामवर @userinfobot शोधा">Search for @userinfobot on Telegram</li>
-                        <li data-en="Send any message to get your Chat ID" data-mr="तुमची चॅट आयडी मिळवण्यासाठी कोणताही संदेश पाठवा">Send any message to get your Chat ID</li>
-                        <li data-en="Enter your Chat ID below and save" data-mr="खाली तुमची चॅट आयडी प्रविष्ट करा आणि सेव्ह करा">Enter your Chat ID below and save</li>
-                    </ol>
+            <div id="telegram-connected-block" style="display:none;">
+                <div class="nx-alert nx-alert-green nx-mb-16" style="align-items:center;">
+                    <span class="nx-alert-icon">🟢</span>
+                    <span style="font-size:13px;" data-en="Connected — you'll receive stock, dispatch and payment alerts on Telegram." data-mr="कनेक्ट झाले — तुम्हाला टेलीग्रामवर स्टॉक, डिस्पॅच आणि पेमेंट अलर्ट मिळतील.">Connected — you'll receive stock, dispatch and payment alerts on Telegram.</span>
                 </div>
+                <button type="button" id="telegram-disconnect-btn" class="nx-btn nx-btn-danger" data-en="Disconnect" data-mr="डिस्कनेक्ट करा">Disconnect</button>
             </div>
 
-            <form id="telegram-form" class="nx-form">
-                <div class="nx-form-group">
-                    <label data-en="Telegram Chat ID" data-mr="टेलीग्राम चॅट आयडी">Telegram Chat ID</label>
-                    <input type="text" id="telegram-chat-id" name="telegram_chat_id" class="nx-input"
-                           placeholder="Enter your Telegram Chat ID"
-                           data-en="Enter your Telegram Chat ID"
-                           data-mr="तुमची टेलीग्राम चॅट आयडी प्रविष्ट करा">
-                    <div style="font-size:11px; color:var(--mid); margin-top:6px;" data-en="Example: 123456789 or -1001234567890" data-mr="उदाहरण: 123456789 किंवा -1001234567890">
-                        Example: 123456789 or -1001234567890
+            <div id="telegram-disconnected-block">
+                <div class="nx-alert nx-alert-orange nx-mb-16" style="align-items:center;">
+                    <span class="nx-alert-icon">⚪</span>
+                    <span style="font-size:13px;" data-en="Not connected — connect Telegram to receive alerts." data-mr="कनेक्ट नाही — अलर्ट मिळवण्यासाठी टेलीग्राम कनेक्ट करा.">Not connected — connect Telegram to receive alerts.</span>
+                </div>
+                <button type="button" id="telegram-connect-btn" class="nx-btn nx-btn-primary" data-en="Connect Telegram" data-mr="टेलीग्राम कनेक्ट करा">Connect Telegram</button>
+
+                <div id="telegram-bind-block" style="display:none; margin-top:16px;">
+                    <div class="nx-alert nx-alert-yellow nx-mb-16">
+                        <span class="nx-alert-icon">📱</span>
+                        <div>
+                            <div class="nx-bold nx-mb-16" data-en="Tap the link to open Telegram" data-mr="टेलीग्राम उघडण्यासाठी लिंकवर टॅप करा">Tap the link to open Telegram</div>
+                            <div style="font-size:12px; color:var(--light);" data-en="The bot will confirm here once connected." data-mr="कनेक्ट झाल्यावर बॉट येथे पुष्टी करेल.">The bot will confirm here once connected.</div>
+                        </div>
                     </div>
+                    <a id="telegram-bind-link" href="#" target="_blank" class="nx-btn nx-btn-primary nx-btn-full" style="text-decoration:none; display:block; text-align:center; box-sizing:border-box;">Open Telegram →</a>
+                    <div id="telegram-bind-status" class="nx-status-msg"></div>
                 </div>
-                <div class="nx-alert nx-alert-yellow nx-mb-16">
-                    <span class="nx-alert-icon">⚠️</span>
-                    <span style="font-size:12px;" data-en="You will receive alerts when any raw material stock falls below the minimum level." data-mr="जेव्हा कोणत्याही कच्च्या मालाचा साठा किमान पातळीपेक्षा कमी होईल तेव्हा तुम्हाला अलर्ट मिळतील.">
-                        You will receive alerts when any raw material stock falls below the minimum level.
-                    </span>
-                </div>
-                <div style="position:relative; display:inline-block; width:100%;">
-                    <button type="submit" id="saveTelegramBtn" class="nx-btn nx-btn-primary nx-btn-full" data-en="Save Telegram Settings" data-mr="टेलीग्राम सेटिंग्ज साठवा">
-                        Save Telegram Settings
-                    </button>
-                    <span id="unsavedTelegram" class="nx-unsaved-dot"></span>
-                </div>
-            </form>
+            </div>
+
             <div id="telegram-status" class="nx-status-msg"></div>
+
+            <div class="nx-card-header" style="margin-top:24px;">
+                <div class="nx-card-title" data-en="Quiet Hours" data-mr="शांत तास">Quiet Hours</div>
+            </div>
+            <div style="font-size:12px; color:var(--mid); margin-bottom:12px;" data-en="No alerts during these hours (IST)." data-mr="या तासांमध्ये (IST) कोणतेही अलर्ट नाहीत.">No alerts during these hours (IST).</div>
+
+            <div class="nx-form-group">
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:400;">
+                    <input type="checkbox" id="quiet-hours-enabled" style="width:16px; height:16px; cursor:pointer;">
+                    <span data-en="Enable quiet hours" data-mr="शांत तास सक्षम करा">Enable quiet hours</span>
+                </label>
+            </div>
+            <div class="nx-grid-2" style="gap:12px;">
+                <div class="nx-form-group">
+                    <label data-en="From (hour)" data-mr="पासून (तास)">From (hour)</label>
+                    <input type="number" id="quiet-hours-start" class="nx-input" min="0" max="23" placeholder="22">
+                </div>
+                <div class="nx-form-group">
+                    <label data-en="Until (hour)" data-mr="पर्यंत (तास)">Until (hour)</label>
+                    <input type="number" id="quiet-hours-end" class="nx-input" min="0" max="23" placeholder="7">
+                </div>
+            </div>
+            <button type="button" id="save-quiet-hours-btn" class="nx-btn nx-btn-primary" data-en="Save Quiet Hours" data-mr="शांत तास साठवा">Save Quiet Hours</button>
+            <div id="quiet-hours-status" class="nx-status-msg"></div>
         </div>
     </div>
 
@@ -804,6 +853,7 @@
                                 <th data-en="Email"   data-mr="ईमेल">Email</th>
                                 <th data-en="Address" data-mr="पत्ता">Address</th>
                                 <th data-en="GSTIN"   data-mr="जीएसटी नंबर">GSTIN</th>
+                                <th class="principal-col" style="display:none;" data-en="Principal" data-mr="प्रिन्सिपल">Principal</th>
                                 <th class="owner-only" data-en="Actions" data-mr="क्रिया">Actions</th>
                             </tr>
                         </thead>
@@ -1093,6 +1143,22 @@
     // the add-material 250-cap check below.
     let tenantPlan = 'founder';
 
+    // Same fresh-fetch reasoning as tenantPlan above (Step 2I) — fetched once
+    // in the same DOMContentLoaded query below, feeds the Clients tab's
+    // Principal column gate and clientViewRow()/editClient()'s cell visibility.
+    // Deliberately NOT the isJobWorker()/isPrincipal() helpers in
+    // js/supabase-client.js — those exist for other pages going forward, not
+    // for this page's own gating.
+    let tenantIsJobWorker = false;
+    let tenantIsPrincipal = false;
+
+    // Tracks p2_tenant_settings.is_job_work_setup_seen, refreshed on every
+    // loadCompanyDetails() call. Gates the "⚙ Advanced settings" section — see
+    // its click handler below. Used as a write-guard so re-toggling the
+    // section open/closed within one session doesn't re-fire the DB update.
+    let jobworkSetupSeen = false;
+    let advancedSectionExpanded = false;
+
     // ── STOCK ADJUSTMENT SIGN ─────────────────────────────────────────────────
     let adjSign = 1;
 
@@ -1188,7 +1254,7 @@
                 currentChallanOverride = data.challan_next_override ?? null;
                 updateChallanOverrideHint(currentChallanOverride);
                 document.getElementById('grn-sequence').value      = data.grn_sequence || '';
-                document.getElementById('telegram-chat-id').value  = data.telegram_chat_id || '';
+                initTelegramSection(data, tenantId);
                 currentInvoiceSequence = data.invoice_sequence || 0;
                 document.getElementById('invoice-sequence').value  = currentInvoiceSequence + 1;
                 // Challan mode toggle
@@ -1196,6 +1262,29 @@
                 const modeRadio = document.querySelector(`input[name="challan_mode"][value="${savedMode}"]`);
                 if (modeRadio) modeRadio.checked = true;
                 highlightChallanMode(savedMode);
+
+                // Advanced settings section (Step 2I) — collapsed by default for
+                // every tenant. Expands only once is_job_work_setup_seen is true
+                // (set by the trigger's own click handler below) or either flag is
+                // already true. This is the Type A gate: a standalone tenant whose
+                // three fields are all false/never-clicked sees a generic "⚙
+                // Advanced settings" label and nothing job-work-specific.
+                jobworkSetupSeen = !!data.is_job_work_setup_seen;
+                advancedSectionExpanded = jobworkSetupSeen || !!data.is_job_worker || !!data.is_principal;
+                const advancedSection = document.getElementById('advanced-settings-section');
+                if (advancedSection) advancedSection.style.display = advancedSectionExpanded ? '' : 'none';
+
+                // Within the unlocked section, each row is shown only while its
+                // own value is false; once true, hidden (checking it is a
+                // one-way action for now, no "turn off" flow exists yet).
+                const jobWorkerRow = document.getElementById('jobworker-toggle-row');
+                if (jobWorkerRow) jobWorkerRow.style.display = data.is_job_worker ? 'none' : '';
+                const jobWorkerConfirmedRow = document.getElementById('jobworker-confirmed-row');
+                if (jobWorkerConfirmedRow) jobWorkerConfirmedRow.style.display = data.is_job_worker ? '' : 'none';
+                const principalRow = document.getElementById('principal-toggle-row');
+                if (principalRow) principalRow.style.display = data.is_principal ? 'none' : '';
+                const principalConfirmedRow = document.getElementById('principal-confirmed-row');
+                if (principalConfirmedRow) principalConfirmedRow.style.display = data.is_principal ? '' : 'none';
             }
         } catch (error) {
             console.error('Error loading company details:', error);
@@ -1232,6 +1321,68 @@
         } catch (error) {
             console.error('Error saving company details:', error);
             showStatus('company-status','error','Failed to save company details','कंपनी तपशील साठवण्यात अयशस्वी');
+        }
+    });
+
+    // ── ADVANCED SETTINGS TRIGGER (Step 2I) ──────────────────────────────────────
+    // Generic, unnamed toggle — visible to every tenant. Purely a collapse/
+    // expand UI action; only the first expand also persists
+    // is_job_work_setup_seen (guarded by jobworkSetupSeen so re-toggling within
+    // a session doesn't re-fire the write).
+    document.getElementById('advanced-settings-trigger').addEventListener('click', async () => {
+        advancedSectionExpanded = !advancedSectionExpanded;
+        document.getElementById('advanced-settings-section').style.display = advancedSectionExpanded ? '' : 'none';
+        if (!advancedSectionExpanded || jobworkSetupSeen) return;
+        try {
+            const { data: { user } } = await window.supabase.auth.getUser();
+            if (!user) return;
+            const tenantId = user.user_metadata?.tenant_id || user.id;
+            const { error } = await window.supabase.from('p2_tenant_settings')
+                .update({ is_job_work_setup_seen: true }).eq('tenant_id', tenantId);
+            if (error) throw error;
+            jobworkSetupSeen = true;
+        } catch (error) {
+            console.error('Error saving is_job_work_setup_seen:', error);
+        }
+    });
+
+    // ── JOB-WORK NETWORK ONBOARDING SWITCHES (Step 2I) ──────────────────────────
+    // Each checkbox saves itself immediately on check — deliberately NOT part of
+    // the company-form submit above, so editing an unrelated field (name,
+    // address, ...) and clicking "Save Company Details" can never silently
+    // revert one of these flags back to false. No "turn off" path yet — checking
+    // is one-way for now, and the row hides itself once saved.
+    document.getElementById('is-job-worker-toggle').addEventListener('change', async (e) => {
+        if (!e.target.checked) return;
+        try {
+            const { data: { user } } = await window.supabase.auth.getUser();
+            if (!user) { e.target.checked = false; return; }
+            const tenantId = user.user_metadata?.tenant_id || user.id;
+            const { error } = await window.supabase.from('p2_tenant_settings')
+                .update({ is_job_worker: true }).eq('tenant_id', tenantId);
+            if (error) throw error;
+            document.getElementById('jobworker-toggle-row').style.display = 'none';
+        } catch (error) {
+            console.error('Error saving is_job_worker:', error);
+            e.target.checked = false;
+            toast('Failed to save','error');
+        }
+    });
+
+    document.getElementById('is-principal-toggle').addEventListener('change', async (e) => {
+        if (!e.target.checked) return;
+        try {
+            const { data: { user } } = await window.supabase.auth.getUser();
+            if (!user) { e.target.checked = false; return; }
+            const tenantId = user.user_metadata?.tenant_id || user.id;
+            const { error } = await window.supabase.from('p2_tenant_settings')
+                .update({ is_principal: true }).eq('tenant_id', tenantId);
+            if (error) throw error;
+            document.getElementById('principal-toggle-row').style.display = 'none';
+        } catch (error) {
+            console.error('Error saving is_principal:', error);
+            e.target.checked = false;
+            toast('Failed to save','error');
         }
     });
 
@@ -1460,21 +1611,110 @@
         }
     });
 
-    // ── SAVE TELEGRAM ─────────────────────────────────────────────────────────
-    document.getElementById('telegram-form').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const chatId = document.getElementById('telegram-chat-id').value.trim();
-        if (!chatId) { showStatus('telegram-status','error','Please enter a Telegram Chat ID','कृपया टेलीग्राम चॅट आयडी प्रविष्ट करा'); return; }
+    // ── TELEGRAM: CONNECT / DISCONNECT / QUIET HOURS ────────────────────────────
+    let telegramPollTimer = null;
+
+    function stopTelegramPoll() {
+        if (telegramPollTimer) { clearInterval(telegramPollTimer); telegramPollTimer = null; }
+    }
+
+    function renderTelegramConnectionState(connected) {
+        document.getElementById('telegram-connected-block').style.display = connected ? 'block' : 'none';
+        document.getElementById('telegram-disconnected-block').style.display = connected ? 'none' : 'block';
+        if (connected) {
+            document.getElementById('telegram-bind-block').style.display = 'none';
+            stopTelegramPoll();
+        }
+    }
+
+    function initTelegramSection(data, tenantId) {
+        renderTelegramConnectionState(!!data.telegram_chat_id);
+        const enabled = data.quiet_hours_start != null && data.quiet_hours_end != null;
+        document.getElementById('quiet-hours-enabled').checked = enabled;
+        document.getElementById('quiet-hours-start').value = data.quiet_hours_start ?? '';
+        document.getElementById('quiet-hours-end').value = data.quiet_hours_end ?? '';
+    }
+
+    document.getElementById('telegram-connect-btn').addEventListener('click', async () => {
         try {
             const { data: { user } } = await window.supabase.auth.getUser();
             if (!user) { showStatus('telegram-status','error','Not authenticated','प्रमाणित नाही'); return; }
+            const tenantId = user.user_metadata?.tenant_id || user.id;
+
+            const bindToken = crypto.randomUUID();
             const { error } = await window.supabase.from('p2_tenant_settings')
-                .upsert({ tenant_id: user.id, telegram_chat_id: chatId }, { onConflict: 'tenant_id' });
+                .upsert({ tenant_id: tenantId, telegram_bind_token: bindToken }, { onConflict: 'tenant_id' });
             if (error) throw error;
-            showStatus('telegram-status','success','Telegram settings saved successfully!','टेलीग्राम सेटिंग्ज यशस्वीरित्या साठवल्या!');
+
+            const linkEl = document.getElementById('telegram-bind-link');
+            linkEl.href = `https://t.me/nexflow_alerts_bot4?start=${bindToken}`;
+            document.getElementById('telegram-bind-block').style.display = 'block';
+            showStatus('telegram-bind-status','success','Waiting for you to tap the link…','तुम्ही लिंकवर टॅप करण्याची वाट पाहत आहे…');
+
+            stopTelegramPoll();
+            const startedAt = Date.now();
+            telegramPollTimer = setInterval(async () => {
+                if (Date.now() - startedAt > 120000) { stopTelegramPoll(); return; }
+                const { data: row } = await window.supabase
+                    .from('p2_tenant_settings')
+                    .select('telegram_chat_id')
+                    .eq('tenant_id', tenantId)
+                    .single();
+                if (row?.telegram_chat_id) {
+                    stopTelegramPoll();
+                    renderTelegramConnectionState(true);
+                    showStatus('telegram-status','success','✅ Connected!','✅ कनेक्ट झाले!');
+                }
+            }, 3000);
         } catch (error) {
-            console.error('Error saving Telegram settings:', error);
-            showStatus('telegram-status','error','Failed to save settings','सेटिंग्ज साठवण्यात अयशस्वी');
+            console.error('Error connecting Telegram:', error);
+            showStatus('telegram-status','error','Failed to generate link','लिंक तयार करण्यात अयशस्वी');
+        }
+    });
+
+    document.getElementById('telegram-disconnect-btn').addEventListener('click', async () => {
+        if (!confirm('Disconnect Telegram? You will stop receiving alerts.')) return;
+        try {
+            const { data: { user } } = await window.supabase.auth.getUser();
+            if (!user) return;
+            const tenantId = user.user_metadata?.tenant_id || user.id;
+            const { error } = await window.supabase.from('p2_tenant_settings')
+                .update({ telegram_chat_id: null, telegram_bind_token: null })
+                .eq('tenant_id', tenantId);
+            if (error) throw error;
+            renderTelegramConnectionState(false);
+            showStatus('telegram-status','success','Disconnected','डिस्कनेक्ट झाले');
+        } catch (error) {
+            console.error('Error disconnecting Telegram:', error);
+            showStatus('telegram-status','error','Failed to disconnect','डिस्कनेक्ट करण्यात अयशस्वी');
+        }
+    });
+
+    document.getElementById('save-quiet-hours-btn').addEventListener('click', async () => {
+        try {
+            const { data: { user } } = await window.supabase.auth.getUser();
+            if (!user) { showStatus('quiet-hours-status','error','Not authenticated','प्रमाणित नाही'); return; }
+            const tenantId = user.user_metadata?.tenant_id || user.id;
+
+            const enabled = document.getElementById('quiet-hours-enabled').checked;
+            let start = null, end = null;
+            if (enabled) {
+                start = parseInt(document.getElementById('quiet-hours-start').value, 10);
+                end = parseInt(document.getElementById('quiet-hours-end').value, 10);
+                if (isNaN(start) || start < 0 || start > 23 || isNaN(end) || end < 0 || end > 23) {
+                    showStatus('quiet-hours-status','error','Enter hours between 0 and 23','0 ते 23 दरम्यान तास प्रविष्ट करा');
+                    return;
+                }
+            }
+
+            const { error } = await window.supabase.from('p2_tenant_settings')
+                .update({ quiet_hours_start: start, quiet_hours_end: end })
+                .eq('tenant_id', tenantId);
+            if (error) throw error;
+            showStatus('quiet-hours-status','success','Quiet hours saved','शांत तास साठवले');
+        } catch (error) {
+            console.error('Error saving quiet hours:', error);
+            showStatus('quiet-hours-status','error','Failed to save quiet hours','शांत तास साठवण्यात अयशस्वी');
         }
     });
 
@@ -1789,6 +2029,7 @@
             <td>${client.email || `<span style="color:var(--mid);">No email</span>`}</td>
             <td style="font-size:12px; color:var(--mid);">${client.address || ''}</td>
             <td style="font-size:12px; color:var(--mid);">${client.gstin || ''}</td>
+            <td class="principal-col" style="display:${tenantIsJobWorker ? '' : 'none'};">${client.is_job_work_principal ? '✓' : ''}</td>
             <td class="owner-only">
                 <button onclick="editClient('${client.id}')" class="nx-btn nx-btn-ghost nx-btn-sm" data-en="Edit" data-mr="संपादित करा">Edit</button>
                 <button onclick="deleteClient('${client.id}')" class="nx-btn nx-btn-danger nx-btn-sm" data-en="Delete" data-mr="काढा">Delete</button>
@@ -1864,6 +2105,9 @@
                 <input type="text" class="nx-input" id="edit-po-${clientId}" value="${escAttr(client.po_number)}" placeholder="PO Number">
             </td>
             <td><input type="text" class="nx-input" id="edit-gstin-${clientId}" value="${escAttr(client.gstin)}" placeholder="GSTIN"></td>
+            <td class="principal-col" style="display:${tenantIsJobWorker ? '' : 'none'};">
+                <input type="checkbox" id="edit-principal-${clientId}" ${client.is_job_work_principal ? 'checked' : ''} style="width:16px; height:16px; cursor:pointer;">
+            </td>
             <td class="owner-only">
                 <button onclick="saveClient('${clientId}')" class="nx-btn nx-btn-primary nx-btn-sm" data-en="Save" data-mr="जतन करा">Save</button>
                 <button onclick="cancelEditClient('${clientId}')" class="nx-btn nx-btn-ghost nx-btn-sm" data-en="Cancel" data-mr="रद्द करा">Cancel</button>
@@ -1887,6 +2131,7 @@
         const address = document.getElementById(`edit-address-${clientId}`)?.value.trim();
         const po_number = document.getElementById(`edit-po-${clientId}`)?.value.trim();
         const gstin = document.getElementById(`edit-gstin-${clientId}`)?.value.trim();
+        const isJobWorkPrincipal = document.getElementById(`edit-principal-${clientId}`)?.checked || false;
 
         if (!name) { toast(lang==='mr'?'कृपया क्लायंटचे नाव प्रविष्ट करा':'Please enter client name','error'); return; }
         if (email && !isValidEmail(email)) { toast(lang==='mr'?'कृपया वैध ईमेल प्रविष्ट करा':'Please enter a valid email address','error'); return; }
@@ -1896,7 +2141,7 @@
             const tenantId = user.user_metadata?.tenant_id || user.id;
             // Defense-in-depth: filtered only by id before, relying solely on RLS.
             const { error } = await window.supabase.from('p2_clients')
-                .update({ name, email: email || null, address: address || null, po_number: po_number || null, gstin: gstin || null })
+                .update({ name, email: email || null, address: address || null, po_number: po_number || null, gstin: gstin || null, is_job_work_principal: isJobWorkPrincipal })
                 .eq('id', clientId).eq('tenant_id', tenantId);
             if (error) throw error;
             toast(lang==='mr'?'क्लायंट अद्ययावत झाला':'Client updated','success');
@@ -2249,8 +2494,7 @@
     function trackFormChanges() {
         const forms = [
             { form: document.getElementById('company-form'),  indicator: 'unsavedCompany' },
-            { form: document.getElementById('challan-form'),  indicator: 'unsavedChallan' },
-            { form: document.getElementById('telegram-form'), indicator: 'unsavedTelegram' }
+            { form: document.getElementById('challan-form'),  indicator: 'unsavedChallan' }
         ];
         forms.forEach(({ form, indicator }) => {
             if (!form) return;
@@ -3101,11 +3345,16 @@
             const planTenantId = planUser.user_metadata?.tenant_id || planUser.id;
             const { data: settingsData } = await window.supabase
                 .from('p2_tenant_settings')
-                .select('plan')
+                .select('plan, is_job_worker, is_principal')
                 .eq('tenant_id', planTenantId)
                 .maybeSingle();
             tenantPlan = settingsData?.plan || 'founder';
+            tenantIsJobWorker = settingsData?.is_job_worker || false;
+            tenantIsPrincipal = settingsData?.is_principal || false;
             console.log('settings.html plan check:', tenantPlan);
+            document.querySelectorAll('.principal-col').forEach(el => {
+                el.style.display = tenantIsJobWorker ? '' : 'none';
+            });
         }
 
         applyRoleVisibility();
