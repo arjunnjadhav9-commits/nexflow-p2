@@ -1722,6 +1722,8 @@ function openChallanModal() {
     if (match) addressInput.value = match.address || '';
     loadPOSuggestions(nameInput.value.trim());
   });
+  const lastTransport = localStorage.getItem('nexflow_last_transport');
+  if (lastTransport) document.getElementById('ch-vehicle').value = lastTransport;
   document.getElementById('challanModal').classList.add('open');
   nameInput.focus();
 }
@@ -1787,6 +1789,8 @@ async function createDispatchChallan() {
     }
 
     await savePONumber(clientName, poNumber);
+
+    if (vehicleNumber) localStorage.setItem('nexflow_last_transport', vehicleNumber);
 
     closeChallanModal();
     toast(`✓ Challan ${currentIssueChallanNumber || ''} created`, 'ok');

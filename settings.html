@@ -480,6 +480,15 @@
                     </div>
                 </div>
 
+                <div class="nx-form-group" style="margin-top:16px;">
+                    <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-weight:400;">
+                        <input type="checkbox" id="use-stator-stack-labels" style="width:16px; height:16px; cursor:pointer;">
+                        <span data-en="Use Stator/Stack labels on challan (product dispatch = Stator, RM dispatch = Stack)" data-mr="चलानवर Stator/Stack लेबल वापरा">
+                            Use Stator/Stack labels on challan (product dispatch = Stator, RM dispatch = Stack)
+                        </span>
+                    </label>
+                </div>
+
                     <button type="submit" id="saveChallanBtn" class="nx-btn nx-btn-primary nx-btn-full" data-en="Save Challan & GRN Settings" data-mr="चलान आणि GRN सेटिंग्ज साठवा">
                         Save Challan &amp; GRN Settings
                     </button>
@@ -1262,6 +1271,7 @@
                 const modeRadio = document.querySelector(`input[name="challan_mode"][value="${savedMode}"]`);
                 if (modeRadio) modeRadio.checked = true;
                 highlightChallanMode(savedMode);
+                document.getElementById('use-stator-stack-labels').checked = !!data.use_stator_stack_labels;
 
                 // Advanced settings section (Step 2I) — collapsed by default for
                 // every tenant. Expands only once is_job_work_setup_seen is true
@@ -1395,11 +1405,12 @@
         const challanMode     = document.querySelector('input[name="challan_mode"]:checked')?.value || 'split';
         const grnSequenceVal  = document.getElementById('grn-sequence').value.trim();
         const grnSequence     = grnSequenceVal ? parseInt(grnSequenceVal) : null;
+        const useStatorStackLabels = document.getElementById('use-stator-stack-labels').checked;
         try {
             const { data: { user } } = await window.supabase.auth.getUser();
             if (!user) { showStatus('challan-status','error','Not authenticated','प्रमाणित नाही'); return; }
             const { error } = await window.supabase.from('p2_tenant_settings')
-                .update({ challan_mode: challanMode, grn_sequence: grnSequence })
+                .update({ challan_mode: challanMode, grn_sequence: grnSequence, use_stator_stack_labels: useStatorStackLabels })
                 .eq('tenant_id', user.id);
             if (error) throw error;
             showStatus('challan-status','success','Challan & GRN settings saved!','चलान आणि GRN सेटिंग्ज साठवल्या!');
@@ -3214,7 +3225,7 @@
             }
 
             data.forEach(mat => {
-                const payload = JSON.stringify({ id: mat.id, tid: mat.tenant_id, name: mat.name, unit: mat.unit, code: mat.material_code||'' });
+                const payload = mat.id;
                 const card = document.createElement('div');
                 card.className = 'qr-label-card';
                 card.innerHTML = `

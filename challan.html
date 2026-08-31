@@ -490,7 +490,11 @@
                 } else {
                     name = item.p2_products?.name || item.material_name || 'Unknown Product';
                 }
-                const unit = item.unit || item.p2_products?.unit || '';
+                let unit = item.unit || item.p2_products?.unit || '';
+                if (settings.use_stator_stack_labels) {
+                    if (order.dispatch_type === 'raw_material') unit = 'Stack';
+                    else if (order.dispatch_type === 'product' || order.dispatch_type === 'bom_issue') unit = 'Stator';
+                }
                 const poCell = showPoCol
                     ? `<td style="vertical-align:middle; padding:10px;">${item.po_number || ''}</td>`
                     : '';

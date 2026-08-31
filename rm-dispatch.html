@@ -218,7 +218,8 @@
                             </div>
                             <div class="nx-form-group">
                                 <label data-en="Transport" data-mr="ट्रान्सपोर्ट">Transport</label>
-                                <input type="text" id="vehicleNumber" class="nx-input" data-en="Optional" data-mr="पर्यायी" placeholder="Optional">
+                                <input type="text" id="vehicleNumber" class="nx-input" list="transportSuggestions" autocomplete="off" data-en="Optional" data-mr="पर्यायी" placeholder="Optional">
+                                <datalist id="transportSuggestions"></datalist>
                             </div>
                         </div>
 
@@ -576,6 +577,8 @@
 
                 document.getElementById('dispatchDate').value = new Date().toISOString().split('T')[0];
 
+                populateTransportSuggestions();
+
                 await Promise.all([
                     loadMaterials(),
                     loadRecentDispatches(),
@@ -680,6 +683,31 @@
                 .from('p2_client_po_numbers')
                 .upsert({ tenant_id: tenantId, client_name: clientName, po_number: poNumber },
                          { onConflict: 'tenant_id,client_name,po_number' });
+        }
+
+        function populateTransportSuggestions() {
+            const datalist = document.getElementById('transportSuggestions');
+            if (!datalist) return;
+            let history = [];
+            try { history = JSON.parse(localStorage.getItem('nexflow_last_transport')) || []; } catch (e) { history = []; }
+            datalist.innerHTML = '';
+            history.forEach(val => {
+                const opt = document.createElement('option');
+                opt.value = val;
+                datalist.appendChild(opt);
+            });
+        }
+
+        function saveTransportToHistory(value) {
+            if (!value) return;
+            let history = [];
+            try { history = JSON.parse(localStorage.getItem('nexflow_last_transport')) || []; } catch (e) { history = []; }
+            if (!history.includes(value)) {
+                history.unshift(value);
+                history = history.slice(0, 10);
+                localStorage.setItem('nexflow_last_transport', JSON.stringify(history));
+                populateTransportSuggestions();
+            }
         }
 
         function setupClientAutofill() {
@@ -1218,6 +1246,8 @@
                 };
                 successBox.style.display = 'flex';
                 window.scrollTo({ top: 0, behavior: 'smooth' });
+
+                saveTransportToHistory(document.getElementById('vehicleNumber').value.trim());
 
                 // Reset form
                 currentDispatchId = null;

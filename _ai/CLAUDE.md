@@ -490,6 +490,11 @@ Haiku's `top_n` field. supplier_history returns every matching GRN, no `.limit()
 - challan.html PO column: showPoCol flag gates ALL changes (thead, tfoot colspan, row cells, Excel
   indices/merges) — if adding any new challan column in future, update both the static=false and
   showPoCol=true paths.
+- challan.html downloadExcel(): the UNIT column value is read back out of the already-rendered
+  on-screen `<td>` text (cells[...].textContent), not from item.unit/settings directly — e.g. the
+  Stator/Stack label toggle (use_stator_stack_labels) works in the Excel export for free, but this
+  is a fragile coupling with nothing enforcing it in code. Any future change to how the UNIT `<td>`
+  is rendered in populateChallan() must be re-verified against the Excel export by hand.
 
 ### Proactive Telegram layer
 - Daily briefing (check-low-stock): 8am IST via pg_net cron (jobid 2, 30 2 * * *)

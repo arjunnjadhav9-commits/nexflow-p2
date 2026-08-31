@@ -423,18 +423,37 @@
             setScanStatus(t('QR detected — loading...','QR सापडला — लोड होत आहे...'), 'success');
 
             let payload;
-            try {
-                payload = JSON.parse(rawValue);
-            } catch {
-                setScanStatus(t('Invalid QR — not a Nexflow code','अवैध QR — Nexflow कोड नाही'), 'error');
-                scanLoop = requestAnimationFrame(detectFrame);
-                return;
-            }
+            const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-            if (!payload.id || payload.tid !== tenantId) {
-                setScanStatus(t('QR does not belong to this account','हा QR या खात्याचा नाही'), 'error');
-                scanLoop = requestAnimationFrame(detectFrame);
-                return;
+            if (UUID_RE.test(rawValue.trim())) {
+                // New format: bare UUID — look up material by ID.
+                // No tid check needed — DB query is scoped to tenantId.
+                const { data: mat, error: matErr } = await window.supabase
+                    .from('p2_raw_materials')
+                    .select('id, name, unit, material_code')
+                    .eq('id', rawValue.trim())
+                    .eq('tenant_id', tenantId)
+                    .single();
+                if (matErr || !mat) {
+                    setScanStatus(t('Material not found','साहित्य सापडले नाही'), 'error');
+                    scanLoop = requestAnimationFrame(detectFrame);
+                    return;
+                }
+                payload = { id: mat.id, name: mat.name, unit: mat.unit, code: mat.material_code || '' };
+            } else {
+                try {
+                    payload = JSON.parse(rawValue);
+                } catch {
+                    setScanStatus(t('Invalid QR — not a Nexflow code','अवैध QR — Nexflow कोड नाही'), 'error');
+                    scanLoop = requestAnimationFrame(detectFrame);
+                    return;
+                }
+                // Old format: validate tid
+                if (!payload.id || payload.tid !== tenantId) {
+                    setScanStatus(t('QR does not belong to this account','हा QR या खात्याचा नाही'), 'error');
+                    scanLoop = requestAnimationFrame(detectFrame);
+                    return;
+                }
             }
 
             const { data: txData, error: txErr } = await window.supabase
