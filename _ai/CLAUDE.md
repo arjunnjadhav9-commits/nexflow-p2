@@ -179,6 +179,11 @@ Mobile-first: owners use phones. Must work on mobile browser.
 - Stock balance = SUM of all p2_stock_transactions for that material — never store
   balance directly. v_p2_stock_balance is the view for this; it has NO is_active column —
   filter using context.materials (active-only) client-side, not on the view directly.
+  v_p2_stock_balance already filters owned_by IS NULL in its JOIN condition — it returns
+  own-stock-only balances by construction. The view does NOT expose owned_by as an output
+  column. Never add .is('owned_by', null) as a PostgREST filter on this view — the column
+  does not exist in the view's output and will cause a 500 error. The ownership filter is
+  baked into the view definition itself.
 - On dispatch CONFIRM: reads BOM, inserts negative-qty consumption transactions,
   sets reference_id atomically with the dispatch order header.
 - Challan header: 100% from p2_tenant_settings — zero hardcoded client details.
@@ -375,154 +380,68 @@ invoice generation note:
 
 ## AI Agent — Architecture
 
+**Agent redesign — COMPLETE (Aug 31 2026).** The chat agent (agent-query + agent-chat.js) was
+converted from a mixed read/write system into a pure read-only supervisor. All 7 chat-reachable
+write intents (create_grn, create_production_issue, create_product_dispatch, create_rm_dispatch,
+send_challan, send_tally_export, send_invoice) and their 7 chat-exclusive body.action handlers
+(confirm_grn, confirm_multi_grn, update_grn_rates, confirm_production_issue,
+add_production_issue_client, confirm_product_dispatch, confirm_rm_dispatch) are gone —
+matchEntities()/buildConfirmData() and every confirm-card function in agent-chat.js were deleted
+along with them. The chat widget now only ever sends `{tenant_id, message}` and displays
+`confirm.confirm_text` — no action branching, no confirm/cancel buttons.
+check-low-stock-instant (the agent's fire-and-forget low-stock alert after a chat-driven write)
+was deleted as a Supabase Edge Function once its three call sites went with the write intents —
+see "Proactive Telegram layer" below.
+
 ### Edge Function: agent-query
-1. Deno.serve routes on body.action — plain message vs write actions
+1. Deno.serve first checks body.action — the 5 UI-only write handlers below route here; anything
+   else falls through to the plain-message flow.
 2. checkAndIncrementUsage() — atomic, row-locked, lazy daily reset, returns 429 on exceed
 3. buildContext() — fetches materials (is_active=true, includes material_code), stockBalances,
-   products (includes unit), suppliers (is_active=true), tenant settings (including challan_mode),
-   all tenant-scoped via SB_SECRET_KEY
+   products (includes unit), suppliers (is_active=true), all tenant-scoped via SB_SECRET_KEY
 4. callHaiku() — extraction only. Returns intent + raw fields as typed by user. Never matches to DB rows.
-5. Read-only intents → executeQuery() — direct DB queries, plain text answer, no confirm gate
-6. send_challan → sendChallanIntent() — inline handler, no confirm card, returns result string directly
-7. Write intents (parse phase) → match entities → build confirm card → return to widget
-8. Write intents (confirm phase, body.action present) → confirm function → RPC call → fire-and-forget Telegram → log
-9. logInteraction() — fire-and-forget at every exit point
+5. Every non-'unknown' intent → executeQuery() — direct DB queries, plain text answer, always
+   `{status:'ok', intent, confirm:{status:'ready', confirm_text}}` — no confirm gate, nothing writes.
+6. logInteraction() — fire-and-forget at every exit point
 
-### Write intent routing (body.action values)
-- confirm_grn — single-material GRN
-- confirm_multi_grn — multi-material GRN, calls confirm_agent_grn_multi RPC
-- update_grn_rates — updates rate/invoice_no on p2_stock_transactions by transaction_id
-- confirm_production_issue — BOM explosion issue
-- add_production_issue_client — client info for production issue challan
-- confirm_product_dispatch — product dispatch, BOM explosion
-- confirm_rm_dispatch — raw material dispatch
-- confirm_generate_invoice — dispatch-page "Generate Invoice" modal, always single-mode. Only
-  `rate` is client-supplied per item; qty/unit/description always re-fetched server-side from
-  p2_dispatch_items (never trust client-sent quantities for a billing amount).
-- send_challan has NO body.action — handled inline in message router, no confirm card
+### body.action handlers — UI-only, NOT reachable from chat
+These 5 exist purely because independent HTML pages POST straight to this Edge Function; the
+Haiku/message flow above never touches them and agent-chat.js has no code path that sends an
+`action` field.
+- confirm_generate_invoice — all-dispatch-history.html "Generate Invoice" modal, single-mode only.
+  Only `rate` is client-supplied per item; qty/unit/description always re-fetched server-side.
+- resend_invoice — invoices.html "Resend" button, re-sends an existing invoice's email.
+- confirm_consolidated_invoice / preview_consolidated_invoice — invoices.html "+ New Consolidated
+  Invoice" modal (Step 1 preview, Step 2 confirm+generate).
+- confirm_receive_grn — receive.html "Auto-fill GRN" (Tier 4 Phase 2), the one exception to
+  trusting the caller's tenant_id — verified against a real JWT since the caller is a different
+  tenant than the dispatch's sender.
 
-### All intents live (33 total)
-check_stock, create_grn, create_production_issue, create_product_dispatch, create_rm_dispatch,
-send_challan, send_tally_export, send_invoice, recent_grn, consumption_summary, supplier_history, low_stock_list, grn_detail,
+### READ_ONLY_INTENTS — the single source of truth (28 total)
+Lives only in agent-query/index.ts. agent-chat.js needs no copy — every intent is read-only, so
+it just displays `confirm.confirm_text` unconditionally, no allow-list required there.
+
+check_stock, recent_grn, consumption_summary, supplier_history, low_stock_list, grn_detail,
 pending_dispatches, grn_summary, top_consumption, material_list, stock_check_product,
 zero_stock_list, dispatch_summary, supplier_delivery_check, challan_detail, issue_summary,
 product_code_lookup, top_received, product_list, supplier_list, dispatch_detail, issue_detail,
-bom_detail, top_supplier
+bom_detail, top_supplier, invoice_total, invoice_detail, grn_completeness, gstr2b_status
+
+check_stock is the one intent that used to live outside this list (it went through the
+create_grn-era matchEntities()/buildConfirmData() confirm-gate machinery purely to reuse material
+matching) — migrated into executeQuery() during the redesign, same matchMaterialName() helper
+recent_grn/consumption_summary already used.
+
+top_consumption/top_received/top_supplier all default to top 10 (was 5), user-overridable via
+Haiku's `top_n` field. supplier_history returns every matching GRN, no `.limit()` (was 5).
 
 **Intentionally deferred (do not build yet):**
 - stock_value — needs p2_material_prices populated; SS Engineering has 0 price records
 
-### send_challan — critical implementation notes
-- NO confirm card — executes and returns result immediately like a read intent
-- NOT in READ_ONLY_INTENTS (Edge Function) — it's a write (sends email)
-- NOT in READ_ONLY_TEXT_INTENTS (agent-chat.js) — same reason
-- Haiku extracts: { challan_number: string, recipient_name?: string | null }
-- recipient_name optional — if absent, uses order.client_name to match p2_clients
-- p2_clients fetched inline in sendChallanIntent, NOT in buildContext() — pay-per-use
-- Excel built server-side: import XLSX from 'https://esm.sh/xlsx-js-style@1.2.0?bundle'
-  CRITICAL: must be DEFAULT import (import XLSX from ...), NOT (import * as XLSX from ...)
-  — xlsx-js-style is CJS; import * silently returns undefined for named exports via esm.sh
-- XLSX.write(wb, { type: 'base64', bookType: 'xlsx', cellStyles: true }) — cellStyles required
-- challanDescription() resolves product name from p2_products for product dispatches
-  (material_name is NULL at DB level for product dispatch items)
-- CHALLAN_ORDER_COLUMNS const shared between exact-match and ilike queries
-- Email: NO attachment — HTML body only with orange "View & verify this delivery online" link
-- Link always included when dispatch_token not null (no plan gate — utility for all tenants)
-- Body copy: "Delivery Challan X dated DD/MM/YYYY has been dispatched to you."
-- escapeHtml() defined locally in sendChallanEmail()
-- buildChallanWorkbook() still defined in file (uncalled — comment explains why, do not delete)
-- reply_to set to tenantSettings.email only if truthy — omitted entirely if null
-- Sending address: challans@nexflowautomations.in (verified on Resend)
-- RESEND_API_KEY secret (not 'Nexflow-P2-API' — that's the old name, both exist, code uses RESEND_API_KEY)
-
-### send_tally_export — critical implementation notes
-- NO confirm card — executes and sends immediately, same pattern as send_challan
-- NOT in READ_ONLY_INTENTS (Edge Function) — it's a write (sends email)
-- NOT in READ_ONLY_TEXT_INTENTS (agent-chat.js) — same reason
-- Haiku extracts: { date_from?: string (YYYY-MM-DD), date_to?: string (YYYY-MM-DD) } — both
-  optional, absent means all-time. Bare month names ("July cha") and "last month" are resolved
-  by Haiku itself into a full calendar range, "aaj"/"today" into a single-day range.
-  This requires the systemPrompt to tell Haiku today's date (`Today's date (IST): ...`,
-  computed via getISTDateRange(0).since.split('T')[0]) — there is no other date anchor
-  available to the model, unlike the "days"-based read intents which resolve relative to
-  real "now" in code, never via a calendar date the model has to compute itself.
-- date_from/date_to are re-validated in sendTallyExportIntent with a YYYY-MM-DD regex before
-  use — an unparseable value from Haiku is treated as absent, not passed to a Postgres filter.
-  date_from alone means "from then to today"; date_to alone (no date_from) is dropped.
-- ca_email/company_name/email fetched inline in sendTallyExportIntent, NOT in buildContext()
-- Three separate p2_stock_transactions queries (grn / consumption / adjustment+notes='Opening Stock')
-  joined to p2_raw_materials(name, material_code, hsn_sac, gst_rate, unit), each with optional
-  .gte/.lte('transaction_date', ...) when a date range is resolved — combined client-side,
-  sorted by transaction_date ascending, into one 17-column XLSX workbook (sheet "CA Export")
-- GST computed on GRN rows only (cgst_rate = sgst_rate = gst_rate/2, igst blank) — same split
-  logic as export.html's exportTallyTransactions(); consumption/opening-stock rows are GST-blank
-  (blank cells are '' not 0, so Excel doesn't sum them as zero)
-- Consumption quantity shown via Math.abs() — stored negative in p2_stock_transactions
-- Workbook built with ExcelJS (import ExcelJS from 'https://esm.sh/exceljs@4.3.0', default
-  import) — NOT the xlsx-js-style import send_challan uses (that one is uncalled/dormant here).
-  Header row styled: bold white font, solid orange fill (FFFF5C1A), centered; header row frozen
-  via worksheet.views = [{ state: 'frozen', ySplit: 1 }]. Numeric columns (Quantity, Rate,
-  Amount, CGST/SGST/Total GST Amount, Invoice Total) hold real numbers with numFmt, not strings
-  — so SUM formulas work in Excel/Sheets.
-- Sent as a Resend attachment (unlike send_challan, which has no attachment) — filename varies:
-  no range -> CA_Export_DDMMYYYY.xlsx; same-month range -> CA_Export_MonYYYY.xlsx; cross-month
-  range -> CA_Export_DDMon_DDMonYYYY.xlsx
-- encodeBase64(bytes: Uint8Array) chunks bytes before btoa() to avoid a stack overflow on a
-  large workbook — local helper, not a new import (deliberately avoids adding a second remote
-  host beyond esm.sh just for base64 encoding)
-- Success message includes "Period: DD/MM/YYYY – DD/MM/YYYY" when a range was resolved
-- reply_to set to tenantSettings.email only if truthy — same as send_challan
-
-### send_invoice — critical implementation notes
-- NO confirm card — executes and sends immediately, same pattern as send_challan/send_tally_export
-- NOT in READ_ONLY_INTENTS (Edge Function) — it's a write (creates a p2_invoices row, sends email)
-- NOT in READ_ONLY_TEXT_INTENTS (agent-chat.js) — same reason; needs its own else-if branch
-- Haiku extracts: { client_name: string, challan_number?: string, date_from?: string (YYYY-MM-DD),
-  date_to?: string (YYYY-MM-DD) }. Same "Today's date (IST)" system-prompt anchor as
-  send_tally_export for resolving bare month names/"last month"/relative ranges.
-- **Two modes**, selected in sendInvoiceIntent by which fields Haiku returned:
-  1. date_from + date_to both present/valid → **consolidated** — every confirmed dispatch for
-     that client across ALL dispatch_types within the range, merged into one invoice.
-  2. Else challan_number present → **single**, that specific dispatch.
-  3. Else → **single**, client's latest confirmed dispatch.
-  Consolidated mode is agent-only — the dispatch-page UI modal (confirm_generate_invoice) is
-  always single-mode, since it's tied to one confirmed dispatch on one page.
-- date_from/date_to re-validated against TALLY_EXPORT_DATE_RE before use (reused from
-  send_tally_export) — unparseable Haiku output is treated as absent, never hits Postgres.
-- matchClientName() is now generic (`<T extends {name:string}>`) so both ClientRow (send_challan)
-  and InvoiceClientRow (send_invoice — needs address/gstin too) can share it without a duplicate.
-- p2_dispatch_orders has no client_id FK — client matching for "latest dispatch"/consolidated
-  range queries is by exact client_name string equality, same convention already used in
-  rm-dispatch.html/production-issue.html's own client queries.
-- Rate resolution in the agent flow (buildInvoiceItemsForOrder): p2_product_prices for product
-  dispatch items, p2_material_prices for raw_material/bom_issue items, both "latest by
-  effective_date". **No price row found → rate 0, amount 0 — NEVER block or error.** Blocking a
-  whole invoice (especially consolidated, covering several dispatches) over one unpriced material
-  would make the feature useless for any client with even one unpriced item — the current state
-  of SS Engineering. This zero-fallback is agent-flow only; the Step 4 UI modal shows an empty
-  rate input instead and lets the owner fill it in before submitting.
-- Duplicate check: single mode keys on dispatch_order_id (backed by a DB unique index);
-  consolidated mode keys on exact tenant_id + date_from + date_to + client_id match (not an
-  overlap check). Either hit → resendExistingInvoice() re-sends the existing invoice_token's
-  link, no new insert, no invoice_sequence bump.
-- Cross-mode double-billing guard (consolidated only): before creating a consolidated invoice,
-  checks whether any matched dispatch already has a single-mode invoice against it. If so,
-  blocks the WHOLE consolidated invoice (never silently drops just those dispatches) and names
-  the offending challan numbers in the error message.
-- p2_invoices.status starts unset (DB default 'draft') at insert time and is only flipped to
-  'sent' via a follow-up UPDATE after the Resend call actually succeeds — never set 'sent' in
-  the same insert as the email send, or a Resend failure leaves a row falsely marked delivered.
-- sendInvoiceEmail() mirrors sendChallanEmail()'s shape (orange link button, reply_to only if
-  tenantSettings.email is truthy) but points at /invoice?token=... instead of /receive.
-- confirmGenerateInvoice (UI path) and sendInvoiceIntent (agent path) share buildInvoiceTotals()
-  (flat 18% GST split) and createAndSendInvoice()'s insert+email tail, but do NOT share item
-  resolution — the UI path trusts client-supplied rates (matched by dispatch_item_id, qty/unit/
-  description always re-fetched server-side), the agent path resolves rates from price tables.
-
 ### Critical agent gotchas
-- Adding new intent: MUST update BOTH READ_ONLY_INTENTS (Edge Function) AND
-  READ_ONLY_TEXT_INTENTS (agent-chat.js) for read intents — missing either = silent blank response.
-  Write intents go in NEITHER — routed via body.action (confirm-gated) or inline handler (send_challan).
+- Adding a new intent: add it to HaikuIntent, the system prompt, executeQuery(), and
+  READ_ONLY_INTENTS — one list, all in agent-query/index.ts. agent-chat.js needs no copy since
+  every intent is read-only and displayed the same way.
 - v_p2_stock_balance has NO is_active — filter via context.materials intersection.
 - SB_SECRET_KEY (agent-query) ≠ SUPABASE_SERVICE_ROLE_KEY (check-low-stock functions).
 - SUPABASE_ANON_KEY is a bare global from js/supabase-client.js — no window. prefix.
@@ -535,15 +454,7 @@ bom_detail, top_supplier
 - One sequence generator per counter — no client-side GRN number preview logic.
 - challan_detail does exact match first, then suffix ilike fallback.
 - dispatch_detail vs challan_detail: challan_detail = when/status, dispatch_detail = what's inside.
-- confirm_grn write path logs message:'' — original logged at create_grn parse step.
 - Chips fetch ALL materials (no .limit) — top 6 displayed, full list for search.
-- create_product_dispatch and create_rm_dispatch: neither in READ_ONLY_INTENTS nor READ_ONLY_TEXT_INTENTS.
-- send_tally_export: neither in READ_ONLY_INTENTS nor READ_ONLY_TEXT_INTENTS — write intent (sends
-  email), same pattern as send_challan. Needs its own agent-chat.js else-if branch (not a generic
-  fallback) or the result is silently swallowed — there is no catch-all in that if/else chain.
-- send_invoice: same as above — neither in READ_ONLY_INTENTS nor READ_ONLY_TEXT_INTENTS, own
-  agent-chat.js else-if branch required. confirm_generate_invoice (the UI-modal action) is a
-  separate code path entirely — routed via body.action before the Haiku/message flow even runs.
 - First message after cold start sometimes fails with "Failed to load raw materials" — known Deno cold start issue, not a code bug, second attempt always works.
 - isPro() reads localStorage — can return stale plan value. Always read plan from DB-fetched settings object directly for gating logic.
 - Test tenant agent_tier MUST stay 'unlimited' at all times. Never reset or change via
@@ -584,12 +495,13 @@ bom_detail, top_supplier
 - Daily briefing (check-low-stock): 8am IST via pg_net cron (jobid 2, 30 2 * * *)
   Sections: low stock, yesterday's GRNs (grouped by material), draft dispatches >2 days,
   no GRN in 3 days. Sends nothing if all clear. All bullets use • not -.
-- Instant alert (check-low-stock-instant): STILL LIVE — called by agent-query (lines 748,
-  922, 1040) after confirm_grn / confirm_production_issue / confirm_rm_dispatch. The three
-  HTML dispatch pages (dispatch.html, production-issue.html, rm-dispatch.html) were migrated
-  to p2_notifications in Step 4. check-low-stock-instant retirement is blocked until agent
-  write intents are redesigned (deferred — see agent redesign note). Do not delete this
-  function or assume it is dead.
+- Instant alert (check-low-stock-instant): DELETED (agent redesign, Aug 31 2026) — its only
+  callers were confirm_production_issue/confirm_product_dispatch/confirm_rm_dispatch inside
+  agent-query, all removed along with the chat write intents. The three HTML dispatch pages
+  (dispatch.html, production-issue.html, rm-dispatch.html) were already migrated to
+  p2_notifications in Step 4, so no functionality was lost — this just removed the last dead
+  Supabase Edge Function pointing at the old flow. js/notifications.js still has two comments
+  referencing it by name (describing the pattern it replaced) — harmless, not a live call.
 - p2_notifications fan-out (Step 4, Aug 31 2026): single insert-then-fan-out pipeline —
   js/notifications.js's sendNotification() inserts a queued p2_notifications row, then
   fire-and-forget POSTs {notification_id} to the notify Edge Function, which delivers to
@@ -1438,7 +1350,8 @@ Build sequence:
 - Step 4 — COMPLETE (Aug 31 2026): p2_notifications table, notify + telegram-webhook Edge
   Functions, js/notifications.js, in-app bell (js/navbar.js), Telegram deep-link binding +
   quiet hours (settings.html), payment_overdue_notify cron (jobid 8). check-low-stock-instant
-  NOT retired — agent-query still calls it (see Proactive Telegram layer note). See "Shipped
+  was retired separately, as part of the agent redesign (see "AI Agent — Architecture" above
+  and "Proactive Telegram layer" note) — not part of Step 4 itself. See "Shipped
   Aug 31, 2026" for full detail. Deferred to post-Step-5: Notification Centre v2
   (notifications.html, Gmail-style, Telegram deep link) — see Backlog.
 - Step 5 — principal-side one-sided mode (KPML pilot)
