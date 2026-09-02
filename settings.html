@@ -272,6 +272,19 @@
                            placeholder="e.g. 998898"
                            data-en="e.g. 998898" data-mr="उदा. 998898">
                 </div>
+                <div class="nx-form-group">
+                    <label data-en="Annual Turnover (AATO)" data-mr="वार्षिक उलाढाल (AATO)">Annual Turnover (AATO)</label>
+                    <select id="aato-bracket" name="aato_bracket" class="nx-input">
+                        <option value="below_5cr" data-en="Below ₹5 Crore" data-mr="५ कोटींपेक्षा कमी">Below ₹5 Crore</option>
+                        <option value="5cr_to_10cr" data-en="₹5 Crore to ₹10 Crore" data-mr="५ कोटी ते १० कोटी">₹5 Crore to ₹10 Crore</option>
+                        <option value="above_10cr" data-en="Above ₹10 Crore" data-mr="१० कोटींपेक्षा जास्त">Above ₹10 Crore</option>
+                    </select>
+                    <div style="font-size:11px; color:var(--mid); margin-top:6px;"
+                         data-en="Used only to flag e-invoicing applicability when generating invoices — does not change any GST calculation."
+                         data-mr="इनव्हॉइस तयार करताना ई-इनव्हॉइसिंग लागू होते का हे दाखवण्यासाठीच वापरले जाते — कोणतीही GST गणना बदलत नाही.">
+                        Used only to flag e-invoicing applicability when generating invoices — does not change any GST calculation.
+                    </div>
+                </div>
                 <!-- Generic collapsible trigger — visible to every tenant, including
                      standalone ones. Deliberately unnamed/neutral: the Type A
                      guarantee requires standalone tenants never learn job-work
@@ -478,15 +491,6 @@
                          data-mr="पुढील GRN या क्रमांकापासून तयार होईल. जुन्या कागदी GRN असतील तर उपयुक्त.">
                         Next GRN will be generated from this sequence. Useful if you have existing paper GRNs.
                     </div>
-                </div>
-
-                <div class="nx-form-group" style="margin-top:16px;">
-                    <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-weight:400;">
-                        <input type="checkbox" id="use-stator-stack-labels" style="width:16px; height:16px; cursor:pointer;">
-                        <span data-en="Use Stator/Stack labels on challan (product dispatch = Stator, RM dispatch = Stack)" data-mr="चलानवर Stator/Stack लेबल वापरा">
-                            Use Stator/Stack labels on challan (product dispatch = Stator, RM dispatch = Stack)
-                        </span>
-                    </label>
                 </div>
 
                     <button type="submit" id="saveChallanBtn" class="nx-btn nx-btn-primary nx-btn-full" data-en="Save Challan & GRN Settings" data-mr="चलान आणि GRN सेटिंग्ज साठवा">
@@ -708,6 +712,8 @@
                             <option value="L"   data-en="L — Litres"     data-mr="L — लिटर">L — Litres</option>
                             <option value="M"   data-en="M — Meters"     data-mr="M — मीटर">M — Meters</option>
                             <option value="PC"  data-en="PC — Pieces"    data-mr="PC — नग">PC — Pieces</option>
+                            <option value="Stack" data-en="Stack" data-mr="Stack">Stack</option>
+                            <option value="Stator" data-en="Stator" data-mr="Stator">Stator</option>
                         </select>
                     </div>
                     <div class="nx-form-group">
@@ -1257,6 +1263,7 @@
                 document.getElementById('bank-account').value    = data.bank_account || '';
                 document.getElementById('bank-ifsc').value       = data.bank_ifsc || '';
                 document.getElementById('sac-code').value        = data.sac_code || '';
+                document.getElementById('aato-bracket').value     = data.aato_bracket || 'below_5cr';
                 currentChallanSequence = data.challan_sequence || 0;
                 document.getElementById('challan-sequence').value  = currentChallanSequence + 1;
                 updateChallanSequenceHint(currentChallanSequence + 1);
@@ -1271,7 +1278,6 @@
                 const modeRadio = document.querySelector(`input[name="challan_mode"][value="${savedMode}"]`);
                 if (modeRadio) modeRadio.checked = true;
                 highlightChallanMode(savedMode);
-                document.getElementById('use-stator-stack-labels').checked = !!data.use_stator_stack_labels;
 
                 // Advanced settings section (Step 2I) — collapsed by default for
                 // every tenant. Expands only once is_job_work_setup_seen is true
@@ -1313,6 +1319,7 @@
         const bankAccount  = document.getElementById('bank-account').value.trim();
         const bankIfsc     = document.getElementById('bank-ifsc').value.trim();
         const sacCode      = document.getElementById('sac-code').value.trim();
+        const aatoBracket  = document.getElementById('aato-bracket').value;
 
         try {
             const { data: { user } } = await window.supabase.auth.getUser();
@@ -1323,7 +1330,8 @@
                 tenant_id: tenantId, company_name: companyName,
                 address_line1: addressLine1, address_line2: addressLine2,
                 mobile: mobile, gstin: gstin,
-                bank_name: bankName, bank_account: bankAccount, bank_ifsc: bankIfsc, sac_code: sacCode
+                bank_name: bankName, bank_account: bankAccount, bank_ifsc: bankIfsc, sac_code: sacCode,
+                aato_bracket: aatoBracket
             }, { onConflict: 'tenant_id' });
 
             if (error) throw error;
@@ -1405,12 +1413,11 @@
         const challanMode     = document.querySelector('input[name="challan_mode"]:checked')?.value || 'split';
         const grnSequenceVal  = document.getElementById('grn-sequence').value.trim();
         const grnSequence     = grnSequenceVal ? parseInt(grnSequenceVal) : null;
-        const useStatorStackLabels = document.getElementById('use-stator-stack-labels').checked;
         try {
             const { data: { user } } = await window.supabase.auth.getUser();
             if (!user) { showStatus('challan-status','error','Not authenticated','प्रमाणित नाही'); return; }
             const { error } = await window.supabase.from('p2_tenant_settings')
-                .update({ challan_mode: challanMode, grn_sequence: grnSequence, use_stator_stack_labels: useStatorStackLabels })
+                .update({ challan_mode: challanMode, grn_sequence: grnSequence })
                 .eq('tenant_id', user.id);
             if (error) throw error;
             showStatus('challan-status','success','Challan & GRN settings saved!','चलान आणि GRN सेटिंग्ज साठवल्या!');

@@ -56,6 +56,10 @@ Mobile-first: owners use phones. Must work on mobile browser.
   false and linked_tenant_id uuid nullable (Step 2I principal groundwork).
   owned_by on p2_stock_transactions and p2_dispatch_orders now has FK →
   p2_clients(id) (added Step 2I, was unconstrained in 2B).
+  aato_bracket text NOT NULL DEFAULT 'below_5cr' CHECK IN ('below_5cr', '5cr_to_10cr',
+  'above_10cr') — added Sept 2 2026. Set on the Company Details tab in settings.html; drives
+  a non-blocking amber e-invoicing-applicability banner in all-dispatch-history.html's
+  Generate Invoice modal for 5cr_to_10cr/above_10cr. Never blocks generation.
 - p2_raw_materials — raw material master (name, unit, min_stock_level, is_active, material_code,
   hsn_sac, gst_rate — both already existed, confirmed present here for reference)
 - p2_suppliers — supplier master (is_active — CSV-imported suppliers default to
@@ -151,6 +155,19 @@ Mobile-first: owners use phones. Must work on mobile browser.
   values (consolidated rows) are exempt since Postgres doesn't enforce uniqueness across NULLs.
   get_next_invoice_number(tenant_id) RPC — same row-locked-counter shape as get_next_grn_number,
   format INV-YYYYMM-NNN.
+  invoice_date date NOT NULL, DEFAULT (now() AT TIME ZONE 'Asia/Kolkata')::date (added Sept 2
+  2026) — a real column, not a created_at alias; invoice-view/index.ts returns it as its own
+  field. round_off numeric NOT NULL DEFAULT 0 and doc_category text NOT NULL DEFAULT 'goods'
+  CHECK IN ('goods','services') also added Sept 2 2026 — see Shipped Sept 2, 2026.
+- p2_cancelled_challans — Rule 56(7) audit log for hard-deleted cancelled challans (added Sept 2
+  2026). Columns: id, tenant_id, challan_number, movement_purpose text NULL (NULL means the row
+  predates the movement_purpose migration and the original dispatch is gone — treat as
+  "unknown", never default to a sale/job-work bucket), cancelled_at, created_at. RLS via
+  get_my_tenant_id(), SELECT + INSERT only (no UPDATE/DELETE — immutable audit trail). Written
+  from inside hard_delete_dispatch (SECURITY DEFINER), same transaction as the delete, only for
+  status='cancelled' orders with a challan_number. Read by export.html's Table 13 and the
+  GSTR-1 Workbook's doc sheet to keep cancelled-challan counts alive after the row they
+  describe is gone.
 - p2_payment_receipts — payment ledger against p2_invoices (Step 3, Aug 28 2026). Columns: id,
   tenant_id, invoice_id (FK → p2_invoices), payment_date, gross_amount, tds_amount,
   other_deductions, net_amount (GENERATED ALWAYS AS gross_amount - tds_amount -
@@ -456,6 +473,12 @@ Haiku's `top_n` field. supplier_history returns every matching GRN, no `.limit()
 - dispatch_detail vs challan_detail: challan_detail = when/status, dispatch_detail = what's inside.
 - Chips fetch ALL materials (no .limit) — top 6 displayed, full list for search.
 - First message after cold start sometimes fails with "Failed to load raw materials" — known Deno cold start issue, not a code bug, second attempt always works.
+- Today's IST date: always call todayIST() (agent-query/index.ts, added Sept 2 2026). NEVER
+  use getISTDateRange(0).since.split('T')[0] — that value is the UTC instant marking today's
+  IST midnight, and its own ISO date portion is always YESTERDAY's UTC calendar date, not
+  today's IST one. This was silently wrong at 5 call sites before the Sept 2 2026 fix (LLM
+  system-prompt "today" context, grn_completeness's month default, confirmReceiveGrn's
+  auto-GRN date, confirmGenerateInvoice/confirmConsolidatedInvoice's invoice_date).
 - isPro() reads localStorage — can return stale plan value. Always read plan from DB-fetched settings object directly for gating logic.
 - Test tenant agent_tier MUST stay 'unlimited' at all times. Never reset or change via
   migration or script. If any code touches p2_tenant_settings broadly, verify test tenant
@@ -476,7 +499,10 @@ Haiku's `top_n` field. supplier_history returns every matching GRN, no `.limit()
   have blank hsn_sac, this is expected, do not backfill.
 - gstr2b-reconcile.html: not in navbar, not in js/roles.js ROLE_PERMISSIONS,
   not in js/navbar.js NAV_LINKS. Role and plan checked directly in page init().
-- GSTR-2B JSON: parse b2b array only — ignore SUM, CDNR, IMPG sections entirely.
+- GSTR-2B JSON: b2b, cdnr, and b2ba arrays are now all parsed (Sept 2 2026) — SUM and IMPG
+  still ignored entirely. cdnr/b2ba field names are unverified against a real sample file
+  (see Shipped Sept 2, 2026) — treat as best-effort until tested against a live export
+  containing actual credit notes/amendments.
 - GRN grouping: must GROUP BY (supplier_gstin + normalised invoice_no) before
   matching — one supplier invoice can span multiple GRN rows (multi-material batch).
 - normaliseInvoiceNo: str.replace(/[\s\-\/]/g, '').toUpperCase() — apply to both
@@ -816,10 +842,16 @@ All four changes mirrored into sendTallyExportIntent() in agent-query/index.ts.
 **Blocked ITC estimate:** quantity * rate * gst_rate/100 — shows '—' if gst_rate is null
 
 **Four buckets:**
-- ✅ Matched — supplier GSTIN + normalised invoice_no found in JSON, taxable diff ≤ ₹2
-- ⚠️ Amount Mismatch — keys match but taxable diff > ₹2
-- ❌ ITC Blocked — in Nexflow GRN but not in JSON (supplier hasn't filed GSTR-1)
-- ❓ Unrecorded — in JSON but no GRN in Nexflow (unrecorded purchase or fraudulent IMS auto-accept)
+- ✅ Matched — supplier GSTIN + normalised invoice_no found in JSON, taxable diff ≤ ₹2 AND
+  tax-amount diff ≤ ₹2 (tax comparison added Sept 2 2026, skipped when our own GST rate is
+  unknown — see Shipped Sept 2, 2026)
+- ⚠️ Amount Mismatch — taxable diff > ₹2 and/or tax-amount diff > ₹2
+- ❌ "Not in 2B — Supplier Default" (renamed Sept 2 2026, was "ITC Blocked" — internal
+  buckets.blocked key unchanged) — in Nexflow GRN but not in JSON (supplier hasn't filed
+  GSTR-1). Section 16(4) expiry badge added here Sept 2 2026.
+- ❓ Unrecorded — in JSON but no GRN in Nexflow (unrecorded purchase or fraudulent IMS
+  auto-accept). Gained a "Credit Notes — Unrecorded" sub-bucket (cdnr rows) and an "Amended"
+  docType tag (b2ba rows) Sept 2 2026.
 
 **cfs:N warning (shipped August 14, 2026):**
 - `cfs` field is read from each supplier block (ctin level) in the b2b array and stored on
@@ -838,8 +870,10 @@ All four changes mirrored into sendTallyExportIntent() in agent-query/index.ts.
 - GSTIN mismatch: non-blocking warning showing both GSTINs
 - No GRN data: non-blocking notice, reconciliation still runs
 
-**IMS auto-accept risk:** Unrecorded rows with ims_status === 'NO_ACTION' highlighted
-red — these are auto-accepted by the portal via IMS and most urgent for CA to review.
+**IMS status display (relabelled Sept 2 2026):** NO_ACTION → grey "Auto-accepted" (was a red ⚠
+alarm with a tinted row — downgraded, since NO_ACTION is IMS's normal default-accept outcome,
+not something urgent), PENDING → amber "Pending", A → green "Accepted", REJECTED/R → red
+"Rejected". renderImsBadge() in gstr2b-reconcile.html is the single source for this mapping.
 
 **GSTR-2B JSON format (action=B2B):**
 - ctin: supplier GSTIN (match against p2_suppliers.gstin)
@@ -1304,6 +1338,145 @@ point, single message catalogue, per kpml-network-plan.md §9 Step 4.
   server-only Edge Function secret, never user-configurable.
 - **Not built in this step** (explicitly out of scope per kpml-network-plan.md §9 Step 4):
   email notifications, push notifications, per-type notification preferences.
+
+## Shipped Sept 2, 2026
+
+### CA Export & Invoice Compliance Overhaul — 8-prompt GST/compliance pass
+Full pass fixing legal-correctness defects across the GST/CA-facing surfaces: invoices now
+carry a real invoice date instead of an insert timestamp, the audit trail for hard-deleted
+cancelled challans survives the delete, the CA export stops mixing draft/cancelled invoices
+into GST figures, place-of-supply is correct for purchases and covers all 37 states, Table
+12/13 gained the columns the GST portal actually needs, GSTR-2B reconciliation stops
+conflating supplier default with s.17(5) blocked credit, and rounding/copy-marking/AATO gaps
+are closed. Rule 55 challan fields (consignee GSTIN, HSN, taxable value, copy markings on
+challan.html) were explicitly dropped from scope by request — challan.html itself untouched.
+
+**7 new migrations** (applied via SQL Editor, never `supabase db push`):
+- `20260901_add_invoice_date.sql` — `p2_invoices.invoice_date date`, added nullable,
+  backfilled from `(created_at AT TIME ZONE 'Asia/Kolkata')::date`, then `SET DEFAULT` +
+  `SET NOT NULL`. (Backfill done as a separate UPDATE after adding the column nullable —
+  adding it `NOT NULL DEFAULT ...` in one statement would have pre-filled every existing row
+  with *today's* date at ALTER time, silently corrupting history.)
+- `20260901_payment_status_invoice_date.sql` — `v_p2_invoice_payment_status` view rebuilt
+  (DROP + recreate, not CREATE OR REPLACE — Postgres can't change a view column's type in
+  place) to read `i.invoice_date` instead of aliasing `i.created_at AS invoice_date`; overdue
+  predicate now `i.invoice_date < (now() AT TIME ZONE 'Asia/Kolkata')::date - 45`.
+- `20260901_invoice_roundoff_and_doc_type.sql` — `p2_invoices.round_off numeric NOT NULL
+  DEFAULT 0`, `p2_invoices.doc_category text NOT NULL DEFAULT 'goods' CHECK IN ('goods',
+  'services')`.
+- `20260901_fix_invoice_number_ist.sql` — `get_next_invoice_number` now stamps the YYYYMM
+  segment via `to_char(now() AT TIME ZONE 'Asia/Kolkata', 'YYYYMM')`, not raw `now()`.
+- `20260901_cancelled_challan_log.sql` — new `p2_cancelled_challans` table (Rule 56(7) audit
+  trail — see Database Tables above); `hard_delete_dispatch` re-emitted with one added block
+  that inserts an audit row before deleting a cancelled challan's items.
+- `20260901_add_aato_bracket.sql` — `p2_tenant_settings.aato_bracket` (see Database Tables
+  above).
+- `20260901_cancelled_challan_movement_purpose.sql` — `p2_cancelled_challans.movement_purpose`
+  added; `hard_delete_dispatch` re-emitted again to also log it at cancel time.
+
+**2 Edge Function redeploys:**
+- `invoice-view` — select now returns `invoice_date` as its own field (was aliased from
+  `created_at`), plus `round_off`, `doc_category`.
+- `agent-query` — `buildInvoiceTotals` rounds CGST/SGST halves to paisa and total to rupee,
+  deriving `round_off` from the residual; `confirmGenerateInvoice`/`confirmConsolidatedInvoice`
+  insert `invoice_date`/`round_off`/`doc_category`; `deriveDocCategory()` new helper (services
+  when every covered order is job-work/bom_issue, else goods); plus the `todayIST()` fix below
+  (second redeploy, same day).
+
+**export.html — 9 sequential passes** (single file, 1,862→2,452 lines, each pass syntax-checked
+before the next):
+1. `GST_STATE_CODES` — full 37-state map + 38 (Ladakh) + 97 (Other Territory), was 10 entries.
+2. Purchase Register place-of-supply now always the tenant's own state (was wrongly using the
+   supplier's state); Sheet 2 B2C rows fall back to tenant state too.
+3. `invoice_date` used throughout (Sheet 2, Table 12, 43B(h)) instead of `created_at`.
+4. `status='sent'` filter added to Sheet 2's query, placed before the line-item explosion —
+   fixes Sheet 2 *and* Sheet 3 at once, since Sheet 3's totals accumulate inside Sheet 2's own
+   loop. Sheet 3 relabeled "Indicative Net GST" (was the misleading "NET GST PAYABLE /
+   (REFUNDABLE)") with a disclaimer row underneath.
+5. Sheet 2 gained `Round Off` and `B2C Type` (B2CL/B2CS) columns; `B2CL_THRESHOLD` (₹2.5L per
+   spec — GST Notification 12/2024 actually dropped the real portal threshold to ₹1L effective
+   1 Nov 2024; a named constant so that's a one-line change if it needs matching later).
+6. Table 12 (HSN/SAC) rewritten: groups by HSN + a derived effective rate (`rate =
+   round(amount_gst / amount_subtotal * 100)`, 0 when subtotal ≤ 0 or gst_type='none' — no
+   schema change, no reopening the flat-18% lock), adds Description/UQC/Quantity columns,
+   blank-HSN rows excluded with an invoice-count warning (was a hard `throw`).
+7. Table 13 (Challan Register) rewritten: three document rows (Tax Invoices, Delivery
+   Challans (Job Work), Delivery Challans (Other)); cancelled counts come from both
+   `p2_dispatch_orders` (not-yet-hard-deleted) and `p2_cancelled_challans` (hard-deleted); gap
+   detection scans the full financial year containing the picked month, per challan-number
+   series (prefix-aware — `RM-1001` and `1001` are independent sequences); From/To *display*
+   is scoped to the picked month's rows with a real `dispatch_date` only — rows sourced from
+   `p2_cancelled_challans` (dated only by `cancelled_at`, which can be long after the
+   challan's real issue month) are excluded from the range display so an ancient challan
+   number doesn't drag the "From" back across the tenant's whole history just because it was
+   purged this month; they still count correctly in Total Issued/Cancelled.
+8. New "GSTR-1 Excel Workbook" download (README/b2b/b2cs/b2cl/hsn/doc sheets) — the `hsn` and
+   `doc` sheets call the exact same grouping functions Table 12/13 use (`computeHsnSummary`,
+   `computeTable13Buckets`), so the workbook can never numerically diverge from what's shown
+   on screen.
+9. 43B(h) section retitled "Buyer Payment Compliance (Your Receivables)"; fixed two genuine
+   "vendor"→"client" wording bugs found while verifying scope; new always-visible orange
+   notice box.
+
+**invoices.html** — overdue-status CASE and the Date column both switched from `created_at`
+to `invoice_date`.
+
+**invoice.html + js/invoice-pdf.js** — round-off line added to totals (on-screen and PDF);
+invoices now print/download in the correct number of physical copies per Rule 48(1)/48(2) — 3
+for goods (Original for Recipient / Duplicate for Transporter / Triplicate for Supplier), 2
+for services (Original for Recipient / Duplicate for Supplier) — one label per page, replacing
+the old single page with all labels stacked on it. `invoice.html` clones its rendered
+`#content` into N `.invoice-copy` pages for browser print; `invoice-pdf.js`'s
+`buildInvoicePdf()` now calls a new `drawInvoiceCopy()` once per label via `doc.addPage()`.
+CANCELLED watermark switched to `position: fixed` in print CSS so it repeats on every physical
+page instead of landing on only one. Script tag cache-busted (`invoice-pdf.js?v=2`) after a
+verification round showed a browser serving a stale cached copy of the old code.
+
+**settings.html** — "Annual Turnover (AATO)" dropdown on the Company Details tab, saved to
+`aato_bracket`.
+
+**all-dispatch-history.html** — `aato_bracket` fetched alongside `plan`; non-blocking amber
+e-invoicing banner shown in the Generate Invoice modal for `5cr_to_10cr`/`above_10cr` brackets
+(never blocks generation). Separately: **fixed a real pre-existing auth bug** — the Generate
+Invoice button was sending the public anon key as `Authorization` instead of the logged-in
+user's session JWT (present since the invoice feature shipped July 31). This silently worked
+only because the older deployed `agent-query` never verified caller identity; the redeploy
+above activated `verifyCallerTenant` (a P0 security fix from an earlier, unrelated commit) in
+production for the first time, correctly rejecting the invalid credential and surfacing as
+"Unauthorized" on Generate Invoice. Fixed client-side only — fetch a real
+`window.supabase.auth.getSession().access_token` at page init, same pattern invoices.html
+already used correctly; `verifyCallerTenant` itself was not touched or weakened.
+
+**gstr2b-reconcile.html** — five fixes (see also the GSTR-2B Reconciliation section above,
+which has been updated in place):
+- "ITC Blocked" bucket renamed to "Not in 2B — Supplier Default" everywhere (stat card, tab,
+  empty state, tooltips, Excel sheet/column) — presentation only, internal `buckets.blocked`
+  key unchanged.
+- Tax-amount comparison added (±₹2 tolerance) alongside the existing taxable-value comparison
+  — new `Taxable Diff (₹)` / `Tax Diff (₹)` columns on the Amount Mismatch table/sheet.
+  Skipped entirely when the tenant's own GST rate for that material is unknown, so a missing
+  rate never reports a false mismatch.
+- `cdnr`/`b2ba` parsing added — see the corrected GSTR-2B JSON note above. Unverified against
+  a real sample; test before trusting in production.
+- IMS status relabelled — see the corrected IMS status display note above.
+- Section 16(4) ITC-expiry badges added to the Not-in-2B bucket only (30 Nov following the
+  FY-end, ignoring the earlier-annual-return-filing carve-out Nexflow can't know). Per-row
+  badge, summary count line, Excel flag column. Uses
+  `p2_stock_transactions.transaction_date` (GRN date) as the invoice-date proxy — there is no
+  supplier invoice date column.
+
+**Bug found and fixed during verification: `todayIST()` off-by-one.** See the "Today's IST
+date" gotcha above for the mechanism. Fixed at 5 call sites in `agent-query/index.ts` by
+centralizing into one `todayIST()` helper.
+
+**2L regression harness note**: `node _ai/regression/snapshot.js` + `diff.js` against
+`baseline-pre-2H.json` (Aug 25) shows real drift on SS Engineering (stock levels, dispatch
+count) — expected, since that baseline predates a full week of live production usage plus the
+entire Step 2H–2M rollout. Diffing against the most recent pre-session snapshot instead
+(`2026-08-31-17-26.json`) shows only 4 small stock increases (2 days of normal GRN activity),
+zero dispatch-count change — nothing in this session's diff touches `p2_stock_transactions`,
+`v_p2_stock_balance`, or dispatch-status logic. When checking "did today's changes touch a
+live tenant," always diff against the most recent prior snapshot, not the Step-2 baseline.
 
 ## GST Scope — PERMANENTLY LOCKED
 Nexflow P2 generates tax invoices for client billing. It does NOT handle GST filing, GSTR

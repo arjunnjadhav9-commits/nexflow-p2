@@ -84,6 +84,14 @@
         return v.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
 
+    // round_off = amount_total - (amount_subtotal + amount_gst), mirrors
+    // invoice.html's fmtSignedMoney.
+    function fmtSignedAmount(n) {
+        const v = Number(n) || 0;
+        const sign = v < 0 ? '- ' : (v > 0 ? '+ ' : '');
+        return sign + 'Rs. ' + fmtAmount(Math.abs(v));
+    }
+
     // ── amount in words (Indian lakh/crore grouping) ────────────────────────
 
     const ONES = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten',
@@ -229,48 +237,16 @@
 
     // ── public builder ───────────────────────────────────────────────────────
 
-    /**
-     * Build the invoice PDF.
-     *
-     * @param {Object} p
-     * @param {string} p.companyName
-     * @param {string} [p.addressLine1]
-     * @param {string} [p.addressLine2]
-     * @param {string} [p.mobile]
-     * @param {string} [p.gstin]
-     * @param {string} p.invoiceNumber
-     * @param {string} p.invoiceDateFormatted   DD/MM/YYYY
-     * @param {string} [p.invoiceMode]           'single' | 'consolidated'
-     * @param {string} [p.periodFromFormatted]   DD/MM/YYYY, consolidated only
-     * @param {string} [p.periodToFormatted]     DD/MM/YYYY, consolidated only
-     * @param {string} p.clientName
-     * @param {string} [p.clientAddress]
-     * @param {string} [p.clientGstin]
-     * @param {Array<{challanNumber?:string, dispatchDateFormatted?:string, description:string, qty:(string|number), unit:string, rate:(string|number), amount:(string|number), hsnSac?:string}>} p.items
-     * @param {string} p.gstType                 'cgst_sgst' | 'igst' | 'none'
-     * @param {number} p.amountSubtotal
-     * @param {number} p.amountGst
-     * @param {number} p.amountTotal
-     * @param {string} [p.bankName]
-     * @param {string} [p.bankAccount]
-     * @param {string} [p.bankIfsc]
-     * @param {boolean} [p.isCancelled]
-     * @param {string} [p.sacCode]           Tenant-level SAC code — fallback when a line item has no hsn_sac of its own
-     * @param {string} [p.placeOfSupply]     derived from client address
-     * @returns {Promise<string>} base64 PDF, no data-URI prefix
-     */
-    async function buildInvoicePdf(p) {
-        await loadPdfLibs();
-
-        const items = Array.isArray(p.items) ? p.items : [];
-        const mode = p.invoiceMode === 'consolidated' ? 'consolidated' : 'single';
-        const columns = getColumns(mode);
-
-        const doc = new window.jspdf.jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
-        let pageNo = 1;
+    /** Draws one full copy of the invoice (company band through footer/
+     *  signature), starting at page `pageNo` (already framed by the caller).
+     *  Internal overflow still paginates within this copy via doc.addPage(),
+     *  identical logic to before — only the outer copy loop below is new.
+     *  Returns the updated pageNo. */
+    function drawInvoiceCopy(doc, p, copyLabel, columns, items, pageNo) {
         drawPageFrame(doc, pageNo);
 
         let y = M;
+        const mode = p.invoiceMode === 'consolidated' ? 'consolidated' : 'single';
 
         // 1 ── company band
         doc.setFont('helvetica', 'bold');
@@ -297,13 +273,13 @@
         doc.setFontSize(15);
         doc.text('TAX INVOICE', PAGE_W / 2, y + 8, { align: 'center' });
         y += 11;
-        // copy labels — right-aligned, small
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(7);
-        doc.text('Original for Recipient', M + CW, y - 7, { align: 'right' });
-        doc.text('Duplicate for Supplier / Transporter', M + CW, y - 3.5, { align: 'right' });
-        doc.text('Triplicate for Supplier', M + CW, y, { align: 'right' });
+        // copy label — right-aligned, one per copy (Rule 48(1)/48(2)),
+        // replacing the old always-all-three stacked list.
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.5);
+        doc.text(copyLabel, M + CW, y - 3.5, { align: 'right' });
         // reverse charge
+        doc.setFont('helvetica', 'normal');
         doc.setFontSize(8);
         doc.text('Reverse Charge: No', M + 4, y);
         y += 3;
@@ -421,20 +397,23 @@
             y += rowH;
         });
 
-        // 6 ── subtotal / GST / total
-        const summaryRows = [['Subtotal', p.amountSubtotal]];
+        // 6 ── subtotal / GST / round off / total
+        const summaryRows = [['Subtotal', 'Rs. ' + fmtAmount(p.amountSubtotal)]];
         if (p.gstType === 'cgst_sgst') {
             const half = (Number(p.amountGst) || 0) / 2;
-            summaryRows.push(['CGST @ 9%', half], ['SGST @ 9%', half]);
+            summaryRows.push(['CGST @ 9%', 'Rs. ' + fmtAmount(half)], ['SGST @ 9%', 'Rs. ' + fmtAmount(half)]);
         } else if (p.gstType === 'igst') {
-            summaryRows.push(['IGST @ 18%', p.amountGst]);
+            summaryRows.push(['IGST @ 18%', 'Rs. ' + fmtAmount(p.amountGst)]);
+        }
+        if (Number(p.roundOff)) {
+            summaryRows.push(['Round Off', fmtSignedAmount(p.roundOff)]);
         }
 
         const summaryLabelW = 40;
         const summaryValueW = 32;
         const summaryX = M + CW - summaryLabelW - summaryValueW;
 
-        summaryRows.forEach(([label, value]) => {
+        summaryRows.forEach(([label, valueText]) => {
             const rowH = 6.5;
             if (y + rowH > rowsBottom) {
                 pageNo += 1;
@@ -445,7 +424,7 @@
             doc.setFont('helvetica', 'normal');
             doc.setFontSize(9);
             doc.text(label, summaryX, y + 4.6);
-            doc.text('Rs. ' + fmtAmount(value), M + CW - 3, y + 4.6, { align: 'right' });
+            doc.text(valueText, M + CW - 3, y + 4.6, { align: 'right' });
             y += rowH;
         });
 
@@ -573,6 +552,68 @@
         y += LINE_H;
         doc.text('This is a computer-generated invoice.', PAGE_W / 2, y, { align: 'center' });
         doc.setTextColor(0);
+
+        return pageNo;
+    }
+
+    /**
+     * Build the invoice PDF — one physical copy per Rule 48(1)/48(2) label
+     * (goods: triplicate; services: duplicate), each starting on its own page.
+     *
+     * @param {Object} p
+     * @param {string} p.companyName
+     * @param {string} [p.addressLine1]
+     * @param {string} [p.addressLine2]
+     * @param {string} [p.mobile]
+     * @param {string} [p.gstin]
+     * @param {string} p.invoiceNumber
+     * @param {string} p.invoiceDateFormatted   DD/MM/YYYY
+     * @param {string} [p.invoiceMode]           'single' | 'consolidated'
+     * @param {string} [p.periodFromFormatted]   DD/MM/YYYY, consolidated only
+     * @param {string} [p.periodToFormatted]     DD/MM/YYYY, consolidated only
+     * @param {string} p.clientName
+     * @param {string} [p.clientAddress]
+     * @param {string} [p.clientGstin]
+     * @param {Array<{challanNumber?:string, dispatchDateFormatted?:string, description:string, qty:(string|number), unit:string, rate:(string|number), amount:(string|number), hsnSac?:string}>} p.items
+     * @param {string} p.gstType                 'cgst_sgst' | 'igst' | 'none'
+     * @param {number} p.amountSubtotal
+     * @param {number} p.amountGst
+     * @param {number} [p.roundOff]
+     * @param {number} p.amountTotal
+     * @param {string} [p.docCategory]       'goods' (triplicate) | 'services' (duplicate) — default 'goods'
+     * @param {string} [p.bankName]
+     * @param {string} [p.bankAccount]
+     * @param {string} [p.bankIfsc]
+     * @param {boolean} [p.isCancelled]
+     * @param {string} [p.sacCode]           Tenant-level SAC code — fallback when a line item has no hsn_sac of its own
+     * @param {string} [p.placeOfSupply]     derived from client address
+     * @returns {Promise<string>} base64 PDF, no data-URI prefix
+     */
+    async function buildInvoicePdf(p) {
+        await loadPdfLibs();
+
+        const items = Array.isArray(p.items) ? p.items : [];
+        const mode = p.invoiceMode === 'consolidated' ? 'consolidated' : 'single';
+        const columns = getColumns(mode);
+
+        // Rule 48(1)/48(2): goods print in triplicate (Recipient / Transporter
+        // / Supplier), services in duplicate (Recipient / Supplier) — one full
+        // copy of the invoice per label, not one shared copy with all labels
+        // stacked on it.
+        const copyLabels = p.docCategory === 'services'
+            ? ['ORIGINAL FOR RECIPIENT', 'DUPLICATE FOR SUPPLIER']
+            : ['ORIGINAL FOR RECIPIENT', 'DUPLICATE FOR TRANSPORTER', 'TRIPLICATE FOR SUPPLIER'];
+
+        const doc = new window.jspdf.jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+        let pageNo = 1;
+
+        copyLabels.forEach((copyLabel, i) => {
+            if (i > 0) {
+                pageNo += 1;
+                doc.addPage();
+            }
+            pageNo = drawInvoiceCopy(doc, p, copyLabel, columns, items, pageNo);
+        });
 
         if (p.isCancelled) {
             drawCancelledStamp(doc);

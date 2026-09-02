@@ -244,6 +244,11 @@
             <div class="nx-modal-title" style="color:var(--orange);">Generate Invoice</div>
             <div id="invoiceModalClient" style="font-size:13px; color:var(--mid); margin-bottom:16px;"></div>
 
+            <div id="invoiceModalAatoBanner" class="nx-alert nx-alert-orange" style="display:none; margin-bottom:16px;">
+                <span class="nx-alert-icon">⚠</span>
+                <div>Your registered turnover bracket may require e-invoicing (IRN) for this document. Nexflow does not generate an IRN — verify with your CA before sharing this invoice externally.</div>
+            </div>
+
             <div class="nx-table-wrap" style="max-height:260px; overflow-y:auto; margin-bottom:16px;">
                 <table class="nx-table" style="font-size:13px;">
                     <thead>
@@ -281,9 +286,13 @@
 
     <script>
         let tenantId  = null;
+        let authToken = null; // real user session JWT — required by agent-query's
+                               // verifyCallerTenant guard; the anon key can never
+                               // resolve to a real user via auth.getUser().
         let allOrders = [];
         let filtered  = [];
         let canInvoice = false; // Pro/Founder gate, fresh-fetched — never isPro()/localStorage. Used by the Detail modal's invoice section.
+        let aatoBracket = 'below_5cr'; // fresh-fetched alongside plan — drives the non-blocking e-invoicing banner in the Generate Invoice modal.
         let currentRole = 'owner';
 
         document.addEventListener('DOMContentLoaded', async () => {
@@ -299,11 +308,14 @@
                 const { data: { user } } = await window.supabase.auth.getUser();
                 tenantId = user.user_metadata?.tenant_id || user.id;
 
+                const { data: { session } } = await window.supabase.auth.getSession();
+                authToken = session.access_token;
+
                 // Fresh fetch, never isPro()/localStorage — plan can change and
                 // localStorage only refreshes on login/auth-state-change.
                 const { data: settingsData } = await window.supabase
                     .from('p2_tenant_settings')
-                    .select('plan')
+                    .select('plan, aato_bracket')
                     .eq('tenant_id', tenantId)
                     .maybeSingle();
                 // Missing settings row defaults to 'founder', same fallback
@@ -313,6 +325,7 @@
                 // the rest of the app already grants Pro access to.
                 const plan = settingsData?.plan || 'founder';
                 canInvoice = plan === 'pro' || plan === 'founder';
+                aatoBracket = settingsData?.aato_bracket || 'below_5cr';
 
                 setDefaultDates();
                 await loadHistory();
@@ -777,6 +790,8 @@
             document.getElementById('invoiceModalClient').textContent = order.client_name || '—';
             document.getElementById('invoiceGstType').value = 'cgst_sgst';
             document.getElementById('invoiceModalError').style.display = 'none';
+            document.getElementById('invoiceModalAatoBanner').style.display =
+                (aatoBracket === '5cr_to_10cr' || aatoBracket === 'above_10cr') ? 'flex' : 'none';
             document.getElementById('invoiceModalItems').innerHTML =
                 '<tr><td colspan="4" style="text-align:center; color:var(--mid); padding:16px;">Loading...</td></tr>';
             document.getElementById('invoiceModal').style.display = 'flex';
@@ -909,7 +924,7 @@
                 try {
                     const res = await fetch(`${SUPABASE_URL}/functions/v1/agent-query`, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
                         body: JSON.stringify({
                             action: 'confirm_generate_invoice',
                             tenant_id: tenantId,

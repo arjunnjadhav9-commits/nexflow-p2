@@ -131,19 +131,31 @@
         body > *:not(.invoice-wrap) { display: none !important; }
         .no-print { display: none !important; }
 
-        /* Full page width, single outer border like the PDF's doc.rect() frame */
+        /* Full page width; the frame border now lives on .invoice-copy below,
+           one per printed page, instead of once around the whole multi-copy wrap. */
         .invoice-wrap {
             max-width: 100% !important;
             width: 100% !important;
             margin: 0 !important;
             padding: 0 !important;
-            border: 1.5px solid #000 !important;
             min-height: 0 !important;
         }
-        #content { display: block !important; width: 100% !important; min-height: 0 !important; }
+        /* #content is the live single-instance template used for the on-screen
+           view — never printed directly. renderInvoice() clones it into N
+           labelled .invoice-copy pages under #printCopies (one per Rule
+           48(1)/48(2) copy label); those clones are what actually print. */
+        #content { display: none !important; }
+        .invoice-copy {
+            display: block !important;
+            width: 100% !important;
+            min-height: 0 !important;
+            border: 1.5px solid #000 !important;
+        }
+        .invoice-copy-break { page-break-after: always !important; }
+        #cancelledWatermark { position: fixed !important; }
 
         /* Flatten every element to plain black-on-white, strip card chrome */
-        #content * {
+        .invoice-copy * {
             color: #000 !important;
             background: #fff !important;
             background-color: #fff !important;
@@ -154,13 +166,13 @@
         }
 
         /* Each .nx-card becomes a flush, compact section with a divider line, not a floating card */
-        #content .nx-card {
+        .invoice-copy .nx-card {
             border: none !important;
             border-bottom: 1px solid #000 !important;
             padding: 4px 8px !important;
             margin: 0 !important;
         }
-        #content .nx-card:last-of-type { border-bottom: none !important; }
+        .invoice-copy .nx-card:last-of-type { border-bottom: none !important; }
 
         /* Non-card spacer divs (e.g. the totals-row wrapper) aren't covered by the
            .nx-card margin reset above — their screen-sized 16px gap was the main
@@ -169,25 +181,25 @@
         .section-gap { margin-top: 3px !important; }
 
         /* Table: full width, collapsed grid borders, no wrapper radius, dense rows */
-        #content .nx-table-wrap { border: none !important; }
-        #content table, #content .nx-table {
+        .invoice-copy .nx-table-wrap { border: none !important; }
+        .invoice-copy table, .invoice-copy .nx-table {
             width: 100% !important;
             border-collapse: collapse !important;
             border: 1px solid #000 !important;
             font-size: 9px !important;
             line-height: 1.2 !important;
         }
-        #content table th, #content table td {
+        .invoice-copy table th, .invoice-copy table td {
             border: 1px solid #000 !important;
             padding: 2px 4px !important;
             font-size: 9px !important;
             line-height: 1.2 !important;
             height: auto !important;
         }
-        #content table tr { min-height: 0 !important; }
+        .invoice-copy table tr { min-height: 0 !important; }
 
         /* Grey table header must survive print */
-        #content thead tr, #content thead th {
+        .invoice-copy thead tr, .invoice-copy thead th {
             background: #e5e7eb !important;
             background-color: #e5e7eb !important;
             font-weight: bold !important;
@@ -215,7 +227,7 @@
            component that carries its own explicit screen-sized font-size
            (these don't inherit from the blanket rule below since they're
            specified directly on the element, not just inherited). */
-        body, #content {
+        body, .invoice-copy {
             font-size: 9px !important;
         }
         #companyName { font-size: 16px !important; margin-bottom: 1px !important; }
@@ -252,7 +264,7 @@
         }
 
         /* Nuclear option for inline styles */
-        #content *[style] {
+        .invoice-copy *[style] {
             color: #000 !important;
         }
 
@@ -297,7 +309,7 @@
 
     <div id="cancelledWatermark">CANCELLED</div>
 
-    <div id="content" style="display:none;">
+    <div id="content" class="invoice-copy" style="display:none;">
 
         <div class="nx-card">
             <div class="supplier-name" id="companyName"></div>
@@ -309,10 +321,7 @@
                 TAX INVOICE
             </div>
             <div class="print-only" id="copyLabelBlock"
-                 style="text-align:right; font-size:9px; margin-top:4px; line-height:1.6; color:#000;">
-                Original for Recipient<br>
-                Duplicate for Supplier / Transporter<br>
-                Triplicate for Supplier
+                 style="text-align:right; font-size:9px; margin-top:4px; line-height:1.6; color:#000; font-weight:700;">
             </div>
             <div class="print-only" id="reverseChargeBlock"
                  style="font-size:10px; margin-top:6px; color:#000;">
@@ -361,6 +370,7 @@
             <div class="section-gap">
                 <div class="totals-row"><span>Subtotal</span><span id="rowSubtotal"></span></div>
                 <div id="gstRows"></div>
+                <div class="totals-row" id="rowRoundOffWrap" style="display:none;"><span>Round Off</span><span id="rowRoundOff"></span></div>
                 <div class="totals-row grand"><span>Total</span><span id="rowTotal"></span></div>
             </div>
             <div class="amount-words" id="amountWords"></div>
@@ -402,9 +412,14 @@
 
     </div>
 
+    <!-- renderInvoice() clones #content into N labelled .invoice-copy pages
+         here (one per Rule 48(1)/48(2) copy) — hidden on screen like every
+         other print-only node. -->
+    <div id="printCopies" class="print-only"></div>
+
 </div>
 
-<script src="js/invoice-pdf.js"></script>
+<script src="js/invoice-pdf.js?v=2"></script>
 <script>
 const SUPABASE_URL = 'https://jhqxvpihauvhfclosuxn.supabase.co';
 const EDGE_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/invoice-view`;
@@ -421,6 +436,14 @@ function fmtMoney(n) {
     return '₹' + v.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+// round_off = amount_total - (amount_subtotal + amount_gst) — positive means
+// the total was rounded UP, negative means rounded DOWN (Section 170 CGST).
+function fmtSignedMoney(n) {
+    const v = Number(n) || 0;
+    const sign = v < 0 ? '- ' : (v > 0 ? '+ ' : '');
+    return sign + fmtMoney(Math.abs(v));
+}
+
 function fmtDate(iso) {
     if (!iso) return '-';
     return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -431,6 +454,37 @@ function showError(message) {
     document.getElementById('content').style.display = 'none';
     document.getElementById('errorMessage').textContent = message;
     document.getElementById('errorState').style.display = 'flex';
+}
+
+// Rule 48(1)/48(2): goods invoices print in triplicate (Recipient /
+// Transporter / Supplier), services in duplicate (Recipient / Supplier) —
+// one label per physical page, not all three stacked on one page.
+const COPY_LABELS = {
+    goods: ['ORIGINAL FOR RECIPIENT', 'DUPLICATE FOR TRANSPORTER', 'TRIPLICATE FOR SUPPLIER'],
+    services: ['ORIGINAL FOR RECIPIENT', 'DUPLICATE FOR SUPPLIER']
+};
+
+// Clones the fully-rendered #content once per required copy, swapping in
+// that copy's own label. #content itself is never printed directly (see the
+// #content/.invoice-copy print rules). Ids are preserved on each clone so
+// the existing #content-scoped print CSS keeps working unmodified across
+// every copy; nothing re-queries these ids by document.getElementById()
+// after this point, so the resulting duplicate-id markup is harmless.
+function buildPrintCopies(docCategory) {
+    const labels = COPY_LABELS[docCategory] || COPY_LABELS.goods;
+    const source = document.getElementById('content');
+    const container = document.getElementById('printCopies');
+    container.innerHTML = '';
+    labels.forEach((label, i) => {
+        const clone = source.cloneNode(true);
+        clone.removeAttribute('id');
+        clone.removeAttribute('style');
+        clone.classList.add('invoice-copy');
+        if (i < labels.length - 1) clone.classList.add('invoice-copy-break');
+        const labelEl = clone.querySelector('#copyLabelBlock');
+        if (labelEl) labelEl.textContent = label;
+        container.appendChild(clone);
+    });
 }
 
 function renderInvoice(data) {
@@ -500,6 +554,12 @@ function renderInvoice(data) {
     document.getElementById('rowSubtotal').textContent = fmtMoney(invoice.amount_subtotal);
     document.getElementById('rowTotal').textContent = fmtMoney(invoice.amount_total);
 
+    const roundOff = Number(invoice.round_off) || 0;
+    if (roundOff !== 0) {
+        document.getElementById('rowRoundOffWrap').style.display = 'flex';
+        document.getElementById('rowRoundOff').textContent = fmtSignedMoney(roundOff);
+    }
+
     const gstRowsEl = document.getElementById('gstRows');
     if (invoice.gst_type === 'cgst_sgst') {
         const half = (Number(invoice.amount_gst) || 0) / 2;
@@ -526,6 +586,8 @@ function renderInvoice(data) {
     if (invoice.status === 'cancelled') {
         document.getElementById('cancelledWatermark').style.display = 'block';
     }
+
+    buildPrintCopies(invoice.doc_category || 'goods');
 
     document.getElementById('loadingState').style.display = 'none';
     document.getElementById('content').style.display = 'block';
@@ -576,6 +638,8 @@ async function downloadPdf() {
             amountSubtotal: invoice.amount_subtotal,
             amountGst: invoice.amount_gst,
             amountTotal: invoice.amount_total,
+            roundOff: invoice.round_off || 0,
+            docCategory: invoice.doc_category || 'goods',
             bankName: tenant.bank_name || '',
             bankAccount: tenant.bank_account || '',
             bankIfsc: tenant.bank_ifsc || '',

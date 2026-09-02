@@ -475,7 +475,7 @@
             if (totalReceived >= amountTotal) return 'paid';
             if (totalReceived > 0) return 'partial';
             const cutoffMs = Date.now() - 45 * 24 * 60 * 60 * 1000;
-            if (new Date(inv.created_at).getTime() < cutoffMs) return 'overdue';
+            if (new Date(inv.invoice_date).getTime() < cutoffMs) return 'overdue';
             return 'pending';
         }
 
@@ -611,7 +611,7 @@
                 const mainRow = `
                     <tr>
                         <td class="nx-td-mono">${escInvHtml(inv.invoice_number)}</td>
-                        <td>${fmtDate(inv.created_at)}</td>
+                        <td>${fmtDate(inv.invoice_date)}</td>
                         <td class="nx-td-bold">${escInvHtml(inv.client_name || '-')}</td>
                         <td>${modeBadge}</td>
                         <td>${period}</td>

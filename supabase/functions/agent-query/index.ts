@@ -338,11 +338,11 @@ async function callHaiku(
   // those are for executeQuery()'s match helpers to resolve later.
   const materialNames = context.materials.map((m) => m.name)
   const productNames = context.products.map((p) => p.name)
-  const todayIST = getISTDateRange(0).since.split('T')[0]
+  const todayIST_ = todayIST()
 
   const systemPrompt = `You classify a factory owner's message into one of the following intents. You do not match names to a database — extract text exactly as the user wrote it.
 
-Today's date (IST): ${todayIST}
+Today's date (IST): ${todayIST_}
 
 Known raw materials (for context only, do not require an exact match):
 ${JSON.stringify(materialNames)}
@@ -738,6 +738,16 @@ function getISTDateRange(days: number): { since: string; until?: string } {
   }
 }
 
+// Correct IST "today" as YYYY-MM-DD. getISTDateRange(0).since is the UTC
+// instant marking today's IST midnight (e.g. 2 Sep IST -> "2026-09-01T18:30:00Z")
+// — its own ISO date portion is YESTERDAY's UTC calendar date, not today's
+// IST one. Shifting "now" itself by the IST offset before reading the date
+// portion avoids that trap.
+function todayIST(): string {
+  const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000
+  return new Date(Date.now() + IST_OFFSET_MS).toISOString().split('T')[0]
+}
+
 // Handles every intent — all read-only. Each returns a plain-text answer
 // built from real DB rows; nothing here ever writes.
 async function executeQuery(
@@ -918,7 +928,7 @@ async function executeQuery(
 
     // No period given -> default to the current calendar month (IST), same
     // first/last-of-month computation grn.html's Month-End Check modal uses.
-    const todayISO = getISTDateRange(0).since.split('T')[0]
+    const todayISO = todayIST()
     const [todayYear, todayMonth] = todayISO.split('-').map(Number)
     const firstOfMonth = `${todayYear}-${String(todayMonth).padStart(2, '0')}-01`
     const lastDay = new Date(todayYear, todayMonth, 0).getDate()
@@ -1679,10 +1689,56 @@ const TALLY_EXPORT_DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 // (GST scope is permanently locked to zero filing/GSTR features), so the
 // flat rate is a deliberate simplification, not a stand-in for per-material
 // gst_rate (which p2_raw_materials already has, used elsewhere for Tally).
-function buildInvoiceTotals(items: InvoiceItem[], gstType: string): { subtotal: number; gst: number; total: number } {
+function buildInvoiceTotals(items: InvoiceItem[], gstType: string): {
+  subtotal: number; gst: number; cgst: number; sgst: number; igst: number; roundOff: number; total: number
+} {
   const subtotal = items.reduce((sum, it) => sum + it.amount, 0)
-  const gst = gstType === 'none' ? 0 : subtotal * 0.18
-  return { subtotal, gst, total: subtotal + gst }
+  const gstExact = gstType === 'none' ? 0 : subtotal * 0.18
+
+  // Section 170 CGST: CGST/SGST/IGST rounded to the nearest paisa (2
+  // decimals) each, independently — so invoice.html's displayed halves
+  // (amount_gst / 2) always re-sum exactly instead of drifting from a single
+  // rounded whole. total is rounded to the nearest whole rupee (the legal
+  // minimum); round_off is whatever residual is needed to reconcile the two,
+  // so the invoice still nets to exactly subtotal + gst + round_off = total.
+  let cgst = 0, sgst = 0, igst = 0
+  if (gstType === 'cgst_sgst') {
+    cgst = Math.round((gstExact / 2) * 100) / 100
+    sgst = Math.round((gstExact / 2) * 100) / 100
+  } else if (gstType === 'igst') {
+    igst = Math.round(gstExact * 100) / 100
+  }
+  const gst = cgst + sgst + igst
+
+  const total = Math.round(subtotal + gst)
+  const roundOff = Math.round((total - (subtotal + gst)) * 100) / 100
+
+  return { subtotal, gst, cgst, sgst, igst, roundOff, total }
+}
+
+// Job-work purposes from js/movement-purpose.js's MOVEMENT_PURPOSES list,
+// minus 'sale' (the only purpose that is a plain goods transaction).
+// Duplicated here rather than imported because movement-purpose.js is a
+// browser <script> global with no module exports — agent-query is a Deno
+// Edge Function and cannot load it. Keep in sync if that file's purpose list
+// changes.
+const JOB_WORK_MOVEMENT_PURPOSES = new Set([
+  'job_work_issue', 'job_work_return', 'unused_material_return', 'scrap_return',
+  'rework_return', 'rework_dispatch', 'capital_goods_issue',
+  'inter_jobworker_transfer', 'direct_supply_from_jobworker',
+])
+
+// Rule 48(1) (goods — triplicate: Original for Recipient / Duplicate for
+// Transporter / Triplicate for Supplier) vs Rule 48(2) (services/job work —
+// duplicate: Original for Recipient / Duplicate for Supplier) copy markings.
+// Decided once at generation time and stored on the invoice row
+// (doc_category) so invoice.html/invoice-pdf.js never have to re-derive it
+// from a dispatch that may no longer exist (hard-deleted draft/cancelled
+// challans) or re-fetch movement_purpose at render time.
+function deriveDocCategory(dispatchType: string | null, movementPurpose: string | null): 'goods' | 'services' {
+  if (dispatchType === 'bom_issue') return 'services'
+  if (movementPurpose && JOB_WORK_MOVEMENT_PURPOSES.has(movementPurpose)) return 'services'
+  return 'goods'
 }
 
 // Orange link button, reply_to only if truthy, pointing at the invoice-view
@@ -1748,9 +1804,11 @@ interface InvoiceOrderRow {
   client_address: string | null
   status: string
   dispatch_date: string | null
+  dispatch_type: string
+  movement_purpose: string | null
 }
 
-const INVOICE_ORDER_COLUMNS = 'id, challan_number, client_name, client_address, status, dispatch_date'
+const INVOICE_ORDER_COLUMNS = 'id, challan_number, client_name, client_address, status, dispatch_date, dispatch_type, movement_purpose'
 
 // Resolves one dispatch order's items into InvoiceItem[] — rates come from
 // p2_material_prices/p2_product_prices (latest by effective_date), NOT from
@@ -2118,7 +2176,7 @@ async function confirmReceiveGrn(
     return respond({ status: 'error', error: grnError?.message ?? 'Could not generate GRN number' }, 500)
   }
 
-  const today = getISTDateRange(0).since.split('T')[0]
+  const today = todayIST()
   const notes = invoiceNo
     ? `Auto GRN via Nexflow receive | dispatch_token:${dispatch_token} | Challan ${order.challan_number} | Supplier: ${senderCompanyName} | Invoice: ${invoiceNo}`
     : `Auto GRN via Nexflow receive | dispatch_token:${dispatch_token} | Challan ${order.challan_number} | Supplier: ${senderCompanyName}`
@@ -2185,7 +2243,7 @@ async function confirmGenerateInvoice(
 
   const { data: order, error: orderError } = await supabaseClient
     .from('p2_dispatch_orders')
-    .select('id, challan_number, dispatch_date, client_name, status')
+    .select('id, challan_number, dispatch_date, client_name, status, dispatch_type, movement_purpose')
     .eq('id', dispatch_order_id)
     .eq('tenant_id', tenant_id)
     .single()
@@ -2323,7 +2381,9 @@ async function confirmGenerateInvoice(
     }
   })
 
-  const { subtotal, gst, total } = buildInvoiceTotals(invoiceItems, gstType)
+  const { subtotal, gst, roundOff, total } = buildInvoiceTotals(invoiceItems, gstType)
+  const docCategory = deriveDocCategory(order.dispatch_type, order.movement_purpose)
+  const invoiceDate = todayIST()
 
   const { data: invoiceNumber, error: invNoError } = await supabaseClient
     .rpc('get_next_invoice_number', { p_tenant_id: tenant_id })
@@ -2338,6 +2398,7 @@ async function confirmGenerateInvoice(
     .insert({
       tenant_id,
       invoice_number: invoiceNumber,
+      invoice_date: invoiceDate,
       dispatch_order_id,
       client_id: client.id,
       client_name: client.name,
@@ -2347,6 +2408,8 @@ async function confirmGenerateInvoice(
       amount_subtotal: subtotal,
       amount_gst: gst,
       amount_total: total,
+      round_off: roundOff,
+      doc_category: docCategory,
       gst_type: gstType,
       invoice_mode: 'single',
       dispatch_order_ids: [dispatch_order_id],
@@ -2483,9 +2546,12 @@ async function previewConsolidatedInvoice(
     allItems.push(...itemsResult.items)
   }
 
-  const { subtotal, gst, total } = buildInvoiceTotals(allItems, gstType)
+  const { subtotal, gst, roundOff, total } = buildInvoiceTotals(allItems, gstType)
 
-  return respond({ status: 'ok', client_name: client.name, items: allItems, subtotal, gst, total })
+  // round_off included so the preview step shows the exact same rounded
+  // total confirmConsolidatedInvoice will actually persist — nothing here
+  // computes totals independently of buildInvoiceTotals.
+  return respond({ status: 'ok', client_name: client.name, items: allItems, subtotal, gst, round_off: roundOff, total })
 }
 
 // invoices.html "+ New Consolidated Invoice" modal, Step 2 (Confirm & Generate
@@ -2631,7 +2697,15 @@ async function confirmConsolidatedInvoice(
     }
   }
 
-  const { subtotal, gst, total } = buildInvoiceTotals(allItems, gstType)
+  const { subtotal, gst, roundOff, total } = buildInvoiceTotals(allItems, gstType)
+  // 'services' only if every covered dispatch is job-work/bom_issue — one
+  // plain-sale dispatch in the mix defaults the whole consolidated invoice to
+  // 'goods' (the stricter Rule 48(1) triplicate format), matching
+  // deriveDocCategory's own "default to goods if unknown" conservatism.
+  const docCategory = orderRows.every((o) => deriveDocCategory(o.dispatch_type, o.movement_purpose) === 'services')
+    ? 'services'
+    : 'goods'
+  const invoiceDate = todayIST()
 
   const { data: invoiceNumber, error: invNoError } = await supabaseClient
     .rpc('get_next_invoice_number', { p_tenant_id: tenant_id })
@@ -2646,6 +2720,7 @@ async function confirmConsolidatedInvoice(
     .insert({
       tenant_id,
       invoice_number: invoiceNumber,
+      invoice_date: invoiceDate,
       dispatch_order_id: null,
       dispatch_order_ids: orderIds,
       client_id: client.id,
@@ -2656,6 +2731,8 @@ async function confirmConsolidatedInvoice(
       amount_subtotal: subtotal,
       amount_gst: gst,
       amount_total: total,
+      round_off: roundOff,
+      doc_category: docCategory,
       gst_type: gstType,
       invoice_mode: 'consolidated',
       date_from,

@@ -172,9 +172,10 @@
                     <div class="nx-stat-unit" id="statMismatchAmt">—</div>
                 </div>
                 <div class="nx-stat nx-stat-red">
-                    <div class="nx-stat-label">❌ ITC Blocked</div>
+                    <div class="nx-stat-label">❌ Not in 2B — Supplier Default</div>
                     <div class="nx-stat-value" id="statBlockedCount">—</div>
                     <div class="nx-stat-unit" id="statBlockedAmt">—</div>
+                    <div class="nx-stat-unit" id="statBlockedExpiredWarning" style="display:none; color:var(--red);"></div>
                 </div>
                 <div class="nx-stat">
                     <div class="nx-stat-label">❓ Unrecorded</div>
@@ -186,7 +187,7 @@
             <div class="nx-stabs nx-mb-16">
                 <button id="tab-matched" class="nx-stab active">Matched</button>
                 <button id="tab-mismatch" class="nx-stab">Amount Mismatch</button>
-                <button id="tab-blocked" class="nx-stab">ITC Blocked</button>
+                <button id="tab-blocked" class="nx-stab">Not in 2B — Supplier Default</button>
                 <button id="tab-unrecorded" class="nx-stab">Unrecorded</button>
             </div>
 
@@ -213,7 +214,7 @@
                         <thead>
                             <tr>
                                 <th>Supplier</th><th>Supplier GSTIN</th><th>Invoice No</th><th>Invoice Date</th>
-                                <th>Taxable Value (GRN)</th><th>Taxable Value (2B)</th><th>Difference (₹)</th><th>Action</th>
+                                <th>Taxable Value (GRN)</th><th>Taxable Value (2B)</th><th>Taxable Diff (₹)</th><th>Tax Diff (₹)</th><th>Action</th>
                             </tr>
                         </thead>
                         <tbody id="mismatchTbody"></tbody>
@@ -222,20 +223,20 @@
                 <div id="mismatchEmpty" class="nx-text-mid" style="display:none; text-align:center; padding:24px;">No amount mismatches.</div>
             </div>
 
-            <!-- ITC BLOCKED -->
+            <!-- NOT IN 2B — SUPPLIER DEFAULT -->
             <div id="content-blocked" class="tab-panel">
                 <div class="nx-table-wrap">
                     <table class="nx-table">
                         <thead>
                             <tr>
                                 <th>Supplier</th><th>Supplier GSTIN</th><th>Invoice No</th><th>Invoice Date</th>
-                                <th>GRN Amount</th><th>Blocked ITC (₹)</th><th>Action</th>
+                                <th>GRN Amount</th><th>ITC Not Available (₹)</th><th>16(4) Status</th><th>Action</th>
                             </tr>
                         </thead>
                         <tbody id="blockedTbody"></tbody>
                     </table>
                 </div>
-                <div id="blockedEmpty" class="nx-text-mid" style="display:none; text-align:center; padding:24px;">No blocked ITC.</div>
+                <div id="blockedEmpty" class="nx-text-mid" style="display:none; text-align:center; padding:24px;">Nothing here — every GRN invoice was found in GSTR-2B.</div>
             </div>
 
             <!-- UNRECORDED -->
@@ -245,7 +246,7 @@
                         <thead>
                             <tr>
                                 <th>Supplier GSTIN</th><th>Supplier Name</th><th>Invoice No</th><th>Invoice Date</th>
-                                <th>Taxable Value</th><th>ITC Available</th><th>IMS Status</th>
+                                <th>Taxable Value</th><th>ITC Available</th><th>IMS Status</th><th>Doc Type</th>
                             </tr>
                         </thead>
                         <tbody id="unrecordedTbody"></tbody>
@@ -268,7 +269,7 @@ let tenantId = null;
 let tenantGstin = '';
 let parsedJson = null;
 let periodInfo = null; // { month, year, monthLabel, firstOfMonth, lastOfMonth }
-let buckets = { matched: [], mismatch: [], blocked: [], unrecorded: [] };
+let buckets = { matched: [], mismatch: [], blocked: [], unrecorded: [], creditNotes: [] };
 
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
@@ -297,6 +298,36 @@ function fmt2BDate(idt) {
 // Matching key normaliser — exactly as specified in the build brief.
 function normaliseInvoiceNo(str) {
     return String(str || '').replace(/[\s\-\/]/g, '').toUpperCase();
+}
+
+const IMS_STATUS_BADGE = {
+    NO_ACTION: { cls: 'nx-text-mid',    label: 'Auto-accepted' },
+    PENDING:   { cls: 'nx-text-orange', label: 'Pending' },
+    A:         { cls: 'nx-text-green',  label: 'Accepted' },
+    REJECTED:  { cls: 'nx-text-red',    label: 'Rejected' },
+    R:         { cls: 'nx-text-red',    label: 'Rejected' },
+};
+function renderImsBadge(imsStatus) {
+    const badge = IMS_STATUS_BADGE[imsStatus];
+    if (!badge) return escapeHtml(imsStatus || '—');
+    return '<span class="' + badge.cls + '">' + escapeHtml(badge.label) + '</span>';
+}
+
+// Section 16(4) CGST Act — ITC for a financial year must be claimed by 30 Nov
+// following that FY's end (ignoring the earlier-annual-return-filing carve-out,
+// which Nexflow has no way to know). Once this date passes, ITC in the
+// Not-in-2B bucket isn't just pending the supplier's filing — it's
+// permanently lost even if they file late.
+function section164Deadline(dateStr) {
+    if (!dateStr) return null;
+    const d = new Date(dateStr + 'T00:00:00');
+    const month = d.getMonth() + 1;
+    const fyEndYear = month >= 4 ? d.getFullYear() + 1 : d.getFullYear();
+    return new Date(fyEndYear, 10, 30); // November is month index 10
+}
+function isItcExpired(dateStr) {
+    const deadline = section164Deadline(dateStr);
+    return deadline ? new Date() > deadline : false;
 }
 
 // ─── INIT ────────────────────────────────────────────────────────────────────
@@ -619,20 +650,22 @@ async function runReconciliation() {
             if (row.transaction_date < group.invoiceDate) group.invoiceDate = row.transaction_date;
         });
 
-        // Build the GSTR-2B lookup map.
+        // Build the GSTR-2B lookup map (b2b = original invoices).
         const map2B = new Map();
-        (parsedJson.b2b || []).forEach(supplierBlock => {
+        function addInvoiceBlockToMap(supplierBlock, docType) {
             const ctin = supplierBlock.ctin || '';
-            const lglname = supplierBlock.lglname || '';
+            const lglname = supplierBlock.lglname || supplierBlock.trdnm || '';
             const cfs = supplierBlock.cfs;
             (supplierBlock.inv || []).forEach(inv => {
                 const invoiceNo = inv.inum || '';
                 const key = ctin + '|' + normaliseInvoiceNo(invoiceNo);
                 const items = inv.itms || [];
-                let taxableValue2B = 0, itcAmount2B = 0;
+                let taxableValue2B = 0, itcAmount2B = 0, taxAmount2B = 0;
                 items.forEach(it => {
                     taxableValue2B += Number(it.txval) || 0;
                     itcAmount2B += (Number(it.iamt) || 0) + (Number(it.camt) || 0) + (Number(it.samt) || 0) + (Number(it.csamt) || 0);
+                    // Excludes cess — matches our own GST-rate-derived tax, which has no cess concept.
+                    taxAmount2B += (Number(it.iamt) || 0) + (Number(it.camt) || 0) + (Number(it.samt) || 0);
                 });
                 map2B.set(key, {
                     supplierGstin: ctin,
@@ -641,23 +674,75 @@ async function runReconciliation() {
                     invoiceDate: inv.idt || '',
                     taxableValue2B,
                     itcAmount2B,
+                    taxAmount2B,
                     itcavl: inv.itcavl,
                     itcrv: inv.itcrv,
                     imsStatus: inv.ims_status || '',
                     cfs,
+                    docType,
                     consumed: false
+                });
+            });
+        }
+        (parsedJson.b2b || []).forEach(supplierBlock => addInvoiceBlockToMap(supplierBlock, 'Invoice'));
+        // b2ba = amended invoices. GSTR-2B's own convention is that an amended
+        // invoice supersedes the original at the SAME key, so processing b2ba
+        // after b2b and reusing the identical Map.set() key lets the amendment
+        // naturally win.
+        //
+        // Schema caveat: field names in this function and in the cdnr block
+        // below (nt/ntnum/ntty/ntdt, and the b2ba shape) follow the published
+        // GSTR-2B JSON schema, but are NOT verified against a real sample file
+        // — unlike the b2b path above, which was clearly built and tested
+        // against one (flat itms with txval/iamt/camt/samt, no itm_det
+        // nesting). Test this against a real GSTR-2B export containing actual
+        // credit notes / amendments before relying on it.
+        (parsedJson.b2ba || []).forEach(supplierBlock => addInvoiceBlockToMap(supplierBlock, 'Amended'));
+
+        // cdnr = credit/debit notes against previously-filed invoices. Nexflow
+        // has no concept of a supplier credit note in p2_stock_transactions, so
+        // these can never be "matched" against a GRN — they always surface as
+        // their own sub-bucket under Unrecorded, tagged by note type, so the CA
+        // knows to handle them separately rather than expecting a GRN match.
+        const creditNoteRows = [];
+        (parsedJson.cdnr || []).forEach(supplierBlock => {
+            const ctin = supplierBlock.ctin || '';
+            const lglname = supplierBlock.lglname || supplierBlock.trdnm || '';
+            (supplierBlock.nt || []).forEach(nt => {
+                const items = nt.itms || [];
+                let taxableValue = 0, itcAmount = 0;
+                items.forEach(it => {
+                    taxableValue += Number(it.txval) || 0;
+                    itcAmount += (Number(it.iamt) || 0) + (Number(it.camt) || 0) + (Number(it.samt) || 0) + (Number(it.csamt) || 0);
+                });
+                const noteType = (nt.ntty || nt.nt_type || nt.typ || '').toUpperCase();
+                creditNoteRows.push({
+                    supplierGstin: ctin, supplierName: lglname,
+                    invoiceNo: nt.ntnum || nt.nt_num || '',
+                    invoiceDate: nt.ntdt || nt.nt_dt || '',
+                    taxableValue,
+                    itcAvailable: (nt.itcavl === 'Y' && nt.itcrv !== 'Y') ? itcAmount : 0,
+                    imsStatus: nt.ims_status || '',
+                    docType: noteType === 'D' ? 'Debit Note' : 'Credit Note'
                 });
             });
         });
 
-        buckets = { matched: [], mismatch: [], blocked: [], unrecorded: [] };
+        buckets = { matched: [], mismatch: [], blocked: [], unrecorded: [], creditNotes: [] };
 
         grnGroups.forEach((group, key) => {
             const match = group.canMatch ? map2B.get(key) : undefined;
             if (match) {
                 match.consumed = true;
-                const diff = match.taxableValue2B - group.amount;
-                if (Math.abs(diff) <= 2) {
+                const taxableDiff = match.taxableValue2B - group.amount;
+                const taxableMismatch = Math.abs(taxableDiff) > 2;
+                // Tax-amount comparison skipped entirely when our own GST rate
+                // is unknown — reporting a mismatch we can't substantiate would
+                // be a false positive, not a fix.
+                const taxDiff = group.gstUnknown ? null : (match.taxAmount2B - group.gstAmount);
+                const taxMismatch = taxDiff !== null && Math.abs(taxDiff) > 2;
+
+                if (!taxableMismatch && !taxMismatch) {
                     const itcAvailable = (match.itcavl === 'Y' && match.itcrv !== 'Y') ? match.itcAmount2B : 0;
                     buckets.matched.push({
                         supplierName: group.supplierName, supplierGstin: group.supplierGstin,
@@ -671,7 +756,7 @@ async function runReconciliation() {
                         supplierName: group.supplierName, supplierGstin: group.supplierGstin,
                         invoiceNo: group.invoiceNo, invoiceDate: group.invoiceDate,
                         taxableGRN: group.amount, taxable2B: match.taxableValue2B,
-                        difference: diff
+                        taxableDiff, taxDiff
                     });
                 }
             } else {
@@ -679,7 +764,8 @@ async function runReconciliation() {
                     supplierName: group.supplierName, supplierGstin: group.supplierGstin,
                     invoiceNo: group.invoiceNo, invoiceDate: group.invoiceDate,
                     grnAmount: group.amount,
-                    blockedItc: group.gstUnknown ? null : group.gstAmount
+                    blockedItc: group.gstUnknown ? null : group.gstAmount,
+                    itcExpired: isItcExpired(group.invoiceDate)
                 });
             }
         });
@@ -691,10 +777,12 @@ async function runReconciliation() {
                     invoiceNo: entry.invoiceNo, invoiceDate: entry.invoiceDate,
                     taxableValue: entry.taxableValue2B,
                     itcAvailable: (entry.itcavl === 'Y' && entry.itcrv !== 'Y') ? entry.itcAmount2B : 0,
-                    imsStatus: entry.imsStatus
+                    imsStatus: entry.imsStatus,
+                    docType: entry.docType
                 });
             }
         });
+        buckets.creditNotes = creditNoteRows;
 
         renderSummary();
         renderTables();
@@ -713,7 +801,7 @@ async function runReconciliation() {
 // ─── RENDER: SUMMARY ─────────────────────────────────────────────────────────
 function renderSummary() {
     const matchedTotal = buckets.matched.reduce((s, r) => s + r.itcAvailable, 0);
-    const mismatchTotal = buckets.mismatch.reduce((s, r) => s + Math.abs(r.difference), 0);
+    const mismatchTotal = buckets.mismatch.reduce((s, r) => s + Math.abs(r.taxableDiff), 0);
     const blockedTotal = buckets.blocked.reduce((s, r) => r.blockedItc === null ? s : s + r.blockedItc, 0);
 
     document.getElementById('statMatchedCount').textContent = buckets.matched.length;
@@ -731,8 +819,16 @@ function renderSummary() {
     document.getElementById('statMismatchCount').textContent = buckets.mismatch.length;
     document.getElementById('statMismatchAmt').textContent = '₹' + fmtAmt(mismatchTotal) + ' difference';
     document.getElementById('statBlockedCount').textContent = buckets.blocked.length;
-    document.getElementById('statBlockedAmt').textContent = '₹' + fmtAmt(blockedTotal) + ' blocked';
-    document.getElementById('statUnrecordedCount').textContent = buckets.unrecorded.length;
+    document.getElementById('statBlockedAmt').textContent = '₹' + fmtAmt(blockedTotal) + ' pending filing';
+    const expiredCount = buckets.blocked.filter(r => r.itcExpired).length;
+    const expiredEl = document.getElementById('statBlockedExpiredWarning');
+    if (expiredCount > 0) {
+        expiredEl.textContent = '⚠ ' + expiredCount + ' past Section 16(4) deadline — ITC permanently lost';
+        expiredEl.style.display = 'block';
+    } else {
+        expiredEl.style.display = 'none';
+    }
+    document.getElementById('statUnrecordedCount').textContent = buckets.unrecorded.length + buckets.creditNotes.length;
 }
 
 // ─── RENDER: TABLES ──────────────────────────────────────────────────────────
@@ -781,6 +877,7 @@ function renderMismatchTable() {
     buckets.mismatch.forEach((r, i) => {
         const noteId = 'mismatch-note-' + i;
         const tr = document.createElement('tr');
+        const taxDiffCell = r.taxDiff === null ? '—' : ('₹' + fmtAmt(r.taxDiff));
         tr.innerHTML =
             '<td>' + escapeHtml(r.supplierName) + '</td>' +
             '<td>' + escapeHtml(r.supplierGstin) + '</td>' +
@@ -788,16 +885,20 @@ function renderMismatchTable() {
             '<td>' + fmtGrnDate(r.invoiceDate) + '</td>' +
             '<td>₹' + fmtAmt(r.taxableGRN) + '</td>' +
             '<td>₹' + fmtAmt(r.taxable2B) + '</td>' +
-            '<td>₹' + fmtAmt(r.difference) + '</td>' +
+            '<td>₹' + fmtAmt(r.taxableDiff) + '</td>' +
+            '<td>' + taxDiffCell + '</td>' +
             '<td><button type="button" class="gstr-toggle-btn" data-note="' + noteId + '">ⓘ Details</button></td>';
         tbody.appendChild(tr);
 
-        const noteText = 'The taxable value in your GRN (₹' + fmtAmt(r.taxableGRN) + ') doesn\'t match what the supplier reported to GST portal (₹' + fmtAmt(r.taxable2B) + '). Ask the supplier for a credit note or correct your GRN entry.';
+        const mismatchParts = [];
+        if (Math.abs(r.taxableDiff) > 2) mismatchParts.push('taxable value (GRN ₹' + fmtAmt(r.taxableGRN) + ' vs 2B ₹' + fmtAmt(r.taxable2B) + ')');
+        if (r.taxDiff !== null && Math.abs(r.taxDiff) > 2) mismatchParts.push('tax amount (₹' + fmtAmt(Math.abs(r.taxDiff)) + ' difference)');
+        const noteText = 'Mismatch in ' + mismatchParts.join(' and ') + '. Ask the supplier for a credit note or correct your GRN entry.';
         const noteTr = document.createElement('tr');
         noteTr.className = 'gstr-note-row';
         noteTr.id = noteId;
         noteTr.style.display = 'none';
-        noteTr.innerHTML = '<td colspan="8">' + escapeHtml(noteText) + '</td>';
+        noteTr.innerHTML = '<td colspan="9">' + escapeHtml(noteText) + '</td>';
         tbody.appendChild(noteTr);
     });
     wireToggleButtons(tbody);
@@ -810,6 +911,9 @@ function renderBlockedTable() {
     buckets.blocked.forEach((r, i) => {
         const noteId = 'blocked-note-' + i;
         const blockedDisplay = r.blockedItc === null ? '—' : ('₹' + fmtAmt(r.blockedItc));
+        const itc164Cell = r.itcExpired
+            ? '<span class="nx-text-red">⚠ Expired</span>'
+            : '<span class="nx-text-mid">OK</span>';
         const tr = document.createElement('tr');
         tr.innerHTML =
             '<td>' + escapeHtml(r.supplierName) + '</td>' +
@@ -818,17 +922,21 @@ function renderBlockedTable() {
             '<td>' + fmtGrnDate(r.invoiceDate) + '</td>' +
             '<td>₹' + fmtAmt(r.grnAmount) + '</td>' +
             '<td>' + blockedDisplay + '</td>' +
+            '<td>' + itc164Cell + '</td>' +
             '<td><button type="button" class="gstr-toggle-btn" data-note="' + noteId + '">ⓘ Chase Supplier</button></td>';
         tbody.appendChild(tr);
 
-        const noteText = r.blockedItc === null
-            ? 'Blocked ITC amount is unknown (no GST rate set for this material). This supplier hasn\'t filed their GSTR-1 yet. Contact them or defer this claim in GSTR-3B.'
-            : 'This supplier hasn\'t filed their GSTR-1 yet. Your ITC of ₹' + fmtAmt(r.blockedItc) + ' is blocked until they file. Contact them or defer this claim in GSTR-3B.';
+        let noteText = r.blockedItc === null
+            ? 'ITC amount is unknown (no GST rate set for this material). This supplier hasn\'t filed their GSTR-1 yet, so this invoice doesn\'t appear in GSTR-2B. Contact them or defer this claim in GSTR-3B.'
+            : 'This supplier hasn\'t filed their GSTR-1 yet, so this invoice doesn\'t appear in GSTR-2B. Your ITC of ₹' + fmtAmt(r.blockedItc) + ' is not yet available until they file. Contact them or defer this claim in GSTR-3B.';
+        if (r.itcExpired) {
+            noteText += ' This invoice is also past the Section 16(4) deadline (30 Nov following the financial year) — this ITC can no longer be claimed even if the supplier files late.';
+        }
         const noteTr = document.createElement('tr');
         noteTr.className = 'gstr-note-row';
         noteTr.id = noteId;
         noteTr.style.display = 'none';
-        noteTr.innerHTML = '<td colspan="7">' + escapeHtml(noteText) + '</td>';
+        noteTr.innerHTML = '<td colspan="8">' + escapeHtml(noteText) + '</td>';
         tbody.appendChild(noteTr);
     });
     wireToggleButtons(tbody);
@@ -837,16 +945,14 @@ function renderBlockedTable() {
 function renderUnrecordedTable() {
     const tbody = document.getElementById('unrecordedTbody');
     tbody.innerHTML = '';
-    document.getElementById('unrecordedEmpty').style.display = buckets.unrecorded.length ? 'none' : 'block';
-    buckets.unrecorded.forEach(r => {
-        // NO_ACTION = auto-accepted by the portal via IMS without owner review —
-        // the most urgent rows for the CA to check first.
-        const isNoAction = r.imsStatus === 'NO_ACTION';
+    const allRows = buckets.unrecorded.concat(buckets.creditNotes);
+    document.getElementById('unrecordedEmpty').style.display = allRows.length ? 'none' : 'block';
+    allRows.forEach(r => {
         const tr = document.createElement('tr');
-        if (isNoAction) tr.className = 'gstr-row-noaction';
-        const imsCell = isNoAction
-            ? '<span class="nx-text-red">⚠ NO_ACTION</span>'
-            : escapeHtml(r.imsStatus || '—');
+        const imsCell = renderImsBadge(r.imsStatus);
+        const docTypeCell = r.docType && r.docType !== 'Invoice'
+            ? '<span class="nx-text-orange">' + escapeHtml(r.docType) + '</span>'
+            : 'Invoice';
         tr.innerHTML =
             '<td>' + escapeHtml(r.supplierGstin) + '</td>' +
             '<td>' + escapeHtml(r.supplierName) + '</td>' +
@@ -854,7 +960,8 @@ function renderUnrecordedTable() {
             '<td>' + fmt2BDate(r.invoiceDate) + '</td>' +
             '<td>₹' + fmtAmt(r.taxableValue) + '</td>' +
             '<td>₹' + fmtAmt(r.itcAvailable) + '</td>' +
-            '<td>' + imsCell + '</td>';
+            '<td>' + imsCell + '</td>' +
+            '<td>' + docTypeCell + '</td>';
         tbody.appendChild(tr);
     });
 }
@@ -928,29 +1035,33 @@ async function downloadReport() {
         { header: 'Invoice Date', key: 'date', width: 14 },
         { header: 'Taxable Value (GRN)', key: 'taxableGRN', width: 18, numFmt: '#,##0.00' },
         { header: 'Taxable Value (2B)', key: 'taxable2B', width: 18, numFmt: '#,##0.00' },
-        { header: 'Difference (₹)', key: 'diff', width: 16, numFmt: '#,##0.00' }
+        { header: 'Taxable Diff (₹)', key: 'taxableDiff', width: 16, numFmt: '#,##0.00' },
+        { header: 'Tax Diff (₹)', key: 'taxDiff', width: 16, numFmt: '#,##0.00' }
     ];
     styleHeaderRow(mismatchSheet.getRow(1));
     buckets.mismatch.forEach(r => mismatchSheet.addRow({
         supplier: r.supplierName, gstin: r.supplierGstin, invoiceNo: r.invoiceNo,
-        date: fmtGrnDate(r.invoiceDate), taxableGRN: r.taxableGRN, taxable2B: r.taxable2B, diff: r.difference
+        date: fmtGrnDate(r.invoiceDate), taxableGRN: r.taxableGRN, taxable2B: r.taxable2B,
+        taxableDiff: r.taxableDiff, taxDiff: r.taxDiff === null ? '' : r.taxDiff
     }));
     mismatchSheet.views = [{ state: 'frozen', ySplit: 1 }];
 
-    const blockedSheet = workbook.addWorksheet('ITC Blocked');
+    const blockedSheet = workbook.addWorksheet('Not in 2B — Supplier Default');
     blockedSheet.columns = [
         { header: 'Supplier', key: 'supplier', width: 24 },
         { header: 'Supplier GSTIN', key: 'gstin', width: 18 },
         { header: 'Invoice No', key: 'invoiceNo', width: 18 },
         { header: 'Invoice Date', key: 'date', width: 14 },
         { header: 'GRN Amount', key: 'grnAmount', width: 16, numFmt: '#,##0.00' },
-        { header: 'Blocked ITC (₹)', key: 'blockedItc', width: 16, numFmt: '#,##0.00' }
+        { header: 'ITC Not Available (₹)', key: 'blockedItc', width: 18, numFmt: '#,##0.00' },
+        { header: '16(4) Status', key: 'itc164', width: 14 }
     ];
     styleHeaderRow(blockedSheet.getRow(1));
     buckets.blocked.forEach(r => blockedSheet.addRow({
         supplier: r.supplierName, gstin: r.supplierGstin, invoiceNo: r.invoiceNo,
         date: fmtGrnDate(r.invoiceDate), grnAmount: r.grnAmount,
-        blockedItc: r.blockedItc === null ? '' : r.blockedItc // blank, not 0, when unknown
+        blockedItc: r.blockedItc === null ? '' : r.blockedItc, // blank, not 0, when unknown
+        itc164: r.itcExpired ? 'Expired' : 'OK'
     }));
     blockedSheet.views = [{ state: 'frozen', ySplit: 1 }];
 
@@ -962,12 +1073,14 @@ async function downloadReport() {
         { header: 'Invoice Date', key: 'date', width: 14 },
         { header: 'Taxable Value', key: 'taxable', width: 16, numFmt: '#,##0.00' },
         { header: 'ITC Available', key: 'itc', width: 16, numFmt: '#,##0.00' },
-        { header: 'IMS Status', key: 'ims', width: 14 }
+        { header: 'IMS Status', key: 'ims', width: 14 },
+        { header: 'Doc Type', key: 'docType', width: 14 }
     ];
     styleHeaderRow(unrecordedSheet.getRow(1));
-    buckets.unrecorded.forEach(r => unrecordedSheet.addRow({
+    buckets.unrecorded.concat(buckets.creditNotes).forEach(r => unrecordedSheet.addRow({
         gstin: r.supplierGstin, supplier: r.supplierName, invoiceNo: r.invoiceNo,
-        date: fmt2BDate(r.invoiceDate), taxable: r.taxableValue, itc: r.itcAvailable, ims: r.imsStatus
+        date: fmt2BDate(r.invoiceDate), taxable: r.taxableValue, itc: r.itcAvailable, ims: r.imsStatus,
+        docType: r.docType || 'Invoice'
     }));
     unrecordedSheet.views = [{ state: 'frozen', ySplit: 1 }];
 

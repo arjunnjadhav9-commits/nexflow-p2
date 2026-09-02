@@ -106,7 +106,7 @@
   #table12WarnBox { display: none; }
   #table12Results { display: none; }
 
-  /* Section 43B(h) — MSME Payment Compliance */
+  /* Section 43B(h) — Buyer Payment Compliance (Your Receivables) */
   #table43bhSection { display: none; }
   #table43bhWarnBox { display: none; }
   #table43bhResults { display: none; }
@@ -269,16 +269,21 @@
     </div>
 
     <div id="table13Results">
+      <div style="font-size:13px; color:var(--mid); margin-bottom:8px;" id="t13PeriodLabel"></div>
       <div class="nx-table-wrap nx-mb-16">
         <table class="nx-table">
-          <tbody>
-            <tr><td class="nx-td-bold">Period</td><td id="t13Period" style="text-align:right;"></td></tr>
-            <tr><td class="nx-td-bold">Challan No. From</td><td id="t13From" style="text-align:right;"></td></tr>
-            <tr><td class="nx-td-bold">Challan No. To</td><td id="t13To" style="text-align:right;"></td></tr>
-            <tr><td class="nx-td-bold">Total Issued</td><td id="t13Issued" style="text-align:right;"></td></tr>
-            <tr><td class="nx-td-bold">Total Cancelled</td><td id="t13Cancelled" style="text-align:right;"></td></tr>
-            <tr><td class="nx-td-bold">Net Issued</td><td id="t13Net" style="text-align:right;"></td></tr>
-          </tbody>
+          <thead>
+            <tr>
+              <th>Document Type</th>
+              <th style="text-align:right;">From</th>
+              <th style="text-align:right;">To</th>
+              <th style="text-align:right;">Total Issued</th>
+              <th style="text-align:right;">Cancelled</th>
+              <th style="text-align:right;">Net Issued</th>
+              <th style="text-align:right;">Gaps</th>
+            </tr>
+          </thead>
+          <tbody id="t13Body"></tbody>
         </table>
       </div>
       <button id="table13DownloadBtn" onclick="downloadTable13Excel()" class="nx-btn nx-btn-primary nx-btn-full">⬇ Download Excel</button>
@@ -313,6 +318,10 @@
           <thead>
             <tr>
               <th>HSN/SAC</th>
+              <th>Description</th>
+              <th>UQC</th>
+              <th style="text-align:right;">Quantity</th>
+              <th style="text-align:right;">Rate (%)</th>
               <th style="text-align:right;">Taxable Value</th>
               <th style="text-align:right;">Integrated Tax</th>
               <th style="text-align:right;">Central Tax</th>
@@ -330,6 +339,10 @@
           <thead>
             <tr>
               <th>HSN/SAC</th>
+              <th>Description</th>
+              <th>UQC</th>
+              <th style="text-align:right;">Quantity</th>
+              <th style="text-align:right;">Rate (%)</th>
               <th style="text-align:right;">Taxable Value</th>
               <th style="text-align:right;">Integrated Tax</th>
               <th style="text-align:right;">Central Tax</th>
@@ -345,13 +358,18 @@
     </div>
   </div>
 
-  <!-- SECTION 43B(h) — MSME PAYMENT COMPLIANCE -->
+  <!-- SECTION 43B(h) — BUYER PAYMENT COMPLIANCE (YOUR RECEIVABLES) -->
   <div id="table43bhSection" class="nx-card nx-mb-16">
     <div class="nx-card-header">
-      <div class="nx-card-title">Section 43B(h) — MSME Payment Compliance</div>
+      <div class="nx-card-title">Section 43B(h) — Buyer Payment Compliance (Your Receivables)</div>
     </div>
     <div style="font-size:13px; color:var(--mid); margin-bottom:16px;">
-      Job charge invoices to Udyam-registered Micro/Small manufacturing or services vendors, outstanding beyond the payment deadline, for the selected month.
+      Job charge invoices to Udyam-registered Micro/Small manufacturing or services clients, outstanding beyond the payment deadline, for the selected month.
+    </div>
+
+    <div class="nx-alert nx-alert-orange nx-mb-16">
+      <span class="nx-alert-icon">⚠</span>
+      <span style="font-size:13px;">This report shows what your CUSTOMERS may lose as an income tax deduction if they do not pay you by 31 March. It is NOT your own Section 43B(h) compliance position. Your own 43B(h) compliance (payments to your MSE suppliers) requires separate supplier payment data and will be added in a future update.</span>
     </div>
 
     <div class="nx-form-group">
@@ -396,6 +414,23 @@
     </div>
   </div>
 
+  <!-- GSTR-1 EXCEL WORKBOOK — separate from the CA Export button above -->
+  <div id="gstr1WorkbookSection" class="nx-card nx-mb-16">
+    <div class="nx-card-header">
+      <div class="nx-card-title">GSTR-1 Excel Workbook</div>
+    </div>
+    <div style="font-size:13px; color:var(--mid); margin-bottom:16px;">
+      A single .xlsx with sheets named exactly as the GST Returns Offline Tool expects (b2b, b2cs, b2cl, hsn, doc) — for direct import, not filing on its own. Validate against the current portal template before uploading.
+    </div>
+
+    <div class="nx-form-group">
+      <label>Month</label>
+      <input type="month" id="gstr1WorkbookMonth" class="nx-input" style="color-scheme:dark;">
+    </div>
+
+    <button id="gstr1WorkbookGenBtn" onclick="downloadGstr1Workbook()" class="nx-btn nx-btn-primary nx-btn-full">⬇ Download GSTR-1 Workbook</button>
+  </div>
+
 </div>
 </div>
 
@@ -411,7 +446,9 @@ const UOM_MAP = {
   'M':   { tally: 'MTR', zoho: 'm'   },
   'PC':  { tally: 'PCS', zoho: 'pcs' },
   'NOS': { tally: 'NOS', zoho: 'qty' },
-  'PCS': { tally: 'PCS', zoho: 'pcs' }
+  'PCS': { tally: 'PCS', zoho: 'pcs' },
+  'Stack': 'OTH',
+  'Stator': 'OTH'
 };
 
 // ─── DATE FORMATTERS ─────────────────────────────────────────────────────────
@@ -470,16 +507,38 @@ function fmtDDMMYYYY(dateStr) {
 }
 
 // GSTIN state-code prefix -> state name, for the Place of Supply columns
-// in the Purchases and Invoices sheets. Matches agent-query's getPlaceOfSupply.
+// in the Purchases and Invoices sheets. Complete list of all standard GST
+// state/UT codes (01-38 plus 97 Other Territory). This map used to also
+// live in agent-query/index.ts, but that copy was removed along with
+// sendTallyExportIntent in the Aug 31 2026 agent redesign — this is now the
+// only copy in the codebase.
 const GST_STATE_CODES = {
-  '27': 'Maharashtra', '29': 'Karnataka', '06': 'Haryana', '07': 'Delhi',
-  '24': 'Gujarat', '33': 'Tamil Nadu', '36': 'Telangana', '32': 'Kerala',
-  '19': 'West Bengal', '08': 'Rajasthan'
+  '01': 'Jammu and Kashmir', '02': 'Himachal Pradesh', '03': 'Punjab',
+  '04': 'Chandigarh', '05': 'Uttarakhand', '06': 'Haryana', '07': 'Delhi',
+  '08': 'Rajasthan', '09': 'Uttar Pradesh', '10': 'Bihar', '11': 'Sikkim',
+  '12': 'Arunachal Pradesh', '13': 'Nagaland', '14': 'Manipur', '15': 'Mizoram',
+  '16': 'Tripura', '17': 'Meghalaya', '18': 'Assam', '19': 'West Bengal',
+  '20': 'Jharkhand', '21': 'Odisha', '22': 'Chhattisgarh', '23': 'Madhya Pradesh',
+  '24': 'Gujarat', '25': 'Daman and Diu', '26': 'Dadra and Nagar Haveli and Daman and Diu',
+  '27': 'Maharashtra', '28': 'Andhra Pradesh (Old)', '29': 'Karnataka', '30': 'Goa',
+  '31': 'Lakshadweep', '32': 'Kerala', '33': 'Tamil Nadu', '34': 'Puducherry',
+  '35': 'Andaman and Nicobar Islands', '36': 'Telangana', '37': 'Andhra Pradesh',
+  '38': 'Ladakh', '97': 'Other Territory'
 };
 function getPlaceOfSupply(gstin) {
   if (!gstin) return '';
-  return GST_STATE_CODES[gstin.slice(0, 2)] || '';
+  const code = gstin.slice(0, 2);
+  const name = GST_STATE_CODES[code];
+  return name ? `${name} (${code})` : '';
 }
+
+// GSTR-1 B2CL threshold — module-level so Sheet 2's "B2C Type" column
+// (exportTallyTransactions) and downloadGstr1Workbook's b2cl/b2cs routing
+// use the exact same figure, never two copies that could drift apart.
+// ₹2.5L per the original spec — CBIC Notification 12/2024 lowered this to
+// ₹1L effective 1 Nov 2024; confirm the current figure with your CA before
+// filing. Change only this constant if it needs updating.
+const B2CL_THRESHOLD = 250000;
 
 // Shared orange header style \u2014 matches agent-query's styleHeaderRow.
 function styleHeaderRow(row) {
@@ -719,7 +778,7 @@ async function exportTallyTransactions() {
   const JOIN_COLUMNS = 'transaction_date, quantity, rate, notes, invoice_no, supplier_id, supplier_name, purchase_type, p2_raw_materials!inner(name, material_code, hsn_sac, gst_rate, unit), p2_suppliers(gstin)';
 
   log(`Fetching GRN, Opening Stock, and Invoices ${from} → ${to}...`);
-  const [grnResult, openingResult, invoiceResult] = await Promise.all([
+  const [grnResult, openingResult, invoiceResult, tenantSettingsResult] = await Promise.all([
     window.supabase
       .from('p2_stock_transactions')
       .select(JOIN_COLUMNS)
@@ -739,16 +798,31 @@ async function exportTallyTransactions() {
       .lte('transaction_date', to),
     window.supabase
       .from('p2_invoices')
-      .select('invoice_number, created_at, client_name, invoice_mode, date_from, date_to, amount_subtotal, amount_gst, amount_total, gst_type, client_gstin, items')
+      .select('invoice_number, invoice_date, created_at, client_name, invoice_mode, date_from, date_to, amount_subtotal, amount_gst, amount_total, round_off, gst_type, client_gstin, items')
       .eq('tenant_id', tenantId)
-      .gte('created_at', from + 'T00:00:00+05:30')
-      .lte('created_at', to + 'T23:59:59+05:30')
-      .order('created_at', { ascending: true })
+      .eq('status', 'sent')
+      .gte('invoice_date', from)
+      .lte('invoice_date', to)
+      .order('invoice_date', { ascending: true }),
+    window.supabase
+      .from('p2_tenant_settings')
+      .select('gstin')
+      .eq('tenant_id', tenantId)
+      .maybeSingle()
   ]);
 
   if (grnResult.error)     throw new Error(`Supabase error (GRN): ${grnResult.error.message}`);
   if (openingResult.error) throw new Error(`Supabase error (Opening Stock): ${openingResult.error.message}`);
   if (invoiceResult.error) throw new Error(`Supabase error (Invoices): ${invoiceResult.error.message}`);
+  if (tenantSettingsResult.error) throw new Error(`Supabase error (Tenant Settings): ${tenantSettingsResult.error.message}`);
+
+  // Purchase Register Place of Supply is always the RECIPIENT's location for
+  // an inward supply (i.e. our own state) — never derived from the
+  // supplier's GSTIN. Fetched once here, not per row. Falls back to
+  // Maharashtra (27) — every current client's actual state — if the
+  // tenant's own GSTIN isn't set in Settings yet.
+  const tenantGstin = tenantSettingsResult.data?.gstin || '';
+  const tenantPlaceOfSupply = getPlaceOfSupply(tenantGstin) || 'Maharashtra (27)';
 
   const grnRows     = grnResult.data || [];
   const openingRows = openingResult.data || [];
@@ -848,7 +922,7 @@ async function exportTallyTransactions() {
         totalGst, invoiceTotal,
         supplierName: row.supplier_name || '',
         supplierGstin,
-        placeOfSupply: getPlaceOfSupply(supplierGstin),
+        placeOfSupply: tenantPlaceOfSupply,
         supplierInvoiceNo: row.invoice_no || ''
       });
     } else {
@@ -871,6 +945,7 @@ async function exportTallyTransactions() {
     { header: 'Client', key: 'client', width: 28 },
     { header: 'Client GSTIN', key: 'clientGstin', width: 16 },
     { header: 'B2B / B2C', key: 'b2bB2c', width: 10 },
+    { header: 'B2C Type', key: 'b2cType', width: 10 },
     { header: 'Place of Supply', key: 'placeOfSupply', width: 16 },
     { header: 'Invoice Mode', key: 'invoiceModeCol', width: 14 },
     { header: 'Period From', key: 'periodFrom', width: 14 },
@@ -884,7 +959,8 @@ async function exportTallyTransactions() {
     { header: 'CGST (₹)', key: 'cgst', width: 12, numFmt: '#,##0.00' },
     { header: 'SGST (₹)', key: 'sgst', width: 12, numFmt: '#,##0.00' },
     { header: 'IGST (₹)', key: 'igst', width: 12, numFmt: '#,##0.00' },
-    { header: 'Item Total (₹)', key: 'itemTotal', width: 14, numFmt: '#,##0.00' }
+    { header: 'Item Total (₹)', key: 'itemTotal', width: 14, numFmt: '#,##0.00' },
+    { header: 'Round Off', key: 'roundOff', width: 10, numFmt: '#,##0.00' }
   ];
   styleHeaderRow(invoiceSheet.getRow(1));
 
@@ -906,13 +982,23 @@ async function exportTallyTransactions() {
   invoices.forEach(inv => {
     const isConsolidated = inv.invoice_mode === 'consolidated';
     const clientGstin = inv.client_gstin || '';
+    const isB2B = !!clientGstin.trim();
+    // B2CL = interstate (igst) B2C invoices over the threshold, per invoice
+    // value not per line; everything else B2C is B2CS. B2B rows leave this
+    // blank — the split only applies to consumer supplies.
+    const b2cType = isB2B
+      ? ''
+      : ((Number(inv.amount_total) || 0) > B2CL_THRESHOLD && inv.gst_type === 'igst') ? 'B2CL' : 'B2CS';
     const base = {
       invoiceNo: inv.invoice_number,
-      date: fmtDDMMYYYY(inv.created_at),
+      date: fmtDDMMYYYY(inv.invoice_date),
       client: inv.client_name || '',
       clientGstin,
-      b2bB2c: clientGstin.trim() ? 'B2B' : 'B2C',
-      placeOfSupply: getPlaceOfSupply(clientGstin),
+      b2bB2c: isB2B ? 'B2B' : 'B2C',
+      b2cType,
+      // B2C (no client GSTIN) has no state code to derive from — falls back
+      // to the tenant's own state, same fallback as Sheet 1's Purchases.
+      placeOfSupply: getPlaceOfSupply(clientGstin) || tenantPlaceOfSupply,
       invoiceModeCol: inv.invoice_mode,
       periodFrom: isConsolidated && inv.date_from ? fmtDDMMYYYY(inv.date_from) : '',
       periodTo: isConsolidated && inv.date_to ? fmtDDMMYYYY(inv.date_to) : ''
@@ -923,7 +1009,7 @@ async function exportTallyTransactions() {
       const subtotal = Number(inv.amount_subtotal) || 0;
       const gstAmount = Number(inv.amount_gst) || 0;
 
-      items.forEach(item => {
+      items.forEach((item, itemIndex) => {
         const taxable = Number(item.amount) || 0;
         const perItemGst = subtotal > 0 ? (taxable / subtotal) * gstAmount : 0;
         const { cgst, sgst, igst } = inv.gst_type === 'none'
@@ -946,7 +1032,10 @@ async function exportTallyTransactions() {
           rate: item.rate,
           taxableAmount: taxable,
           cgst, sgst, igst,
-          itemTotal
+          itemTotal,
+          // Round-off is an invoice-level figure — printed once, on the
+          // invoice's first line item, not repeated on every exploded row.
+          roundOff: itemIndex === 0 ? (Number(inv.round_off) || 0) : ''
         });
         invoiceRowCount++;
       });
@@ -969,7 +1058,8 @@ async function exportTallyTransactions() {
         description: '', hsnSac: '', qty: '', unit: '', rate: '',
         taxableAmount: taxable,
         cgst, sgst, igst,
-        itemTotal
+        itemTotal,
+        roundOff: Number(inv.round_off) || 0
       });
       invoiceRowCount++;
     }
@@ -1019,11 +1109,34 @@ async function exportTallyTransactions() {
 
   gstSummarySheet.addRow({});
 
+  // Renamed from "NET GST PAYABLE / (REFUNDABLE)" -- that label implied a
+  // number a CA could pay tax off directly. It subtracts 100% of potential
+  // ITC from output tax while ignoring GSTR-2B confirmation, Section 17(5)
+  // blocked credits, RCM, and the opening/closing credit ledger -- a CA
+  // short-paying off this figure picks up 18% interest under Section 50(1).
+  // "Indicative" plus the disclaimer row below make that limitation explicit
+  // in the exported file itself, not just in this comment.
   const netGstPayable = totalOutputTax - totalItcClaimable;
-  const netRow = addSummaryCurrencyRow('NET GST PAYABLE / (REFUNDABLE)', netGstPayable);
+  const netRow = addSummaryCurrencyRow('Indicative Net GST', netGstPayable);
   const netColor = netGstPayable >= 0 ? 'FFFF5C1A' : 'FF22D87A';
   netRow.getCell(1).font = { bold: true, color: { argb: netColor } };
   netRow.getCell(2).font = { bold: true, color: { argb: netColor } };
+
+  const netGstDisclaimerRow = gstSummarySheet.addRow({
+    label: 'For reference only. Excludes RCM liability, Section 17(5) blocked credits, opening ITC balance, bank/expense/payroll input tax, and GSTR-2B confirmation. Do not use to compute actual cash payment.',
+    value: ''
+  });
+  gstSummarySheet.mergeCells(`A${netGstDisclaimerRow.number}:B${netGstDisclaimerRow.number}`);
+  netGstDisclaimerRow.getCell(1).font = { italic: true, color: { argb: 'FF808080' } };
+
+  // Invariant: Sheet 3's Total Output Tax must equal Table 12's total output
+  // tax (Integrated + Central + State Tax, summed across B2B + B2C) for the
+  // same period. This holds structurally, not by coincidence -- both totals
+  // accumulate from the same status='sent' + invoice_date-filtered invoice
+  // set (totalOutputTax above is summed inside this function's own
+  // invoices.forEach loop right above Sheet 2's build, and Table 12 sums the
+  // same invoices' items independently in generateTable12()). If this ever
+  // diverges, one of those two filters has drifted from the other.
 
   const filename = `CA_Export_${from}_to_${to}.xlsx`;
   await downloadXLSX(workbook, filename);
@@ -1237,9 +1350,175 @@ async function exportZohoTransactions() {
 // Extract the first digit run for numeric comparison — correct for both real
 // formats; a non-numeric override with no digits is simply excluded from
 // range/gap logic rather than crashing the feature.
-function challanNumKey(challanNumber) {
-  const match = String(challanNumber ?? '').match(/(\d+)/);
-  return match ? parseInt(match[1], 10) : null;
+// Financial year (1 Apr - 31 Mar) containing (year, month) — Table 13's gap
+// detection scans this whole window, not just the picked month, so a gap
+// spanning a month boundary (e.g. last confirmed number in July, next
+// confirmed number in September, nothing in August) is no longer invisible.
+function financialYearRange(year, month) {
+  const fyStartYear = month >= 4 ? year : year - 1;
+  return { fyFrom: `${fyStartYear}-04-01`, fyTo: `${fyStartYear + 1}-03-31` };
+}
+
+// Tax invoice numbers (INV-YYYYMM-NNN) are ONE continuous series per tenant —
+// the YYYYMM segment just reflects whatever month get_next_invoice_number was
+// called in, the NNN counter (p2_tenant_settings.invoice_sequence) never
+// resets. So only the trailing NNN matters; the embedded month must NOT be
+// treated as a series/prefix split the way challan numbers are.
+function invoiceSeriesKey(invoiceNumber) {
+  const match = String(invoiceNumber ?? '').match(/-(\d+)$/);
+  if (!match) return null;
+  const num = parseInt(match[1], 10);
+  return Number.isFinite(num) && num >= 1 ? num : null;
+}
+
+// Challan numbers are freeform text and DO legitimately vary by series within
+// one tenant — "RM-1001" and "1001" are different, both-independently-valid
+// sequences, not one sequence with gaps between them. prefix = everything
+// before the trailing digit run; num = that digit run.
+function challanSeriesKey(challanNumber) {
+  const match = String(challanNumber ?? '').match(/^(\D*)(\d+)$/);
+  if (!match) return null;
+  const num = parseInt(match[2], 10);
+  if (!Number.isFinite(num) || num < 1) return null;
+  return { prefix: match[1], num };
+}
+
+// One flat numeric series: walks [min,max] over the given keys and counts
+// how many integers in that range are missing. Shared by the single-series
+// Tax Invoices bucket and, per-prefix, by the multi-series challan buckets.
+function countGapsInFlatSeries(nums) {
+  if (!nums.length) return { min: null, max: null, gapCount: 0 };
+  const keySet = new Set(nums);
+  let min = nums[0], max = nums[0];
+  for (const n of nums) { if (n < min) min = n; if (n > max) max = n; }
+  let gapCount = 0;
+  for (let i = min; i <= max; i++) { if (!keySet.has(i)) gapCount++; }
+  return { min, max, gapCount };
+}
+
+// Challan buckets can contain multiple series (prefix variants) at once.
+// Each series is gap-scanned independently against its OWN [min,max] — never
+// mixed with another series' range, which is exactly what used to produce
+// false "gaps" when a tenant switched challan-number formats mid-year.
+function countGapsBySeries(entries) {
+  const byPrefix = new Map();
+  entries.forEach(({ prefix, num }) => {
+    if (!byPrefix.has(prefix)) byPrefix.set(prefix, []);
+    byPrefix.get(prefix).push(num);
+  });
+  let gapCount = 0;
+  let overallMin = null, overallMax = null;
+  byPrefix.forEach(nums => {
+    const { min, max, gapCount: gc } = countGapsInFlatSeries(nums);
+    gapCount += gc;
+    if (min !== null && (overallMin === null || min < overallMin)) overallMin = min;
+    if (max !== null && (overallMax === null || max > overallMax)) overallMax = max;
+  });
+  return { min: overallMin, max: overallMax, gapCount };
+}
+
+// Three-way fetch shared by generateTable13() and downloadGstr1Workbook()'s
+// doc sheet — see computeTable13Buckets below for why this split exists.
+async function fetchTable13Data(tenantId, fyFrom, fyTo) {
+  const [invoiceResult, dispatchResult, cancelledLogResult] = await Promise.all([
+    window.supabase
+      .from('p2_invoices')
+      .select('invoice_number, invoice_date, status')
+      .eq('tenant_id', tenantId)
+      .in('status', ['sent', 'cancelled'])
+      .gte('invoice_date', fyFrom)
+      .lte('invoice_date', fyTo),
+    window.supabase
+      .from('p2_dispatch_orders')
+      .select('challan_number, status, dispatch_date, movement_purpose')
+      .eq('tenant_id', tenantId)
+      .in('status', ['confirmed', 'cancelled'])
+      .gte('dispatch_date', fyFrom)
+      .lte('dispatch_date', fyTo),
+    // Unbounded per-tenant fetch (not FY-scoped): this audit log has no
+    // dispatch_date, only cancelled_at (when the hard delete happened,
+    // which can be long after the challan's own FY). Scoping this query
+    // by cancelled_at-within-FY would wrongly show a legitimately-
+    // accounted-for number as a "gap" if it was cancelled+deleted outside
+    // the FY window it was originally issued in. Bounded ourselves instead
+    // by intersecting against each series' own [min,max] in computeTable13Buckets.
+    window.supabase
+      .from('p2_cancelled_challans')
+      .select('challan_number, cancelled_at, movement_purpose')
+      .eq('tenant_id', tenantId)
+  ]);
+
+  if (invoiceResult.error)      throw new Error(`Supabase error (Invoices): ${invoiceResult.error.message}`);
+  if (dispatchResult.error)     throw new Error(`Supabase error (Dispatches): ${dispatchResult.error.message}`);
+  if (cancelledLogResult.error) throw new Error(`Supabase error (Cancelled Challans): ${cancelledLogResult.error.message}`);
+
+  return {
+    invoiceRows: invoiceResult.data || [],
+    dispatchRows: dispatchResult.data || [],
+    cancelledLogRows: cancelledLogResult.data || []
+  };
+}
+
+// Pure bucket-building — the single source of truth shared by generateTable13()
+// (on-screen + its own Excel download) and downloadGstr1Workbook()'s doc sheet,
+// so "same data as Table 13" is true by construction. See generateTable13's
+// own doc comment for the working-set rules (draft dispatches excluded,
+// cancelled sourced from both p2_dispatch_orders and p2_cancelled_challans,
+// NULL movement_purpose routed to Other).
+function computeTable13Buckets(invoiceRows, dispatchRows, cancelledLogRows, monthFrom, monthTo) {
+  const inMonth = (dateStr) => dateStr >= monthFrom && dateStr <= monthTo;
+
+  function buildInvoiceBucket() {
+    const monthRows = invoiceRows.filter(r => inMonth(r.invoice_date));
+    const totalIssued = monthRows.length;
+    const totalCancelled = monthRows.filter(r => r.status === 'cancelled').length;
+    const monthKeys = monthRows.map(r => invoiceSeriesKey(r.invoice_number)).filter(k => k !== null);
+    const fyKeys = invoiceRows.map(r => invoiceSeriesKey(r.invoice_number)).filter(k => k !== null);
+    const { gapCount } = countGapsInFlatSeries(fyKeys);
+    const fromDisplay = monthKeys.length ? Math.min(...monthKeys) : null;
+    const toDisplay   = monthKeys.length ? Math.max(...monthKeys) : null;
+    return {
+      label: 'Tax Invoices', fromDisplay, toDisplay,
+      totalIssued, totalCancelled, netIssued: totalIssued - totalCancelled, gapCount
+    };
+  }
+
+  function buildChallanBucket(label, matchesPurpose) {
+    const dRows = dispatchRows.filter(r => matchesPurpose(r.movement_purpose));
+    const cRows = cancelledLogRows.filter(r => matchesPurpose(r.movement_purpose));
+
+    const monthConfirmed = dRows.filter(r => r.status === 'confirmed' && inMonth(r.dispatch_date));
+    const monthCancelledFromOrders = dRows.filter(r => r.status === 'cancelled' && inMonth(r.dispatch_date));
+    const monthCancelledFromLog = cRows.filter(r => inMonth(r.cancelled_at));
+
+    const totalIssued = monthConfirmed.length + monthCancelledFromOrders.length + monthCancelledFromLog.length;
+    const totalCancelled = monthCancelledFromOrders.length + monthCancelledFromLog.length;
+
+    // From/To range: only rows with a real dispatch_date in this month count.
+    // p2_cancelled_challans has no dispatch_date, only cancelled_at (when the
+    // hard delete happened, which can be long after the challan's own issue
+    // month) — including monthCancelledFromLog here would pull an ancient
+    // challan number into this month's displayed range just because it was
+    // purged this month. Total Issued / Cancelled above still count it
+    // correctly; only the From/To display is scoped to genuinely-dated rows.
+    const monthKeys = [...monthConfirmed, ...monthCancelledFromOrders]
+      .map(r => challanSeriesKey(r.challan_number)).filter(k => k !== null);
+    const flatMonthNums = monthKeys.map(k => k.num);
+    const fromDisplay = flatMonthNums.length ? Math.min(...flatMonthNums) : null;
+    const toDisplay   = flatMonthNums.length ? Math.max(...flatMonthNums) : null;
+
+    const fyEntries = [...dRows, ...cRows]
+      .map(r => challanSeriesKey(r.challan_number)).filter(k => k !== null);
+    const { gapCount } = countGapsBySeries(fyEntries);
+
+    return { label, fromDisplay, toDisplay, totalIssued, totalCancelled, netIssued: totalIssued - totalCancelled, gapCount };
+  }
+
+  return [
+    buildInvoiceBucket(),
+    buildChallanBucket('Delivery Challans (Job Work)', (p) => p === 'job_work_issue'),
+    buildChallanBucket('Delivery Challans (Other)', (p) => p !== 'job_work_issue') // includes NULL
+  ];
 }
 
 function showTable13Warn(msg) {
@@ -1248,12 +1527,34 @@ function showTable13Warn(msg) {
   box.style.display = msg ? 'flex' : 'none';
 }
 
-let table13Data = null; // cached last-generated result, used by the Excel download
+function renderTable13Row(bucket) {
+  const fromTo = bucket.fromDisplay !== null
+    ? `<td style="text-align:right;">${escapeHtml(String(bucket.fromDisplay))}</td><td style="text-align:right;">${escapeHtml(String(bucket.toDisplay))}</td>`
+    : `<td style="text-align:right;">—</td><td style="text-align:right;">—</td>`;
+  return `
+    <tr>
+      <td>${escapeHtml(bucket.label)}</td>
+      ${fromTo}
+      <td style="text-align:right;">${bucket.totalIssued}</td>
+      <td style="text-align:right;">${bucket.totalCancelled}</td>
+      <td style="text-align:right;">${bucket.netIssued}</td>
+      <td style="text-align:right;">${bucket.gapCount > 0 ? `<span class="nx-text-red">${bucket.gapCount}</span>` : '0'}</td>
+    </tr>
+  `;
+}
+
+let table13Data = null; // cached last-generated result (array of bucket objects), used by the Excel download
 
 // draft dispatches are excluded entirely — a draft hasn't left the factory,
 // so it isn't a real document yet for GST purposes, regardless of whether a
-// challan_number was already reserved for it in the DB. Working set is
-// confirmed + cancelled only, for every figure below (from/to, totals, gaps).
+// challan_number was already reserved for it in the DB. Working set for
+// challans is confirmed + cancelled (the latter sourced from BOTH
+// p2_dispatch_orders, for a cancelled-but-not-yet-hard-deleted challan, and
+// p2_cancelled_challans, for one that has been — see the hard_delete_dispatch
+// migrations; the two never overlap for the same underlying row since
+// hard-delete removes the p2_dispatch_orders row atomically with the audit
+// insert). Tax invoices use status IN (sent, cancelled) — draft invoices were
+// never actually billed, matching Table 12's own rule.
 async function generateTable13() {
   const btn = document.getElementById('table13GenBtn');
   document.getElementById('table13Results').style.display = 'none';
@@ -1269,71 +1570,31 @@ async function generateTable13() {
     const year  = parseInt(yearStr, 10);
     const month = parseInt(monthStr, 10);
     const lastDay = new Date(year, month, 0).getDate();
-    const from = `${yearStr}-${monthStr}-01`;
-    const to   = `${yearStr}-${monthStr}-${String(lastDay).padStart(2, '0')}`;
+    const monthFrom = `${yearStr}-${monthStr}-01`;
+    const monthTo   = `${yearStr}-${monthStr}-${String(lastDay).padStart(2, '0')}`;
+    const { fyFrom, fyTo } = financialYearRange(year, month);
 
     const tenantId = await getTenantId();
+    const { invoiceRows, dispatchRows, cancelledLogRows } = await fetchTable13Data(tenantId, fyFrom, fyTo);
 
-    const { data, error } = await window.supabase
-      .from('p2_dispatch_orders')
-      .select('challan_number, status')
-      .eq('tenant_id', tenantId)
-      .in('status', ['confirmed', 'cancelled'])
-      .gte('dispatch_date', from)
-      .lte('dispatch_date', to);
-
-    if (error) throw new Error(`Supabase error: ${error.message}`);
-
-    const rows = data || [];
-    if (!rows.length) throw new Error('No confirmed or cancelled challans found for this period.');
-
-    const cancelledRows = rows.filter(r => r.status === 'cancelled');
-    const confirmedKeyed = rows
-      .filter(r => r.status === 'confirmed')
-      .map(r => ({ ...r, key: challanNumKey(r.challan_number) }))
-      .filter(r => r.key !== null && !Number.isNaN(r.key) && r.key >= 1);
-
-    if (!confirmedKeyed.length) throw new Error('No confirmed challans with a readable challan number found for this period.');
-
-    let fromRow = confirmedKeyed[0], toRow = confirmedKeyed[0];
-    confirmedKeyed.forEach(r => {
-      if (r.key < fromRow.key) fromRow = r;
-      if (r.key > toRow.key) toRow = r;
-    });
-
-    // Gap = a number in [from, to] with no row at all in the working set
-    // (confirmed or cancelled). A cancelled challan in the middle still
-    // consumed its number, so it is NOT a gap.
-    const allKeys = new Set(rows.map(r => challanNumKey(r.challan_number)).filter(k => k !== null && !Number.isNaN(k) && k >= 1));
-    let hasGap = false;
-    for (let i = fromRow.key; i <= toRow.key; i++) {
-      if (!allKeys.has(i)) { hasGap = true; break; }
+    if (!invoiceRows.length && !dispatchRows.length && !cancelledLogRows.length) {
+      throw new Error('No confirmed/cancelled challans or sent/cancelled invoices found for this financial year.');
     }
 
-    const totalIssued    = rows.length; // confirmed + cancelled
-    const totalCancelled = cancelledRows.length;
-    const netIssued       = totalIssued - totalCancelled;
+    const buckets = computeTable13Buckets(invoiceRows, dispatchRows, cancelledLogRows, monthFrom, monthTo);
 
     const FULL_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
     const periodLabel = `${FULL_MONTHS[month - 1]} ${year}`;
 
-    table13Data = {
-      periodLabel, from, to,
-      challanFrom: fromRow.challan_number,
-      challanTo: toRow.challan_number,
-      totalIssued, totalCancelled, netIssued
-    };
+    table13Data = { periodLabel, monthFrom, monthTo, fyFrom, fyTo, buckets };
 
-    document.getElementById('t13Period').textContent    = periodLabel;
-    document.getElementById('t13From').textContent      = table13Data.challanFrom;
-    document.getElementById('t13To').textContent        = table13Data.challanTo;
-    document.getElementById('t13Issued').textContent    = totalIssued;
-    document.getElementById('t13Cancelled').textContent = totalCancelled;
-    document.getElementById('t13Net').textContent       = netIssued;
+    document.getElementById('t13PeriodLabel').textContent = `Period: ${periodLabel} — Gap scan: FY ${fyFrom} to ${fyTo}`;
+    document.getElementById('t13Body').innerHTML = buckets.map(renderTable13Row).join('');
     document.getElementById('table13Results').style.display = 'block';
 
-    if (hasGap) {
-      showTable13Warn('Warning: gaps detected in challan sequence — consult your CA before filing.');
+    const gapBuckets = buckets.filter(b => b.gapCount > 0);
+    if (gapBuckets.length) {
+      showTable13Warn(`Gaps detected in ${gapBuckets.map(b => `${b.label} (${b.gapCount})`).join(', ')} — consult your CA before filing.`);
     }
   } catch (err) {
     toast(err.message, 'error');
@@ -1349,27 +1610,32 @@ async function downloadTable13Excel() {
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet('GSTR-1 Table 13');
   sheet.columns = [
-    { header: 'Period',            key: 'period',    width: 18 },
-    { header: 'Challan No. From',  key: 'from',       width: 20 },
-    { header: 'Challan No. To',    key: 'to',         width: 20 },
-    { header: 'Total Issued',      key: 'issued',     width: 14 },
-    { header: 'Total Cancelled',   key: 'cancelled',  width: 16 },
-    { header: 'Net Issued',        key: 'net',        width: 14 }
+    { header: 'Document Type',   key: 'label',     width: 30 },
+    { header: 'From',            key: 'from',      width: 16 },
+    { header: 'To',              key: 'to',        width: 16 },
+    { header: 'Total Issued',    key: 'issued',    width: 14 },
+    { header: 'Cancelled',       key: 'cancelled', width: 14 },
+    { header: 'Net Issued',      key: 'net',       width: 14 },
+    { header: 'Gaps',            key: 'gaps',       width: 10 }
   ];
   styleHeaderRow(sheet.getRow(1));
 
-  sheet.addRow({
-    period: table13Data.periodLabel,
-    from: table13Data.challanFrom,
-    to: table13Data.challanTo,
-    issued: table13Data.totalIssued,
-    cancelled: table13Data.totalCancelled,
-    net: table13Data.netIssued
+  table13Data.buckets.forEach(b => {
+    const row = sheet.addRow({
+      label: b.label,
+      from: b.fromDisplay ?? '',
+      to: b.toDisplay ?? '',
+      issued: b.totalIssued,
+      cancelled: b.totalCancelled,
+      net: b.netIssued,
+      gaps: b.gapCount
+    });
+    if (b.gapCount > 0) row.getCell('gaps').font = { bold: true, color: { argb: 'FFEF4444' } };
   });
 
   sheet.views = [{ state: 'frozen', ySplit: 1 }];
 
-  const filename = `GSTR1_Table13_${table13Data.from}_to_${table13Data.to}.xlsx`;
+  const filename = `GSTR1_Table13_${table13Data.fyFrom}_to_${table13Data.fyTo}.xlsx`;
   await downloadXLSX(workbook, filename);
   toast(`Downloaded: ${filename}`, 'ok');
 }
@@ -1396,11 +1662,112 @@ let table12Data = null; // cached last-generated result, used by the Excel downl
 
 function sumTable12Rows(rows) {
   return rows.reduce((acc, r) => ({
+    qty: acc.qty + r.qty,
     taxableValue: acc.taxableValue + r.taxableValue,
     integratedTax: acc.integratedTax + r.integratedTax,
     centralTax: acc.centralTax + r.centralTax,
     stateTax: acc.stateTax + r.stateTax
-  }), { taxableValue: 0, integratedTax: 0, centralTax: 0, stateTax: 0 });
+  }), { qty: 0, taxableValue: 0, integratedTax: 0, centralTax: 0, stateTax: 0 });
+}
+
+// Pure HSN/SAC grouping — the single source of truth shared by generateTable12()
+// (on-screen + its own Excel download) and downloadGstr1Workbook()'s hsn sheet,
+// so "same data as Table 12" is true by construction rather than by two
+// independently-maintained copies of this same grouping logic drifting apart.
+// invoices: rows already filtered to tenant + status='sent' + a date range —
+// this function does no filtering of its own, only grouping/aggregation.
+// Effective GST rate derived from an invoice's own stored totals, not a
+// hardcoded 18% -- 'none' or a zero/missing subtotal both resolve to 0%.
+// p2_invoices has no per-line gst_rate (see GST Scope lock — the flat split
+// is deliberate), so this is the closest available proxy for "the rate this
+// invoice actually charged." Shared by computeHsnSummary (Table 12) and
+// downloadGstr1Workbook's b2b/b2cs/b2cl builder — one formula, not two.
+function deriveInvoiceRate(inv) {
+  const invSubtotal = Number(inv.amount_subtotal) || 0;
+  const invGst = Number(inv.amount_gst) || 0;
+  return (inv.gst_type === 'none' || invSubtotal <= 0)
+    ? 0
+    : Math.round((invGst / invSubtotal) * 100);
+}
+
+function computeHsnSummary(invoices) {
+  const b2bMap = new Map();
+  const b2cMap = new Map();
+  let blankHsnInvoiceCount = 0;
+
+  invoices.forEach(inv => {
+    const items = Array.isArray(inv.items) ? inv.items : [];
+    const isB2B = !!(inv.client_gstin && inv.client_gstin.trim());
+    const map = isB2B ? b2bMap : b2cMap;
+    const rate = deriveInvoiceRate(inv);
+
+    let invoiceHasBlankHsn = false;
+
+    items.forEach(item => {
+      const hsn = String(item.hsn_sac || '').trim();
+      if (!hsn) { invoiceHasBlankHsn = true; return; } // excluded entirely — see blankHsnInvoiceCount below
+      const key = `${hsn}|${rate}`;
+      const amount = Number(item.amount) || 0;
+      const qty = Number(item.qty) || 0;
+
+      let integratedTax = 0, centralTax = 0, stateTax = 0;
+      if (rate > 0) {
+        if (inv.gst_type === 'igst') {
+          integratedTax = amount * (rate / 100);
+        } else if (inv.gst_type === 'cgst_sgst') {
+          centralTax = amount * (rate / 200);
+          stateTax   = amount * (rate / 200);
+        }
+      }
+
+      const existing = map.get(key) || {
+        hsn, rate,
+        description: item.description || '',
+        uqc: UOM_MAP[item.unit]?.tally || 'OTH',
+        qty: 0, taxableValue: 0, integratedTax: 0, centralTax: 0, stateTax: 0
+      };
+      existing.qty            += qty;
+      existing.taxableValue   += amount;
+      existing.integratedTax  += integratedTax;
+      existing.centralTax     += centralTax;
+      existing.stateTax       += stateTax;
+      map.set(key, existing);
+    });
+
+    if (invoiceHasBlankHsn) blankHsnInvoiceCount++;
+  });
+
+  // Group by HSN + rate (not HSN alone) — a HSN billed at two different
+  // rates across the period must appear as two separate portal rows.
+  const b2bRows = Array.from(b2bMap.values()).sort((a, b) => a.hsn.localeCompare(b.hsn) || a.rate - b.rate);
+  const b2cRows = Array.from(b2cMap.values()).sort((a, b) => a.hsn.localeCompare(b.hsn) || a.rate - b.rate);
+  const b2bTotals = sumTable12Rows(b2bRows);
+  const b2cTotals = sumTable12Rows(b2cRows);
+
+  return { b2bRows, b2cRows, b2bTotals, b2cTotals, blankHsnInvoiceCount };
+}
+
+// GSTR-1's own HSN summary sheet doesn't split B2B/B2C the way Table 12's
+// on-screen tables do — merges computeHsnSummary's two already-deduped
+// (hsn|rate) row sets into one further-deduped set, so an HSN+rate that
+// happened to appear in both B2B and B2C supplies becomes one combined row,
+// not two duplicate-looking ones.
+function mergeHsnRows(rowsA, rowsB) {
+  const map = new Map();
+  [...rowsA, ...rowsB].forEach(r => {
+    const key = `${r.hsn}|${r.rate}`;
+    const existing = map.get(key) || {
+      hsn: r.hsn, rate: r.rate, description: r.description, uqc: r.uqc,
+      qty: 0, taxableValue: 0, integratedTax: 0, centralTax: 0, stateTax: 0
+    };
+    existing.qty           += r.qty;
+    existing.taxableValue  += r.taxableValue;
+    existing.integratedTax += r.integratedTax;
+    existing.centralTax    += r.centralTax;
+    existing.stateTax      += r.stateTax;
+    map.set(key, existing);
+  });
+  return Array.from(map.values()).sort((a, b) => a.hsn.localeCompare(b.hsn) || a.rate - b.rate);
 }
 
 function renderTable12Table(bodyId, footId, rows, totals, emptyLabel) {
@@ -1408,16 +1775,22 @@ function renderTable12Table(bodyId, footId, rows, totals, emptyLabel) {
   tbody.innerHTML = rows.length ? rows.map(r => `
     <tr>
       <td>${escapeHtml(r.hsn)}</td>
+      <td>${escapeHtml(r.description)}</td>
+      <td>${escapeHtml(r.uqc)}</td>
+      <td style="text-align:right;">${r.qty.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</td>
+      <td style="text-align:right;">${r.rate}%</td>
       <td style="text-align:right;">${fmtMoney(r.taxableValue)}</td>
       <td style="text-align:right;">${fmtTaxCell(r.integratedTax)}</td>
       <td style="text-align:right;">${fmtTaxCell(r.centralTax)}</td>
       <td style="text-align:right;">${fmtTaxCell(r.stateTax)}</td>
     </tr>
-  `).join('') : `<tr><td colspan="5" style="text-align:center; color:var(--mid);">${emptyLabel}</td></tr>`;
+  `).join('') : `<tr><td colspan="9" style="text-align:center; color:var(--mid);">${emptyLabel}</td></tr>`;
 
   document.getElementById(footId).innerHTML = rows.length ? `
     <tr style="border-top:2px solid var(--border);">
-      <td class="nx-td-bold">TOTAL</td>
+      <td class="nx-td-bold" colspan="3">TOTAL</td>
+      <td class="nx-td-bold" style="text-align:right;">${totals.qty.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</td>
+      <td></td>
       <td class="nx-td-bold" style="text-align:right;">${fmtMoney(totals.taxableValue)}</td>
       <td class="nx-td-bold" style="text-align:right;">${fmtTaxCell(totals.integratedTax)}</td>
       <td class="nx-td-bold" style="text-align:right;">${fmtTaxCell(totals.centralTax)}</td>
@@ -1452,67 +1825,37 @@ async function generateTable12() {
 
     const { data, error } = await window.supabase
       .from('p2_invoices')
-      .select('items, client_gstin, gst_type, created_at')
+      .select('items, client_gstin, gst_type, invoice_date, amount_subtotal, amount_gst')
       .eq('tenant_id', tenantId)
       .eq('status', 'sent')
-      .gte('created_at', from + 'T00:00:00+05:30')
-      .lte('created_at', to + 'T23:59:59+05:30');
+      .gte('invoice_date', from)
+      .lte('invoice_date', to);
 
     if (error) throw new Error(`Supabase error: ${error.message}`);
 
     const invoices = data || [];
     if (!invoices.length) throw new Error('No sent invoices found for this period.');
 
-    const b2bMap = new Map();
-    const b2cMap = new Map();
-    let missingHsnCount = 0;
-
-    invoices.forEach(inv => {
-      const items = Array.isArray(inv.items) ? inv.items : [];
-      const isB2B = !!(inv.client_gstin && inv.client_gstin.trim());
-      const map = isB2B ? b2bMap : b2cMap;
-
-      items.forEach(item => {
-        const hsn = String(item.hsn_sac || '').trim();
-        if (!hsn) missingHsnCount++;
-        const key = hsn || '(Blank)';
-        const amount = Number(item.amount) || 0;
-
-        let integratedTax = 0, centralTax = 0, stateTax = 0;
-        if (inv.gst_type === 'igst') {
-          integratedTax = amount * 0.18;
-        } else if (inv.gst_type === 'cgst_sgst') {
-          centralTax = amount * 0.09;
-          stateTax   = amount * 0.09;
-        }
-
-        const existing = map.get(key) || { hsn: key, taxableValue: 0, integratedTax: 0, centralTax: 0, stateTax: 0 };
-        existing.taxableValue  += amount;
-        existing.integratedTax += integratedTax;
-        existing.centralTax    += centralTax;
-        existing.stateTax      += stateTax;
-        map.set(key, existing);
-      });
-    });
-
-    if (!b2bMap.size && !b2cMap.size) throw new Error('No line items with HSN/SAC data found for this period.');
-
-    const b2bRows = Array.from(b2bMap.values()).sort((a, b) => a.hsn.localeCompare(b.hsn));
-    const b2cRows = Array.from(b2cMap.values()).sort((a, b) => a.hsn.localeCompare(b.hsn));
-    const b2bTotals = sumTable12Rows(b2bRows);
-    const b2cTotals = sumTable12Rows(b2cRows);
+    const { b2bRows, b2cRows, b2bTotals, b2cTotals, blankHsnInvoiceCount } = computeHsnSummary(invoices);
 
     const FULL_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
     const periodLabel = `${FULL_MONTHS[month - 1]} ${year}`;
 
-    table12Data = { periodLabel, from, to, b2bRows, b2cRows, b2bTotals, b2cTotals };
+    table12Data = { periodLabel, from, to, b2bRows, b2cRows, b2bTotals, b2cTotals, blankHsnInvoiceCount };
 
     renderTable12Table('t12B2bBody', 't12B2bFoot', b2bRows, b2bTotals, 'No B2B supplies for this period.');
     renderTable12Table('t12B2cBody', 't12B2cFoot', b2cRows, b2cTotals, 'No B2C supplies for this period.');
     document.getElementById('table12Results').style.display = 'block';
 
-    if (missingHsnCount > 0) {
-      showTable12Warn(`${missingHsnCount} line item(s) had no HSN/SAC code — grouped under "(Blank)". Add HSN/SAC codes in Products/Settings before filing.`);
+    // Blank-HSN line items are excluded from the grouped output entirely
+    // (portal rejects rows with no HSN) — this warning is the only place
+    // that count survives, as a count of AFFECTED INVOICES, not line items.
+    if (blankHsnInvoiceCount > 0) {
+      showTable12Warn(`${blankHsnInvoiceCount} invoice(s) had one or more line items with no HSN/SAC code — those line items are excluded entirely from this summary. Add HSN/SAC codes in Products/Settings before filing.`);
+    } else if (!b2bRows.length && !b2cRows.length) {
+      // Sent invoices exist for this period but none had a populated items
+      // snapshot to summarise (pre-hsn_sac invoices, or items === null).
+      showTable12Warn('No line items found on the sent invoices for this period.');
     }
   } catch (err) {
     toast(err.message, 'error');
@@ -1529,27 +1872,46 @@ async function downloadTable12Excel() {
 
   const buildSheet = (name, rows, totals) => {
     const sheet = workbook.addWorksheet(name);
+
+    // .columns must be set before any row is added — ExcelJS's .columns
+    // setter always (re)writes row 1 as the header row, silently clobbering
+    // anything already there. A warning row above the header is added
+    // afterward via insertRow(1, ...), which shifts the existing header (and
+    // every data row already added) down by one instead of overwriting it.
     sheet.columns = [
       { header: 'HSN/SAC',        key: 'hsn',           width: 14 },
+      { header: 'Description',    key: 'description',   width: 28 },
+      { header: 'UQC',            key: 'uqc',           width: 8 },
+      { header: 'Quantity',       key: 'qty',           width: 12, numFmt: '#,##0.##' },
+      { header: 'Rate (%)',       key: 'rate',          width: 10 },
       { header: 'Taxable Value',  key: 'taxableValue',  width: 16, numFmt: '#,##0.00' },
       { header: 'Integrated Tax', key: 'integratedTax', width: 16, numFmt: '#,##0.00' },
       { header: 'Central Tax',    key: 'centralTax',    width: 16, numFmt: '#,##0.00' },
       { header: 'State Tax',      key: 'stateTax',       width: 16, numFmt: '#,##0.00' }
     ];
-    styleHeaderRow(sheet.getRow(1));
 
     rows.forEach(r => sheet.addRow({
-      hsn: r.hsn, taxableValue: r.taxableValue, integratedTax: r.integratedTax,
+      hsn: r.hsn, description: r.description, uqc: r.uqc, qty: r.qty, rate: r.rate,
+      taxableValue: r.taxableValue, integratedTax: r.integratedTax,
       centralTax: r.centralTax, stateTax: r.stateTax
     }));
 
     const totalRow = sheet.addRow({
-      hsn: 'TOTAL', taxableValue: totals.taxableValue, integratedTax: totals.integratedTax,
+      hsn: 'TOTAL', qty: totals.qty, taxableValue: totals.taxableValue, integratedTax: totals.integratedTax,
       centralTax: totals.centralTax, stateTax: totals.stateTax
     });
     totalRow.font = { bold: true };
 
-    sheet.views = [{ state: 'frozen', ySplit: 1 }];
+    let headerRowNumber = 1;
+    if (table12Data.blankHsnInvoiceCount > 0) {
+      sheet.insertRow(1, [`⚠ ${table12Data.blankHsnInvoiceCount} invoice(s) had one or more line items with no HSN/SAC code — excluded entirely from this sheet.`]);
+      sheet.mergeCells('A1:I1');
+      sheet.getRow(1).getCell(1).font = { italic: true, color: { argb: 'FFFF5C1A' } };
+      headerRowNumber = 2;
+    }
+    styleHeaderRow(sheet.getRow(headerRowNumber));
+
+    sheet.views = [{ state: 'frozen', ySplit: headerRowNumber }];
   };
 
   buildSheet('B2B Supplies', table12Data.b2bRows, table12Data.b2bTotals);
@@ -1561,7 +1923,7 @@ async function downloadTable12Excel() {
 }
 
 // ─── SECTION 43B(h) — MSME PAYMENT COMPLIANCE ───────────────────────────────
-const TABLE43BH_DISCLAIMER = 'Interest estimated at 3× RBI bank rate (6.5% as of Aug 2026), simple interest — MSMED s.16 actually compounds monthly, so this understates true exposure. Assumes a written job-work agreement is in place for every vendor (45-day limit); vendors without one have only a 15-day limit and higher exposure. Verify current rate, compounding, and agreement status with your CA before filing.';
+const TABLE43BH_DISCLAIMER = 'Interest estimated at 3× RBI bank rate (6.5% as of Aug 2026), simple interest — MSMED s.16 actually compounds monthly, so this understates true exposure. Assumes a written job-work agreement is in place for every client (45-day limit); clients without one have only a 15-day limit and higher exposure. Verify current rate, compounding, and agreement status with your CA before filing.';
 
 function showTable43bhWarn(msg) {
   const box = document.getElementById('table43bhWarnBox');
@@ -1638,12 +2000,12 @@ async function generateTable43bh() {
 
     const { data, error } = await window.supabase
       .from('p2_invoices')
-      .select('id, invoice_number, client_id, client_name, amount_total, created_at, status')
+      .select('id, invoice_number, client_id, client_name, amount_total, invoice_date, status')
       .eq('tenant_id', tenantId)
       .eq('status', 'sent')
-      .gte('created_at', from + 'T00:00:00+05:30')
-      .lte('created_at', to + 'T23:59:59+05:30')
-      .order('created_at', { ascending: true });
+      .gte('invoice_date', from)
+      .lte('invoice_date', to)
+      .order('invoice_date', { ascending: true });
 
     if (error) throw new Error(`Supabase error: ${error.message}`);
 
@@ -1708,7 +2070,7 @@ async function generateTable43bh() {
       const amountTotal = Number(inv.amount_total) || 0;
       const balanceDue = Math.max(0, amountTotal - totalReceived);
 
-      const invoiceDate = new Date(inv.created_at);
+      const invoiceDate = new Date(inv.invoice_date);
       const dueDate = new Date(invoiceDate.getTime() + 45 * 24 * 60 * 60 * 1000); // hardcoded 45 days — no agreement_days column exists
       const dueDateMid = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate());
       const daysOverdue = Math.max(0, Math.round((todayMid - dueDateMid) / 86400000));
@@ -1815,6 +2177,238 @@ async function downloadTable43bhExcel() {
   toast(`Downloaded: ${filename}`, 'ok');
 }
 
+// ─── GSTR-1 EXCEL WORKBOOK ───────────────────────────────────────────────────
+// Separate from the CA Export button and its three sheets (Purchases/
+// Invoices/GST Summary) — this produces a single .xlsx with sheets named
+// exactly as the GST Returns Offline Tool expects, for direct import there.
+// hsn and doc reuse computeHsnSummary/computeTable13Buckets verbatim (same
+// data as Table 12/13 by construction, not by separately-maintained copies).
+async function downloadGstr1Workbook() {
+  const btn = document.getElementById('gstr1WorkbookGenBtn');
+  btn.disabled = true;
+  const originalLabel = btn.textContent;
+  btn.textContent = 'Generating...';
+
+  try {
+    const monthVal = document.getElementById('gstr1WorkbookMonth').value; // "YYYY-MM"
+    if (!monthVal) throw new Error('Select a month.');
+    const [yearStr, monthStr] = monthVal.split('-');
+    const year  = parseInt(yearStr, 10);
+    const month = parseInt(monthStr, 10);
+    const lastDay = new Date(year, month, 0).getDate();
+    const monthFrom = `${yearStr}-${monthStr}-01`;
+    const monthTo   = `${yearStr}-${monthStr}-${String(lastDay).padStart(2, '0')}`;
+    const { fyFrom, fyTo } = financialYearRange(year, month);
+
+    const tenantId = await getTenantId();
+
+    const [invoiceResult, table13Fetch, tenantSettingsResult] = await Promise.all([
+      window.supabase
+        .from('p2_invoices')
+        .select('invoice_number, invoice_date, client_name, client_gstin, gst_type, amount_subtotal, amount_gst, amount_total, round_off, items, status')
+        .eq('tenant_id', tenantId)
+        .eq('status', 'sent')
+        .gte('invoice_date', monthFrom)
+        .lte('invoice_date', monthTo),
+      fetchTable13Data(tenantId, fyFrom, fyTo),
+      window.supabase
+        .from('p2_tenant_settings')
+        .select('gstin')
+        .eq('tenant_id', tenantId)
+        .maybeSingle()
+    ]);
+
+    if (invoiceResult.error) throw new Error(`Supabase error (Invoices): ${invoiceResult.error.message}`);
+    if (tenantSettingsResult.error) throw new Error(`Supabase error (Tenant Settings): ${tenantSettingsResult.error.message}`);
+
+    const invoices = invoiceResult.data || [];
+    if (!invoices.length) throw new Error('No sent invoices found for this period.');
+
+    const tenantGstin = tenantSettingsResult.data?.gstin || '';
+    const tenantPlaceOfSupply = getPlaceOfSupply(tenantGstin) || 'Maharashtra (27)';
+
+    // ── hsn sheet data: identical computation to Table 12 ──
+    const hsnSummary = computeHsnSummary(invoices);
+    const hsnRows = mergeHsnRows(hsnSummary.b2bRows, hsnSummary.b2cRows);
+
+    // ── doc sheet data: identical computation to Table 13 ──
+    const docBuckets = computeTable13Buckets(
+      table13Fetch.invoiceRows, table13Fetch.dispatchRows, table13Fetch.cancelledLogRows,
+      monthFrom, monthTo
+    );
+
+    // ── b2b / b2cs / b2cl rows, built directly from `invoices` ──
+    const b2bRows = [];
+    const b2csMap = new Map(); // key: placeOfSupply|rate
+    const b2clRows = [];
+
+    invoices.forEach(inv => {
+      const clientGstin = (inv.client_gstin || '').trim();
+      const isB2B = !!clientGstin;
+      const rate = deriveInvoiceRate(inv);
+      const placeOfSupply = isB2B ? (getPlaceOfSupply(clientGstin) || tenantPlaceOfSupply) : tenantPlaceOfSupply;
+      const invoiceValue = Number(inv.amount_total) || 0; // already Section-170-rounded (Prompt 7)
+      const taxableValue = Number(inv.amount_subtotal) || 0;
+
+      if (isB2B) {
+        const items = Array.isArray(inv.items) ? inv.items : [];
+        items.forEach(item => {
+          b2bRows.push({
+            gstin: clientGstin,
+            receiverName: inv.client_name || '',
+            invoiceNo: inv.invoice_number,
+            invoiceDate: fmtDDMMYYYY(inv.invoice_date),
+            invoiceValue,
+            placeOfSupply,
+            reverseCharge: 'N',
+            applicableTaxRatePct: '',
+            invoiceType: 'Regular',
+            ecommerceGstin: '',
+            rate,
+            taxableValue: Number(item.amount) || 0,
+            cess: 0
+          });
+        });
+      } else if (invoiceValue > B2CL_THRESHOLD && inv.gst_type === 'igst') {
+        // B2CL: interstate, over the threshold, per INVOICE (not per line —
+        // every invoice in this app carries one flat rate across all its
+        // items, so one row per invoice is already correct, not a simplification).
+        b2clRows.push({
+          invoiceNo: inv.invoice_number,
+          invoiceDate: fmtDDMMYYYY(inv.invoice_date),
+          invoiceValue,
+          placeOfSupply,
+          applicableTaxRatePct: '',
+          rate,
+          taxableValue,
+          cess: 0,
+          ecommerceGstin: ''
+        });
+      } else {
+        // B2CS: aggregated by Place of Supply + Rate, same grouping shape as
+        // the portal's own b2cs sheet (not per-invoice, not per-line).
+        const key = `${placeOfSupply}|${rate}`;
+        const existing = b2csMap.get(key) || { placeOfSupply, rate, taxableValue: 0, cess: 0 };
+        existing.taxableValue += taxableValue;
+        b2csMap.set(key, existing);
+      }
+    });
+
+    const b2csRows = Array.from(b2csMap.values()).sort((a, b) => a.placeOfSupply.localeCompare(b.placeOfSupply) || a.rate - b.rate);
+
+    const workbook = new ExcelJS.Workbook();
+
+    // ── README (first sheet) ──
+    const readmeSheet = workbook.addWorksheet('README');
+    readmeSheet.columns = [{ key: 'text', width: 100 }];
+    readmeSheet.addRow({ text: 'Generated by Nexflow P2. Validate using the GST Returns Offline Tool before uploading to the portal. Column headers must match the portal template exactly — download the current template from GST portal > Downloads > Offline Tools > GSTR-1 to verify before filing.' });
+    readmeSheet.getRow(1).alignment = { wrapText: true, vertical: 'top' };
+    readmeSheet.getRow(1).font = { italic: true };
+
+    // ── b2b (lowercase sheet name, exact) ──
+    const b2bSheet = workbook.addWorksheet('b2b');
+    b2bSheet.columns = [
+      { header: 'GSTIN/UIN of Recipient',        key: 'gstin',                width: 18 },
+      { header: 'Receiver Name',                 key: 'receiverName',         width: 24 },
+      { header: 'Invoice Number',                key: 'invoiceNo',            width: 18 },
+      { header: 'Invoice date',                  key: 'invoiceDate',          width: 14 },
+      { header: 'Invoice Value',                 key: 'invoiceValue',         width: 14, numFmt: '#,##0.00' },
+      { header: 'Place Of Supply',                key: 'placeOfSupply',        width: 20 },
+      { header: 'Reverse Charge',                 key: 'reverseCharge',        width: 12 },
+      { header: 'Applicable % of Tax Rate',       key: 'applicableTaxRatePct', width: 16 },
+      { header: 'Invoice Type',                   key: 'invoiceType',          width: 14 },
+      { header: 'E-Commerce GSTIN',                key: 'ecommerceGstin',       width: 16 },
+      { header: 'Rate',                            key: 'rate',                 width: 8 },
+      { header: 'Taxable Value',                   key: 'taxableValue',         width: 14, numFmt: '#,##0.00' },
+      { header: 'Cess Amount',                     key: 'cess',                 width: 12, numFmt: '#,##0.00' }
+    ];
+    styleHeaderRow(b2bSheet.getRow(1));
+    b2bRows.forEach(r => b2bSheet.addRow(r));
+    b2bSheet.views = [{ state: 'frozen', ySplit: 1 }];
+
+    // ── b2cs ──
+    const b2csSheet = workbook.addWorksheet('b2cs');
+    b2csSheet.columns = [
+      { header: 'Type',                           key: 'type',                 width: 8 },
+      { header: 'Place Of Supply',                 key: 'placeOfSupply',        width: 20 },
+      { header: 'Applicable % of Tax Rate',        key: 'applicableTaxRatePct', width: 16 },
+      { header: 'Rate',                            key: 'rate',                 width: 8 },
+      { header: 'Taxable Value',                   key: 'taxableValue',         width: 14, numFmt: '#,##0.00' },
+      { header: 'Cess Amount',                      key: 'cess',                 width: 12, numFmt: '#,##0.00' },
+      { header: 'E-Commerce GSTIN',                 key: 'ecommerceGstin',       width: 16 }
+    ];
+    styleHeaderRow(b2csSheet.getRow(1));
+    b2csRows.forEach(r => b2csSheet.addRow({ type: 'OE', placeOfSupply: r.placeOfSupply, applicableTaxRatePct: '', rate: r.rate, taxableValue: r.taxableValue, cess: r.cess, ecommerceGstin: '' }));
+    b2csSheet.views = [{ state: 'frozen', ySplit: 1 }];
+
+    // ── b2cl ──
+    const b2clSheet = workbook.addWorksheet('b2cl');
+    b2clSheet.columns = [
+      { header: 'Invoice Number',                 key: 'invoiceNo',            width: 18 },
+      { header: 'Invoice date',                   key: 'invoiceDate',          width: 14 },
+      { header: 'Invoice Value',                  key: 'invoiceValue',         width: 14, numFmt: '#,##0.00' },
+      { header: 'Place Of Supply',                 key: 'placeOfSupply',        width: 20 },
+      { header: 'Applicable % of Tax Rate',        key: 'applicableTaxRatePct', width: 16 },
+      { header: 'Rate',                            key: 'rate',                 width: 8 },
+      { header: 'Taxable Value',                   key: 'taxableValue',         width: 14, numFmt: '#,##0.00' },
+      { header: 'Cess Amount',                      key: 'cess',                 width: 12, numFmt: '#,##0.00' },
+      { header: 'E-Commerce GSTIN',                 key: 'ecommerceGstin',       width: 16 }
+    ];
+    styleHeaderRow(b2clSheet.getRow(1));
+    b2clRows.forEach(r => b2clSheet.addRow(r));
+    b2clSheet.views = [{ state: 'frozen', ySplit: 1 }];
+
+    // ── hsn ──
+    const hsnSheet = workbook.addWorksheet('hsn');
+    hsnSheet.columns = [
+      { header: 'HSN',                    key: 'hsn',           width: 14 },
+      { header: 'Description',            key: 'description',   width: 28 },
+      { header: 'UQC',                    key: 'uqc',           width: 8 },
+      { header: 'Total Quantity',         key: 'qty',           width: 14, numFmt: '#,##0.##' },
+      { header: 'Total Value',            key: 'totalValue',    width: 16, numFmt: '#,##0.00' },
+      { header: 'Taxable Value',          key: 'taxableValue',  width: 16, numFmt: '#,##0.00' },
+      { header: 'Integrated Tax Amount',  key: 'integratedTax', width: 18, numFmt: '#,##0.00' },
+      { header: 'Central Tax Amount',     key: 'centralTax',    width: 16, numFmt: '#,##0.00' },
+      { header: 'State/UT Tax Amount',    key: 'stateTax',      width: 16, numFmt: '#,##0.00' },
+      { header: 'Cess Amount',            key: 'cess',          width: 12, numFmt: '#,##0.00' }
+    ];
+    styleHeaderRow(hsnSheet.getRow(1));
+    hsnRows.forEach(r => hsnSheet.addRow({
+      hsn: r.hsn, description: r.description, uqc: r.uqc, qty: r.qty,
+      totalValue: r.taxableValue + r.integratedTax + r.centralTax + r.stateTax,
+      taxableValue: r.taxableValue, integratedTax: r.integratedTax,
+      centralTax: r.centralTax, stateTax: r.stateTax, cess: 0
+    }));
+    hsnSheet.views = [{ state: 'frozen', ySplit: 1 }];
+
+    // ── doc ──
+    const docSheet = workbook.addWorksheet('doc');
+    docSheet.columns = [
+      { header: 'Nature of Document', key: 'label',     width: 30 },
+      { header: 'Sr. No. From',       key: 'from',      width: 16 },
+      { header: 'Sr. No. To',         key: 'to',        width: 16 },
+      { header: 'Total Number',       key: 'total',     width: 14 },
+      { header: 'Cancelled',          key: 'cancelled', width: 12 }
+    ];
+    styleHeaderRow(docSheet.getRow(1));
+    docBuckets.forEach(b => docSheet.addRow({
+      label: b.label, from: b.fromDisplay ?? '', to: b.toDisplay ?? '',
+      total: b.totalIssued, cancelled: b.totalCancelled
+    }));
+    docSheet.views = [{ state: 'frozen', ySplit: 1 }];
+
+    const filename = `GSTR1_Workbook_${monthFrom}_to_${monthTo}.xlsx`;
+    await downloadXLSX(workbook, filename);
+    toast(`Downloaded: ${filename}`, 'ok');
+  } catch (err) {
+    toast(err.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalLabel;
+  }
+}
+
+
 // ─── INIT ────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   const authed = await checkAuth();
@@ -1850,6 +2444,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('table12Month').value = `${y}-${m}`;
     document.getElementById('table43bhSection').style.display = 'block';
     document.getElementById('table43bhMonth').value = `${y}-${m}`;
+    document.getElementById('gstr1WorkbookSection').style.display = 'block';
+    document.getElementById('gstr1WorkbookMonth').value = `${y}-${m}`;
   }
 });
 </script>

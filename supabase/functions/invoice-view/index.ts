@@ -44,9 +44,10 @@ Deno.serve(async (req) => {
     const { data: invoice, error: invoiceError } = await supabase
       .from('p2_invoices')
       .select(`
-        invoice_number, invoice_date:created_at, client_name, client_address,
+        invoice_number, invoice_date, created_at, client_name, client_address,
         client_gstin, items, amount_subtotal, amount_gst, amount_total,
-        gst_type, invoice_mode, date_from, date_to, status, tenant_id
+        round_off, doc_category, gst_type, invoice_mode, date_from, date_to,
+        status, tenant_id
       `)
       .eq('invoice_token', token)
       .limit(1)
@@ -72,7 +73,10 @@ Deno.serve(async (req) => {
       return json({ error: 'server_error' }, 500)
     }
 
-    const { tenant_id: _tenantId, ...invoiceOut } = invoice
+    // created_at kept in the select above for audit purposes only -- stripped
+    // here so it never reaches the client and invoice.html can never render it
+    // instead of the real invoice_date by accident.
+    const { tenant_id: _tenantId, created_at: _createdAt, ...invoiceOut } = invoice
 
     return json({
       invoice: invoiceOut,
