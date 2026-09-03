@@ -69,6 +69,37 @@
             height: 38px;
             font-size: 13px;
         }
+
+        /* Tabs — .nx-stabs/.nx-stab come from the shared stylesheet (same as
+           settings.html); .tab-panel itself is only ever defined per-page
+           inline (matches settings.html's own <style> block). */
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
+
+        /* Invoice table column layout — scoped to .nx-invoice-table only, so
+           the nested per-row receipts sub-table, the Supplier Advances tab's
+           table, and the modal tables (all sharing .nx-table) are unaffected. */
+        .nx-invoice-table { table-layout: fixed; width: 100%; }
+        .nx-invoice-table th.col-invno,  .nx-invoice-table td.col-invno  { width: 130px; }
+        .nx-invoice-table th.col-date,   .nx-invoice-table td.col-date   { width: 100px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .nx-invoice-table th.col-client, .nx-invoice-table td.col-client { width: 160px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .nx-invoice-table th.col-mode,   .nx-invoice-table td.col-mode   { width: 110px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .nx-invoice-table th.col-period, .nx-invoice-table td.col-period { width: 140px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .nx-invoice-table th.col-amount, .nx-invoice-table td.col-amount { width: 110px; text-align: right; }
+        .nx-invoice-table th.col-status, .nx-invoice-table td.col-status { width: 130px; }
+        .nx-invoice-table th.col-actions, .nx-invoice-table td.col-actions { text-align: right; }
+        .nx-invoice-table td { vertical-align: middle; }
+
+        @media (max-width: 767px) {
+            .nx-invoice-table .col-date,
+            .nx-invoice-table .col-mode,
+            .nx-invoice-table .col-period { display: none; }
+            .nx-invoice-table tbody tr.nx-invoice-row { cursor: pointer; }
+        }
+        .nx-mobile-detail-row { display: none; }
+        @media (max-width: 767px) {
+            .nx-mobile-detail-row { display: table-row; }
+        }
     </style>
 </head>
 <body>
@@ -113,6 +144,15 @@
             <!-- INVOICES CONTENT -->
             <div id="invoicesContent">
 
+                <!-- TABS -->
+                <div class="nx-stabs">
+                    <button id="tab-invoices" class="nx-stab active" data-en="Invoices" data-mr="इनव्हॉइस">Invoices</button>
+                    <button id="tab-advances" class="nx-stab" data-en="Supplier Advances" data-mr="पुरवठादार आगाऊ रक्कम">Supplier Advances</button>
+                </div>
+
+            <!-- ── INVOICES TAB ─────────────────────────────────────────── -->
+            <div id="content-invoices" class="tab-panel active">
+
                 <!-- SUMMARY STAT CARDS -->
                 <div class="nx-stat-grid nx-mb-24">
                     <div class="nx-stat">
@@ -150,6 +190,9 @@
                             <option value="draft">Draft</option>
                             <option value="sent">Sent</option>
                             <option value="cancelled">Cancelled</option>
+                            <option value="pending_payment">Pending Payment</option>
+                            <option value="partial_payment">Partial</option>
+                            <option value="overdue_payment">Overdue</option>
                         </select>
                     </div>
                 </div>
@@ -157,17 +200,17 @@
                 <!-- TABLE -->
                 <div class="nx-card">
                     <div class="nx-table-wrap">
-                        <table class="nx-table">
+                        <table class="nx-table nx-invoice-table">
                             <thead>
                                 <tr>
-                                    <th>Invoice No</th>
-                                    <th>Date</th>
-                                    <th>Client</th>
-                                    <th>Mode</th>
-                                    <th>Period</th>
-                                    <th style="text-align:right;">Amount (₹)</th>
-                                    <th>Status</th>
-                                    <th style="text-align:center;">Actions</th>
+                                    <th class="col-invno">Invoice No</th>
+                                    <th class="col-date">Date</th>
+                                    <th class="col-client">Client</th>
+                                    <th class="col-mode">Mode</th>
+                                    <th class="col-period">Period</th>
+                                    <th class="col-amount">Amount (₹)</th>
+                                    <th class="col-status">Status</th>
+                                    <th class="col-actions">Detail</th>
                                 </tr>
                             </thead>
                             <tbody id="invoicesBody"></tbody>
@@ -179,6 +222,66 @@
                         <div>No invoices match the selected filters.</div>
                     </div>
                 </div>
+
+            </div>
+            <!-- /content-invoices -->
+
+            <!-- ── SUPPLIER ADVANCES TAB ────────────────────────────────── -->
+            <div id="content-advances" class="tab-panel">
+
+                <div style="display:flex; justify-content:space-between; align-items:flex-end; gap:12px; flex-wrap:wrap; margin-bottom:20px;">
+                    <div class="nx-form-group" style="margin:0; min-width:240px;">
+                        <label data-en="Supplier" data-mr="पुरवठादार">Supplier</label>
+                        <select id="advSupplierSelect" class="nx-input">
+                            <option value="" data-en="Select Supplier" data-mr="पुरवठादार निवडा">Select Supplier</option>
+                        </select>
+                    </div>
+                    <button id="addAdvanceBtn" class="nx-btn nx-btn-primary" disabled data-en="+ Add Advance" data-mr="+ आगाऊ रक्कम जोडा">+ Add Advance</button>
+                </div>
+
+                <!-- EMPTY STATE (no supplier selected) -->
+                <div id="advEmptyState" class="nx-card" style="text-align:center; padding:40px 20px; color:var(--mid);">
+                    <div data-en="Select a supplier above to view their advance balance." data-mr="आगाऊ शिल्लक पाहण्यासाठी वरील पुरवठादार निवडा.">Select a supplier above to view their advance balance.</div>
+                </div>
+
+                <!-- BALANCE CARD + HISTORY (shown after a supplier is selected) -->
+                <div id="advDetail" style="display:none;">
+                    <div class="nx-stat-grid nx-mb-24">
+                        <div class="nx-stat">
+                            <div class="nx-stat-label" data-en="Total Advanced" data-mr="एकूण आगाऊ रक्कम">Total Advanced</div>
+                            <div class="nx-stat-value" id="advTotalAdvanced">₹0.00</div>
+                        </div>
+                        <div class="nx-stat">
+                            <div class="nx-stat-label" data-en="Total Drawn" data-mr="एकूण वापरलेली रक्कम">Total Drawn</div>
+                            <div class="nx-stat-value" id="advTotalDrawn">₹0.00</div>
+                        </div>
+                        <div class="nx-stat">
+                            <div class="nx-stat-label" data-en="Remaining Balance" data-mr="शिल्लक रक्कम">Remaining Balance</div>
+                            <div class="nx-stat-value" id="advBalance">₹0.00</div>
+                        </div>
+                    </div>
+
+                    <div class="nx-card">
+                        <div class="nx-table-wrap">
+                            <table class="nx-table">
+                                <thead>
+                                    <tr>
+                                        <th data-en="Date" data-mr="तारीख">Date</th>
+                                        <th style="text-align:right;" data-en="Amount" data-mr="रक्कम">Amount</th>
+                                        <th data-en="Reference No" data-mr="संदर्भ क्र.">Reference No</th>
+                                        <th data-en="Notes" data-mr="टीप">Notes</th>
+                                        <th data-en="Recorded On" data-mr="नोंद तारीख">Recorded On</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="advHistoryBody"></tbody>
+                            </table>
+                        </div>
+                        <div id="advHistoryEmpty" style="display:none; text-align:center; padding:24px; color:var(--mid);" data-en="No advances recorded yet." data-mr="अजून कोणतीही आगाऊ रक्कम नोंदवलेली नाही.">No advances recorded yet.</div>
+                    </div>
+                </div>
+
+            </div>
+            <!-- /content-advances -->
 
             </div>
 
@@ -339,6 +442,55 @@
         </div>
     </div>
 
+    <!-- INVOICE DETAIL MODAL -->
+    <div id="invoiceDetailModal" class="nx-modal-overlay" style="display:none;">
+        <div class="nx-modal" style="max-width:520px;">
+            <div class="nx-modal-title" id="invoiceDetailTitle" style="color:var(--orange);"></div>
+            <div id="invoiceDetailMeta" style="font-size:13px; color:var(--mid); margin-bottom:20px; line-height:1.7;"></div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                <button id="invoiceDetailViewBtn" class="nx-btn nx-btn-green" style="flex:1;">View / Print</button>
+                <button id="invoiceDetailPayBtn" class="nx-btn nx-btn-secondary" style="flex:1; display:none;">Record Payment</button>
+                <button id="invoiceDetailReceiptsBtn" class="nx-btn nx-btn-ghost" style="flex:1; display:none;">▼ Receipts</button>
+                <button id="invoiceDetailCancelBtn" class="nx-btn nx-btn-ghost" style="flex:1; display:none; color:var(--red);">Cancel Invoice</button>
+                <button id="invoiceDetailCloseBtn" class="nx-btn nx-btn-ghost" style="flex:1;">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- RECORD ADVANCE PAYMENT MODAL -->
+    <div id="recordAdvanceModal" class="nx-modal-overlay" style="display:none;">
+        <div class="nx-modal" style="max-width:480px;">
+            <div class="nx-modal-title" style="color:var(--orange);" data-en="Record Advance Payment" data-mr="आगाऊ पेमेंट नोंदवा">Record Advance Payment</div>
+            <div id="recordAdvanceSupplierLine" style="font-size:13px; color:var(--mid); margin-bottom:16px;"></div>
+
+            <div style="display:flex; gap:12px; margin-bottom:14px;">
+                <div class="nx-form-group" style="flex:1; margin:0;">
+                    <label data-en="Payment Date" data-mr="पेमेंट तारीख">Payment Date</label>
+                    <input type="date" id="raDate" class="nx-input">
+                </div>
+                <div class="nx-form-group" style="flex:1; margin:0;">
+                    <label data-en="Amount (₹)" data-mr="रक्कम (₹)">Amount (₹)</label>
+                    <input type="number" step="0.01" min="0.01" id="raAmount" class="nx-input">
+                </div>
+            </div>
+
+            <div class="nx-form-group" style="margin-bottom:14px;">
+                <label data-en="Reference No" data-mr="संदर्भ क्र.">Reference No</label>
+                <input type="text" id="raReference" class="nx-input" placeholder="Optional">
+            </div>
+
+            <div class="nx-form-group" style="margin-bottom:16px;">
+                <label data-en="Notes" data-mr="टीप">Notes</label>
+                <textarea id="raNotes" class="nx-input" rows="3" placeholder="Optional" style="resize:vertical;"></textarea>
+            </div>
+
+            <div style="display:flex; gap:10px;">
+                <button id="raConfirm" class="nx-btn nx-btn-green" style="flex:1;" data-en="Save Advance" data-mr="जतन करा">Save Advance</button>
+                <button id="raCancel" class="nx-btn nx-btn-ghost" style="flex:1;" data-en="Cancel" data-mr="रद्द करा">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         let tenantId = null;
         let authToken = null;
@@ -349,9 +501,54 @@
         let canRecordPayment = false;
         let recordPaymentInvoiceId = null;
         const expandedInvoiceIds = new Set();
+        const expandedMobileRows = new Set();
         let consInvoicePreviewState = { clientId: null, clientName: null, dateFrom: null, dateTo: null, gstType: null, dispatchType: null, items: [] };
+        let advSuppliers = [];
+        let selectedAdvSupplierId = null;
 
         document.addEventListener('DOMContentLoaded', init);
+
+        function applyLang(lang) {
+            document.querySelectorAll('[data-en]').forEach(el => {
+                if (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA') {
+                    el.placeholder = lang === 'mr' ? el.dataset.mr : el.dataset.en;
+                } else {
+                    el.textContent = lang === 'mr' ? el.dataset.mr : el.dataset.en;
+                }
+            });
+            const btn = document.getElementById('lang-toggle');
+            if (btn) btn.textContent = lang === 'mr' ? 'English' : 'मराठी';
+            localStorage.setItem('nexflow_lang', lang);
+        }
+        window.applyLang = applyLang;
+
+        function t(en, mr) {
+            return (localStorage.getItem('nexflow_lang') || 'en') === 'mr' ? mr : en;
+        }
+
+        const TABS = ['invoices', 'advances'];
+        function switchToTab(activeTab) {
+            TABS.forEach(tab => {
+                const content = document.getElementById(`content-${tab}`);
+                const btn = document.getElementById(`tab-${tab}`);
+                if (!content || !btn) return;
+                if (tab === activeTab) {
+                    content.classList.add('active');
+                    btn.classList.add('active');
+                } else {
+                    content.classList.remove('active');
+                    btn.classList.remove('active');
+                }
+            });
+        }
+
+        function setupTabHandlers() {
+            document.getElementById('tab-invoices').addEventListener('click', () => switchToTab('invoices'));
+            document.getElementById('tab-advances').addEventListener('click', async () => {
+                switchToTab('advances');
+                if (advSuppliers.length === 0) await loadAdvanceSuppliers();
+            });
+        }
 
         function escInvHtml(str) {
             return String(str ?? '').replace(/[&<>"']/g, (c) => ({
@@ -405,12 +602,17 @@
 
                 loadingSpinner.style.display = 'none';
 
+                applyLang(localStorage.getItem('nexflow_lang') || 'en');
                 document.getElementById('newInvoiceHeaderActions').style.display = 'flex';
                 invoicesContent.style.display = 'block';
+                setupTabHandlers();
                 setupFilterHandlers();
                 setupConsolidatedModalHandlers();
                 setupConsPreviewModalHandlers();
                 setupRecordPaymentModalHandlers();
+                setupInvoiceDetailModalHandlers();
+                setupAdvancesTabHandlers();
+                setupRecordAdvanceModalHandlers();
                 await loadInvoices();
             } catch (err) {
                 console.error('invoices.html init error:', err);
@@ -529,6 +731,14 @@
             renderInvoices();
         };
 
+        // Mobile (<768px) row-tap expand — reveals Date/Mode/Period/Actions,
+        // which are hidden as table columns below that breakpoint.
+        window.toggleMobileDetail = (invoiceId) => {
+            if (expandedMobileRows.has(invoiceId)) expandedMobileRows.delete(invoiceId);
+            else expandedMobileRows.add(invoiceId);
+            renderInvoices();
+        };
+
         function populateClientFilterOptions() {
             const select = document.getElementById('filterClient');
             const clients = [...new Set(allInvoices.map(inv => inv.client_name).filter(Boolean))].sort();
@@ -542,6 +752,10 @@
             });
         }
 
+        // Maps a filter option to the derivePaymentStatus() bucket it represents —
+        // reuses the already-loaded receiptsByInvoice map, no new query.
+        const PAYMENT_STATUS_FILTERS = { pending_payment: 'pending', partial_payment: 'partial', overdue_payment: 'overdue' };
+
         function applyFilters() {
             const client = document.getElementById('filterClient').value;
             const mode = document.getElementById('filterMode').value;
@@ -550,7 +764,15 @@
             filtered = allInvoices.filter(inv => {
                 if (client && inv.client_name !== client) return false;
                 if (mode && inv.invoice_mode !== mode) return false;
-                if (status && inv.status !== status) return false;
+                if (status) {
+                    if (status in PAYMENT_STATUS_FILTERS) {
+                        if (inv.status !== 'sent') return false;
+                        const receipts = receiptsByInvoice.get(inv.id) || [];
+                        if (derivePaymentStatus(inv, receipts) !== PAYMENT_STATUS_FILTERS[status]) return false;
+                    } else if (inv.status !== status) {
+                        return false;
+                    }
+                }
                 return true;
             });
 
@@ -594,43 +816,38 @@
                     ? `<span class="nx-badge ${paymentBadgeInfo.cls}">${paymentBadgeInfo.label}</span>`
                     : '';
 
-                const cancelBtn = (inv.status === 'cancelled' || currentRole === 'accountant')
-                    ? ''
-                    : `<button onclick="cancelInvoice('${inv.id}')" class="nx-btn nx-btn-ghost nx-btn-sm" style="color:var(--red);">Cancel</button>`;
-
-                const canPay = inv.status === 'sent' && paymentStatus !== 'paid' && canRecordPayment;
-                const recordPaymentBtn = canPay
-                    ? `<button onclick="openRecordPaymentModal('${inv.id}')" class="nx-btn nx-btn-ghost nx-btn-sm" style="color:var(--orange);">Record Payment</button>`
-                    : '';
-
-                const isExpanded = expandedInvoiceIds.has(inv.id);
-                const receiptsToggleBtn = receipts.length > 0
-                    ? `<button onclick="toggleReceiptsRow('${inv.id}')" class="nx-btn nx-btn-ghost nx-btn-sm">${isExpanded ? '▲' : '▼'} Receipts</button>`
-                    : '';
-
                 const mainRow = `
-                    <tr>
-                        <td class="nx-td-mono">${escInvHtml(inv.invoice_number)}</td>
-                        <td>${fmtDate(inv.invoice_date)}</td>
-                        <td class="nx-td-bold">${escInvHtml(inv.client_name || '-')}</td>
-                        <td>${modeBadge}</td>
-                        <td>${period}</td>
-                        <td style="text-align:right;">${fmtMoney(inv.amount_total)}</td>
-                        <td><div style="display:flex; gap:6px; flex-wrap:wrap;">${statusBadge}${paymentBadge}</div></td>
-                        <td style="text-align:center;">
-                            <div style="display:flex; gap:6px; justify-content:center; flex-wrap:wrap;">
-                                <button onclick="window.open('/invoice.html?token=${inv.invoice_token}','_blank')" class="nx-btn nx-btn-ghost nx-btn-sm">View / Print</button>
-                                ${recordPaymentBtn}
-                                ${receiptsToggleBtn}
-                                ${cancelBtn}
-                            </div>
+                    <tr class="nx-invoice-row" onclick="toggleMobileDetail('${inv.id}')">
+                        <td class="nx-td-mono col-invno">${escInvHtml(inv.invoice_number)}</td>
+                        <td class="col-date">${fmtDate(inv.invoice_date)}</td>
+                        <td class="nx-td-bold col-client">${escInvHtml(inv.client_name || '-')}</td>
+                        <td class="col-mode">${modeBadge}</td>
+                        <td class="col-period">${period}</td>
+                        <td class="col-amount">${fmtMoney(inv.amount_total)}</td>
+                        <td class="col-status"><div style="display:flex; flex-direction:column; align-items:flex-start; gap:4px;">${statusBadge}${paymentBadge}</div></td>
+                        <td class="col-actions" onclick="event.stopPropagation()">
+                            <button class="nx-btn nx-btn-ghost nx-btn-sm detail-btn" data-invoice-id="${inv.id}">Detail</button>
                         </td>
                     </tr>
                 `;
 
+                const isMobileExpanded = expandedMobileRows.has(inv.id);
+                const mobileDetailRow = isMobileExpanded ? `
+                    <tr class="nx-mobile-detail-row">
+                        <td colspan="8" style="padding:12px 16px; background:rgba(255,255,255,0.02);">
+                            <div style="display:flex; flex-direction:column; gap:8px; font-size:13px;">
+                                <div><span style="color:var(--mid);">Date:</span> ${fmtDate(inv.invoice_date)}</div>
+                                <div><span style="color:var(--mid);">Mode:</span> ${modeBadge}</div>
+                                ${period ? `<div><span style="color:var(--mid);">Period:</span> ${period}</div>` : ''}
+                            </div>
+                        </td>
+                    </tr>
+                ` : '';
+
+                const isExpanded = expandedInvoiceIds.has(inv.id);
                 const receiptsRow = (isExpanded && receipts.length > 0) ? renderReceiptsSubRow(receipts) : '';
 
-                return mainRow + receiptsRow;
+                return mainRow + mobileDetailRow + receiptsRow;
             }).join('');
         }
 
@@ -655,6 +872,94 @@
                 alert('Could not cancel the invoice. Please try again.');
             }
         };
+
+        // ── INVOICE DETAIL MODAL ────────────────────────────────────────
+        function openInvoiceDetail(inv) {
+            const receipts = receiptsByInvoice.get(inv.id) || [];
+            const isConsolidated = inv.invoice_mode === 'consolidated';
+            const modeBadge = isConsolidated
+                ? `<span class="nx-badge nx-badge-orange">Consolidated</span>`
+                : `<span class="nx-badge nx-badge-grey">Single</span>`;
+            const statusBadge = inv.status === 'cancelled'
+                ? `<span class="nx-badge nx-badge-red">Cancelled</span>`
+                : inv.status === 'sent'
+                ? `<span class="nx-badge nx-badge-green">Sent</span>`
+                : `<span class="nx-badge nx-badge-yellow">Draft</span>`;
+            const paymentStatus = derivePaymentStatus(inv, receipts);
+            const paymentBadgeInfo = PAYMENT_STATUS_BADGE[paymentStatus];
+            const paymentBadge = (inv.status === 'sent' && paymentBadgeInfo)
+                ? `<span class="nx-badge ${paymentBadgeInfo.cls}">${paymentBadgeInfo.label}</span>`
+                : '';
+
+            document.getElementById('invoiceDetailTitle').textContent = inv.invoice_number;
+            document.getElementById('invoiceDetailMeta').innerHTML = `
+                <span style="color:var(--white); font-weight:700;">${escInvHtml(inv.client_name || '-')}</span><br>
+                Date: ${fmtDate(inv.invoice_date)} &nbsp;&middot;&nbsp; ${modeBadge}<br>
+                Amount: ${fmtMoney(inv.amount_total)}<br>
+                ${statusBadge}${paymentBadge ? ' ' + paymentBadge : ''}
+                ${isConsolidated ? `<br>Period: ${fmtDate(inv.date_from)} &ndash; ${fmtDate(inv.date_to)}` : ''}
+            `;
+
+            document.getElementById('invoiceDetailViewBtn').onclick = () => {
+                window.open('/invoice.html?token=' + inv.invoice_token, '_blank');
+            };
+
+            const payBtn = document.getElementById('invoiceDetailPayBtn');
+            if (inv.status !== 'cancelled' && canRecordPayment) {
+                payBtn.style.display = '';
+                payBtn.onclick = () => {
+                    document.getElementById('invoiceDetailModal').style.display = 'none';
+                    openRecordPaymentModal(inv.id);
+                };
+            } else {
+                payBtn.style.display = 'none';
+            }
+
+            const receiptsBtn = document.getElementById('invoiceDetailReceiptsBtn');
+            if (receipts.length > 0) {
+                receiptsBtn.textContent = expandedInvoiceIds.has(inv.id) ? '▲ Receipts' : '▼ Receipts';
+                receiptsBtn.style.display = '';
+                receiptsBtn.onclick = () => {
+                    document.getElementById('invoiceDetailModal').style.display = 'none';
+                    toggleReceiptsRow(inv.id);
+                };
+            } else {
+                receiptsBtn.style.display = 'none';
+            }
+
+            const cancelBtn = document.getElementById('invoiceDetailCancelBtn');
+            if (inv.status !== 'cancelled' && currentRole !== 'accountant') {
+                cancelBtn.style.display = '';
+                cancelBtn.onclick = () => {
+                    document.getElementById('invoiceDetailModal').style.display = 'none';
+                    cancelInvoice(inv.id);
+                };
+            } else {
+                cancelBtn.style.display = 'none';
+            }
+
+            document.getElementById('invoiceDetailModal').style.display = 'flex';
+        }
+        window.openInvoiceDetail = openInvoiceDetail;
+
+        function setupInvoiceDetailModalHandlers() {
+            document.getElementById('invoiceDetailCloseBtn').addEventListener('click', () => {
+                document.getElementById('invoiceDetailModal').style.display = 'none';
+            });
+            document.getElementById('invoiceDetailModal').addEventListener('click', e => {
+                if (e.target.id === 'invoiceDetailModal') e.target.style.display = 'none';
+            });
+            // Capture phase, not bubble — the row's col-actions <td> calls
+            // event.stopPropagation() on bubble (to stop toggleMobileDetail()
+            // firing on the row when Detail is clicked), which would otherwise
+            // stop this click from ever reaching #invoicesBody during bubbling.
+            document.getElementById('invoicesBody').addEventListener('click', e => {
+                const btn = e.target.closest('.detail-btn');
+                if (!btn) return;
+                const inv = allInvoices.find(i => i.id === btn.dataset.invoiceId);
+                if (inv) openInvoiceDetail(inv);
+            }, true);
+        }
 
         // ── NEW CONSOLIDATED INVOICE MODAL ─────────────────────────────
         window.openConsolidatedModal = async () => {
@@ -944,17 +1249,203 @@
                         });
                     if (error) throw error;
 
+                    // Recording a payment on a Draft invoice flips it to Sent in the
+                    // same user-perceived action — one toast, no confirm() prompt.
+                    const inv = allInvoices.find(i => i.id === recordPaymentInvoiceId);
+                    const wasDraft = inv && inv.status === 'draft';
+
+                    if (wasDraft) {
+                        const { error: statusError } = await window.supabase
+                            .from('p2_invoices')
+                            .update({ status: 'sent' })
+                            .eq('id', recordPaymentInvoiceId)
+                            .eq('tenant_id', tenantId);
+                        if (statusError) throw statusError;
+                        inv.status = 'sent';
+                    }
+
                     document.getElementById('recordPaymentModal').style.display = 'none';
                     await refreshInvoiceReceipts(recordPaymentInvoiceId);
                     expandedInvoiceIds.add(recordPaymentInvoiceId);
                     renderInvoices();
-                    toast('Payment recorded', 'ok');
+                    toast(wasDraft ? 'Payment recorded. Invoice marked as sent.' : 'Payment recorded', 'ok');
                 } catch (err) {
                     console.error('recordPayment:', err);
                     toast(err.message || 'Could not record the payment.', 'error');
                 } finally {
                     btn.disabled = false;
                     btn.textContent = 'Save Payment';
+                }
+            });
+        }
+
+        // ── SUPPLIER ADVANCES TAB ───────────────────────────────────────
+        async function loadAdvanceSuppliers() {
+            const select = document.getElementById('advSupplierSelect');
+            try {
+                const { data, error } = await window.supabase
+                    .from('p2_suppliers')
+                    .select('id, name')
+                    .eq('tenant_id', tenantId)
+                    .eq('is_active', true)
+                    .order('name');
+                if (error) throw error;
+
+                advSuppliers = data || [];
+                select.innerHTML = `<option value="">${t('Select Supplier', 'पुरवठादार निवडा')}</option>` +
+                    advSuppliers.map(s => `<option value="${escInvHtml(s.id)}">${escInvHtml(s.name)}</option>`).join('');
+            } catch (err) {
+                console.error('loadAdvanceSuppliers:', err);
+                toast(err.message || t('Could not load suppliers.', 'पुरवठादार लोड करता आले नाहीत.'), 'error');
+            }
+        }
+
+        function setupAdvancesTabHandlers() {
+            document.getElementById('advSupplierSelect').addEventListener('change', onAdvSupplierChange);
+            document.getElementById('addAdvanceBtn').addEventListener('click', openRecordAdvanceModal);
+        }
+
+        async function onAdvSupplierChange() {
+            const supplierId = document.getElementById('advSupplierSelect').value;
+            selectedAdvSupplierId = supplierId || null;
+            const addBtn = document.getElementById('addAdvanceBtn');
+
+            if (!selectedAdvSupplierId) {
+                addBtn.disabled = true;
+                document.getElementById('advEmptyState').style.display = 'block';
+                document.getElementById('advDetail').style.display = 'none';
+                return;
+            }
+
+            addBtn.disabled = false;
+            document.getElementById('advEmptyState').style.display = 'none';
+            document.getElementById('advDetail').style.display = 'block';
+            await Promise.all([loadAdvanceBalance(), loadAdvanceHistory()]);
+        }
+
+        async function loadAdvanceBalance() {
+            try {
+                const { data, error } = await window.supabase
+                    .from('v_p2_supplier_advance_balance')
+                    .select('*')
+                    .eq('tenant_id', tenantId)
+                    .eq('supplier_id', selectedAdvSupplierId)
+                    .maybeSingle();
+                if (error) throw error;
+
+                // maybeSingle() returns data: null when the supplier has neither
+                // advances nor drawable GRNs yet — treat that as all-zero, not an error.
+                const totalAdvanced = data ? Number(data.total_advanced) || 0 : 0;
+                const totalDrawn = data ? Number(data.total_drawn) || 0 : 0;
+                const balance = data ? Number(data.balance) || 0 : 0;
+
+                document.getElementById('advTotalAdvanced').textContent = fmtMoney(totalAdvanced);
+                document.getElementById('advTotalDrawn').textContent = fmtMoney(totalDrawn);
+                const balanceEl = document.getElementById('advBalance');
+                balanceEl.textContent = fmtMoney(balance);
+                balanceEl.className = balance < 0 ? 'nx-stat-value red' : 'nx-stat-value';
+            } catch (err) {
+                console.error('loadAdvanceBalance:', err);
+                toast(err.message || t('Could not load the advance balance.', 'आगाऊ शिल्लक लोड करता आली नाही.'), 'error');
+            }
+        }
+
+        async function loadAdvanceHistory() {
+            try {
+                const { data, error } = await window.supabase
+                    .from('p2_supplier_advances')
+                    .select('*')
+                    .eq('tenant_id', tenantId)
+                    .eq('supplier_id', selectedAdvSupplierId)
+                    .order('payment_date', { ascending: false });
+                if (error) throw error;
+
+                renderAdvanceHistory(data || []);
+            } catch (err) {
+                console.error('loadAdvanceHistory:', err);
+                toast(err.message || t('Could not load advance history.', 'आगाऊ रकमेचा इतिहास लोड करता आला नाही.'), 'error');
+            }
+        }
+
+        function renderAdvanceHistory(rows) {
+            const tbody = document.getElementById('advHistoryBody');
+            const empty = document.getElementById('advHistoryEmpty');
+
+            if (rows.length === 0) {
+                tbody.innerHTML = '';
+                empty.style.display = 'block';
+                return;
+            }
+            empty.style.display = 'none';
+
+            tbody.innerHTML = rows.map(r => `
+                <tr>
+                    <td>${fmtDate(r.payment_date)}</td>
+                    <td style="text-align:right;">${fmtMoney(r.amount)}</td>
+                    <td>${escInvHtml(r.reference_no || '-')}</td>
+                    <td>${escInvHtml(r.notes || '-')}</td>
+                    <td>${fmtDate(r.created_at)}</td>
+                </tr>
+            `).join('');
+        }
+
+        function openRecordAdvanceModal() {
+            if (!selectedAdvSupplierId) return;
+            const supplier = advSuppliers.find(s => s.id === selectedAdvSupplierId);
+
+            document.getElementById('recordAdvanceSupplierLine').textContent = supplier ? supplier.name : '';
+            document.getElementById('raDate').value = new Date().toISOString().slice(0, 10);
+            document.getElementById('raAmount').value = '';
+            document.getElementById('raReference').value = '';
+            document.getElementById('raNotes').value = '';
+
+            document.getElementById('recordAdvanceModal').style.display = 'flex';
+        }
+
+        function setupRecordAdvanceModalHandlers() {
+            document.getElementById('raCancel').addEventListener('click', () => {
+                document.getElementById('recordAdvanceModal').style.display = 'none';
+            });
+            document.getElementById('recordAdvanceModal').addEventListener('click', e => {
+                if (e.target.id === 'recordAdvanceModal') e.target.style.display = 'none';
+            });
+
+            document.getElementById('raConfirm').addEventListener('click', async () => {
+                const amount = Number(document.getElementById('raAmount').value);
+                const paymentDate = document.getElementById('raDate').value;
+                const referenceNo = document.getElementById('raReference').value.trim();
+                const notes = document.getElementById('raNotes').value.trim();
+
+                if (!amount || amount <= 0) { toast(t('Amount must be greater than zero.', 'रक्कम शून्यापेक्षा जास्त असावी.'), 'error'); return; }
+                if (!paymentDate) { toast(t('Please select a payment date.', 'कृपया पेमेंट तारीख निवडा.'), 'error'); return; }
+                if (!selectedAdvSupplierId) { toast(t('Please select a supplier.', 'कृपया पुरवठादार निवडा.'), 'error'); return; }
+
+                const btn = document.getElementById('raConfirm');
+                btn.disabled = true;
+                btn.textContent = t('Saving…', 'जतन करत आहे…');
+
+                try {
+                    const { error } = await window.supabase
+                        .from('p2_supplier_advances')
+                        .insert({
+                            tenant_id: tenantId,
+                            supplier_id: selectedAdvSupplierId,
+                            payment_date: paymentDate,
+                            amount: amount,
+                            reference_no: referenceNo || null,
+                            notes: notes || null
+                        });
+                    if (error) throw error;
+
+                    document.getElementById('recordAdvanceModal').style.display = 'none';
+                    await Promise.all([loadAdvanceBalance(), loadAdvanceHistory()]);
+                    toast(t('Advance recorded', 'आगाऊ रक्कम नोंदवली'), 'ok');
+                } catch (err) {
+                    console.error('recordAdvance:', err);
+                    toast(err.message || t('Could not record the advance.', 'आगाऊ रक्कम नोंदवता आली नाही.'), 'error');
+                } finally {
+                    btn.disabled = false;
+                    btn.textContent = t('Save Advance', 'जतन करा');
                 }
             });
         }
