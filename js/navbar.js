@@ -272,10 +272,16 @@ body{padding-top:56px}
             if (demail)  demail.textContent  = user.email;
             if (duser)   duser.style.display = 'flex';
 
-            // Plan badge
+            // Plan badge. Reads p2_tenant_settings (not p2_tenants -- plan lives
+            // there per CLAUDE.md) keyed on the resolved tenant id, not the raw
+            // auth uid -- a staff member's own uid is not the tenant, and the
+            // p2_tenants SELECT policy only matches auth.uid() or
+            // get_my_tenant_id(), neither of which is satisfied by a staff
+            // session querying a row keyed on its own uid.
             try {
+                const tenantId = user.user_metadata?.tenant_id || user.id;
                 const { data: t } = await window.supabase
-                    .from('p2_tenants').select('plan').eq('id', user.id).single();
+                    .from('p2_tenant_settings').select('plan').eq('tenant_id', tenantId).single();
                 if (t?.plan) {
                     const p = t.plan.toLowerCase();
                     const label = p.toUpperCase();

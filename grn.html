@@ -683,7 +683,8 @@
                     grn_no: grnNo
                 }));
 
-                const { error } = await window.supabase.from('p2_stock_transactions').insert(transactions);
+                const { data, error } = await window.supabase.from('p2_stock_transactions').insert(transactions);
+
                 if (error) throw error;
                 toast(lang==='mr' ? validRows.length+' सामग्री यशस्वीरित्या प्राप्त झाली. ('+grnNo+')' : validRows.length+' materials received. GRN '+grnNo+' saved.', 'ok');
                 document.getElementById('grnForm').reset();

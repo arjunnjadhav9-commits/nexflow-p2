@@ -688,6 +688,12 @@
             </div>
         </div>
 
+        <!-- UQC MISSING WARNING -->
+        <div id="materialsUqcWarnBox" style="display:none;" class="nx-alert nx-alert-orange nx-mb-16">
+            <span class="nx-alert-icon">⚠</span>
+            <span id="materialsUqcWarnMsg"></span>
+        </div>
+
         <!-- Add + List -->
         <div class="nx-grid-2" style="align-items:start;">
             <div class="nx-card">
@@ -714,6 +720,20 @@
                             <option value="PC"  data-en="PC — Pieces"    data-mr="PC — नग">PC — Pieces</option>
                             <option value="Stack" data-en="Stack" data-mr="Stack">Stack</option>
                             <option value="Stator" data-en="Stator" data-mr="Stator">Stator</option>
+                        </select>
+                    </div>
+                    <div class="nx-form-group">
+                        <label data-en="UQC (GST Unit Code)" data-mr="UQC (GST एकक कोड)">UQC (GST Unit Code)</label>
+                        <select name="uqc" id="material-uqc" class="nx-input">
+                            <option value="" data-en="Select UQC" data-mr="UQC निवडा">Select UQC</option>
+                            <option value="NOS">NOS — Numbers</option>
+                            <option value="KGS">KGS — Kilograms</option>
+                            <option value="MTR">MTR — Meters</option>
+                            <option value="LTR">LTR — Litres</option>
+                            <option value="PCS">PCS — Pieces</option>
+                            <option value="SQM">SQM — Square Meters</option>
+                            <option value="CBM">CBM — Cubic Meters</option>
+                            <option value="OTH">OTH — Others</option>
                         </select>
                     </div>
                     <div class="nx-form-group">
@@ -760,6 +780,7 @@
                                 <th data-en="Code"    data-mr="कोड">Code</th>
                                 <th data-en="Name"    data-mr="नाव">Name</th>
                                 <th data-en="Unit"    data-mr="एकक">Unit</th>
+                                <th data-en="UQC"     data-mr="UQC">UQC</th>
                                 <th data-en="Min Stock" data-mr="किमान साठा">Min</th>
                                 <th data-en="HSN"     data-mr="HSN">HSN</th>
                                 <th data-en="GST"     data-mr="GST">GST</th>
@@ -1751,6 +1772,16 @@
 
             allMaterialsList = data || [];
             renderMaterialsList(allMaterialsList);
+
+            const missingUqc = allMaterialsList.filter(m => !m.uqc).length;
+            const warnBox = document.getElementById('materialsUqcWarnBox');
+            if (missingUqc > 0) {
+                document.getElementById('materialsUqcWarnMsg').textContent =
+                    `${missingUqc} material${missingUqc === 1 ? '' : 's'} missing UQC code — required for ITC-04 export`;
+                warnBox.style.display = 'flex';
+            } else {
+                warnBox.style.display = 'none';
+            }
         } catch (error) {
             console.error('Error loading materials:', error);
         }
@@ -1762,7 +1793,7 @@
 
         if (materialsArr.length === 0) {
             const emptyMsg = allMaterialsList.length === 0 ? 'No materials added yet.' : 'No materials match your search.';
-            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:var(--mid); padding:20px;">' + emptyMsg + '</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:var(--mid); padding:20px;">' + emptyMsg + '</td></tr>';
             return;
         }
 
@@ -1772,12 +1803,13 @@
                 <td class="nx-td-mono">${material.material_code || '-'}</td>
                 <td class="nx-td-bold">${material.name}</td>
                 <td>${material.unit}</td>
+                <td class="nx-td-mono">${material.uqc || '<span style="color:var(--orange);">—</span>'}</td>
                 <td style="text-align:right;">${material.min_stock_level}</td>
                 <td class="nx-td-mono">${material.hsn_sac || '-'}</td>
                 <td>${material.gst_rate > 0 ? material.gst_rate + '%' : '-'}</td>
                 <td>
                     <div style="display:flex; gap:6px;">
-                        <button onclick="editMaterial('${material.id}','${material.name.replace(/'/g,"\\'")}','${material.unit}',${material.min_stock_level},'${(material.material_code||'').replace(/'/g,"\\'")}','${(material.hsn_sac||'').replace(/'/g,"\\'")}',${material.gst_rate||0})"
+                        <button onclick="editMaterial('${material.id}','${material.name.replace(/'/g,"\\'")}','${material.unit}',${material.min_stock_level},'${(material.material_code||'').replace(/'/g,"\\'")}','${(material.hsn_sac||'').replace(/'/g,"\\'")}',${material.gst_rate||0},'${material.uqc||''}')"
                             class="nx-btn nx-btn-ghost nx-btn-sm" data-en="Edit" data-mr="संपादित करा">Edit</button>
                         <button onclick="deactivateMaterial('${material.id}')"
                             class="nx-btn nx-btn-danger nx-btn-sm" data-en="Deactivate" data-mr="निष्क्रिय करा">Deactivate</button>
@@ -1799,11 +1831,12 @@
         renderMaterialsList(filtered);
     }
 
-    function editMaterial(id, name, unit, minStockLevel, materialCode='', hsnSac='', gstRate=0) {
+    function editMaterial(id, name, unit, minStockLevel, materialCode='', hsnSac='', gstRate=0, uqc='') {
         document.getElementById('edit-material-id').value    = id;
         document.getElementById('material-code').value       = materialCode;
         document.getElementById('material-name').value       = name;
         document.getElementById('material-unit').value       = unit;
+        document.getElementById('material-uqc').value        = uqc;
         document.getElementById('material-min-stock').value  = minStockLevel;
         document.getElementById('material-hsn').value        = hsnSac;
         document.getElementById('material-gst').value        = gstRate;
@@ -1822,6 +1855,7 @@
         const materialCode   = formData.get('material_code')?.trim() || null;
         const name           = formData.get('name')?.trim();
         const unit           = formData.get('unit');
+        const uqc            = formData.get('uqc') || null;
         const minStockLevel  = formData.get('min_stock_level');
         const hsnSac         = formData.get('hsn_sac')?.trim() || null;
         const gstRate        = parseFloat(formData.get('gst_rate')) || 0;
@@ -1829,6 +1863,7 @@
 
         if (!name)          { toast(lang==='mr'?'कृपया सामग्रीचे नाव प्रविष्ट करा':'Please enter material name','error'); return; }
         if (!unit)          { toast(lang==='mr'?'कृपया एकक निवडा':'Please select unit','error'); return; }
+        if (!uqc)           { toast(lang==='mr'?'कृपया UQC कोड निवडा':'Please select UQC code','error'); return; }
         if (!minStockLevel) { toast(lang==='mr'?'कृपया किमान साठा पातळी प्रविष्ट करा':'Please enter minimum stock level','error'); return; }
 
         const minStock = parseFloat(minStockLevel);
@@ -1852,7 +1887,7 @@
             if (editMaterialId) {
                 // Defense-in-depth: filtered only by id before, relying solely on RLS.
                 const { error } = await window.supabase.from('p2_raw_materials')
-                    .update({ name, unit, min_stock_level: minStock, material_code: materialCode, hsn_sac: hsnSac, gst_rate: gstRate })
+                    .update({ name, unit, uqc, min_stock_level: minStock, material_code: materialCode, hsn_sac: hsnSac, gst_rate: gstRate })
                     .eq('id', editMaterialId).eq('tenant_id', tenantId);
                 if (error) throw error;
                 toast(lang==='mr'?'साहित्य यशस्वीरित्या अपडेट केले':'Material updated successfully','success');
@@ -1863,7 +1898,7 @@
                     if (count >= 250) { showUpgradePrompt('More than 250 materials. Upgrade to Pro for unlimited materials.'); return; }
                 }
                 const { error } = await window.supabase.from('p2_raw_materials')
-                    .insert({ name, unit, min_stock_level: minStock, material_code: materialCode, hsn_sac: hsnSac, gst_rate: gstRate, tenant_id: tenantId, is_active: true });
+                    .insert({ name, unit, uqc, min_stock_level: minStock, material_code: materialCode, hsn_sac: hsnSac, gst_rate: gstRate, tenant_id: tenantId, is_active: true });
                 if (error) throw error;
                 toast(lang==='mr'?'साहित्य यशस्वीरित्या जोडले':'Material added successfully','success');
             }
@@ -3369,7 +3404,6 @@
             tenantPlan = settingsData?.plan || 'founder';
             tenantIsJobWorker = settingsData?.is_job_worker || false;
             tenantIsPrincipal = settingsData?.is_principal || false;
-            console.log('settings.html plan check:', tenantPlan);
             document.querySelectorAll('.principal-col').forEach(el => {
                 el.style.display = tenantIsJobWorker ? '' : 'none';
             });

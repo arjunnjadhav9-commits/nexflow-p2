@@ -165,6 +165,37 @@
                     </div>
                 </div>
 
+                <!-- TOOLING REGISTER -->
+                <div class="nx-card nx-mb-16" style="margin-top:18px;">
+                    <div class="nx-card-header">
+                        <div class="nx-card-title">Tooling Register — Exempt From s.143 Time Limit</div>
+                    </div>
+                    <div style="font-size:13px; color:var(--mid); margin-bottom:16px;">
+                        Dies, moulds, jigs and fixtures sent under Section 143 have no return deadline, but still need periodic confirmation that they remain with the job worker. "Confirm Still Here" logs an attestation — who checked, and when.
+                    </div>
+                    <div class="nx-table-wrap">
+                        <table class="nx-table" id="toolingRegisterTable">
+                            <thead>
+                                <tr>
+                                    <th>Challan No</th>
+                                    <th>Date</th>
+                                    <th>Client</th>
+                                    <th>Description</th>
+                                    <th>Asset Tag</th>
+                                    <th>Last Confirmed</th>
+                                    <th>Confirmed By</th>
+                                    <th class="dh-no-print" style="text-align:center;">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="toolingRegisterBody"></tbody>
+                        </table>
+                    </div>
+                    <div id="toolingRegisterEmpty" style="display:none;" class="nx-empty-state">
+                        <div class="nx-empty-icon">🛠️</div>
+                        <div>No exempt tooling on record.</div>
+                    </div>
+                </div>
+
             </div>
         </div>
     </div>
@@ -181,6 +212,7 @@
                     <tbody id="detailModalBody"></tbody>
                 </table>
             </div>
+            <div id="detailChallanLinksSection" style="margin-bottom:16px;"></div>
             <div id="detailInvoiceSection" style="margin-bottom:16px;"></div>
             <div style="display:flex; gap:10px; flex-wrap:wrap;">
                 <button id="detailPrintBtn" class="nx-btn nx-btn-green" style="flex:1;">View Challan</button>
@@ -298,6 +330,8 @@
 
     <script>
         let tenantId  = null;
+        let currentUserId = null; // the logged-in user's own auth uid — used to stamp
+                                   // confirmed_by on the Tooling Register's attestation action.
         let authToken = null; // real user session JWT — required by agent-query's
                                // verifyCallerTenant guard; the anon key can never
                                // resolve to a real user via auth.getUser().
@@ -319,6 +353,7 @@
                 }
                 const { data: { user } } = await window.supabase.auth.getUser();
                 tenantId = user.user_metadata?.tenant_id || user.id;
+                currentUserId = user.id;
 
                 const { data: { session } } = await window.supabase.auth.getSession();
                 authToken = session.access_token;
@@ -341,6 +376,7 @@
 
                 setDefaultDates();
                 await loadHistory();
+                await loadToolingRegister();
                 setupEventHandlers();
                 setupInvoiceModalHandlers();
                 document.getElementById('loadingSpinner').style.display = 'none';
@@ -371,7 +407,7 @@
             // Single query — ALL dispatch types, no filter on dispatch_type unless user picked one
             let q = window.supabase
                 .from('p2_dispatch_orders')
-                .select('id, challan_number, dispatch_date, created_at, client_name, client_address, po_number, your_challan_ref, vehicle_number, status, dispatch_type, movement_purpose')
+                .select('id, challan_number, dispatch_date, created_at, client_name, client_address, po_number, your_challan_ref, vehicle_number, status, dispatch_type, movement_purpose, is_exempt_tooling')
                 .eq('tenant_id', tenantId)
                 .order('created_at', { ascending: false });
 
@@ -468,6 +504,7 @@
                 let statusBadge = `<span class="nx-badge nx-badge-yellow">Draft</span>`;
                 if (!isDraft && !isCancelled) statusBadge = `<span class="nx-badge nx-badge-green">Confirmed</span>`;
                 if (isCancelled) statusBadge = `<span class="nx-badge" style="background:rgba(239,68,68,0.15);color:#ef4444;border:1px solid rgba(239,68,68,0.3);">Cancelled</span>`;
+                if (order.is_exempt_tooling) statusBadge += ` <span class="nx-badge nx-badge-orange">EXEMPT</span>`;
 
                 const row = document.createElement('tr');
                 row.innerHTML = `
@@ -503,6 +540,137 @@
             return html;
         }
 
+        // ── TOOLING REGISTER ─────────────────────────────────────────
+        // Exempt tooling (is_exempt_tooling = true) has no s.143 return
+        // deadline — nothing else in the app ever surfaces it. This is a
+        // periodic-attestation register instead of a countdown: who last
+        // confirmed the item is still with the job worker, and when.
+        let toolingRows = [];
+
+        async function loadToolingRegister() {
+            const { data: orders, error: ordersErr } = await window.supabase
+                .from('p2_dispatch_orders')
+                .select('id, challan_number, dispatch_date, created_at, client_name, asset_tag, last_confirmed_at, confirmed_by')
+                .eq('tenant_id', tenantId)
+                .eq('is_exempt_tooling', true)
+                .order('dispatch_date', { ascending: false });
+
+            if (ordersErr) { console.error('loadToolingRegister:', ordersErr); return; }
+
+            if (!orders || orders.length === 0) {
+                toolingRows = [];
+                renderToolingRegister();
+                return;
+            }
+
+            const orderIds = orders.map(o => o.id);
+
+            const { data: items } = await window.supabase
+                .from('p2_dispatch_items')
+                .select('dispatch_order_id, material_name, material_code, product_id, p2_products(name)')
+                .in('dispatch_order_id', orderIds);
+
+            const descMap = {};
+            (items || []).forEach(item => {
+                const name = item.product_id
+                    ? (item.p2_products?.name || 'Unknown Product')
+                    : (item.material_code || item.material_name || 'Unknown Material');
+                if (!descMap[item.dispatch_order_id]) descMap[item.dispatch_order_id] = [];
+                descMap[item.dispatch_order_id].push(name);
+            });
+
+            // Batch-resolve confirmed_by uuids to an email via p2_user_roles —
+            // same email-lookup source settings.html's staff list already uses.
+            // No identity-resolution path exists anywhere else in this codebase
+            // for a bare uuid, so an unresolved id falls back to a short label.
+            const confirmedByIds = [...new Set(orders.map(o => o.confirmed_by).filter(Boolean))];
+            let emailMap = {};
+            if (confirmedByIds.length) {
+                const { data: roles } = await window.supabase
+                    .from('p2_user_roles')
+                    .select('user_id, email')
+                    .eq('tenant_id', tenantId)
+                    .in('user_id', confirmedByIds);
+                (roles || []).forEach(r => { emailMap[r.user_id] = r.email; });
+            }
+
+            toolingRows = orders.map(o => ({
+                ...o,
+                description: (descMap[o.id] || []).join(', ') || '—',
+                confirmedByLabel: o.confirmed_by ? (emailMap[o.confirmed_by] || (o.confirmed_by.slice(0, 8) + '…')) : '—'
+            }));
+
+            renderToolingRegister();
+        }
+
+        function renderToolingRegister() {
+            const tbody = document.getElementById('toolingRegisterBody');
+            const empty = document.getElementById('toolingRegisterEmpty');
+            tbody.innerHTML = '';
+
+            if (toolingRows.length === 0) {
+                empty.style.display = 'block';
+                return;
+            }
+            empty.style.display = 'none';
+
+            // Compliance attestation, not a status toggle — restricted to
+            // owner/supervisor, same bar the codebase audit recommends for
+            // Cancel/Amend (currently unguarded on this page's main table).
+            const canConfirm = currentRole === 'owner' || currentRole === 'supervisor';
+
+            toolingRows.forEach(row => {
+                const dateStr = row.dispatch_date
+                    ? formatDate(row.dispatch_date)
+                    : formatDate(row.created_at?.split('T')[0]);
+                const challan = (row.challan_number || '—').replace(/^CHAL-\d{8}-/, '');
+
+                let lastConfirmedBadge = `<span class="nx-badge nx-badge-red">Never confirmed</span>`;
+                if (row.last_confirmed_at) {
+                    const days = Math.floor((Date.now() - new Date(row.last_confirmed_at).getTime()) / 86400000);
+                    const cls = days < 183 ? 'nx-badge-green' : (days < 365 ? 'nx-badge-yellow' : 'nx-badge-red');
+                    lastConfirmedBadge = `<span class="nx-badge ${cls}">${formatDate(row.last_confirmed_at.split('T')[0])}</span>`;
+                }
+
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="nx-td-mono">${challan}</td>
+                    <td>${dateStr}</td>
+                    <td class="nx-td-bold">${escapeHtml(row.client_name || '—')}</td>
+                    <td>${escapeHtml(row.description)}</td>
+                    <td>${escapeHtml(row.asset_tag || '—')}</td>
+                    <td>${lastConfirmedBadge}</td>
+                    <td>${escapeHtml(row.confirmedByLabel)}</td>
+                    <td style="text-align:center;" class="dh-no-print">
+                        ${canConfirm ? `<button onclick="confirmToolingStillHere('${row.id}', this)" class="nx-btn nx-btn-ghost nx-btn-sm">Confirm Still Here</button>` : ''}
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        window.confirmToolingStillHere = async (orderId, btn) => {
+            if (btn?.disabled) return;
+            if (btn) btn.disabled = true;
+
+            try {
+                const { error } = await window.supabase
+                    .from('p2_dispatch_orders')
+                    .update({ last_confirmed_at: new Date().toISOString(), confirmed_by: currentUserId })
+                    .eq('id', orderId)
+                    .eq('tenant_id', tenantId);
+                if (error) throw error;
+
+                toast('Confirmed — attestation logged', 'ok');
+                await loadToolingRegister();
+            } catch (err) {
+                console.error('confirmToolingStillHere:', err);
+                toast('Confirm failed: ' + (err.message || ''), 'error');
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        };
+
         // ── DETAIL MODAL ──────────────────────────────────────────────
         // Tracks which order's Detail modal is currently open — lets
         // refreshDetailInvoiceSection() below discard a stale async result if
@@ -526,6 +694,7 @@
             let statusBadge = `<span class="nx-badge nx-badge-yellow" style="font-size:11px;">Draft</span>`;
             if (!isDraft && !isCancelled) statusBadge = `<span class="nx-badge nx-badge-green" style="font-size:11px;">Confirmed</span>`;
             if (isCancelled) statusBadge = `<span class="nx-badge" style="font-size:11px;background:rgba(239,68,68,0.15);color:#ef4444;border:1px solid rgba(239,68,68,0.3);">Cancelled</span>`;
+            if (order.is_exempt_tooling) statusBadge += ` <span class="nx-badge nx-badge-orange" style="font-size:11px;">EXEMPT — No Time Limit</span>`;
 
             document.getElementById('detailModalTitle').textContent = `Challan ${challan}`;
             document.getElementById('detailModalMeta').innerHTML = `
@@ -592,12 +761,64 @@
 
             document.getElementById('detailModal').style.display = 'flex';
 
+            // Linked original challans — a return dispatch (any status, since
+            // links are historical fact once written on confirm) may settle
+            // one or more outward challans.
+            await refreshDetailChallanLinksSection(orderId);
+
             // Invoice section — only meaningful for confirmed, non-cancelled dispatches.
             const invoiceSection = document.getElementById('detailInvoiceSection');
             if (isDraft || isCancelled) {
                 invoiceSection.innerHTML = '';
             } else {
                 await refreshDetailInvoiceSection(orderId, order.movement_purpose);
+            }
+        }
+
+        // On-demand original-challan lookup for a return dispatch — fires only
+        // when its Detail modal is opened. Mirrors refreshDetailInvoiceSection's
+        // staleness guard (currentDetailOrderId) since both are async and a
+        // second row's Detail can be opened before this one's query resolves.
+        async function refreshDetailChallanLinksSection(orderId) {
+            const section = document.getElementById('detailChallanLinksSection');
+            section.innerHTML = '';
+
+            try {
+                const { data: links, error } = await window.supabase
+                    .from('p2_challan_links')
+                    .select('quantity_settled, original_dispatch_id')
+                    .eq('tenant_id', tenantId)
+                    .eq('return_dispatch_id', orderId);
+
+                if (currentDetailOrderId !== orderId) return;
+                if (error) throw error;
+                if (!links || links.length === 0) return;
+
+                const originalIds = [...new Set(links.map(l => l.original_dispatch_id))];
+                const { data: originals } = await window.supabase
+                    .from('p2_dispatch_orders')
+                    .select('id, challan_number, dispatch_date')
+                    .in('id', originalIds);
+
+                if (currentDetailOrderId !== orderId) return;
+
+                const originalMap = {};
+                (originals || []).forEach(o => { originalMap[o.id] = o; });
+
+                const lines = links.map(l => {
+                    const orig = originalMap[l.original_dispatch_id];
+                    const challanNo = orig ? (orig.challan_number || '—').replace(/^CHAL-\d{8}-/, '') : '—';
+                    const dateStr = orig?.dispatch_date ? formatDate(orig.dispatch_date) : '—';
+                    return `Return against: Challan ${escapeHtml(challanNo)} (${dateStr}), ${l.quantity_settled} settled`;
+                });
+
+                section.innerHTML = `
+                    <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--mid); margin-bottom:6px;">Linked Original Challans</div>
+                    <div style="font-size:13px; color:var(--light); line-height:1.7;">${lines.map(l => `<div>${l}</div>`).join('')}</div>
+                `;
+            } catch (err) {
+                console.error('refreshDetailChallanLinksSection:', err);
+                section.innerHTML = '';
             }
         }
 
@@ -843,12 +1064,16 @@
                 if (usesProductPricing) {
                     const productIds = [...new Set(items.map(it => it.product_id).filter(Boolean))];
                     if (productIds.length) {
-                        const { data: prices } = await window.supabase
+                        const { data: prices, error: priceErr } = await window.supabase
                             .from('p2_product_prices')
                             .select('product_id, price, effective_date')
                             .eq('tenant_id', tenantId)
                             .in('product_id', productIds)
                             .order('effective_date', { ascending: false });
+                        if (priceErr) {
+                            console.error('openInvoiceModal product price fetch:', priceErr);
+                            toast('Could not load product price history — enter rates manually.', 'error');
+                        }
                         (prices || []).forEach(p => {
                             if (!priceById.has(p.product_id)) priceById.set(p.product_id, p.price);
                         });
@@ -856,12 +1081,16 @@
                 } else {
                     const materialIds = [...new Set(items.map(it => it.raw_material_id).filter(Boolean))];
                     if (materialIds.length) {
-                        const { data: prices } = await window.supabase
+                        const { data: prices, error: priceErr } = await window.supabase
                             .from('p2_material_prices')
                             .select('raw_material_id, price_per_unit, effective_date')
                             .eq('tenant_id', tenantId)
                             .in('raw_material_id', materialIds)
                             .order('effective_date', { ascending: false });
+                        if (priceErr) {
+                            console.error('openInvoiceModal material price fetch:', priceErr);
+                            toast('Could not load material price history — enter rates manually.', 'error');
+                        }
                         (prices || []).forEach(p => {
                             if (!priceById.has(p.raw_material_id)) priceById.set(p.raw_material_id, p.price_per_unit);
                         });

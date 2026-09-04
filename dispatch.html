@@ -49,9 +49,7 @@
         #productsTableContainer { display: none; margin-top: 18px; }
         #loadingSpinner { display: flex; align-items: center; justify-content: center; padding: 60px 20px; }
         #errorState { display: none; }
-        #successMessage { display: none; }
         #errorMessage { display: none; }
-        #draftOrdersBanner { display: none; }
         #dispatchForm { display: none; }
         /* ── Shared material/product typeahead (mirrors rm-dispatch.html) ── */
         .mat-search-wrap{position:relative;width:100%;}
@@ -138,26 +136,10 @@
                 </div>
             </div>
 
-            <!-- SUCCESS MESSAGE -->
-            <div id="successMessage" class="nx-alert nx-alert-green nx-mb-24">
-                <span class="nx-alert-icon">✅</span>
-                <div>
-                    <div id="successText" class="nx-bold"></div>
-                    <button id="printChallanBtn" class="nx-btn nx-btn-ghost nx-btn-sm nx-mt-8"
-                            data-en="Print Challan" data-mr="चलान प्रिंट करा">Print Challan</button>
-                </div>
-            </div>
-
             <!-- ERROR MESSAGE -->
             <div id="errorMessage" class="nx-alert nx-alert-red nx-mb-24">
                 <span class="nx-alert-icon">⚠</span>
                 <div id="errorText"></div>
-            </div>
-
-            <!-- DRAFT BANNER -->
-            <div id="draftOrdersBanner" class="nx-alert nx-alert-yellow nx-mb-24">
-                <span class="nx-alert-icon">📋</span>
-                <div id="draftOrdersCount"></div>
             </div>
 
             <!-- DISPATCH FORM -->
@@ -263,10 +245,6 @@
 
                         <!-- Action buttons -->
                         <div style="display:flex; gap:10px; margin-top:20px;">
-                            <button type="button" id="saveDraftBtn" data-en="Save Draft" data-mr="मसुदा साठवा"
-                                    class="nx-btn nx-btn-secondary" style="flex:1;">
-                                Save Draft
-                            </button>
                             <button type="button" id="confirmDispatchBtn" data-en="Confirm Dispatch" data-mr="डिस्पॅच निश्चित करा"
                                     class="nx-btn nx-btn-green" style="flex:1;">
                                 Confirm Dispatch
@@ -276,6 +254,18 @@
 
                 </div>
             </form>
+
+            <!-- LINK TO ORIGINAL CHALLAN -->
+            <div class="nx-card nx-mt-24" id="challanLinksSection" style="display:none;">
+                <div class="nx-card-header">
+                    <div class="nx-card-title">Link to Original Challan</div>
+                </div>
+                <div style="font-size:13px; color:var(--mid); margin-bottom:14px;">
+                    ITC-04 needs the original outward challan number and date for every return. Link this return against the challan(s) it settles — a return can settle more than one.
+                </div>
+                <div id="challanLinksRows"></div>
+                <button type="button" id="addChallanLinkBtn" class="nx-btn nx-btn-ghost nx-btn-full" style="margin-top:8px;">+ Add Link</button>
+            </div>
 
             <!-- PAST DISPATCHES -->
             <div class="nx-card nx-mt-24">
@@ -414,11 +404,10 @@
         let products = [];
         let dispatchItems = [];
         let currentDispatchId = null;
-        // The order's challan_number as currently known to this form — a real,
-        // sequence-drawn number once confirmed, or a local 'DRAFT-xxxxxxxx'
-        // placeholder while still a draft that has never been confirmed. Kept
-        // in sync with currentDispatchId so a draft can be re-saved repeatedly
-        // without burning a new real challan number each time.
+        // A challan number already drawn for this in-progress order — kept in
+        // sync with currentDispatchId so a retry after a failed confirm (e.g.
+        // insufficient stock) reuses the same number instead of drawing a new
+        // one and leaving a gap in the sequence.
         let currentDispatchChallanNumber = null;
         let tenantId = null;
         let productTypeahead = null;
@@ -548,6 +537,139 @@
             ).join('');
             document.getElementById('purposeFieldRow').style.display =
                 (isJobWorker() || isPrincipal()) ? '' : 'none';
+            select.addEventListener('change', toggleChallanLinksSection);
+        }
+
+        // ── LINK TO ORIGINAL CHALLAN (Fix 2 — ITC-04 Table 5 cols 2-3) ─────
+        // A return dispatch (job_work_return / unused_material_return /
+        // scrap_return) can settle several outward challans partially, so
+        // this is a repeatable list of {original challan, qty settled} rows,
+        // written to p2_challan_links only when the dispatch is confirmed.
+        const RETURN_PURPOSES = ['job_work_return', 'unused_material_return', 'scrap_return'];
+        let openChallansForClient = [];
+
+        async function loadOpenChallansForClient(clientName) {
+            openChallansForClient = [];
+            if (!clientName || !tenantId) return;
+
+            const { data: orders, error } = await window.supabase
+                .from('p2_dispatch_orders')
+                .select('id, challan_number, dispatch_date')
+                .eq('tenant_id', tenantId)
+                .eq('client_name', clientName)
+                .eq('status', 'confirmed')
+                .in('movement_purpose', ['job_work_issue', 'inter_jobworker_transfer'])
+                .order('dispatch_date', { ascending: false });
+
+            if (error) { console.error('loadOpenChallansForClient:', error); return; }
+            if (!orders || orders.length === 0) return;
+
+            // Total dispatched qty per challan, for the soft over-settlement
+            // warning below — compared against the original's total only, not
+            // net of amounts already settled by other returns (that would need
+            // summing every existing p2_challan_links row first; reserved for
+            // the ITC-04 export step itself).
+            const { data: items } = await window.supabase
+                .from('p2_dispatch_items')
+                .select('dispatch_order_id, qty_dispatched')
+                .in('dispatch_order_id', orders.map(o => o.id));
+
+            const qtyMap = {};
+            (items || []).forEach(it => {
+                qtyMap[it.dispatch_order_id] = (qtyMap[it.dispatch_order_id] || 0) + Number(it.qty_dispatched || 0);
+            });
+            orders.forEach(o => { o.totalQty = qtyMap[o.id] || 0; });
+
+            openChallansForClient = orders;
+        }
+
+        function challanLinkOptionsHtml() {
+            return '<option value="">Select challan...</option>' + openChallansForClient.map(o => {
+                const displayNo = (o.challan_number || '').replace(/^CHAL-\d{8}-/, '');
+                const dateStr = o.dispatch_date ? new Date(o.dispatch_date).toLocaleDateString() : '';
+                return `<option value="${o.id}" data-qty="${o.totalQty || 0}">${displayNo} — ${dateStr}</option>`;
+            }).join('');
+        }
+
+        function refreshChallanLinkDropdowns() {
+            document.querySelectorAll('#challanLinksRows .link-original-select').forEach(sel => {
+                const current = sel.value;
+                sel.innerHTML = challanLinkOptionsHtml();
+                if (current) sel.value = current;
+            });
+        }
+
+        function addChallanLinkRow() {
+            const rowsContainer = document.getElementById('challanLinksRows');
+            const row = document.createElement('div');
+            row.className = 'challan-link-row';
+            row.style.cssText = 'display:flex; align-items:end; gap:10px; margin-bottom:10px;';
+            row.innerHTML = `
+                <div class="nx-form-group" style="margin:0; flex:2;">
+                    <label style="font-size:11px;">Original Challan</label>
+                    <select class="nx-input link-original-select"></select>
+                </div>
+                <div class="nx-form-group" style="margin:0; width:120px;">
+                    <label style="font-size:11px;">Qty Settled</label>
+                    <input type="number" class="nx-input link-qty-input" min="0.001" step="any" placeholder="Qty">
+                </div>
+                <button type="button" class="nx-btn nx-btn-ghost nx-btn-sm remove-link-row" style="color:#ef4444;">✕</button>
+            `;
+            rowsContainer.appendChild(row);
+
+            row.querySelector('.link-original-select').innerHTML = challanLinkOptionsHtml();
+
+            row.querySelector('.link-qty-input').addEventListener('blur', (e) => {
+                const sel = row.querySelector('.link-original-select');
+                const origQty = Number(sel.selectedOptions[0]?.dataset.qty || 0);
+                const entered = Number(e.target.value || 0);
+                if (origQty > 0 && entered > origQty) {
+                    toast(`Settled quantity exceeds the original challan's dispatched quantity (${origQty}) — please verify`, 'error');
+                }
+            });
+
+            row.querySelector('.remove-link-row').addEventListener('click', () => row.remove());
+        }
+
+        function clearChallanLinksRows() {
+            document.getElementById('challanLinksRows').innerHTML = '';
+        }
+
+        function toggleChallanLinksSection() {
+            const purpose = document.getElementById('movementPurpose')?.value;
+            const section = document.getElementById('challanLinksSection');
+            if (RETURN_PURPOSES.includes(purpose)) {
+                section.style.display = 'block';
+                loadOpenChallansForClient(document.getElementById('clientName')?.value || '')
+                    .then(refreshChallanLinkDropdowns);
+                if (!document.getElementById('challanLinksRows').children.length) addChallanLinkRow();
+            } else {
+                // Purpose switched away from a return type — hide AND clear any
+                // populated rows so a stale link selection can never be
+                // submitted against a dispatch that's no longer a return.
+                section.style.display = 'none';
+                clearChallanLinksRows();
+            }
+        }
+
+        async function insertChallanLinks(returnDispatchId) {
+            const rows = Array.from(document.querySelectorAll('#challanLinksRows .challan-link-row'));
+            const links = rows.map(row => ({
+                originalId: row.querySelector('.link-original-select')?.value,
+                qty: Number(row.querySelector('.link-qty-input')?.value || 0)
+            })).filter(r => r.originalId && r.qty > 0);
+
+            if (!links.length) return;
+
+            const inserts = links.map(r => ({
+                tenant_id: tenantId,
+                return_dispatch_id: returnDispatchId,
+                original_dispatch_id: r.originalId,
+                quantity_settled: r.qty
+            }));
+
+            const { error } = await window.supabase.from('p2_challan_links').insert(inserts);
+            if (error) console.error('insertChallanLinks:', error);
         }
 
         async function init() {
@@ -585,7 +707,6 @@
                 );
 
                 await Promise.race([loadPromise, timeoutPromise]);
-                await checkDraftOrders();
 
                 loadingSpinner.style.display = 'none';
                 dispatchForm.style.display = 'block';
@@ -619,41 +740,18 @@
             mount.appendChild(productTypeahead.element);
         }
 
-        async function checkDraftOrders() {
-            try {
-                const { data, error } = await window.supabase
-                    .from('p2_dispatch_orders')
-                    .select('id')
-                    .eq('tenant_id', tenantId)
-                    .eq('status', 'draft')
-                    .eq('dispatch_type', 'product');
-
-                if (error) throw error;
-
-                const draftCount = data ? data.length : 0;
-                const banner = document.getElementById('draftOrdersBanner');
-                const countSpan = document.getElementById('draftOrdersCount');
-
-                if (draftCount > 0) {
-                    const lang = localStorage.getItem('nexflow_lang') || 'en';
-                    countSpan.textContent = lang === 'mr'
-                        ? `तुमच्याकडे ${draftCount} न जतन केलेले मसुदा ऑर्डर आहेत.`
-                        : `You have ${draftCount} unsaved draft order(s). Scroll down to view.`;
-                    banner.style.display = 'flex';
-                } else {
-                    banner.style.display = 'none';
-                }
-            } catch (error) {
-                console.error('Error checking draft orders:', error);
-            }
-        }
-
         async function loadRecentDispatches() {
+            // Draft mode has been removed from the UI (never used by any
+            // client) -- excluding status='draft' hides any pre-existing draft
+            // rows from this list rather than building a conversion flow for a
+            // feature being deliberately removed. The rows still exist in the
+            // DB, just not shown here.
             const { data, error } = await window.supabase
                 .from('p2_dispatch_orders')
-                .select('id, client_name, status, challan_number, dispatch_date, created_at')
+                .select('id, client_name, status, challan_number, dispatch_date, created_at, is_exempt_tooling')
                 .eq('tenant_id', tenantId)
                 .eq('dispatch_type', 'product')
+                .neq('status', 'draft')
                 .order('created_at', { ascending: false })
                 .limit(20);
 
@@ -672,20 +770,17 @@
                 const displayDate = dispatch.dispatch_date
                     ? new Date(dispatch.dispatch_date).toLocaleDateString()
                     : new Date(dispatch.created_at).toLocaleDateString();
-                const isDraft     = dispatch.status === 'draft';
                 const isCancelled = dispatch.status === 'cancelled';
 
-                let badge = `<span class="nx-badge nx-badge-yellow">Draft</span>`;
-                if (!isDraft && !isCancelled) badge = `<span class="nx-badge nx-badge-green">Confirmed</span>`;
+                let badge = `<span class="nx-badge nx-badge-green">Confirmed</span>`;
                 if (isCancelled) badge = `<span class="nx-badge" style="background:rgba(239,68,68,0.15);color:#ef4444;border:1px solid rgba(239,68,68,0.3);">Cancelled</span>`;
+                if (dispatch.is_exempt_tooling) badge += ` <span class="nx-badge nx-badge-orange">EXEMPT — No Time Limit</span>`;
 
-                let actionCell = `<button onclick="loadDraftToForm('${dispatch.id}')" class="nx-btn nx-btn-secondary nx-btn-sm">Resume</button>`;
-                if (!isDraft && !isCancelled) {
-                    actionCell = `
-                        <button onclick="viewChallan('${dispatch.id}')" class="nx-btn nx-btn-ghost nx-btn-sm">View</button>
-                        <button onclick="cancelChallan('${dispatch.id}', '${(dispatch.challan_number||'').replace(/'/g,"")}')" class="nx-btn nx-btn-ghost nx-btn-sm" style="color:#ef4444;">Cancel</button>
-                    `;
-                } else if (isCancelled) {
+                let actionCell = `
+                    <button onclick="viewChallan('${dispatch.id}')" class="nx-btn nx-btn-ghost nx-btn-sm">View</button>
+                    <button onclick="cancelChallan('${dispatch.id}', '${(dispatch.challan_number||'').replace(/'/g,"")}')" class="nx-btn nx-btn-ghost nx-btn-sm" style="color:#ef4444;">Cancel</button>
+                `;
+                if (isCancelled) {
                     actionCell = `<span style="color:var(--mid); font-size:12px;">Reversed</span>`;
                     if (getUserRole() === 'owner') {
                         actionCell += `
@@ -820,49 +915,6 @@
             }
         });
 
-        window.loadDraftToForm = async (orderId) => {
-            try {
-                const { data: order, error: orderErr } = await window.supabase
-                    .from('p2_dispatch_orders')
-                    .select('*')
-                    .eq('id', orderId)
-                    .single();
-
-                if (orderErr) throw orderErr;
-
-                const { data: items, error: itemsErr } = await window.supabase
-                    .from('p2_dispatch_items')
-                    .select('*, p2_products(name, unit)')
-                    .eq('dispatch_order_id', orderId);
-
-                if (itemsErr) throw itemsErr;
-
-                currentDispatchId = order.id;
-                currentDispatchChallanNumber = order.challan_number;
-                document.getElementById('clientName').value = order.client_name;
-                document.getElementById('clientAddress').value = order.client_address || '';
-                document.getElementById('poNumber').value = order.po_number || '';
-                loadPOSuggestions(order.client_name);
-                document.getElementById('challanRef').value = order.your_challan_ref || '';
-                document.getElementById('vehicleNumber').value = order.vehicle_number || '';
-                document.getElementById('dispatchDate').value = order.dispatch_date || new Date().toISOString().split('T')[0];
-
-                dispatchItems = items.map(item => ({
-                    product_id: item.product_id,
-                    name: item.p2_products ? item.p2_products.name : 'Unknown Product',
-                    quantity: item.quantity,
-                    unit: item.p2_products ? item.p2_products.unit : 'NOS',
-                    po_number: item.po_number || ''
-                }));
-
-                renderProductsTable();
-                document.getElementById('dispatchForm').scrollIntoView({ behavior: 'smooth' });
-            } catch (err) {
-                console.error('Error restoring draft:', err);
-                showError('Could not restore draft order.');
-            }
-        };
-
         // Challan number generation is now handled by the shared
         // getNextChallanNumber() utility in utils.js.
         // It reads challan_mode from p2_tenant_settings and calls
@@ -870,6 +922,8 @@
 
         function setupEventHandlers() {
             setupClientAutofill();
+
+            document.getElementById('addChallanLinkBtn').addEventListener('click', addChallanLinkRow);
 
             document.getElementById('addProductBtn').addEventListener('click', () => {
                 const productId = productTypeahead ? productTypeahead.getId() : '';
@@ -893,8 +947,6 @@
                 if (productTypeahead) productTypeahead.reset();
                 renderProductsTable();
             });
-
-            document.getElementById('saveDraftBtn').addEventListener('click', () => handleSaveWorkflow('draft'));
 
             document.getElementById('confirmDispatchBtn').addEventListener('click', () => {
                 if (!validateForm()) return;
@@ -920,7 +972,7 @@
 
             document.getElementById('confirmModalConfirm').addEventListener('click', () => {
                 document.getElementById('confirmModal').style.display = 'none';
-                handleSaveWorkflow('confirmed');
+                handleSaveWorkflow();
             });
         }
 
@@ -977,18 +1029,15 @@
             return true;
         }
 
-        async function handleSaveWorkflow(targetStatus) {
-            if (targetStatus === 'confirmed' && !validateForm()) return;
+        async function handleSaveWorkflow() {
+            if (!validateForm()) return;
 
-            // Double-submit guard: neither button was ever disabled during the
+            // Double-submit guard: the button was never disabled during the
             // async save, so a double-click (or a slow connection + impatient
             // second click) could fire this twice concurrently and create two
-            // duplicate dispatch orders — worse, two stock deductions on the
-            // confirm path.
-            const saveDraftBtn = document.getElementById('saveDraftBtn');
+            // duplicate dispatch orders — worse, two stock deductions.
             const confirmModalConfirmBtn = document.getElementById('confirmModalConfirm');
-            if (saveDraftBtn?.disabled || confirmModalConfirmBtn?.disabled) return;
-            if (saveDraftBtn) saveDraftBtn.disabled = true;
+            if (confirmModalConfirmBtn?.disabled) return;
             if (confirmModalConfirmBtn) confirmModalConfirmBtn.disabled = true;
 
             let consumptionArray = [];
@@ -996,77 +1045,86 @@
             try {
                 clearMessages();
 
-                if (targetStatus === 'confirmed') {
-                    const insufficientItems = [];
-                    const tenantIdForCheck = tenantId || localStorage.getItem('supabase_tenant_id') || '00000000-0000-0000-0000-000000000000';
+                const insufficientItems = [];
+                const tenantIdForCheck = tenantId || localStorage.getItem('supabase_tenant_id') || '00000000-0000-0000-0000-000000000000';
 
-                    for (const item of dispatchItems) {
-                        const numericQty = parseFloat(item.quantity || item.qty || item.qty_dispatched || 0);
-                        const safeQty = isNaN(numericQty) ? 0 : numericQty;
+                for (const item of dispatchItems) {
+                    const numericQty = parseFloat(item.quantity || item.qty || item.qty_dispatched || 0);
+                    const safeQty = isNaN(numericQty) ? 0 : numericQty;
 
-                        const { data: bomList } = await window.supabase
-                            .from('p2_product_bom')
-                            .select('raw_material_id, qty_per_unit')
-                            .eq('product_id', item.product_id);
+                    const { data: bomList, error: bomCheckErr } = await window.supabase
+                        .from('p2_product_bom')
+                        .select('raw_material_id, qty_per_unit')
+                        .eq('product_id', item.product_id);
 
-                        if (bomList && bomList.length > 0) {
-                            for (const ingredient of bomList) {
-                                const qtyNeeded = ingredient.qty_per_unit * safeQty;
+                    // Fail closed, not open — a query failure here previously left
+                    // insufficientItems empty and let the dispatch proceed as if
+                    // stock were sufficient, which is the opposite of what a safety
+                    // check should do on failure.
+                    if (bomCheckErr) {
+                        console.error('Stock check BOM lookup failed:', bomCheckErr);
+                        showError('Could not verify stock levels — please try again.');
+                        return;
+                    }
 
-                                const { data: txData } = await window.supabase
-                                    .from('p2_stock_transactions')
-                                    .select('quantity')
-                                    .eq('raw_material_id', ingredient.raw_material_id)
-                                    .eq('tenant_id', tenantIdForCheck)
-                                    .is('owned_by', null);
+                    if (bomList && bomList.length > 0) {
+                        for (const ingredient of bomList) {
+                            const qtyNeeded = ingredient.qty_per_unit * safeQty;
 
-                                const currentStock = txData ? txData.reduce((sum, t) => sum + Number(t.quantity), 0) : 0;
+                            const { data: txData, error: stockCheckErr } = await window.supabase
+                                .from('p2_stock_transactions')
+                                .select('quantity')
+                                .eq('raw_material_id', ingredient.raw_material_id)
+                                .eq('tenant_id', tenantIdForCheck)
+                                .is('owned_by', null);
 
-                                const { data: matData } = await window.supabase
-                                    .from('p2_raw_materials')
-                                    .select('name, material_code')
-                                    .eq('id', ingredient.raw_material_id)
-                                    .single();
+                            if (stockCheckErr) {
+                                console.error('Stock check balance lookup failed:', stockCheckErr);
+                                showError('Could not verify stock levels — please try again.');
+                                return;
+                            }
 
-                                if (currentStock < qtyNeeded) {
-                                    insufficientItems.push({
-                                        name: matData ? `${matData.material_code || ''} ${matData.name}`.trim() : ingredient.raw_material_id,
-                                        required: qtyNeeded,
-                                        available: currentStock
-                                    });
-                                }
+                            const currentStock = txData ? txData.reduce((sum, t) => sum + Number(t.quantity), 0) : 0;
+
+                            const { data: matData, error: matCheckErr } = await window.supabase
+                                .from('p2_raw_materials')
+                                .select('name, material_code')
+                                .eq('id', ingredient.raw_material_id)
+                                .single();
+
+                            if (matCheckErr) {
+                                console.error('Stock check material lookup failed:', matCheckErr);
+                                showError('Could not verify stock levels — please try again.');
+                                return;
+                            }
+
+                            if (currentStock < qtyNeeded) {
+                                insufficientItems.push({
+                                    name: matData ? `${matData.material_code || ''} ${matData.name}`.trim() : ingredient.raw_material_id,
+                                    required: qtyNeeded,
+                                    available: currentStock
+                                });
                             }
                         }
                     }
-
-                    if (insufficientItems.length > 0) {
-                        const lang = localStorage.getItem('nexflow_lang') || 'en';
-                        const errorLines = insufficientItems.map(i =>
-                            `• ${i.name}: Need ${i.required.toFixed(3)}, Available ${i.available.toFixed(3)}`
-                        ).join('\n');
-                        const msg = lang === 'mr'
-                            ? `साठा अपुरा आहे:\n${errorLines}`
-                            : `Stock not sufficient:\n${errorLines}`;
-                        alert(msg);
-                        return;
-                    }
                 }
 
-                // Only draw a real, permanently-consumed challan number at confirm
-                // time — never on a draft save. Previously this ran unconditionally
-                // on every save (draft or confirm), so saving the same draft twice
-                // burned two numbers and left a permanent gap in the series; every
-                // abandoned draft burned one too. A draft that has no real number
-                // yet gets a local placeholder instead, replaced with a real number
-                // only when it's actually confirmed.
-                let rawChallan;
-                if (targetStatus === 'confirmed') {
-                    rawChallan = (!currentDispatchChallanNumber || currentDispatchChallanNumber.startsWith('DRAFT-'))
-                        ? await getNextChallanNumber(window.supabase, tenantId, 'product')
-                        : currentDispatchChallanNumber;
-                } else {
-                    rawChallan = currentDispatchChallanNumber || ('DRAFT-' + crypto.randomUUID().slice(0, 8).toUpperCase());
+                if (insufficientItems.length > 0) {
+                    const lang = localStorage.getItem('nexflow_lang') || 'en';
+                    const errorLines = insufficientItems.map(i =>
+                        `• ${i.name}: Need ${i.required.toFixed(3)}, Available ${i.available.toFixed(3)}`
+                    ).join('\n');
+                    const msg = lang === 'mr'
+                        ? `साठा अपुरा आहे:\n${errorLines}`
+                        : `Stock not sufficient:\n${errorLines}`;
+                    alert(msg);
+                    return;
                 }
+
+                // Reuse a number already drawn for this in-progress order (a
+                // retry after a failed confirm below) instead of drawing a new
+                // one and leaving a gap in the sequence.
+                const rawChallan = currentDispatchChallanNumber || await getNextChallanNumber(window.supabase, tenantId, 'product');
                 const payload = {
                     tenant_id: tenantId || localStorage.getItem('supabase_tenant_id') || '00000000-0000-0000-0000-000000000000',
                     created_by: tenantId || localStorage.getItem('supabase_tenant_id') || '00000000-0000-0000-0000-000000000000',
@@ -1075,14 +1133,14 @@
                     po_number: document.getElementById('poNumber')?.value || '',
                     your_challan_ref: document.getElementById('challanRef')?.value || '',
                     vehicle_number: document.getElementById('vehicleNumber')?.value || '',
-                    // Written as 'draft' even when targetStatus is 'confirmed' —
-                    // confirm_dispatch_transaction's own final UPDATE (below) only
-                    // flips this to 'confirmed' after stock has actually been
-                    // deducted, so a failure anywhere between here and that RPC
-                    // call leaves the order correctly visible as an incomplete
-                    // draft instead of an orphaned "confirmed" challan with no
-                    // stock ever deducted.
-                    status: targetStatus === 'confirmed' ? 'draft' : String(targetStatus),
+                    // Always written as 'draft' here -- confirm_dispatch_transaction's
+                    // own final UPDATE (below) only flips this to 'confirmed' after
+                    // stock has actually been deducted, so a failure anywhere between
+                    // here and that RPC call leaves the order correctly visible as an
+                    // incomplete draft instead of an orphaned "confirmed" challan with
+                    // no stock ever deducted. This is an atomicity detail, not the
+                    // (removed) user-facing draft feature.
+                    status: 'draft',
                     challan_number: String(rawChallan || '1001'),
                     dispatch_date: document.getElementById('dispatchDate')?.value || new Date().toISOString().split('T')[0],
                     dispatch_type: 'product',
@@ -1141,82 +1199,69 @@
                     if (itemsErr) throw itemsErr;
                 }
 
-                let confirmResult = null;
+                consumptionArray = [];
 
-                if (targetStatus === 'confirmed') {
-                    consumptionArray = [];
+                for (const item of dispatchItems) {
+                    const numericQty = parseFloat(item.quantity || item.qty || item.qty_dispatched || 0);
+                    const safeQty = isNaN(numericQty) ? 0 : numericQty;
 
-                    for (const item of dispatchItems) {
-                        const numericQty = parseFloat(item.quantity || item.qty || item.qty_dispatched || 0);
-                        const safeQty = isNaN(numericQty) ? 0 : numericQty;
+                    const { data: bomList, error: bomErr } = await window.supabase
+                        .from('p2_product_bom')
+                        .select('raw_material_id, qty_per_unit')
+                        .eq('tenant_id', tenantId)
+                        .eq('product_id', item.product_id);
 
-                        const { data: bomList, error: bomErr } = await window.supabase
-                            .from('p2_product_bom')
-                            .select('raw_material_id, qty_per_unit')
-                            .eq('tenant_id', tenantId)
-                            .eq('product_id', item.product_id);
+                    if (bomErr) { console.error('BOM Lookup error:', bomErr); continue; }
 
-                        if (bomErr) { console.error('BOM Lookup error:', bomErr); continue; }
-
-                        if (bomList && bomList.length > 0) {
-                            for (const ingredient of bomList) {
-                                const qtyNeeded = ingredient.qty_per_unit * safeQty;
-                                consumptionArray.push({ material_id: ingredient.raw_material_id, qty: qtyNeeded });
-                            }
+                    if (bomList && bomList.length > 0) {
+                        for (const ingredient of bomList) {
+                            const qtyNeeded = ingredient.qty_per_unit * safeQty;
+                            consumptionArray.push({ material_id: ingredient.raw_material_id, qty: qtyNeeded });
                         }
                     }
-
-                    const { data, error: confirmErr } = await window.supabase
-                        .rpc('confirm_dispatch_transaction', {
-                            p_dispatch_order_id: orderId,
-                            p_tenant_id:         payload.tenant_id,
-                            p_consumption_json:  JSON.stringify(consumptionArray),
-                            p_challan_number:    payload.challan_number
-                        });
-
-                    if (confirmErr) throw confirmErr;
-                    confirmResult = data;
                 }
 
-                const displayChallanNumber = (targetStatus === 'confirmed' && confirmResult?.challan_number)
-                    ? confirmResult.challan_number
-                    : payload.challan_number;
+                const { data, error: confirmErr } = await window.supabase
+                    .rpc('confirm_dispatch_transaction', {
+                        p_dispatch_order_id: orderId,
+                        p_tenant_id:         payload.tenant_id,
+                        p_consumption_json:  JSON.stringify(consumptionArray),
+                        p_challan_number:    payload.challan_number
+                    });
+
+                if (confirmErr) throw confirmErr;
+
+                // Only on a successful confirm (not draft) — links a return
+                // dispatch against the original outward challan(s) it settles.
+                // No-op if the Link section wasn't shown/populated.
+                if (RETURN_PURPOSES.includes(payload.movement_purpose)) {
+                    await insertChallanLinks(orderId);
+                }
+
+                const displayChallanNumber = data?.challan_number || payload.challan_number;
 
                 // Save/update this client's Name + Address for next-time
                 // autofill. Uses payload (captured before form reset below)
                 // rather than re-reading the now-cleared input fields.
                 await upsertClient(payload.client_name, payload.client_address, payload.po_number);
 
-                if (targetStatus === 'confirmed') {
-                    await savePONumber(payload.client_name, payload.po_number);
-                    sendNotification(window.supabase, 'challan_dispatched', 'Challan dispatched',
-                        `Challan ${displayChallanNumber} dispatched to ${payload.client_name}.`,
-                        { dispatch_order_id: orderId, challan_number: displayChallanNumber, client_name: payload.client_name });
-                }
+                await savePONumber(payload.client_name, payload.po_number);
+                sendNotification(window.supabase, 'challan_dispatched', 'Challan dispatched',
+                    `Challan ${displayChallanNumber} dispatched to ${payload.client_name}.`,
+                    { dispatch_order_id: orderId, challan_number: displayChallanNumber, client_name: payload.client_name });
 
                 saveTransportToHistory(document.getElementById('vehicleNumber').value.trim());
 
                 resetWorkspaceForm();
                 await loadRecentDispatches();
-                await checkDraftOrders();
 
-                if (targetStatus === 'confirmed') {
-                    // Show consumption summary modal instead of plain success banner
-                    await showConsumptionModal(consumptionArray, displayChallanNumber, orderId);
-                } else {
-                    const successMsg = document.getElementById('successMessage');
-                    const successTxt = document.getElementById('successText');
-                    successTxt.textContent = 'Draft details saved successfully!';
-                    successMsg.style.display = 'flex';
-                    document.getElementById('printChallanBtn').onclick = () => viewChallan(orderId);
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                }
+                // Show consumption summary modal instead of a plain success banner
+                await showConsumptionModal(consumptionArray, displayChallanNumber, orderId);
 
             } catch (err) {
                 console.error('Error processing dispatch:', err);
                 showError(err.message || 'Error processing dispatch order.');
             } finally {
-                if (saveDraftBtn) saveDraftBtn.disabled = false;
                 if (confirmModalConfirmBtn) confirmModalConfirmBtn.disabled = false;
             }
         }
@@ -1413,6 +1458,12 @@
                     userEditedAddress = false;
                 }
                 loadPOSuggestions(nameInput.value.trim());
+
+                // Re-fetch the open-challan dropdown options for the new
+                // client if the Link section is currently showing.
+                if (document.getElementById('challanLinksSection').style.display !== 'none') {
+                    loadOpenChallansForClient(nameInput.value.trim()).then(refreshChallanLinkDropdowns);
+                }
             });
         }
 
@@ -1441,6 +1492,12 @@
             currentDispatchId = null;
             currentDispatchChallanNumber = null;
             renderProductsTable();
+            // form.reset() doesn't fire 'change' on movementPurpose (and the
+            // Link section lives outside <form> anyway) — clear it explicitly
+            // so a completed return's linked-challan rows don't carry over
+            // into the next dispatch.
+            document.getElementById('challanLinksSection').style.display = 'none';
+            clearChallanLinksRows();
         }
 
         function showError(msg) {
@@ -1452,7 +1509,6 @@
 
         function clearMessages() {
             document.getElementById('errorMessage').style.display = 'none';
-            document.getElementById('successMessage').style.display = 'none';
         }
     
         // ── AMENDMENT ─────────────────────────────────────────────────────

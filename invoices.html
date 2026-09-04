@@ -384,60 +384,61 @@
     <!-- RECORD PAYMENT MODAL -->
     <div id="recordPaymentModal" class="nx-modal-overlay" style="display:none;">
         <div class="nx-modal" style="max-width:480px;">
-            <div class="nx-modal-title" style="color:var(--orange);">Record Payment</div>
-            <div id="recordPaymentInvoiceLine" style="font-size:13px; color:var(--mid); margin-bottom:16px;"></div>
+            <div class="nx-modal-title" style="color:var(--orange);" data-en="Record Payment" data-mr="पेमेंट नोंदवा">Record Payment</div>
+            <div id="recordPaymentInvoiceLine" style="font-size:13px; color:var(--mid); margin-bottom:8px;"></div>
+            <div id="recordPaymentBalanceLine" style="font-size:13px; color:var(--white); margin-bottom:16px; padding:10px 12px; background:rgba(255,255,255,0.03); border-radius:6px; line-height:1.6;"></div>
 
             <div style="display:flex; gap:12px; margin-bottom:14px;">
                 <div class="nx-form-group" style="flex:1; margin:0;">
-                    <label>Payment Date</label>
+                    <label data-en="Payment Date" data-mr="पेमेंट तारीख">Payment Date</label>
                     <input type="date" id="rpDate" class="nx-input">
                 </div>
                 <div class="nx-form-group" style="flex:1; margin:0;">
-                    <label>Payment Mode</label>
+                    <label data-en="Payment Mode" data-mr="पेमेंट पद्धत">Payment Mode</label>
                     <select id="rpMode" class="nx-input">
-                        <option value="neft">NEFT</option>
-                        <option value="rtgs">RTGS</option>
-                        <option value="cheque">Cheque</option>
-                        <option value="upi">UPI</option>
-                        <option value="cash">Cash</option>
-                        <option value="adjustment">Adjustment</option>
+                        <option value="neft" data-en="NEFT" data-mr="NEFT">NEFT</option>
+                        <option value="rtgs" data-en="RTGS" data-mr="RTGS">RTGS</option>
+                        <option value="cheque" data-en="Cheque" data-mr="चेक">Cheque</option>
+                        <option value="upi" data-en="UPI" data-mr="UPI">UPI</option>
+                        <option value="cash" data-en="Cash" data-mr="रोख">Cash</option>
+                        <option value="adjustment" data-en="Adjustment" data-mr="समायोजन">Adjustment</option>
                     </select>
                 </div>
             </div>
 
             <div style="display:flex; gap:12px; margin-bottom:14px;">
                 <div class="nx-form-group" style="flex:1; margin:0;">
-                    <label>Gross Amount (₹)</label>
-                    <input type="number" step="0.01" min="0" id="rpGross" class="nx-input">
+                    <label data-en="Net Amount (₹)" data-mr="निव्वळ रक्कम (₹)">Net Amount (₹)</label>
+                    <input type="number" step="0.01" min="0" id="rpNet" class="nx-input">
                 </div>
                 <div class="nx-form-group" style="flex:1; margin:0;">
-                    <label>TDS Deducted (₹)</label>
+                    <label data-en="TDS Deducted (₹)" data-mr="TDS कापले (₹)">TDS Deducted (₹)</label>
                     <input type="number" step="0.01" min="0" id="rpTds" class="nx-input" value="0">
                 </div>
                 <div class="nx-form-group" style="flex:1; margin:0;">
-                    <label>Other Deductions (₹)</label>
+                    <label data-en="Other Deductions (₹)" data-mr="इतर कपात (₹)">Other Deductions (₹)</label>
                     <input type="number" step="0.01" min="0" id="rpDeductions" class="nx-input" value="0">
                 </div>
             </div>
 
             <div class="nx-form-group" style="margin-bottom:14px;">
-                <label>Net Amount</label>
-                <div id="rpNetAmount" class="nx-input" style="display:flex; align-items:center; background:rgba(255,255,255,0.03); color:var(--white); font-weight:700;">₹0.00</div>
+                <label data-en="Gross Amount (₹)" data-mr="एकूण रक्कम (₹)">Gross Amount (₹)</label>
+                <div id="rpGrossAmount" class="nx-input" style="display:flex; align-items:center; background:rgba(255,255,255,0.03); color:var(--white); font-weight:700;">₹0.00</div>
             </div>
 
             <div class="nx-form-group" style="margin-bottom:14px;">
-                <label>Reference No</label>
+                <label data-en="Reference No" data-mr="संदर्भ क्र.">Reference No</label>
                 <input type="text" id="rpReference" class="nx-input" placeholder="Optional">
             </div>
 
             <div class="nx-form-group" style="margin-bottom:16px;">
-                <label>Notes</label>
+                <label data-en="Notes" data-mr="टीप">Notes</label>
                 <input type="text" id="rpNotes" class="nx-input" placeholder="Optional">
             </div>
 
             <div style="display:flex; gap:10px;">
-                <button id="rpConfirm" class="nx-btn nx-btn-green" style="flex:1;">Save Payment</button>
-                <button id="rpCancel" class="nx-btn nx-btn-ghost" style="flex:1;">Cancel</button>
+                <button id="rpConfirm" class="nx-btn nx-btn-green" style="flex:1;" data-en="Save Payment" data-mr="पेमेंट जतन करा">Save Payment</button>
+                <button id="rpCancel" class="nx-btn nx-btn-ghost" style="flex:1;" data-en="Cancel" data-mr="रद्द करा">Cancel</button>
             </div>
         </div>
     </div>
@@ -679,6 +680,19 @@
             const cutoffMs = Date.now() - 45 * 24 * 60 * 60 * 1000;
             if (new Date(inv.invoice_date).getTime() < cutoffMs) return 'overdue';
             return 'pending';
+        }
+
+        // Same totalReceived arithmetic as derivePaymentStatus(), shared by the
+        // Record Payment modal's balance-due display and its over-payment guard.
+        // Never queries v_p2_invoice_payment_status from the browser (that view
+        // is revoked from anon/authenticated — see 20260903_fix_view_rls.sql) —
+        // derives the identical numbers from already-loaded allInvoices/receiptsByInvoice.
+        function getInvoiceBalance(invoiceId) {
+            const inv = allInvoices.find(i => i.id === invoiceId);
+            const receipts = receiptsByInvoice.get(invoiceId) || [];
+            const totalReceived = receipts.reduce((sum, r) => sum + (Number(r.net_amount) || 0), 0);
+            const amountTotal = Number(inv?.amount_total) || 0;
+            return { inv, totalReceived, amountTotal, balanceDue: amountTotal - totalReceived };
         }
 
         const PAYMENT_STATUS_BADGE = {
@@ -1181,28 +1195,35 @@
             recordPaymentInvoiceId = invoiceId;
             document.getElementById('recordPaymentInvoiceLine').textContent =
                 `${inv.invoice_number} — ${inv.client_name || ''}`;
+
+            const { totalReceived, amountTotal, balanceDue } = getInvoiceBalance(invoiceId);
+            document.getElementById('recordPaymentBalanceLine').innerHTML =
+                `${t('Invoice Total', 'इनव्हॉइस एकूण')}: <b>${fmtMoney(amountTotal)}</b> &nbsp;/&nbsp; ` +
+                `${t('Already Received', 'आधीच प्राप्त')}: <b>${fmtMoney(totalReceived)}</b> &nbsp;/&nbsp; ` +
+                `${t('Balance Due', 'शिल्लक रक्कम')}: <b style="color:var(--orange);">${fmtMoney(balanceDue)}</b>`;
+
             document.getElementById('rpDate').value = new Date().toISOString().slice(0, 10);
             document.getElementById('rpMode').value = 'neft';
-            document.getElementById('rpGross').value = '';
+            document.getElementById('rpNet').value = '';
             document.getElementById('rpTds').value = '0';
             document.getElementById('rpDeductions').value = '0';
             document.getElementById('rpReference').value = '';
             document.getElementById('rpNotes').value = '';
-            updateRpNetAmount();
+            updateRpGrossAmount();
 
             document.getElementById('recordPaymentModal').style.display = 'flex';
         };
 
-        function updateRpNetAmount() {
-            const gross = Number(document.getElementById('rpGross').value) || 0;
+        function updateRpGrossAmount() {
+            const net = Number(document.getElementById('rpNet').value) || 0;
             const tds = Number(document.getElementById('rpTds').value) || 0;
             const deductions = Number(document.getElementById('rpDeductions').value) || 0;
-            document.getElementById('rpNetAmount').textContent = fmtMoney(gross - tds - deductions);
+            document.getElementById('rpGrossAmount').textContent = fmtMoney(net + tds + deductions);
         }
 
         function setupRecordPaymentModalHandlers() {
-            ['rpGross', 'rpTds', 'rpDeductions'].forEach(id => {
-                document.getElementById(id).addEventListener('input', updateRpNetAmount);
+            ['rpNet', 'rpTds', 'rpDeductions'].forEach(id => {
+                document.getElementById(id).addEventListener('input', updateRpGrossAmount);
             });
 
             document.getElementById('rpCancel').addEventListener('click', () => {
@@ -1213,18 +1234,27 @@
             });
 
             document.getElementById('rpConfirm').addEventListener('click', async () => {
-                const grossAmount = Number(document.getElementById('rpGross').value);
+                const netAmount = Number(document.getElementById('rpNet').value);
                 const tdsAmount = Number(document.getElementById('rpTds').value) || 0;
                 const otherDeductions = Number(document.getElementById('rpDeductions').value) || 0;
+                const grossAmount = netAmount + tdsAmount + otherDeductions;
                 const paymentDate = document.getElementById('rpDate').value;
                 const paymentMode = document.getElementById('rpMode').value;
                 const referenceNo = document.getElementById('rpReference').value.trim();
                 const notes = document.getElementById('rpNotes').value.trim();
 
-                if (!grossAmount || grossAmount <= 0) { toast('Gross amount must be greater than zero.', 'error'); return; }
-                if (!paymentDate) { toast('Please select a payment date.', 'error'); return; }
-                if (tdsAmount + otherDeductions >= grossAmount) {
-                    toast('TDS + other deductions must be less than the gross amount.', 'error');
+                if (!netAmount || netAmount <= 0) { toast(t('Net amount must be greater than zero.', 'निव्वळ रक्कम शून्यापेक्षा जास्त असणे आवश्यक आहे.'), 'error'); return; }
+                if (!paymentDate) { toast(t('Please select a payment date.', 'कृपया पेमेंट तारीख निवडा.'), 'error'); return; }
+                if (tdsAmount < 0 || otherDeductions < 0) { toast(t('TDS and other deductions cannot be negative.', 'TDS आणि इतर कपात ऋण असू शकत नाही.'), 'error'); return; }
+
+                // Over-payment guard — never allow recording more than what's
+                // actually still owed on this invoice.
+                const { balanceDue } = getInvoiceBalance(recordPaymentInvoiceId);
+                if (netAmount > balanceDue + 0.01) {
+                    toast(t(
+                        `Amount exceeds the balance due (${fmtMoney(balanceDue)}). Cannot record more than what's owed.`,
+                        `शिल्लक रकमेपेक्षा (${fmtMoney(balanceDue)}) जास्त रक्कम नोंदवता येणार नाही.`
+                    ), 'error');
                     return;
                 }
 

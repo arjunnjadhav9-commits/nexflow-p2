@@ -123,6 +123,13 @@
             <div id="productsContent" style="display:none;">
 
                 <!-- ── SECTION: PRODUCTS ── -->
+
+                <!-- UQC MISSING WARNING -->
+                <div id="productsUqcWarnBox" style="display:none;" class="nx-alert nx-alert-orange nx-mb-16">
+                    <span class="nx-alert-icon">⚠</span>
+                    <span id="productsUqcWarnMsg"></span>
+                </div>
+
                 <div class="nx-grid-2" style="align-items:start; margin-bottom:24px;">
 
                     <!-- Add Product -->
@@ -157,6 +164,20 @@
                                 </select>
                             </div>
                             <div class="nx-form-group">
+                                <label data-en="UQC (GST Unit Code)" data-mr="UQC (GST एकक कोड)">UQC (GST Unit Code)</label>
+                                <select name="uqc" required class="nx-input">
+                                    <option value="" data-en="Select UQC" data-mr="UQC निवडा">Select UQC</option>
+                                    <option value="NOS">NOS — Numbers</option>
+                                    <option value="KGS">KGS — Kilograms</option>
+                                    <option value="MTR">MTR — Meters</option>
+                                    <option value="LTR">LTR — Litres</option>
+                                    <option value="PCS">PCS — Pieces</option>
+                                    <option value="SQM">SQM — Square Meters</option>
+                                    <option value="CBM">CBM — Cubic Meters</option>
+                                    <option value="OTH">OTH — Others</option>
+                                </select>
+                            </div>
+                            <div class="nx-form-group">
                                 <label data-en="HSN / SAC" data-mr="HSN / SAC">HSN / SAC</label>
                                 <input type="text" name="hsn_sac" class="nx-input" placeholder="8414" data-en="8414" data-mr="8414">
                             </div>
@@ -188,6 +209,7 @@
                                     <tr>
                                         <th data-en="Name"    data-mr="नाव">Name</th>
                                         <th data-en="Unit"    data-mr="एकक">Unit</th>
+                                        <th data-en="UQC"     data-mr="UQC">UQC</th>
                                         <th data-en="BOM"     data-mr="BOM">BOM</th>
                                         <th data-en="Actions" data-mr="क्रिया" style="text-align:center;">Actions</th>
                                     </tr>
@@ -330,6 +352,20 @@
                     </select>
                 </div>
                 <div class="nx-form-group">
+                    <label data-en="UQC (GST Unit Code)" data-mr="UQC (GST एकक कोड)">UQC (GST Unit Code)</label>
+                    <select id="edit-product-uqc" required class="nx-input">
+                        <option value="" data-en="Select UQC" data-mr="UQC निवडा">Select UQC</option>
+                        <option value="NOS">NOS — Numbers</option>
+                        <option value="KGS">KGS — Kilograms</option>
+                        <option value="MTR">MTR — Meters</option>
+                        <option value="LTR">LTR — Litres</option>
+                        <option value="PCS">PCS — Pieces</option>
+                        <option value="SQM">SQM — Square Meters</option>
+                        <option value="CBM">CBM — Cubic Meters</option>
+                        <option value="OTH">OTH — Others</option>
+                    </select>
+                </div>
+                <div class="nx-form-group">
                     <label data-en="HSN / SAC" data-mr="HSN / SAC">HSN / SAC</label>
                     <input type="text" id="edit-product-hsn" class="nx-input" placeholder="8414" data-en="8414" data-mr="8414">
                 </div>
@@ -421,6 +457,16 @@
 
             buildBomProductSelector();
             renderProductsList(allProductsList);
+
+            const missingUqc = allProductsList.filter(p => !p.uqc).length;
+            const warnBox = document.getElementById('productsUqcWarnBox');
+            if (missingUqc > 0) {
+                document.getElementById('productsUqcWarnMsg').textContent =
+                    `${missingUqc} product${missingUqc === 1 ? '' : 's'} missing UQC code — required for ITC-04 export`;
+                warnBox.style.display = 'flex';
+            } else {
+                warnBox.style.display = 'none';
+            }
         }
 
         // Rebuilds the "Select Product to Manage BOM" typeahead (mirrors the
@@ -540,7 +586,7 @@
                     emptyEl.style.display = 'block';
                 } else {
                     emptyEl.style.display = 'none';
-                    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:var(--mid); padding:20px;">No products match your search.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:var(--mid); padding:20px;">No products match your search.</td></tr>';
                 }
                 return;
             }
@@ -562,10 +608,11 @@
                 row.innerHTML = `
                     <td class="nx-td-bold">${product.name}${poLabel}</td>
                     <td style="color:var(--mid);">${product.unit}</td>
+                    <td class="nx-td-mono">${product.uqc || '<span style="color:var(--orange);">—</span>'}</td>
                     <td class="bom-badge-cell">${buildBomBadgeHtml(product.id, product.hasBOM)}</td>
                     <td style="text-align:center;">
                         <div style="display:flex; gap:6px; justify-content:center;">
-                            <button onclick="editProduct('${product.id}', '${product.name.replace(/'/g, "\\'")}', '${(product.description || '').replace(/'/g, "\\'")}', '${product.unit}', '${(product.hsn_sac || '').replace(/'/g, "\\'")}', '${(product.default_po_number || '').replace(/'/g, "\\'")}')"
+                            <button onclick="editProduct('${product.id}', '${product.name.replace(/'/g, "\\'")}', '${(product.description || '').replace(/'/g, "\\'")}', '${product.unit}', '${(product.hsn_sac || '').replace(/'/g, "\\'")}', '${(product.default_po_number || '').replace(/'/g, "\\'")}', '${product.uqc || ''}')"
                                     class="nx-btn nx-btn-secondary nx-btn-sm"
                                     data-en="Edit" data-mr="संपादित करा">Edit</button>
                             <button onclick="deactivateProduct('${product.id}')"
@@ -731,6 +778,7 @@
                                 is_active:          true,
                                 description:        formData.get('description'),
                                 unit:               formData.get('unit'),
+                                uqc:                formData.get('uqc') || null,
                                 hsn_sac:             formData.get('hsn_sac')?.trim() || null,
                                 default_po_number:  formData.get('default_po_number')?.trim() || null
                             })
@@ -757,6 +805,7 @@
                             name:               productName,
                             description:        formData.get('description'),
                             unit:               formData.get('unit'),
+                            uqc:                formData.get('uqc') || null,
                             hsn_sac:             formData.get('hsn_sac')?.trim() || null,
                             default_po_number:  formData.get('default_po_number')?.trim() || null,
                             tenant_id:          currentTenantId
@@ -845,12 +894,13 @@
                 const name        = document.getElementById('edit-product-name').value;
                 const description = document.getElementById('edit-product-description').value;
                 const unit        = document.getElementById('edit-product-unit').value;
+                const uqc         = document.getElementById('edit-product-uqc').value;
                 const hsnSac      = document.getElementById('edit-product-hsn').value.trim();
                 const defaultPo   = document.getElementById('edit-product-default-po').value.trim();
                 try {
                     const { error } = await supabaseClient
                         .from('p2_products')
-                        .update({ name, description, unit, hsn_sac: hsnSac || null, default_po_number: defaultPo || null })
+                        .update({ name, description, unit, uqc: uqc || null, hsn_sac: hsnSac || null, default_po_number: defaultPo || null })
                         .eq('id', id)
                         .eq('tenant_id', currentTenantId);
                     if (error) throw error;
@@ -883,11 +933,12 @@
             }
         }
 
-        function editProduct(id, name, description, unit, hsnSac = '', defaultPo = '') {
+        function editProduct(id, name, description, unit, hsnSac = '', defaultPo = '', uqc = '') {
             document.getElementById('edit-product-id').value          = id;
             document.getElementById('edit-product-name').value        = name;
             document.getElementById('edit-product-description').value = description;
             document.getElementById('edit-product-unit').value        = unit;
+            document.getElementById('edit-product-uqc').value         = uqc;
             document.getElementById('edit-product-hsn').value         = hsnSac;
             document.getElementById('edit-product-default-po').value  = defaultPo;
             document.getElementById('edit-product-modal').style.display = 'flex';

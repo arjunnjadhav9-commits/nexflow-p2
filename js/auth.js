@@ -12,8 +12,6 @@ async function fetchUserRole(userId, tenantId) {
     // table subqueries the table itself to check the caller's role).
     const { data, error } = await window.supabase.rpc('get_my_role', { p_tenant_id: tenantId });
 
-    console.log('fetchUserRole: get_my_role result', { data, error });
-
     // No row for a non-owner user is a misconfiguration — default to least privilege,
     // never to 'owner' (that would be a privilege-escalation bug).
     const role = data || 'storekeeper';

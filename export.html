@@ -106,8 +106,11 @@
   #table12WarnBox { display: none; }
   #table12Results { display: none; }
 
-  /* Section 43B(h) — Buyer Payment Compliance (Your Receivables) */
+  /* Client Payment Status (renamed from "43B(h)" — this report measures
+     receivables, not the tenant's own MSME-payables 43B(h) position) */
   #table43bhSection { display: none; }
+  /* Supplier Payment Compliance — 43B(h) (the actual payables-side report) */
+  #supplier43bhSection { display: none; }
   #table43bhWarnBox { display: none; }
   #table43bhResults { display: none; }
 </style>
@@ -358,10 +361,10 @@
     </div>
   </div>
 
-  <!-- SECTION 43B(h) — BUYER PAYMENT COMPLIANCE (YOUR RECEIVABLES) -->
+  <!-- CLIENT PAYMENT STATUS (renamed from "43B(h)" — this measures receivables, not the tenant's own MSME-payables position; see Supplier Payment Compliance — 43B(h) below for that) -->
   <div id="table43bhSection" class="nx-card nx-mb-16">
     <div class="nx-card-header">
-      <div class="nx-card-title">Section 43B(h) — Buyer Payment Compliance (Your Receivables)</div>
+      <div class="nx-card-title">Client Payment Status</div>
     </div>
     <div style="font-size:13px; color:var(--mid); margin-bottom:16px;">
       Job charge invoices to Udyam-registered Micro/Small manufacturing or services clients, outstanding beyond the payment deadline, for the selected month.
@@ -369,7 +372,7 @@
 
     <div class="nx-alert nx-alert-orange nx-mb-16">
       <span class="nx-alert-icon">⚠</span>
-      <span style="font-size:13px;">This report shows what your CUSTOMERS may lose as an income tax deduction if they do not pay you by 31 March. It is NOT your own Section 43B(h) compliance position. Your own 43B(h) compliance (payments to your MSE suppliers) requires separate supplier payment data and will be added in a future update.</span>
+      <span style="font-size:13px;">This report shows what your CUSTOMERS may lose as an income tax deduction if they do not pay you by 31 March — useful for chasing payment, but it is not a Section 43B(h) filing position. Your own 43B(h) exposure (payments to your MSME suppliers) is the separate report below.</span>
     </div>
 
     <div class="nx-form-group">
@@ -411,6 +414,22 @@
       <div style="font-size:11px; color:var(--mid); margin-bottom:16px;" id="table43bhDisclaimer"></div>
 
       <button id="table43bhDownloadBtn" onclick="downloadTable43bhExcel()" class="nx-btn nx-btn-primary nx-btn-full">⬇ Download Excel</button>
+    </div>
+  </div>
+
+  <!-- SUPPLIER PAYMENT COMPLIANCE — 43B(h) (the actual payables-side report) -->
+  <div id="supplier43bhSection" class="nx-card nx-mb-16">
+    <div class="nx-card-header">
+      <div class="nx-card-title">Supplier Payment Compliance — 43B(h)</div>
+    </div>
+
+    <div class="nx-alert nx-alert-orange nx-mb-16">
+      <span class="nx-alert-icon">⚠</span>
+      <span style="font-size:13px;">Under Section 43B(h), payments to MSME suppliers must be made within 45 days of the agreed credit period. Unpaid amounts beyond this limit cannot be deducted as business expenses.</span>
+    </div>
+
+    <div style="font-size:13px; color:var(--mid); padding:20px; text-align:center; border:1px dashed var(--border2); border-radius:var(--radius-sm);">
+      Supplier payment tracking coming soon — required for full 43B(h) compliance. Track advance payments in the Supplier Advances tab.
     </div>
   </div>
 
@@ -2444,6 +2463,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('table12Month').value = `${y}-${m}`;
     document.getElementById('table43bhSection').style.display = 'block';
     document.getElementById('table43bhMonth').value = `${y}-${m}`;
+    document.getElementById('supplier43bhSection').style.display = 'block';
     document.getElementById('gstr1WorkbookSection').style.display = 'block';
     document.getElementById('gstr1WorkbookMonth').value = `${y}-${m}`;
   }

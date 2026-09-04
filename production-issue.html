@@ -760,6 +760,12 @@ let company    = { name: '', address: '' };
 let manualSeed = 0;
 let currentIssueOrderId = null;      // set by submitIssue(), used by createDispatchChallan()
 let currentIssueChallanNumber = null; // set by submitIssue(), shown in the challan-created toast
+// A number drawn for an in-progress confirm attempt that has not yet succeeded.
+// Kept across a failed confirm_bom_issue call (insufficient stock, duplicate
+// cancelled, etc.) so retrying the SAME issue reuses this number instead of
+// drawing a fresh one each click and leaving a gap in the sequence — same
+// pattern as dispatch.html's currentDispatchChallanNumber (Session 1 fix).
+let pendingIssueChallanNumber = null;
 let productTypeahead = null;
 
 
@@ -1538,7 +1544,12 @@ async function submitIssue() {
     unit : row.unit
   }));
 
-  const challanNumber = await getNextChallanNumber(window.supabase, tenantId, 'bom_issue');
+  // Only draw a fresh number if this issue doesn't already have one reserved
+  // from a prior failed confirm attempt (insufficient stock, duplicate
+  // cancelled, etc.) -- otherwise every retry burns a new number and leaves a
+  // permanent gap in the sequence. See pendingIssueChallanNumber declaration.
+  const challanNumber = pendingIssueChallanNumber || await getNextChallanNumber(window.supabase, tenantId, 'bom_issue');
+  pendingIssueChallanNumber = challanNumber;
 
   // Duplicate protection lives server-side in confirm_bom_issue — it hard-blocks
   // (raises DUPLICATE_ISSUE) if the same product + batch qty + date was already
@@ -1596,6 +1607,7 @@ async function submitIssue() {
 
   currentIssueOrderId = data.order_id;
   currentIssueChallanNumber = data.challan_number;
+  pendingIssueChallanNumber = null; // consumed successfully -- clear the reservation
 
   closeModal();
   toast(
@@ -1647,6 +1659,7 @@ function resetForNewIssue() {
   manualSeed = 0;
   currentIssueOrderId = null;
   currentIssueChallanNumber = null;
+  pendingIssueChallanNumber = null;
   if (productTypeahead) productTypeahead.reset();
   document.getElementById('batchQty').value = '';
   document.getElementById('issueNotes').value = '';
