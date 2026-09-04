@@ -178,6 +178,14 @@ Mobile-first: owners use phones. Must work on mobile browser.
   stored on the invoice itself. v_p2_invoice_payment_status is the view (paid/partial/overdue/
   pending/not_applicable, 45-day hardcoded overdue threshold) — read server-side only
   (check-low-stock); never queried from the browser.
+- p2_supplier_advances — lump-sum advance payments to suppliers (Step 3.5, Sept 2 2026).
+  Columns: id, tenant_id, supplier_id (FK → p2_suppliers), payment_date, amount, reference_no,
+  notes, created_at. No DELETE policy — append-only financial record. RLS via get_my_tenant_id().
+  v_p2_supplier_advance_balance is the view: pre-aggregated subqueries on both sides to avoid
+  fan-out, explicit get_my_tenant_id() filter in every subquery (security_invoker = true alone
+  was insufficient — RLS on p2_stock_transactions did not fire correctly inside the view context
+  without explicit tenant scoping). owned_by IS NULL filter on GRN side excludes principal-owned
+  material. Balance = total_advanced - total_drawn. Negative balance renders red in UI.
 - p2_notifications — durable per-event notification record (Step 4, Aug 31 2026). Columns: id,
   tenant_id, type CHECK IN ('challan_dispatched','payment_overdue','low_stock'), title, body,
   metadata jsonb DEFAULT '{}', status CHECK IN ('queued','sent','failed') DEFAULT 'queued',
@@ -1421,6 +1429,15 @@ before the next):
 **invoices.html** — overdue-status CASE and the Date column both switched from `created_at`
 to `invoice_date`.
 
+**invoices.html changes (Sept 2, 2026):**
+- Detail modal refactor: single Detail button per row replacing inline action buttons,
+  `#invoiceDetailModal` overlay matching all-dispatch-history.html pattern.
+- Record Payment now available on Draft invoices — flips status to 'sent' on first payment,
+  single toast "Payment recorded. Invoice marked as sent."
+- Status filter expanded: added Pending Payment, Partial, Overdue options (client-side, no new
+  query, reuses `derivePaymentStatus` + `receiptsByInvoice`).
+- Mobile: DATE/MODE/PERIOD columns hidden below 768px, Detail button always visible.
+
 **invoice.html + js/invoice-pdf.js** — round-off line added to totals (on-screen and PDF);
 invoices now print/download in the correct number of physical copies per Rule 48(1)/48(2) — 3
 for goods (Original for Recipient / Duplicate for Transporter / Triplicate for Supplier), 2
@@ -1525,6 +1542,9 @@ Build sequence:
   — captured Aug 25 2026 before 2H lands. Run diff against this after
   every remaining Step 2 sub-step.
 - Step 3 — payment ledger (receipts model, TDS)
+- Step 3.5 — COMPLETE (02 Sept 2026): Supplier Advance Ledger. New tab in invoices.html.
+  p2_supplier_advances table, v_p2_supplier_advance_balance view (fan-out safe,
+  security_invoker=true, explicit get_my_tenant_id() filter in every subquery).
 - Step 4 — COMPLETE (Aug 31 2026): p2_notifications table, notify + telegram-webhook Edge
   Functions, js/notifications.js, in-app bell (js/navbar.js), Telegram deep-link binding +
   quiet hours (settings.html), payment_overdue_notify cron (jobid 8). check-low-stock-instant
@@ -1532,7 +1552,10 @@ Build sequence:
   and "Proactive Telegram layer" note) — not part of Step 4 itself. See "Shipped
   Aug 31, 2026" for full detail. Deferred to post-Step-5: Notification Centre v2
   (notifications.html, Gmail-style, Telegram deep link) — see Backlog.
-- Step 5 — principal-side one-sided mode (KPML pilot)
+- Step 5 — REVISED: One-sided mode is no longer the priority. Three KPML vendors (SS Engineering,
+  Datta Prasad, Shivprasad) are already live on Nexflow. Build target is a KPML read-only principal
+  dashboard instead — their material at each vendor, s.143 clock status, reconciliation gap. Full
+  principal-side write access follows after KPML meeting.
 - Step 6 — cross-tenant upgrade + scoped access path
 - Step 7 — gated on named requests only
 
@@ -1552,22 +1575,6 @@ Sales strategy:
   With this you answer in ten seconds and never get accused."
 
 ## Backlog — Deferred Features
-
-### Step 3.5 — Supplier Advance Ledger
-- Requested by: Datta Prasad Enterprises
-- What: lump-sum advance payments to suppliers,
-  drawn down by GRNs. Balance = advance paid
-  minus sum of (qty × rate) on GRNs from that
-  supplier in the same period.
-- New table needed: p2_supplier_advances
-  (tenant_id, supplier_id, payment_date,
-  amount, reference_no, notes)
-- UI: new tab or section, likely in
-  suppliers area of settings.html
-- Dependency: GRNs must have rate filled in
-  for drawdown math to work — verify Datta
-  Prasad's GRN data before building
-- Build after Step 4 is complete
 
 ### Coil Winder Sub-contracting Flow
 - Requested by: Datta Prasad Enterprises

@@ -85,20 +85,21 @@ supabase functions deploy invite-staff
 supabase functions deploy get-user-email
 ```
 
-### 2.3 Deploy handle-new-user function
-```bash
-supabase functions deploy handle-new-user
-```
+## Step 3: New User → Tenant Assignment (automatic, no setup needed)
 
-## Step 3: Set Up Auth Webhook
+There used to be a `handle-new-user` Edge Function here, wired up via a Supabase Auth webhook
+(`user.created` → an unauthenticated HTTP endpoint that inserted `(user_id, tenant_id, role)` with
+the service role key, trusting whatever the request body claimed). It was deleted — a POST with a
+forged `tenant_id`/`role` in the body granted the caller `owner` access to any tenant, with no
+signature check, no ownership check, and no role whitelist. It was also redundant: this exact job
+is already done correctly by the `public.handle_new_user()` **database trigger**
+(`on_auth_user_created`, see `supabase/migrations/20260803_pending_invites_and_role_fixes.sql`),
+which fires automatically on `auth.users` insert and reads `tenant_id`/`role` from the new user's
+metadata server-side, inside Postgres — nothing to deploy, configure, or point a webhook at.
 
-1. Go to Supabase Dashboard → Settings → Auth → URL Configuration
-2. Under "Auth Hooks", add a new webhook:
-   - **Event**: `user.created`
-   - **URL**: `https://<your-project-ref>.supabase.co/functions/v1/handle-new-user`
-   - **Secret**: Your service role key (for verification)
-
-This webhook ensures that when a staff member accepts an invite, they are automatically added to the owner's tenant with the correct role.
+Do not recreate the Edge Function or the Auth webhook. If a staff member isn't landing in the
+right tenant after accepting an invite, the trigger is what to check (see Troubleshooting below),
+not a webhook.
 
 ## Step 4: Set Environment Variables
 
@@ -165,8 +166,9 @@ CREATE POLICY "Users can view their tenant raw materials"
 ## Troubleshooting
 
 ### Staff not added to tenant after accepting invite
-- Check that the `handle-new-user` webhook is configured correctly
-- Check Supabase logs for webhook errors
+- Check that the `public.handle_new_user()` database trigger exists and is attached to
+  `auth.users` (`SELECT tgname FROM pg_trigger WHERE tgname = 'on_auth_user_created';`)
+- Check Supabase Postgres logs for trigger errors
 - Verify that `tenant_id` is being passed in user metadata
 
 ### "Unauthorized" error when inviting staff
@@ -192,7 +194,6 @@ CREATE POLICY "Users can view their tenant raw materials"
 - `js/navbar.js` - Added user info display
 - `supabase/functions/invite-staff/index.ts` - Edge Function to invite staff
 - `supabase/functions/get-user-email/index.ts` - Edge Function to fetch user emails
-- `supabase/functions/handle-new-user/index.ts` - Webhook handler for new users
 
 ## Next Steps
 

@@ -342,7 +342,10 @@ Deno.serve(async (req) => {
       throw new Error(`Failed to fetch tenants: ${tenantsError.message}`)
     }
 
-    const alerts: Array<{ tenant: string; count: number; success: boolean }> = []
+    const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+    const notifyUrl = `${Deno.env.get('SUPABASE_URL') ?? ''}/functions/v1/notify`
+
+    const alerts: Array<{ tenant: string; count: number; lowStockNotified: boolean; digestSent: boolean }> = []
 
     // Step 2: Process each tenant
     for (const tenant of tenants || []) {
@@ -422,66 +425,116 @@ Deno.serve(async (req) => {
       const hasLowStock = lowStockItems.length > 0
       const hasRecentGRNs = (recentGRNs || []).length > 0
       const hasPendingDispatches = (pendingDispatches || []).length > 0
+      const hasDigestContent = noRecentGRN || hasRecentGRNs || hasPendingDispatches
 
       // Nothing to report — don't send a message, that becomes noise the owner ignores
-      if (!hasLowStock && !noRecentGRN && !hasRecentGRNs && !hasPendingDispatches) {
+      if (!hasLowStock && !hasDigestContent) {
         continue
       }
 
-      const todayDisplay = new Date().toLocaleString('en-IN', {
-        timeZone: 'Asia/Kolkata',
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric'
-      })
-
-      let message = `🏭 <b>Good Morning — ${companyName}</b>\n📅 ${todayDisplay}\n`
-
+      // Low stock: insert into p2_notifications and hand off to the notify Edge
+      // Function (quiet-hours-aware, flips status to sent/failed with a reason)
+      // instead of calling the Telegram API directly — same pattern as
+      // sendPaymentOverdueNotify above. One combined row per tenant per run
+      // (not one row per material), so this stays a single Telegram message
+      // like the digest always was.
+      let lowStockNotified = false
       if (hasLowStock) {
-        message += `\n🚨 <b>Low Stock (${lowStockItems.length} items)</b>\n`
-        lowStockItems.forEach((item: StockBalanceRow) => {
+        const MAX_ITEMS = 20
+        const shown = lowStockItems.slice(0, MAX_ITEMS)
+        const remaining = lowStockItems.length - MAX_ITEMS
+
+        const lowStockLines = shown.map((item: StockBalanceRow) => {
           const stock = Number.isInteger(item.current_stock) ? item.current_stock : item.current_stock.toFixed(2)
-          message += `• <b>${item.name}</b>: ${stock} ${item.unit} (min: ${item.min_stock_level} ${item.unit})\n`
+          return `• ${item.name}: ${stock} ${item.unit} (min: ${item.min_stock_level} ${item.unit})`
         })
+        const lowStockBody = `${lowStockItems.length} item(s) below minimum stock level:\n${lowStockLines.join('\n')}${remaining > 0 ? `\n...and ${remaining} more. Check the app for the full list.` : ''}`
+
+        const { data: notifRow, error: notifInsertError } = await supabase
+          .from('p2_notifications')
+          .insert({
+            tenant_id: tenantId,
+            type: 'low_stock',
+            title: '⚠️ Low Stock Alert',
+            body: lowStockBody,
+            metadata: {
+              materials: lowStockItems.map((item: StockBalanceRow) => ({
+                raw_material_id: item.raw_material_id,
+                name: item.name,
+                current_stock: item.current_stock,
+                min_stock_level: item.min_stock_level,
+                unit: item.unit
+              }))
+            },
+            status: 'queued'
+          })
+          .select('id')
+          .single()
+
+        if (notifInsertError || !notifRow) {
+          console.error(`Error inserting low_stock notification for tenant ${tenantId}:`, notifInsertError)
+        } else {
+          lowStockNotified = true
+          fetch(notifyUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${anonKey}` },
+            body: JSON.stringify({ notification_id: notifRow.id })
+          }).catch(() => {})
+        }
       }
 
-      if (noRecentGRN) {
-        message += `\n📦 <b>No GRN logged in 3+ days</b> — remember to record incoming stock.\n`
-      }
+      // Everything else stays a single direct Telegram message — none of these
+      // have a matching p2_notifications type, so they can't move to the
+      // insert-then-notify pipeline without a schema change.
+      let digestSent = false
+      if (hasDigestContent) {
+        const todayDisplay = new Date().toLocaleString('en-IN', {
+          timeZone: 'Asia/Kolkata',
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric'
+        })
 
-      if (hasRecentGRNs) {
-        // Group by material, sum quantities
-        const grnByMaterial = new Map<string, { total: number; unit: string }>()
-        for (const grn of (recentGRNs || []) as GRNRow[]) {
-          const mat = materialMap.get(grn.raw_material_id)
-          if (!mat) continue
-          const existing = grnByMaterial.get(mat.name)
-          if (existing) {
-            existing.total += grn.quantity ?? 0
-          } else {
-            grnByMaterial.set(mat.name, { total: grn.quantity ?? 0, unit: mat.unit })
+        let message = `🏭 <b>Good Morning — ${companyName}</b>\n📅 ${todayDisplay}\n`
+
+        if (noRecentGRN) {
+          message += `\n📦 <b>No GRN logged in 3+ days</b> — remember to record incoming stock.\n`
+        }
+
+        if (hasRecentGRNs) {
+          // Group by material, sum quantities
+          const grnByMaterial = new Map<string, { total: number; unit: string }>()
+          for (const grn of (recentGRNs || []) as GRNRow[]) {
+            const mat = materialMap.get(grn.raw_material_id)
+            if (!mat) continue
+            const existing = grnByMaterial.get(mat.name)
+            if (existing) {
+              existing.total += grn.quantity ?? 0
+            } else {
+              grnByMaterial.set(mat.name, { total: grn.quantity ?? 0, unit: mat.unit })
+            }
           }
+
+          let grnSection = `\n✅ <b>Yesterday's GRNs (${(recentGRNs || []).length} entries, ${grnByMaterial.size} material${grnByMaterial.size !== 1 ? 's' : ''})</b>\n`
+          for (const [name, data] of grnByMaterial) {
+            const total = Number.isInteger(data.total) ? data.total : data.total.toFixed(2)
+            grnSection += `• <b>${name}</b>: ${total} ${data.unit}\n`
+          }
+          message += grnSection
         }
 
-        let grnSection = `\n✅ <b>Yesterday's GRNs (${(recentGRNs || []).length} entries, ${grnByMaterial.size} material${grnByMaterial.size !== 1 ? 's' : ''})</b>\n`
-        for (const [name, data] of grnByMaterial) {
-          const total = Number.isInteger(data.total) ? data.total : data.total.toFixed(2)
-          grnSection += `• <b>${name}</b>: ${total} ${data.unit}\n`
+        if (hasPendingDispatches) {
+          message += `\n⏳ <b>Pending Dispatches (${(pendingDispatches || []).length})</b>\n`
+          ;(pendingDispatches || []).forEach((dispatch: DispatchRow) => {
+            const daysPending = Math.floor(
+              (Date.now() - new Date(dispatch.created_at).getTime()) / (1000 * 60 * 60 * 24)
+            )
+            message += `• Challan #${dispatch.challan_number || dispatch.id} — pending for ${daysPending} days\n`
+          })
         }
-        message += grnSection
-      }
 
-      if (hasPendingDispatches) {
-        message += `\n⏳ <b>Pending Dispatches (${(pendingDispatches || []).length})</b>\n`
-        ;(pendingDispatches || []).forEach((dispatch: DispatchRow) => {
-          const daysPending = Math.floor(
-            (Date.now() - new Date(dispatch.created_at).getTime()) / (1000 * 60 * 60 * 24)
-          )
-          message += `• Challan #${dispatch.challan_number || dispatch.id} — pending for ${daysPending} days\n`
-        })
+        digestSent = await sendTelegramMessage(telegramChatId, message)
       }
-
-      const success = await sendTelegramMessage(telegramChatId, message)
 
       const totalCount =
         lowStockItems.length + (recentGRNs || []).length + (pendingDispatches || []).length
@@ -489,7 +542,8 @@ Deno.serve(async (req) => {
       alerts.push({
         tenant: companyName,
         count: totalCount,
-        success
+        lowStockNotified,
+        digestSent
       })
     }
 

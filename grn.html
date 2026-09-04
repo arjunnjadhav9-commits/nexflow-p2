@@ -658,8 +658,7 @@
             const validRows = grnRows.filter(row => row.material_id && row.quantity && parseFloat(row.quantity) > 0);
             if (validRows.length === 0) { toast(lang==='mr' ? 'कृपया किमान एक वैध ओळ जोडा' : 'Please add at least one valid material with quantity', 'error'); submitButton.disabled = false; return; }
 
-            const { data: { user } } = await window.supabase.auth.getUser();
-            const tid = user.id;
+            const tid = tenantId;
 
             const sel = suppliers.find(s => s.id === supplierId);
             const supplierName = sel ? sel.name : null;
@@ -724,8 +723,7 @@
             const mobile = document.getElementById('newSupplierMobile').value.trim();
             if (!name || !mobile) { toast('Please enter supplier name and mobile', 'error'); return; }
             try {
-                const { data: { user } } = await window.supabase.auth.getUser();
-                const tid = user.id;
+                const tid = tenantId;
                 const { data, error } = await window.supabase
                     .from('p2_suppliers').insert({ tenant_id: tid, name, mobile, is_active: true }).select().single();
                 if (error) throw error;

@@ -249,6 +249,11 @@
                 <div>Your registered turnover bracket may require e-invoicing (IRN) for this document. Nexflow does not generate an IRN — verify with your CA before sharing this invoice externally.</div>
             </div>
 
+            <div id="invoiceModalRatePrefillBanner" class="nx-alert nx-alert-orange" style="display:none; margin-bottom:16px;">
+                <span class="nx-alert-icon">⚠</span>
+                <div>Rate pre-filled from price history — verify before saving. Do not use KPML purchase rates for job work invoices.</div>
+            </div>
+
             <div class="nx-table-wrap" style="max-height:260px; overflow-y:auto; margin-bottom:16px;">
                 <table class="nx-table" style="font-size:13px;">
                     <thead>
@@ -270,6 +275,13 @@
                     <option value="igst">IGST</option>
                     <option value="none">None</option>
                 </select>
+            </div>
+
+            <div id="invoiceModalRateConfirmGroup" style="display:none; margin-bottom:16px;">
+                <label style="display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer;">
+                    <input type="checkbox" id="invoiceModalRateConfirmCheckbox">
+                    I have verified this rate is correct
+                </label>
             </div>
 
             <div id="invoiceModalError" class="nx-alert nx-alert-red" style="display:none; margin-bottom:16px;">
@@ -792,6 +804,11 @@
             document.getElementById('invoiceModalError').style.display = 'none';
             document.getElementById('invoiceModalAatoBanner').style.display =
                 (aatoBracket === '5cr_to_10cr' || aatoBracket === 'above_10cr') ? 'flex' : 'none';
+            // Reset the rate-prefill warning/checkbox every time the modal opens for a
+            // (possibly different) order — this state must never leak between orders.
+            document.getElementById('invoiceModalRatePrefillBanner').style.display = 'none';
+            document.getElementById('invoiceModalRateConfirmGroup').style.display = 'none';
+            document.getElementById('invoiceModalRateConfirmCheckbox').checked = false;
             document.getElementById('invoiceModalItems').innerHTML =
                 '<tr><td colspan="4" style="text-align:center; color:var(--mid); padding:16px;">Loading...</td></tr>';
             document.getElementById('invoiceModal').style.display = 'flex';
@@ -857,14 +874,27 @@
 
                 invoiceModalItems = items.map(it => {
                     const key = usesProductPricing ? it.product_id : it.raw_material_id;
+                    const rate = key ? (priceById.get(key) ?? '') : '';
+                    // Datta Prasad's p2_product_prices holds KPML SAP PO purchase
+                    // rates on 97 records — wrong for job work invoicing. Flag any
+                    // item whose rate came from that table so the modal can force a
+                    // deliberate confirmation before it's used, instead of silently
+                    // accepting KPML's own purchase rate as the invoice rate.
+                    const prefilledFromProductPrice = usesProductPricing && !!key && priceById.has(key);
                     return {
                         dispatch_item_id: it.id,
                         description: it.product_id ? (it.p2_products?.name || 'Unknown Item') : (it.material_name || it.material_code || 'Unknown Item'),
                         qty: it.qty_dispatched,
                         unit: it.unit,
-                        rate: key ? (priceById.get(key) ?? '') : ''
+                        rate,
+                        prefilledFromProductPrice,
+                        originalRate: String(rate)
                     };
                 });
+
+                const anyPrefilledFromProductPrice = invoiceModalItems.some(it => it.prefilledFromProductPrice);
+                document.getElementById('invoiceModalRatePrefillBanner').style.display = anyPrefilledFromProductPrice ? 'flex' : 'none';
+                document.getElementById('invoiceModalRateConfirmGroup').style.display = anyPrefilledFromProductPrice ? 'block' : 'none';
 
                 const tbody = document.getElementById('invoiceModalItems');
                 tbody.innerHTML = '';
@@ -905,6 +935,22 @@
             document.getElementById('invoiceModalConfirm').addEventListener('click', async () => {
                 if (!invoiceModalOrderId) return;
                 document.getElementById('invoiceModalError').style.display = 'none';
+
+                // Block on an unmodified, pre-filled-from-price-history rate unless
+                // the user has explicitly checked "I have verified this rate is
+                // correct" — the goal is making the wrong action require a
+                // deliberate confirmation, not blocking it outright.
+                let hasUnverifiedPrefill = false;
+                document.querySelectorAll('.invoice-rate-input').forEach(input => {
+                    const idx = Number(input.dataset.idx);
+                    const item = invoiceModalItems[idx];
+                    if (!item || !item.prefilledFromProductPrice) return;
+                    if (input.value === item.originalRate) hasUnverifiedPrefill = true;
+                });
+                if (hasUnverifiedPrefill && !document.getElementById('invoiceModalRateConfirmCheckbox').checked) {
+                    showInvoiceModalError('Please verify the pre-filled rate(s) and check "I have verified this rate is correct" before generating this invoice.');
+                    return;
+                }
 
                 const itemRates = [];
                 document.querySelectorAll('.invoice-rate-input').forEach(input => {

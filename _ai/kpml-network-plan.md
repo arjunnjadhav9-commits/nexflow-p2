@@ -8,6 +8,11 @@
 > **Load order for a new session:** `CLAUDE.md` → this file → `kpml-network-critique.md` (for the
 > reasoning behind every decision here).
 
+> **Sept 2026 update:** SS Engineering, Datta Prasad Enterprises, and Shivprasad Industries are all
+> live as KPML job workers on Nexflow. One-sided mode (Step 5) is no longer the first KPML
+> deliverable — the priority is a read-only principal dashboard showing KPML their material across
+> all three vendors. See Section 16 for revised timeline.
+
 ---
 
 ## 1. The Core Insight
@@ -970,18 +975,24 @@ already run this, here is your s.143 exposure"* is a product sale with reference
 **The mental model: KPML is the destination, not the next step. The next step is always the next paying
 client.**
 
+**Revised (Sept 2026):** Step 5 one-sided mode is superseded for the immediate term. Three KPML
+vendors — SS Engineering, Datta Prasad Enterprises, and Shivprasad Industries — are already live on
+Nexflow, so the demo exists today on real data, not a hypothetical. Revised path: KPML read-only
+dashboard (Oct) → KPML meeting with a live vendor demo (Nov) → paid pilot agreement (Dec) → full
+cross-tenant write access after the pilot.
+
 | Timeframe | Goal |
 |---|---|
 | **Now – 1 month** | Steps 1, 2, 3 complete. Step 4 notifications in progress. Datta Prasad Pro conversion due 10 Sep 2026 |
-| **1–3 months** | Step 2 complete (the "KPML's copper / your copper" demo exists) · Step 3 payments · referrals, clients 4 and 5 |
-| **3–4 months** | Step 4 notifications · Step 5 built · first KPML contact through a vendor relationship |
-| **4–6 months** | KPML meeting with a **live demo on a real vendor's account**, not a slide |
-| **6–9 months** | Paid pilot: 5 vendors, 90 days, one-sided — no vendor onboarding required |
-| **9–12 months** | Step 6 cross-tenant upgrade for vendors converted during the pilot |
+| **October 2026** | KPML read-only principal dashboard — material at each of the three live vendors, s.143 clock status, reconciliation gap |
+| **November 2026** | KPML meeting with a **live demo on all three real vendor accounts**, not a slide |
+| **December 2026** | Paid pilot agreement |
+| **After the pilot** | Full principal-side write access · Step 6 cross-tenant upgrade for vendors converted during the pilot |
 | **12 months+** | Step 7, each item gated on a named request |
 
-This is **not slower** than the original plan. It front-loads work that pays regardless of KPML, and makes
-the pilot deliverable **months earlier**, because it no longer waits on thirty vendor onboardings.
+This is **not slower** than the original plan. It front-loads work that pays regardless of KPML, and the
+pilot is now anchored to three vendors' real data already live on the platform, not a hypothetical
+one-sided build.
 
 ---
 

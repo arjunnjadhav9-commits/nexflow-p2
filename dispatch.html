@@ -414,6 +414,12 @@
         let products = [];
         let dispatchItems = [];
         let currentDispatchId = null;
+        // The order's challan_number as currently known to this form — a real,
+        // sequence-drawn number once confirmed, or a local 'DRAFT-xxxxxxxx'
+        // placeholder while still a draft that has never been confirmed. Kept
+        // in sync with currentDispatchId so a draft can be re-saved repeatedly
+        // without burning a new real challan number each time.
+        let currentDispatchChallanNumber = null;
         let tenantId = null;
         let productTypeahead = null;
 
@@ -832,6 +838,7 @@
                 if (itemsErr) throw itemsErr;
 
                 currentDispatchId = order.id;
+                currentDispatchChallanNumber = order.challan_number;
                 document.getElementById('clientName').value = order.client_name;
                 document.getElementById('clientAddress').value = order.client_address || '';
                 document.getElementById('poNumber').value = order.po_number || '';
@@ -1045,7 +1052,21 @@
                     }
                 }
 
-                const rawChallan = await getNextChallanNumber(window.supabase, tenantId, 'product');
+                // Only draw a real, permanently-consumed challan number at confirm
+                // time — never on a draft save. Previously this ran unconditionally
+                // on every save (draft or confirm), so saving the same draft twice
+                // burned two numbers and left a permanent gap in the series; every
+                // abandoned draft burned one too. A draft that has no real number
+                // yet gets a local placeholder instead, replaced with a real number
+                // only when it's actually confirmed.
+                let rawChallan;
+                if (targetStatus === 'confirmed') {
+                    rawChallan = (!currentDispatchChallanNumber || currentDispatchChallanNumber.startsWith('DRAFT-'))
+                        ? await getNextChallanNumber(window.supabase, tenantId, 'product')
+                        : currentDispatchChallanNumber;
+                } else {
+                    rawChallan = currentDispatchChallanNumber || ('DRAFT-' + crypto.randomUUID().slice(0, 8).toUpperCase());
+                }
                 const payload = {
                     tenant_id: tenantId || localStorage.getItem('supabase_tenant_id') || '00000000-0000-0000-0000-000000000000',
                     created_by: tenantId || localStorage.getItem('supabase_tenant_id') || '00000000-0000-0000-0000-000000000000',
@@ -1093,6 +1114,7 @@
                 // inserting a duplicate on the next click — previously this was
                 // only set after the entire save had already succeeded.
                 currentDispatchId = orderId;
+                currentDispatchChallanNumber = payload.challan_number;
 
                 const { error: delErr } = await window.supabase
                     .from('p2_dispatch_items')
@@ -1417,6 +1439,7 @@
             document.getElementById('dispatchForm').reset();
             dispatchItems = [];
             currentDispatchId = null;
+            currentDispatchChallanNumber = null;
             renderProductsTable();
         }
 
