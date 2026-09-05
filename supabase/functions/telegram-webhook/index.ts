@@ -64,7 +64,7 @@ Deno.serve(async (req) => {
 
     const { data: settingsRow, error: fetchError } = await supabase
       .from('p2_tenant_settings')
-      .select('tenant_id, company_name')
+      .select('tenant_id, company_name, telegram_bind_token_expires_at')
       .eq('telegram_bind_token', token)
       .maybeSingle()
 
@@ -74,6 +74,11 @@ Deno.serve(async (req) => {
     }
 
     if (!settingsRow) {
+      await replyToChat(chatId, 'Link expired or invalid. Generate a new link from Nexflow Settings.')
+      return ok()
+    }
+
+    if (settingsRow.telegram_bind_token_expires_at && new Date(settingsRow.telegram_bind_token_expires_at) < new Date()) {
       await replyToChat(chatId, 'Link expired or invalid. Generate a new link from Nexflow Settings.')
       return ok()
     }

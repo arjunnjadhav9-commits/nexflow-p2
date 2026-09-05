@@ -403,6 +403,10 @@
                     window.location.href = 'index.html?denied=1';
                     return;
                 }
+                if (!['owner','supervisor'].includes(role)) {
+                    document.getElementById('add-product-form').style.display = 'none';
+                    document.getElementById('add-ingredient-form').style.display = 'none';
+                }
 
                 const { data: { user } } = await window.supabase.auth.getUser();
                 if (!user) throw new Error('No user found');
@@ -612,12 +616,13 @@
                     <td class="bom-badge-cell">${buildBomBadgeHtml(product.id, product.hasBOM)}</td>
                     <td style="text-align:center;">
                         <div style="display:flex; gap:6px; justify-content:center;">
+                            ${['owner','supervisor'].includes(getUserRole()) ? `
                             <button onclick="editProduct('${product.id}', '${product.name.replace(/'/g, "\\'")}', '${(product.description || '').replace(/'/g, "\\'")}', '${product.unit}', '${(product.hsn_sac || '').replace(/'/g, "\\'")}', '${(product.default_po_number || '').replace(/'/g, "\\'")}', '${product.uqc || ''}')"
                                     class="nx-btn nx-btn-secondary nx-btn-sm"
                                     data-en="Edit" data-mr="संपादित करा">Edit</button>
                             <button onclick="deactivateProduct('${product.id}')"
                                     class="nx-btn nx-btn-danger nx-btn-sm"
-                                    data-en="Deactivate" data-mr="निष्क्रिय करा">Deactivate</button>
+                                    data-en="Deactivate" data-mr="निष्क्रिय करा">Deactivate</button>` : ''}
                         </div>
                     </td>
                 `;
@@ -702,9 +707,10 @@
                     <td style="text-align:right;">${item.qty_per_unit}</td>
                     <td style="color:var(--mid);">${item.unit || ''}</td>
                     <td style="text-align:center;">
+                        ${['owner','supervisor'].includes(getUserRole()) ? `
                         <button onclick="deleteIngredient('${item.id}')"
                                 class="nx-btn nx-btn-danger nx-btn-sm"
-                                data-en="Remove" data-mr="काढून टाका">Remove</button>
+                                data-en="Remove" data-mr="काढून टाका">Remove</button>` : ''}
                     </td>
                 `;
                 tbody.appendChild(row);
@@ -739,6 +745,7 @@
             // Add Product
             document.getElementById('add-product-form').addEventListener('submit', async (e) => {
                 e.preventDefault();
+                if (!['owner','supervisor'].includes(getUserRole())) return;
                 const formData = new FormData(e.target);
                 const productName = formData.get('name');
 
@@ -824,6 +831,7 @@
             // Add Ingredient
             document.getElementById('add-ingredient-form').addEventListener('submit', async (e) => {
                 e.preventDefault();
+                if (!['owner','supervisor'].includes(getUserRole())) return;
                 const formData   = new FormData(e.target);
                 const materialId = formData.get('material_id');
                 if (!materialId) {
@@ -890,6 +898,7 @@
             // Edit Product form
             document.getElementById('edit-product-form').addEventListener('submit', async (e) => {
                 e.preventDefault();
+                if (!['owner','supervisor'].includes(getUserRole())) return;
                 const id          = document.getElementById('edit-product-id').value;
                 const name        = document.getElementById('edit-product-name').value;
                 const description = document.getElementById('edit-product-description').value;
@@ -916,6 +925,7 @@
         }
 
         async function deleteIngredient(bomItemId) {
+            if (!['owner','supervisor'].includes(getUserRole())) return;
             const lang = localStorage.getItem('nexflow_lang') || 'en';
             if (!confirm(lang === 'mr' ? 'हा घटक काढायचा आहे याची खात्री आहे?' : 'Are you sure you want to remove this ingredient?')) return;
             try {
@@ -934,6 +944,7 @@
         }
 
         function editProduct(id, name, description, unit, hsnSac = '', defaultPo = '', uqc = '') {
+            if (!['owner','supervisor'].includes(getUserRole())) return;
             document.getElementById('edit-product-id').value          = id;
             document.getElementById('edit-product-name').value        = name;
             document.getElementById('edit-product-description').value = description;
@@ -949,6 +960,7 @@
         }
 
         async function deactivateProduct(id) {
+            if (!['owner','supervisor'].includes(getUserRole())) return;
             const lang = localStorage.getItem('nexflow_lang') || 'en';
             if (!confirm(lang === 'mr' ? 'हे उत्पादन निष्क्रिय करायचे आहे का?' : 'Are you sure you want to deactivate this product?')) return;
             try {

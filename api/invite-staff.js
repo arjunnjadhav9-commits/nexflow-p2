@@ -74,6 +74,17 @@ module.exports = async function handler(req, res) {
     }
     const normalizedEmail = String(email).trim().toLowerCase();
 
+    // role reaches this insert unchecked from the client-supplied body —
+    // whitelist against the same roles this function already knows how to
+    // label, ported from supabase/functions/invite-staff/index.ts (the
+    // dead Edge Function this Vercel function replaced, which had this
+    // check but was never actually called by settings.html).
+    const validRoles = Object.keys(ROLE_LABELS).filter((r) => r !== 'owner');
+    if (!validRoles.includes(role)) {
+      res.status(400).json({ error: `role must be one of: ${validRoles.join(', ')}` });
+      return;
+    }
+
     const { data: existingPending } = await supabaseAdmin
       .from('p2_pending_invites')
       .select('id')

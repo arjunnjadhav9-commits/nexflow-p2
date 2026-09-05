@@ -11,6 +11,7 @@
     <link rel="stylesheet" href="css/nexflow-design.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="js/supabase-client.js"></script>
+    <script src="js/roles.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/utils.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
@@ -453,7 +454,7 @@
             document.getElementById('client-details').innerHTML =
                 `<div style="font-weight:700;">${order.client_name || 'N/A'}</div><div>${order.client_address || ''}</div>`;
 
-            if (order.dispatch_type === 'bom_issue' && !order.client_name) {
+            if (order.dispatch_type === 'bom_issue' && !order.client_name && ['owner','supervisor'].includes(getUserRole())) {
                 document.getElementById('editClientBtn').style.display = '';
             }
 
@@ -574,6 +575,7 @@
         let editModeActive = false;
 
         function toggleEditMode() {
+            if (!['owner','supervisor'].includes(getUserRole())) return;
             editModeActive = !editModeActive;
             const btn = document.getElementById('editTextBtn');
 
@@ -642,6 +644,7 @@
         }
 
         function openEditClientModal() {
+            if (!['owner','supervisor'].includes(getUserRole())) return;
             document.getElementById('ec-client-name').value    = window._challanOrder?.client_name || '';
             document.getElementById('ec-client-address').value = window._challanOrder?.client_address || '';
             document.getElementById('ec-po-number').value      = window._challanOrder?.po_number || '';
@@ -704,18 +707,21 @@
                 // Persist client for future autocomplete suggestions
                 const { data: { user } } = await window.supabase.auth.getUser();
                 if (user && clientName) {
+                    // tenant_id = user's own id for an owner, but for an invited
+                    // staff member their own auth user_id is NOT the tenant.
+                    const tenantId = user.user_metadata?.tenant_id || user.id;
                     // Best-effort autofill-suggestion writes, not the primary
                     // save (already succeeded above) — a failure here doesn't
                     // warrant interrupting the user, but it was previously
                     // discarded with zero trace at all, not even a log.
                     window.supabase.from('p2_clients').upsert(
-                        { tenant_id: user.id, name: clientName, address: clientAddress || null },
+                        { tenant_id: tenantId, name: clientName, address: clientAddress || null },
                         { onConflict: 'tenant_id,name' }
                     ).then(() => {}).catch(err => console.error('Failed to save client autofill:', err));
 
                     if (poNumber) {
                         window.supabase.from('p2_client_po_numbers').upsert(
-                            { tenant_id: user.id, client_name: clientName, po_number: poNumber },
+                            { tenant_id: tenantId, client_name: clientName, po_number: poNumber },
                             { onConflict: 'tenant_id,client_name,po_number' }
                         ).then(() => {}).catch(err => console.error('Failed to save PO number autofill:', err));
                     }
@@ -975,6 +981,13 @@
         document.addEventListener('DOMContentLoaded', async () => {
             const authed = await checkAuth();
             if (!authed) return;
+            if (!canAccess(getUserRole(), 'dispatch_history')) {
+                window.location.href = 'index.html?denied=1';
+                return;
+            }
+            if (!['owner','supervisor'].includes(getUserRole())) {
+                document.getElementById('editTextBtn').style.display = 'none';
+            }
             const saved = localStorage.getItem('nexflow_lang') || 'en';
             applyLang(saved);
             const btn = document.getElementById('lang-toggle');

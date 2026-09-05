@@ -606,13 +606,14 @@
                                 title="Print challan">
                                 ${t('Challan','चालन')}
                             </button>
+                            ${['owner','supervisor'].includes(getUserRole()) ? `
                             <button
                                 onclick="cancelChallanRow('${order.id}', '${(order.challan_number||'').replace(/'/g,"")}')"
                                 class="nx-btn nx-btn-ghost nx-btn-sm"
                                 style="color:#ef4444;"
                                 title="Cancel">
                                 ${t('Cancel','रद्द')}
-                            </button>` : ''}
+                            </button>` : ''}` : ''}
                             ${isCancelled ? `<span style="color:var(--mid); font-size:11px;">${t('Reversed','परत केले')}</span>` : ''}
                             ${isCancelled && getUserRole() === 'owner' ? `
                             <button
@@ -706,9 +707,9 @@
                 printBtn.onclick = () => window.open(`/challan.html?id=${orderId}`, '_blank');
             }
 
-            // Cancel button — only for confirmed, non-cancelled orders
+            // Cancel button — only for confirmed, non-cancelled orders, owner/supervisor only
             const cancelBtn = document.getElementById('detailCancelBtn');
-            if (!isDraft && !isCancelled) {
+            if (!isDraft && !isCancelled && ['owner','supervisor'].includes(getUserRole())) {
                 cancelBtn.style.display = 'block';
                 cancelBtn.onclick = () => cancelChallanRow(orderId, order.challan_number || '');
             } else {

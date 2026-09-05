@@ -1721,6 +1721,103 @@ live tenant," always diff against the most recent prior snapshot, not the Step-2
   condition, not principal count. 0-principal job-worker gets "Own Stock only" state with
   orange hint pointing to Settings.
 
+## Shipped Sept 5, 2026 — Session 6 (Phase 0)
+
+Role/permission audit fixes and the P0 GSTR-1 compliance holes from `_ai/codebase-audit.md`
+and `_ai/compliance-and-field-report.md`, plus the two items Session 5 left open in its own
+Known Open Items list — F3 and F9, both resolved below. Grouped P0/P1/P2 per the execution
+plan. All five migrations applied directly via Supabase SQL Editor — no migration files for
+any of them, same as the set_tenant_id() precedent above.
+
+### P0 — Invoice generation compliance (live GSTR-1 exposure)
+- **confirmGenerateInvoice** (agent-query/index.ts): new `SALE_INVOICEABLE_PURPOSES`
+  constant (`sale`, `direct_supply_from_jobworker` — the two `ownershipChanges: true`
+  values in js/movement-purpose.js). Rejects with a 400 + clear error string when
+  `order.movement_purpose` isn't one of these, checked immediately after the existing
+  status check, before any client lookup or item work. Duplicated-constant convention
+  matches the existing `JOB_WORK_MOVEMENT_PURPOSES` set (no shared module system between
+  the browser script and this Deno function).
+- **confirmConsolidatedInvoice + previewConsolidatedInvoice** (agent-query/index.ts): both
+  dispatch-order sweep queries now add `.in('movement_purpose', ['sale',
+  'direct_supply_from_jobworker'])`. Job-work dispatches are silently excluded from the
+  sweep (never fetched, no error surfaced) — fixes F3 (consolidated invoices could sweep
+  job_work_return challans into a client bill). Applied to both preview and confirm so the
+  two can never disagree on what's billable.
+
+### P1 — Role and permission fixes
+- **Cancel/Amend buttons**: gated to `['owner','supervisor']` on all-dispatch-history.html
+  (row + Detail modal, both Cancel and Amend), dispatch-history.html, issue-history.html,
+  rm-dispatch-history.html (row + Detail modal Cancel only — no separate Amend button
+  exists on these three). Operator previously saw and could use all of these.
+- **Generate Invoice** (all-dispatch-history.html): role check flipped from
+  `currentRole !== 'accountant'` to `['owner','supervisor','accountant'].includes(currentRole)`
+  — accountant now allowed, operator now blocked. Plan gate (`canInvoice`) unchanged.
+- **Cancel Invoice** (invoices.html): restricted to `currentRole === 'owner'` only (was:
+  any role except accountant, i.e. supervisor could cancel a tax invoice with no audit
+  trail). Audit-trail columns (cancelled_at/cancelled_by/cancel_reason) added to the schema
+  this session — see Migrations below — but cancelInvoice() itself is not yet extended to
+  write them; that's a follow-up, not blocked on this fix.
+- **challan.html**: page-level role gate added (previously none — any authenticated role,
+  including storekeeper, could open and edit any challan by URL). Read access:
+  `canAccess(role,'dispatch_history')` — extends automatically to accountant now that
+  P2's roles.js grant (below) adds dispatch_history to that role. Edit access (Edit Client
+  / Edit Text buttons, plus their handlers `toggleEditMode()`/`openEditClientModal()`):
+  `['owner','supervisor']` only, checked both at button-visibility and inside the handlers
+  themselves. Required adding `<script src="js/roles.js">` to the file — it was missing
+  entirely, so `canAccess()` was never callable here before.
+- **products.html**: all 6 BOM/product mutation entry points (`add-product-form`,
+  `add-ingredient-form`, `edit-product-form` submit handlers, `deleteIngredient()`,
+  `editProduct()`, `deactivateProduct()`) now check `['owner','supervisor'].includes(getUserRole())`
+  and return early otherwise. Corresponding Edit/Deactivate/Remove buttons and the two Add
+  forms hidden from operator at render/init time — operator can still view products/BOM.
+- **export.html**: page-level gate tightened from `canAccess(role,'reports')` (included
+  operator) to a direct `['owner','supervisor','accountant']` check — operator no longer
+  reaches the Tally/Zoho export, Purchase Register or GST Summary sheet. `TABLE13_ROLES`
+  (unchanged) is now a redundant subset of the page gate. Also fixed in the same pass:
+  `#gstr1WorkbookSection` had no `display:none` default, unlike its four sibling
+  TABLE13_ROLES-gated sections, so it was visible by default regardless of role — added
+  the missing CSS rule.
+- **Invite-staff role whitelist**: ported from the dead `supabase/functions/invite-staff/index.ts`
+  (lines 71-77) into the live `api/invite-staff.js`, which had no whitelist at all and
+  passed `role` straight into the invite unchecked. Rejects any role except `supervisor,
+  storekeeper, operator, accountant` with a 400. `settings.html`'s invite dropdown no
+  longer offers "Owner" as an option (an owner could previously mint a second full owner).
+
+### P2 — Lower-risk fixes
+- **js/roles.js**: accountant gains `grn` and `dispatch_history` (was: `dashboard, reports,
+  invoices` only) — read access to grn-history.html and all-dispatch-history.html.
+  Sequenced after the P1 Cancel/Amend/Generate-Invoice fixes above — grn-history.html has
+  zero write paths (pure read), and all-dispatch-history.html's write buttons were already
+  re-gated by P1 before this landed.
+- **Telegram bind-token expiry**: `telegram_bind_token_expires_at` set to now+10min on
+  generate (settings.html), checked in telegram-webhook/index.ts before completing a bind
+  (rejects with the same "expired or invalid" message as a not-found token). Previously a
+  bind token never expired server-side — only a 2-minute client-side poll gave up on it.
+- **check-low-stock/index.ts**: low-stock alert list now excludes deactivated materials.
+  NOT implemented as `.eq('is_active', true)` on `v_p2_stock_balance` — that view has no
+  such column and would 500 (same trap already documented for `owned_by` on this view).
+  Instead fetches active `p2_raw_materials` ids separately and intersects client-side,
+  same pattern as agent-query's `buildContext()`. The GRN-name-resolution map used lower in
+  the same function is deliberately left unfiltered, so yesterday's GRNs still resolve a
+  name even for a since-deactivated material.
+- **challan.html**: `saveClientInfo()`'s two autofill upserts (`p2_clients`,
+  `p2_client_po_numbers`) now resolve `tenant_id = user.user_metadata?.tenant_id || user.id`
+  instead of raw `user.id` — this function had no tenantId resolution at all before (a
+  supervisor editing client info on a challan wrote an orphan row).
+- **settings.html**: `add-client-form` handler now resolves `tenantId` the same way
+  instead of `user.id` — fixes F9 (staff couldn't create principal clients because the
+  insert targeted the wrong tenant). Latent in practice since this page is owner-only
+  today, but removes the footgun for if that ever changes.
+
+### Migrations applied (SQL Editor, no migration files)
+- `p2_invoices`: added `cancelled_at timestamptz`, `cancelled_by uuid REFERENCES
+  auth.users(id)`, `cancel_reason text`; added `CHECK (status IN ('draft','sent','cancelled'))`
+  (the column previously had no CHECK constraint at all).
+- `p2_stock_transactions(tenant_id, transaction_type, transaction_date)` — new index.
+- `p2_stock_transactions(tenant_id, raw_material_id)` — new index.
+- `p2_invoices(tenant_id, invoice_date)` — new index.
+- `p2_tenant_settings`: added `telegram_bind_token_expires_at timestamptz`.
+
 ## GST Scope — PERMANENTLY LOCKED
 Nexflow P2 generates tax invoices for client billing. It does NOT handle GST filing, GSTR
 generation, or financial reporting. GSTR-1/GSTR-3B submission is Tally's job. Never revisit

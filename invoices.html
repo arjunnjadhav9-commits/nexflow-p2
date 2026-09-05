@@ -963,7 +963,7 @@
             }
 
             const cancelBtn = document.getElementById('invoiceDetailCancelBtn');
-            if (inv.status !== 'cancelled' && currentRole !== 'accountant') {
+            if (inv.status !== 'cancelled' && currentRole === 'owner') {
                 cancelBtn.style.display = '';
                 cancelBtn.onclick = () => {
                     document.getElementById('invoiceDetailModal').style.display = 'none';

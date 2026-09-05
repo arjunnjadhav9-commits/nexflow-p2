@@ -113,6 +113,11 @@
   #supplier43bhSection { display: none; }
   #table43bhWarnBox { display: none; }
   #table43bhResults { display: none; }
+
+  /* GSTR-1 Excel Workbook — was missing its default-hidden rule, unlike its
+     four TABLE13_ROLES-gated siblings above, so it was visible by default
+     to any role clearing the page gate regardless of the role check below. */
+  #gstr1WorkbookSection { display: none; }
 </style>
 </head>
 <body>
@@ -2433,13 +2438,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   const authed = await checkAuth();
   if (!authed) return;
 
-  // Role gate — this page had none at all (no ROLE_PERMISSIONS entry for
-  // 'export' exists), unlike its sibling CA-facing pages (ca-report.html,
-  // reports.html), letting any role reach the full 17-column GST export
-  // including the GST Summary sheet's ITC/net-payable totals. Mirrors the
-  // same 'reports' gate those pages already use.
+  // Role gate — 'reports' (used previously) includes operator, which let
+  // operator reach the full 17-column GST export including the Purchase
+  // Register and the GST Summary sheet's ITC/net-payable totals. Direct
+  // role check instead, matching TABLE13_ROLES below (owner/supervisor/
+  // accountant) — that check becomes a redundant subset of this one, which
+  // is harmless and left in place.
   const role = getUserRole();
-  if (!canAccess(role, 'reports')) {
+  if (!['owner','supervisor','accountant'].includes(role)) {
     window.location.href = 'index.html?denied=1';
     return;
   }

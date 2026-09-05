@@ -375,12 +375,34 @@ Deno.serve(async (req) => {
         continue
       }
 
+      // v_p2_stock_balance has no is_active column (see _ai/CLAUDE.md — Key
+      // Business Rules), so a deactivated material's stale min_stock_level
+      // would otherwise alert forever. Fetch active material IDs separately
+      // and intersect client-side, same pattern as agent-query's buildContext().
+      const { data: activeMaterials, error: activeMaterialsError } = await supabase
+        .from('p2_raw_materials')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .eq('is_active', true)
+
+      if (activeMaterialsError) {
+        console.error(`Error fetching active materials for tenant ${tenantId}:`, activeMaterialsError)
+        continue
+      }
+
+      const activeMaterialIds = new Set((activeMaterials || []).map((m: { id: string }) => m.id))
+
+      // materialMap stays built from the full (unfiltered) stockRows — it is
+      // also used below to resolve material names for yesterday's GRNs
+      // (line ~526), which should still resolve a name even if that material
+      // was deactivated after being received. Only the low-stock alert list
+      // itself excludes deactivated materials.
       const materialMap = new Map<string, { name: string; unit: string }>(
         (stockRows || []).map((r: StockBalanceRow) => [r.raw_material_id, { name: r.name, unit: r.unit }])
       )
 
       const lowStockItems = (stockRows || []).filter(
-        (r: StockBalanceRow) => r.current_stock < r.min_stock_level
+        (r: StockBalanceRow) => activeMaterialIds.has(r.raw_material_id) && r.current_stock < r.min_stock_level
       )
 
       // Yesterday's GRNs

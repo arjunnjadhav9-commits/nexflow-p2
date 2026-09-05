@@ -3,7 +3,7 @@ const ROLE_PERMISSIONS = {
     supervisor:  ['dashboard','grn','issue','dispatch','rm_dispatch','dispatch_history','products','reports','invoices','scanner','agent'],
     storekeeper: ['dashboard','grn','scanner'],
     operator:    ['dashboard','issue','dispatch','rm_dispatch','dispatch_history','products','reports'],
-    accountant:  ['dashboard','reports','invoices'],
+    accountant:  ['dashboard','grn','dispatch_history','reports','invoices'],
     staff:       ['dashboard','grn','scanner']   // legacy DB value — same permissions as storekeeper
 };
 

@@ -1737,6 +1737,13 @@ const JOB_WORK_MOVEMENT_PURPOSES = new Set([
   'inter_jobworker_transfer', 'direct_supply_from_jobworker',
 ])
 
+// The two movement purposes with ownershipChanges: true in
+// js/movement-purpose.js — the only ones where a client tax invoice (billing
+// for the goods themselves) is the legally correct document. Duplicated here
+// for the same reason as JOB_WORK_MOVEMENT_PURPOSES above (no shared module
+// system between the browser script and this Deno Edge Function).
+const SALE_INVOICEABLE_PURPOSES = new Set(['sale', 'direct_supply_from_jobworker'])
+
 // Rule 48(1) (goods — triplicate: Original for Recipient / Duplicate for
 // Transporter / Triplicate for Supplier) vs Rule 48(2) (services/job work —
 // duplicate: Original for Recipient / Duplicate for Supplier) copy markings.
@@ -2263,6 +2270,12 @@ async function confirmGenerateInvoice(
   if (order.status !== 'confirmed') {
     return respond({ status: 'error', error: 'Dispatch is not confirmed yet' }, 400)
   }
+  if (!SALE_INVOICEABLE_PURPOSES.has(order.movement_purpose)) {
+    return respond({
+      status: 'error',
+      error: 'This challan is a job-work movement, not a sale — a client tax invoice cannot be generated for it.',
+    }, 400)
+  }
 
   const { data: client, error: clientError } = await supabaseClient
     .from('p2_clients')
@@ -2479,6 +2492,12 @@ async function previewConsolidatedInvoice(
     .eq('tenant_id', tenant_id)
     .eq('client_name', client.name)
     .eq('status', 'confirmed')
+    // Silently exclude job-work movements from the consolidated sweep — they
+    // are never billable as a client sale. Matches confirmGenerateInvoice's
+    // SALE_INVOICEABLE_PURPOSES gate on the single-invoice path, except here
+    // non-matching rows are just never fetched rather than rejected, since a
+    // consolidated sweep should skip ineligible dispatches, not error out.
+    .in('movement_purpose', Array.from(SALE_INVOICEABLE_PURPOSES))
   if (dispatch_type === 'raw_material') {
     ordersQuery = ordersQuery.eq('dispatch_type', 'raw_material')
   } else if (dispatch_type === 'both') {
@@ -2618,6 +2637,12 @@ async function confirmConsolidatedInvoice(
     .eq('tenant_id', tenant_id)
     .eq('client_name', client.name)
     .eq('status', 'confirmed')
+    // Silently exclude job-work movements from the consolidated sweep — they
+    // are never billable as a client sale. Matches confirmGenerateInvoice's
+    // SALE_INVOICEABLE_PURPOSES gate on the single-invoice path, except here
+    // non-matching rows are just never fetched rather than rejected, since a
+    // consolidated sweep should skip ineligible dispatches, not error out.
+    .in('movement_purpose', Array.from(SALE_INVOICEABLE_PURPOSES))
   if (dispatch_type === 'raw_material') {
     ordersQuery = ordersQuery.eq('dispatch_type', 'raw_material')
   } else if (dispatch_type === 'both') {

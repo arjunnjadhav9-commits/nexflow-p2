@@ -564,7 +564,7 @@
                             <button class="nx-btn nx-btn-ghost nx-btn-sm detail-btn" data-order-id="${order.id}">${t('Detail','तपशील')}</button>
                             ${!isDraft && !isCancelled ? `
                             <button onclick="window.open('challan.html?id=${order.id}','_blank')" class="nx-btn nx-btn-ghost nx-btn-sm">${t('Challan','चलान')}</button>
-                            <button onclick="cancelChallanRow('${order.id}', '${(order.challan_number||'').replace(/'/g,"")}')" class="nx-btn nx-btn-ghost nx-btn-sm" style="color:#ef4444;">${t('Cancel','रद्द करा')}</button>` : ''}
+                            ${['owner','supervisor'].includes(currentRole) ? `<button onclick="cancelChallanRow('${order.id}', '${(order.challan_number||'').replace(/'/g,"")}')" class="nx-btn nx-btn-ghost nx-btn-sm" style="color:#ef4444;">${t('Cancel','रद्द करा')}</button>` : ''}` : ''}
                             ${isCancelled ? `<span style="color:var(--mid); font-size:11px;">${t('Reversed','उलट केले')}</span>` : ''}
                             ${isCancelled && currentRole === 'owner' ? `
                             <button onclick="openHardDeleteModal('${order.id}', '${(order.challan_number||'').replace(/'/g,"")}')" class="nx-btn nx-btn-danger nx-btn-sm">${t('Delete Permanently','कायमचे हटवा')}</button>` : ''}
@@ -781,7 +781,7 @@
             const cancelBtn     = document.getElementById('detailCancelBtn');
             const amendBtn      = document.getElementById('detailAmendBtn');
             const hardDeleteBtn = document.getElementById('detailHardDeleteBtn');
-            if (!isDraft && !isCancelled) {
+            if (!isDraft && !isCancelled && ['owner','supervisor'].includes(currentRole)) {
                 cancelBtn.style.display = 'block';
                 cancelBtn.onclick = () => cancelChallanRow(orderId, order.challan_number || '');
                 amendBtn.style.display = 'block';
@@ -893,7 +893,7 @@
                         <div style="font-size:11px; color:var(--mid); margin-top:6px; text-align:center;">
                             ${t('Invoice','इनव्हॉइस')} ${escapeHtml(existingInvoice.invoice_number || '')} · ${escapeHtml(existingInvoice.status || '')}
                         </div>`;
-                } else if (movementPurpose && movementPurpose !== 'sale' && canInvoice && currentRole !== 'accountant') {
+                } else if (movementPurpose && movementPurpose !== 'sale' && canInvoice && ['owner','supervisor','accountant'].includes(currentRole)) {
                     const purposeLabel = getMovementPurpose(movementPurpose).label_en;
                     invoiceSection.innerHTML = `
                         <button class="nx-btn nx-btn-secondary" style="width:100%;" disabled
@@ -901,7 +901,7 @@
                         <div style="font-size:11px; color:var(--mid); margin-top:6px; text-align:center;">
                             ${t('Disabled','अक्षम')} — ${escapeHtml(purposeLabel)}, ${t('not a sale','विक्री नाही')}
                         </div>`;
-                } else if (canInvoice && currentRole !== 'accountant') {
+                } else if (canInvoice && ['owner','supervisor','accountant'].includes(currentRole)) {
                     invoiceSection.innerHTML = `
                         <button class="nx-btn nx-btn-secondary" style="width:100%;"
                             onclick="openInvoiceModal('${orderId}')">${t('Generate Invoice','इनव्हॉइस तयार करा')}</button>`;

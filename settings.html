@@ -615,7 +615,6 @@
                     <div class="nx-form-group">
                         <label data-en="Role" data-mr="भूमिका">Role</label>
                         <select name="role" class="nx-input" required>
-                            <option value="owner" data-en="Owner (Full access)" data-mr="मालक (पूर्ण प्रवेश)">Owner (Full access)</option>
                             <option value="supervisor" data-en="Supervisor (Full access except settings)" data-mr="सुपरवायझर (सेटिंग्ज वगळता पूर्ण प्रवेश)">Supervisor (Full access except settings)</option>
                             <option value="storekeeper" data-en="Storekeeper (GRN, Scanner, Dashboard)" data-mr="स्टोअरकीपर (GRN, स्कॅनर, डॅशबोर्ड)">Storekeeper (GRN, Scanner, Dashboard)</option>
                             <option value="operator" data-en="Operator (Issue, Dispatch, RM Dispatch, Products, Reports)" data-mr="ऑपरेटर (इश्यू, डिस्पॅच, RM डिस्पॅच, उत्पादने, अहवाल)">Operator (Issue, Dispatch, RM Dispatch, Products, Reports)</option>
@@ -1723,8 +1722,9 @@
             const tenantId = user.user_metadata?.tenant_id || user.id;
 
             const bindToken = crypto.randomUUID();
+            const tokenExpiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
             const { error } = await window.supabase.from('p2_tenant_settings')
-                .upsert({ tenant_id: tenantId, telegram_bind_token: bindToken }, { onConflict: 'tenant_id' });
+                .upsert({ tenant_id: tenantId, telegram_bind_token: bindToken, telegram_bind_token_expires_at: tokenExpiresAt }, { onConflict: 'tenant_id' });
             if (error) throw error;
 
             const linkEl = document.getElementById('telegram-bind-link');
@@ -2175,8 +2175,9 @@
         try {
             const { data: { user } } = await window.supabase.auth.getUser();
             if (!user) { toast('Not authenticated','error'); return; }
+            const tenantId = user.user_metadata?.tenant_id || user.id;
             const { error } = await window.supabase.from('p2_clients')
-                .insert({ name, email: email || null, address: address || null, po_number: po_number || null, gstin: gstin || null, tenant_id: user.id });
+                .insert({ name, email: email || null, address: address || null, po_number: po_number || null, gstin: gstin || null, tenant_id: tenantId });
             if (error) throw error;
             toast(lang==='mr'?'क्लायंट यशस्वीरित्या जोडला':'Client added successfully','success');
             e.target.reset();
