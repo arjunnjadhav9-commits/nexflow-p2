@@ -227,6 +227,11 @@
                             <label data-en="Purpose" data-mr="उद्देश">Purpose</label>
                             <select id="movementPurpose" class="nx-input"></select>
                         </div>
+
+                        <div class="nx-form-group" id="poolFieldRow" style="display:none;">
+                            <label data-en="Deduct stock from" data-mr="स्टॉक कुठून वजा करायचा">Deduct stock from</label>
+                            <select id="poolSelect" class="nx-input"></select>
+                        </div>
                     </div>
 
                     <!-- RIGHT: Materials -->
@@ -406,6 +411,7 @@
         let currentDispatchId = null;
         let tenantId = null;
         let clientsMap = {};
+        let jobWorkPrincipals = []; // principals for the pool dropdown, fetched once per load
 
         // ── Shared typeahead ──────────────────────────────────────────
 
@@ -555,6 +561,54 @@
             ).join('');
             document.getElementById('purposeFieldRow').style.display =
                 (isJobWorker() || isPrincipal()) ? '' : 'none';
+            select.addEventListener('change', updatePoolDefault);
+        }
+
+        // ── DEDUCT STOCK FROM (pool dropdown) ───────────────────────────────
+        async function loadJobWorkPrincipals() {
+            if (!isJobWorker()) { jobWorkPrincipals = []; return; }
+            const { data, error } = await window.supabase
+                .from('p2_clients')
+                .select('id, name')
+                .eq('tenant_id', tenantId)
+                .eq('is_job_work_principal', true)
+                .order('name');
+            if (error) { console.error('loadJobWorkPrincipals:', error); jobWorkPrincipals = []; return; }
+            jobWorkPrincipals = data || [];
+        }
+
+        function initPoolField() {
+            const row = document.getElementById('poolFieldRow');
+            const select = document.getElementById('poolSelect');
+            if (!isJobWorker() || !isSeparatePoolDeduction()) {
+                row.style.display = 'none';
+                return;
+            }
+            row.style.display = '';
+            select.innerHTML = '';
+            select.appendChild(new Option('Own Stock', 'own'));
+            jobWorkPrincipals.forEach(p => select.appendChild(new Option(p.name, p.id)));
+            updatePoolDefault();
+        }
+
+        // Re-evaluated fresh every time purpose changes (and once on load) — never
+        // forced, the user can always pick something else afterward.
+        function updatePoolDefault() {
+            const select = document.getElementById('poolSelect');
+            if (!select || document.getElementById('poolFieldRow').style.display === 'none') return;
+            const purpose = getMovementPurpose(document.getElementById('movementPurpose')?.value);
+            if (purpose.ownershipChanges === false && jobWorkPrincipals.length > 0) {
+                select.value = jobWorkPrincipals[0].id;
+            } else {
+                select.value = 'own';
+            }
+        }
+
+        function getSelectedOwnedBy() {
+            const row = document.getElementById('poolFieldRow');
+            if (!row || row.style.display === 'none') return null;
+            const val = document.getElementById('poolSelect')?.value;
+            return (!val || val === 'own') ? null : val;
         }
 
         document.addEventListener('DOMContentLoaded', init);
@@ -582,8 +636,11 @@
                 await Promise.all([
                     loadMaterials(),
                     loadRecentDispatches(),
-                    loadClients()
+                    loadClients(),
+                    loadJobWorkPrincipals()
                 ]);
+
+                initPoolField();
 
                 document.getElementById('loadingSpinner').style.display = 'none';
                 document.getElementById('dispatchForm').style.display = 'block';
@@ -1105,7 +1162,7 @@
         }
 
         // ── CONFIRM DISPATCH ──────────────────────────────────────────
-        function openConfirmModal() {
+        async function openConfirmModal() {
             clearMessages();
             const clientName = document.getElementById('clientName').value.trim();
             if (!clientName) { showError(t('Client name is required.', 'क्लायंटचे नाव आवश्यक आहे.')); return; }
@@ -1124,6 +1181,7 @@
         }
 
         async function confirmDispatch() {
+            const ownedBy = getSelectedOwnedBy();
             document.getElementById('confirmModal').style.display = 'none';
             const btn = document.getElementById('confirmDispatchBtn');
             btn.disabled = true; btn.textContent = t('Confirming...', 'निश्चित होत आहे...');
@@ -1220,7 +1278,8 @@
                         p_dispatch_order_id: orderId,
                         p_tenant_id:         tenantId,
                         p_consumption_json:  JSON.stringify(consumptionArray),
-                        p_challan_number:    challanNumber
+                        p_challan_number:    challanNumber,
+                        p_owned_by:          ownedBy
                     });
                 if (confirmErr) throw new Error(`Stock deduction failed: ${confirmErr.message}`);
 
@@ -1253,6 +1312,7 @@
                 currentDispatchId = null;
                 dispatchItems = [];
                 document.getElementById('dispatchForm').reset();
+                updatePoolDefault();
                 renderItemsTable();
                 await loadRecentDispatches();
                 await loadMaterials(); // refresh stock levels

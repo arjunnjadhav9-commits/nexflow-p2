@@ -10,6 +10,7 @@ window.supabase = supabaseClient;
 // documented for isPro()/getPlan() (see CLAUDE.md "Critical agent gotchas").
 let cachedIsJobWorker = false;
 let cachedIsPrincipal = false;
+let cachedSeparatePoolDeduction = false;
 
 async function checkAuth() {
     const { data: { user } } = await window.supabase.auth.getUser();
@@ -29,7 +30,7 @@ async function checkAuth() {
 
     const { data: settingsData } = await window.supabase
         .from('p2_tenant_settings')
-        .select('plan, is_job_worker, is_principal')
+        .select('plan, is_job_worker, is_principal, separate_pool_deduction')
         .eq('tenant_id', tenantId)
         .single();
 
@@ -39,6 +40,7 @@ async function checkAuth() {
 
     cachedIsJobWorker = settingsData?.is_job_worker || false;
     cachedIsPrincipal = settingsData?.is_principal || false;
+    cachedSeparatePoolDeduction = settingsData?.separate_pool_deduction === true;
 
     // Demo-mode flag, read by js/utils.js into window.isDemo (used by agent-chat.js).
     try {
@@ -97,6 +99,10 @@ function isJobWorker() {
 
 function isPrincipal() {
     return cachedIsPrincipal;
+}
+
+function isSeparatePoolDeduction() {
+    return cachedSeparatePoolDeduction;
 }
 
 // Call at top of every Pro-gated page after checkAuth()

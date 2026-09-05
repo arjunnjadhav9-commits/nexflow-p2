@@ -161,6 +161,10 @@
                 </div>
             </div>
 
+            <!-- POOL TABS (Fix 2, Sept 4 2026) — job-worker only, hidden entirely
+                 for a non-job-worker tenant or one with zero flagged principals. -->
+            <div id="poolTabsRow" class="nx-stabs" style="display:none;"></div>
+
             <!-- MAIN STOCK TABLE CARD -->
             <div id="stockTableCard" style="display:none;" class="nx-card">
                 <div class="nx-card-header">
@@ -194,7 +198,7 @@
                                 <th style="text-align:right;" data-en="Current Stock" data-mr="सध्याचा साठा">Current Stock</th>
                                 <th style="text-align:right;" data-en="Min Stock"     data-mr="किमान साठा">Min Stock</th>
                                 <th data-en="Unit"   data-mr="एकक">Unit</th>
-                                <th data-en="Status" data-mr="स्थिती">Status</th>
+                                <th id="statusColHead" data-en="Status" data-mr="स्थिती">Status</th>
                                 <th style="text-align:center;" data-en="History" data-mr="इतिहास">History</th>
                             </tr>
                         </thead>
@@ -278,11 +282,140 @@
     <script>
         let allStockLevels = [];
 
+        // Fix 2 — stock pool tabs (Sept 4 2026). jobWorkPrincipals sourced from
+        // p2_clients.is_job_work_principal = true — same convention grn.html's
+        // Material Owner selector (Fix 1) and production-issue.html's pool
+        // selector already use. currentPoolFilter only matters for job-worker
+        // tenants; a non-job-worker tenant never populates jobWorkPrincipals,
+        // so the tab row never renders and this stays at its default forever.
+        let jobWorkPrincipals = []; // [{id, name}]
+        let currentPoolFilter = 'inventory'; // 'inventory' | 'own' | a p2_clients.id
+
+        function escapeHtml(str) {
+            return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        }
+
         // ── RENDER TABLE ──────────────────────────────────────────
+        // Row builder for the Own Stock / principal pool tabs (Fix 2, Sept 4
+        // 2026) — each of those tabs filters to a single owned_by value, so
+        // a material renders at most once per tab. The Stock in Inventory
+        // tab uses its own row builder, buildInventoryRow(), instead.
+        function buildStockRow(item) {
+            const isLow = item.current_stock < item.min_stock_level;
+            const row   = document.createElement('tr');
+            row.dataset.materialName = item.material_name.toLowerCase();
+            row.dataset.materialCode = (item.material_code || '').toLowerCase();
+            row.dataset.materialId   = item.raw_material_id;
+            // Fix 2 — tag each row with which pool it is so updateRowStatus()
+            // can match a row back to its exact item by key instead of by
+            // array position (allStockLevels' own order is not guaranteed to
+            // match DOM order).
+            row.dataset.owned = item.owned_by || 'own';
+            row.innerHTML = `
+                <td class="nx-td-mono">${item.material_code || '—'}</td>
+                <td class="nx-td-bold" data-cell="name" style="${isLow ? 'color:var(--red);' : ''}">${item.material_name}</td>
+                <td data-cell="stock" style="text-align:right; font-weight:700; color:${isLow ? 'var(--red)' : 'var(--green)'};">
+                    ${formatNumber(item.current_stock)}
+                </td>
+                <td class="min-stock-cell" data-material-id="${item.raw_material_id}" style="text-align:right; color:var(--mid);">
+                    ${minStockCellHTML(item)}
+                </td>
+                <td style="color:var(--mid);">${item.unit}</td>
+                <td data-cell="status">
+                    ${isLow
+                        ? '<span class="nx-badge nx-badge-red">⚠ Low Stock</span>'
+                        : '<span class="nx-badge nx-badge-green">✓ OK</span>'
+                    }
+                </td>
+                <td style="text-align:center;">
+                    <button class="nx-btn nx-btn-ghost nx-btn-sm history-btn" type="button"
+                            data-material-id="${item.raw_material_id}"
+                            data-material-name="${item.material_name.replace(/"/g, '&quot;')}"
+                            data-unit="${item.unit}"
+                            data-owned="${item.owned_by || 'own'}"
+                            title="View history" aria-label="View history for ${item.material_name}"
+                            style="padding:6px 10px;">
+                        🕒
+                    </button>
+                </td>
+            `;
+            return row;
+        }
+
+        // "Stock in Inventory" tab collapses the already-filtered array down
+        // to one row per material, summing current_stock across every pool —
+        // replaces the old "All" tab's per-owner grouped sections. Sorted by
+        // material_code ascending per spec. min_stock_level/material_name/
+        // material_code/unit are guaranteed identical across every pool row
+        // for the same raw_material_id (they come from the single
+        // p2_raw_materials row in v_p2_stock_balance_by_owner's join), so
+        // taking them from whichever row is seen first is safe.
+        function aggregateAllPools(items) {
+            const map = new Map();
+            items.forEach(item => {
+                const existing = map.get(item.raw_material_id);
+                if (existing) {
+                    existing.current_stock += item.current_stock;
+                } else {
+                    map.set(item.raw_material_id, {
+                        raw_material_id: item.raw_material_id,
+                        material_name:   item.material_name,
+                        material_code:   item.material_code,
+                        unit:            item.unit,
+                        min_stock_level: item.min_stock_level,
+                        current_stock:   item.current_stock
+                    });
+                }
+            });
+            return [...map.values()].sort((a, b) =>
+                (a.material_code || '').localeCompare(b.material_code || ''));
+        }
+
+        // Row builder for the "Stock in Inventory" tab — a summed total
+        // across all pools, so no per-pool Status badge/coloring applies
+        // (quantity only). History is wired to the '__all__' sentinel so it
+        // shows every transaction for the material regardless of owned_by,
+        // matching what the summed number represents.
+        function buildInventoryRow(item) {
+            const row = document.createElement('tr');
+            row.dataset.materialId = item.raw_material_id;
+            row.dataset.owned = '__all__';
+            row.innerHTML = `
+                <td class="nx-td-mono">${item.material_code || '—'}</td>
+                <td class="nx-td-bold" data-cell="name">${item.material_name}</td>
+                <td class="nx-td-bold" data-cell="stock" style="text-align:right;">
+                    ${formatNumber(item.current_stock)}
+                </td>
+                <td class="min-stock-cell" data-material-id="${item.raw_material_id}" style="text-align:right; color:var(--mid);">
+                    ${minStockCellHTML(item)}
+                </td>
+                <td style="color:var(--mid);">${item.unit}</td>
+                <td style="text-align:center;">
+                    <button class="nx-btn nx-btn-ghost nx-btn-sm history-btn" type="button"
+                            data-material-id="${item.raw_material_id}"
+                            data-material-name="${item.material_name.replace(/"/g, '&quot;')}"
+                            data-unit="${item.unit}"
+                            data-owned="__all__"
+                            title="View history" aria-label="View history for ${item.material_name}"
+                            style="padding:6px 10px;">
+                        🕒
+                    </button>
+                </td>
+            `;
+            return row;
+        }
+
         function renderStockLevels(stockLevels, isFiltered = false) {
             const tbody          = document.getElementById('stockLevelsBody');
             const emptyState     = document.getElementById('emptyState');
             const noMatchState   = document.getElementById('noMatchState');
+            const statusHead     = document.getElementById('statusColHead');
+            // Same isJobWorker() gate as getPoolFiltered() above — a
+            // non-job-worker tenant is always at the 'inventory' default but
+            // has no actual Stock in Inventory tab to be "on", so it must
+            // keep rendering via the original Status-column path.
+            const showInventoryView = currentPoolFilter === 'inventory' && isJobWorker();
+            if (statusHead) statusHead.style.display = showInventoryView ? 'none' : '';
 
             tbody.innerHTML = '';
             emptyState.style.display   = 'none';
@@ -297,41 +430,12 @@
                 return;
             }
 
-            stockLevels.forEach(item => {
-                const isLow = item.current_stock < item.min_stock_level;
-                const row   = document.createElement('tr');
-                row.dataset.materialName = item.material_name.toLowerCase();
-                row.dataset.materialCode = (item.material_code || '').toLowerCase();
-                row.dataset.materialId   = item.raw_material_id;
-                row.innerHTML = `
-                    <td class="nx-td-mono">${item.material_code || '—'}</td>
-                    <td class="nx-td-bold" data-cell="name" style="${isLow ? 'color:var(--red);' : ''}">${item.material_name}</td>
-                    <td data-cell="stock" style="text-align:right; font-weight:700; color:${isLow ? 'var(--red)' : 'var(--green)'};">
-                        ${formatNumber(item.current_stock)}
-                    </td>
-                    <td class="min-stock-cell" data-material-id="${item.raw_material_id}" style="text-align:right; color:var(--mid);">
-                        ${minStockCellHTML(item)}
-                    </td>
-                    <td style="color:var(--mid);">${item.unit}</td>
-                    <td data-cell="status">
-                        ${isLow
-                            ? '<span class="nx-badge nx-badge-red">⚠ Low Stock</span>'
-                            : '<span class="nx-badge nx-badge-green">✓ OK</span>'
-                        }
-                    </td>
-                    <td style="text-align:center;">
-                        <button class="nx-btn nx-btn-ghost nx-btn-sm history-btn" type="button"
-                                data-material-id="${item.raw_material_id}"
-                                data-material-name="${item.material_name.replace(/"/g, '&quot;')}"
-                                data-unit="${item.unit}"
-                                title="View history" aria-label="View history for ${item.material_name}"
-                                style="padding:6px 10px;">
-                            🕒
-                        </button>
-                    </td>
-                `;
-                tbody.appendChild(row);
-            });
+            if (showInventoryView) {
+                stockLevels.forEach(item => tbody.appendChild(buildInventoryRow(item)));
+                return;
+            }
+
+            stockLevels.forEach(item => tbody.appendChild(buildStockRow(item)));
         }
 
         // ── MIN STOCK — INLINE EDIT ────────────────────────────────
@@ -354,27 +458,39 @@
             td.innerHTML = minStockCellHTML({ raw_material_id: materialId, min_stock_level: displayValue });
         }
 
-        // Re-evaluates low-stock status for one row in place — no page reload,
-        // no re-fetch, just recolors the name/stock cells and swaps the badge.
+        // Re-evaluates low-stock status for one MATERIAL in place — no page
+        // reload, no re-fetch, just recolors the name/stock cells and swaps
+        // the badge. Only matches rows carrying a [data-cell="status"] cell
+        // (Own Stock / principal tabs) — a no-op on Stock in Inventory rows,
+        // which have no status cell to update. Each row is matched back to
+        // its own item by (raw_material_id, owned_by) — not by array
+        // position, since DOM order is not guaranteed to match
+        // allStockLevels' own order.
         function updateRowStatus(materialId) {
-            const item = allStockLevels.find(i => i.raw_material_id === materialId);
-            const row  = document.querySelector(`tr[data-material-id="${materialId}"]`);
-            if (!item || !row) return;
+            const rows = document.querySelectorAll(`tr[data-material-id="${materialId}"]`);
+            if (rows.length === 0) return;
 
-            const isLow = item.current_stock < item.min_stock_level;
+            rows.forEach(row => {
+                const ownedKey = row.dataset.owned || 'own';
+                const item = allStockLevels.find(i =>
+                    i.raw_material_id === materialId && (i.owned_by || 'own') === ownedKey);
+                if (!item) return;
 
-            const nameCell = row.querySelector('[data-cell="name"]');
-            if (nameCell) nameCell.style.color = isLow ? 'var(--red)' : '';
+                const isLow = item.current_stock < item.min_stock_level;
 
-            const stockCell = row.querySelector('[data-cell="stock"]');
-            if (stockCell) stockCell.style.color = isLow ? 'var(--red)' : 'var(--green)';
+                const nameCell = row.querySelector('[data-cell="name"]');
+                if (nameCell) nameCell.style.color = isLow ? 'var(--red)' : '';
 
-            const statusCell = row.querySelector('[data-cell="status"]');
-            if (statusCell) {
-                statusCell.innerHTML = isLow
-                    ? '<span class="nx-badge nx-badge-red">⚠ Low Stock</span>'
-                    : '<span class="nx-badge nx-badge-green">✓ OK</span>';
-            }
+                const stockCell = row.querySelector('[data-cell="stock"]');
+                if (stockCell) stockCell.style.color = isLow ? 'var(--red)' : 'var(--green)';
+
+                const statusCell = row.querySelector('[data-cell="status"]');
+                if (statusCell) {
+                    statusCell.innerHTML = isLow
+                        ? '<span class="nx-badge nx-badge-red">⚠ Low Stock</span>'
+                        : '<span class="nx-badge nx-badge-green">✓ OK</span>';
+                }
+            });
         }
 
         function startMinStockEdit(display) {
@@ -444,12 +560,15 @@
 
                 if (error) throw error;
 
-                const item = allStockLevels.find(i => i.raw_material_id === materialId);
-                if (item) item.min_stock_level = newValue;
+                // min_stock_level lives once per material (p2_raw_materials),
+                // not per pool — update every matching entry across every
+                // pool row for this material, not just the first.
+                allStockLevels.filter(i => i.raw_material_id === materialId)
+                    .forEach(i => { i.min_stock_level = newValue; });
 
                 renderMinStockCell(td, materialId, newValue);
                 updateRowStatus(materialId);
-                updateStats(allStockLevels);
+                updateStats(getPoolFiltered(allStockLevels)); // pool-scoped (Fix 2), matches filterMaterials()
                 toast('Minimum stock level updated', 'ok');
 
             } catch (err) {
@@ -476,9 +595,27 @@
         // ── SEARCH / FILTER ───────────────────────────────────────
         let currentStatusFilter = 'all'; // 'all' | 'low' | 'ok'
 
+        // Pool dimension only (Fix 2) — ignores search/status, same as how
+        // updateStats() has always ignored search/status. currentPoolFilter
+        // defaults to 'inventory' for every tenant (see declaration above),
+        // but the Stock in Inventory tab itself only exists as a UI concept
+        // for job-worker tenants (pool tabs bar is hidden entirely
+        // otherwise, so a non-job-worker tenant can never navigate away from
+        // this default) — gating on isJobWorker() here keeps a
+        // non-job-worker tenant's single v_p2_stock_balance fetch (already
+        // one row per material, no owned_by dimension) rendering exactly as
+        // it did before this tab existed, instead of silently losing its
+        // Status column.
+        function getPoolFiltered(items) {
+            if (currentPoolFilter === 'inventory') return isJobWorker() ? aggregateAllPools(items) : items;
+            if (currentPoolFilter === 'own') return items.filter(i => i.owned_by == null);
+            return items.filter(i => i.owned_by === currentPoolFilter);
+        }
+
         function filterMaterials(searchTerm) {
             const term = searchTerm.toLowerCase();
-            const filtered = allStockLevels.filter(item => {
+            const poolFiltered = getPoolFiltered(allStockLevels);
+            const filtered = poolFiltered.filter(item => {
                 const matchesSearch =
                     item.material_name.toLowerCase().includes(term) ||
                     (item.material_code && item.material_code.toLowerCase().includes(term));
@@ -487,7 +624,10 @@
                 const isLow = item.current_stock < item.min_stock_level;
                 return currentStatusFilter === 'low' ? isLow : !isLow;
             });
-            renderStockLevels(filtered, searchTerm.length > 0 || currentStatusFilter !== 'all');
+            renderStockLevels(filtered, searchTerm.length > 0 || currentStatusFilter !== 'all' || currentPoolFilter !== 'inventory');
+            // Stat cards reflect the selected pool but (like before this fix)
+            // ignore search/status — updateStats(poolFiltered), not filtered.
+            updateStats(poolFiltered);
         }
 
         function setStatusFilter(status) {
@@ -496,6 +636,44 @@
                 const active = btn.dataset.status === status;
                 btn.classList.toggle('nx-btn-primary', active);
                 btn.classList.toggle('nx-btn-ghost', !active);
+            });
+            filterMaterials(document.getElementById('materialSearch').value);
+        }
+
+        // ── POOL TABS (Fix 2, Sept 4 2026) ─────────────────────────
+        // Hidden entirely for a non-job-worker tenant or one with zero
+        // flagged principals — same isJobWorker() gate pattern already
+        // established in dispatch.html's Purpose selector and Fix 0's
+        // Tooling Register gate. Tabs always render for every flagged
+        // principal regardless of current balance (per design decision) —
+        // the tab bar doesn't shift as stock is consumed or received.
+        function renderPoolTabs() {
+            const row = document.getElementById('poolTabsRow');
+            if (!isJobWorker() || jobWorkPrincipals.length === 0) {
+                row.style.display = 'none';
+                row.innerHTML = '';
+                return;
+            }
+            const lang = localStorage.getItem('nexflow_lang') || 'en';
+            const tabs = [
+                { id: 'inventory', label: lang === 'mr' ? 'एकूण साठा' : 'Stock in Inventory' },
+                { id: 'own', label: lang === 'mr' ? 'स्वतःचा साठा' : 'Own Stock' },
+                ...jobWorkPrincipals.map(p => ({ id: p.id, label: p.name }))
+            ];
+            row.innerHTML = tabs.map(t =>
+                '<button type="button" class="nx-stab pool-tab-btn' + (t.id === currentPoolFilter ? ' active' : '') + '" data-pool="' + t.id + '">' +
+                escapeHtml(t.label) + '</button>'
+            ).join('');
+            row.style.display = 'flex';
+            row.querySelectorAll('.pool-tab-btn').forEach(btn => {
+                btn.addEventListener('click', () => setPoolFilter(btn.dataset.pool));
+            });
+        }
+
+        function setPoolFilter(poolId) {
+            currentPoolFilter = poolId;
+            document.querySelectorAll('.pool-tab-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.pool === poolId);
             });
             filterMaterials(document.getElementById('materialSearch').value);
         }
@@ -529,29 +707,72 @@
                     }
                 } catch (_) {}
 
-                const { data: stockData, error: stockError } = await window.supabase
-                    .from('v_p2_stock_balance')
-                    .select('raw_material_id, name, unit, min_stock_level, current_stock, material_code')
-                    .eq('tenant_id', tenantId);
+                // Fix 2 (Sept 4 2026) — job-worker tenants read the pool-aware
+                // view instead, plus their flagged principal list, and get the
+                // pool tab bar; a non-job-worker tenant's path below is
+                // byte-for-byte what it was before this fix.
+                if (isJobWorker()) {
+                    const [stockRes, principalsRes] = await Promise.all([
+                        window.supabase
+                            .from('v_p2_stock_balance_by_owner')
+                            .select('raw_material_id, owned_by, owner_name, material_name, material_code, unit, min_stock_level, current_stock')
+                            .eq('tenant_id', tenantId),
+                        window.supabase
+                            .from('p2_clients')
+                            .select('id, name')
+                            .eq('tenant_id', tenantId)
+                            .eq('is_job_work_principal', true)
+                            .order('name')
+                    ]);
 
-                if (stockError) throw stockError;
+                    if (stockRes.error) throw stockRes.error;
+                    if (principalsRes.error) console.error('Error loading principals:', principalsRes.error);
+                    jobWorkPrincipals = principalsRes.data || [];
 
-                allStockLevels = stockData.map(row => ({
-                    raw_material_id: row.raw_material_id,
-                    material_name:   row.name,
-                    material_code:   row.material_code || '—',
-                    unit:            row.unit,
-                    min_stock_level: row.min_stock_level,
-                    current_stock:   row.current_stock || 0
-                }));
+                    allStockLevels = (stockRes.data || []).map(row => ({
+                        raw_material_id: row.raw_material_id,
+                        owned_by:        row.owned_by,
+                        owner_name:      row.owner_name,
+                        material_name:   row.material_name,
+                        material_code:   row.material_code || '—',
+                        unit:            row.unit,
+                        min_stock_level: row.min_stock_level,
+                        current_stock:   row.current_stock || 0
+                    }));
+                } else {
+                    const { data: stockData, error: stockError } = await window.supabase
+                        .from('v_p2_stock_balance')
+                        .select('raw_material_id, name, unit, min_stock_level, current_stock, material_code')
+                        .eq('tenant_id', tenantId);
 
-                // Re-applies the active search/status filter instead of always
-                // rendering the unfiltered list — the 5-minute auto-refresh
-                // below was silently resetting a filtered view back to
-                // unfiltered while the search box still showed the typed term.
+                    if (stockError) throw stockError;
+
+                    allStockLevels = stockData.map(row => ({
+                        raw_material_id: row.raw_material_id,
+                        material_name:   row.name,
+                        material_code:   row.material_code || '—',
+                        unit:            row.unit,
+                        min_stock_level: row.min_stock_level,
+                        current_stock:   row.current_stock || 0
+                    }));
+                }
+
+                renderPoolTabs();
+
+                // Re-applies the active search/status/pool filter instead of
+                // always rendering the unfiltered list — the 5-minute
+                // auto-refresh below was silently resetting a filtered view
+                // back to unfiltered while the search box still showed the
+                // typed term. filterMaterials() also updates the stat cards
+                // internally now (pool-scoped) — no separate updateStats()
+                // call needed here.
                 filterMaterials(document.getElementById('materialSearch').value);
-                updateStats(allStockLevels);
-                checkUpgradeBanner(allStockLevels.length);
+                // 250-material cap check uses distinct raw_material_id count,
+                // not allStockLevels.length — a job-worker tenant can have the
+                // same material appear twice (once per pool with a nonzero
+                // balance), which would otherwise double-count it against the
+                // Lite plan's material limit.
+                checkUpgradeBanner(new Set(allStockLevels.map(i => i.raw_material_id)).size);
 
                 const total = allStockLevels.length;
                 const low   = allStockLevels.filter(i => i.current_stock < i.min_stock_level).length;
@@ -670,12 +891,25 @@
             return `<span class="nx-badge nx-badge-grey">${type}</span>`;
         }
 
-        let currentHistoryMaterial = null; // { id, name, unit }
+        let currentHistoryMaterial = null; // { id, name, unit, owned }
 
-        async function openMaterialHistory(materialId, materialName, unit) {
-            currentHistoryMaterial = { id: materialId, name: materialName, unit };
+        // owned: 'own', a p2_clients.id, or '__all__' (Fix 2 / Stock in
+        // Inventory tab) — scopes history to the exact pool the user clicked
+        // from, so it reconciles with the balance shown on that row instead
+        // of silently combining every pool's transactions. '__all__' is the
+        // deliberate exception: that row already IS every pool combined, so
+        // its history should be too.
+        async function openMaterialHistory(materialId, materialName, unit, owned) {
+            const ownedKey = owned || 'own';
+            currentHistoryMaterial = { id: materialId, name: materialName, unit, owned: ownedKey };
 
-            document.getElementById('historyModalTitle').textContent = materialName;
+            // Name the pool in the title so it's never ambiguous which
+            // balance this history belongs to — except 'own'/'__all__',
+            // which need no suffix (no other pool to disambiguate from).
+            const poolName = (ownedKey === 'own' || ownedKey === '__all__')
+                ? null
+                : jobWorkPrincipals.find(p => p.id === ownedKey)?.name;
+            document.getElementById('historyModalTitle').textContent = poolName ? `${materialName} — ${poolName}` : materialName;
 
             const today       = new Date();
             const twoMonthsAgo = new Date();
@@ -712,12 +946,24 @@
             tbody.innerHTML = '';
 
             try {
-                const { data, error } = await window.supabase
+                // Fix 2 (Sept 4 2026) — scope history to the exact pool the
+                // history button was clicked from. Without this, once a
+                // material has transactions in more than one pool, this modal
+                // would silently combine them into one undifferentiated list
+                // that reconciles with neither pool's balance shown on screen.
+                let historyQuery = window.supabase
                     .from('p2_stock_transactions')
                     .select('id, transaction_type, quantity, transaction_date, notes, invoice_no, supplier_name')
                     .eq('raw_material_id', currentHistoryMaterial.id)
                     .gte('transaction_date', fromDate)
-                    .lte('transaction_date', toDate)
+                    .lte('transaction_date', toDate);
+                historyQuery = currentHistoryMaterial.owned === 'own'
+                    ? historyQuery.is('owned_by', null)
+                    : currentHistoryMaterial.owned === '__all__'
+                    ? historyQuery
+                    : historyQuery.eq('owned_by', currentHistoryMaterial.owned);
+
+                const { data, error } = await historyQuery
                     .order('transaction_date', { ascending: false })
                     .order('created_at', { ascending: false });
 
@@ -785,8 +1031,8 @@
         document.getElementById('stockLevelsBody').addEventListener('click', (e) => {
             const btn = e.target.closest('.history-btn');
             if (btn) {
-                const { materialId, materialName, unit } = btn.dataset;
-                openMaterialHistory(materialId, materialName, unit);
+                const { materialId, materialName, unit, owned } = btn.dataset;
+                openMaterialHistory(materialId, materialName, unit, owned);
                 return;
             }
 

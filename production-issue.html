@@ -384,8 +384,8 @@
   <!-- ── PAGE HEADER ──────────────────────────────── -->
   <div class="page-header nx-fade-in" style="display:flex; justify-content:space-between; align-items:flex-start;">
     <div>
-      <div class="page-header-eyebrow">Stock Out</div>
-      <div class="page-header-title">Production <span>Issue</span></div>
+      <div class="page-header-eyebrow" data-en="Stock Out" data-mr="साठा बाहेर">Stock Out</div>
+      <div class="page-header-title" data-en="Production Issue" data-mr="उत्पादन इश्यू">Production <span>Issue</span></div>
       <div class="page-header-sub"
         data-en="Generate material list from BOM and issue to production"
         data-mr="BOM वरून साहित्य यादी तयार करा आणि उत्पादनासाठी द्या">
@@ -486,7 +486,7 @@
     <div class="print-only"
       style="display:flex; justify-content:space-between; margin-top:22mm;">
       <div style="text-align:center;">
-        <div style="border-top:1px solid #000; width:55mm; padding-top:2mm; font-size:9pt;">
+        <div style="border-top:1px solid #000; width:55mm; padding-top:2mm; font-size:9pt;" data-en="Receiver's Signature" data-mr="प्राप्तकर्त्याची स्वाक्षरी">
           Receiver's Signature
         </div>
       </div>
@@ -517,7 +517,7 @@
             </tr>
           </thead>
           <tbody id="wipBody">
-            <tr><td colspan="4" style="text-align:center; color:var(--mid); padding:16px;">Loading...</td></tr>
+            <tr><td colspan="4" style="text-align:center; color:var(--mid); padding:16px;" data-en="Loading..." data-mr="लोड होत आहे...">Loading...</td></tr>
           </tbody>
         </table>
       </div>
@@ -528,22 +528,22 @@
   <div id="recentIssuesSection" style="margin-top:20px;">
     <div class="card">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-        <div class="card-title" style="margin:0;">Recent Issues</div>
-        <a href="issue-history.html" class="nx-btn nx-btn-ghost">View Full History →</a>
+        <div class="card-title" style="margin:0;" data-en="Recent Issues" data-mr="अलीकडील इश्यू">Recent Issues</div>
+        <a href="issue-history.html" class="nx-btn nx-btn-ghost" data-en="View Full History →" data-mr="पूर्ण इतिहास पहा →">View Full History →</a>
       </div>
       <div class="nx-table-wrap">
         <table class="nx-table" style="font-size:13px;">
           <thead>
             <tr>
-              <th>Challan No</th>
-              <th>Date</th>
-              <th>Client</th>
-              <th>Status</th>
-              <th style="text-align:center;">Challan</th>
+              <th data-en="Challan No" data-mr="चलान क्र">Challan No</th>
+              <th data-en="Date" data-mr="तारीख">Date</th>
+              <th data-en="Client" data-mr="क्लायंट">Client</th>
+              <th data-en="Status" data-mr="स्थिती">Status</th>
+              <th style="text-align:center;" data-en="Challan" data-mr="चलान">Challan</th>
             </tr>
           </thead>
           <tbody id="recentIssuesBody">
-            <tr><td colspan="5" style="text-align:center; color:var(--mid); padding:16px;">Loading...</td></tr>
+            <tr><td colspan="5" style="text-align:center; color:var(--mid); padding:16px;" data-en="Loading..." data-mr="लोड होत आहे...">Loading...</td></tr>
           </tbody>
         </table>
       </div>
@@ -596,39 +596,40 @@
 <!-- ── DISPATCH CHALLAN MODAL ──────────────────────── -->
 <div class="modal-overlay" id="challanModal">
   <div class="modal-box">
-    <div class="modal-title">Create Dispatch Challan</div>
-    <div class="modal-sub">Fill client details — a delivery challan will be generated from this batch.</div>
+    <div class="modal-title" data-en="Create Dispatch Challan" data-mr="डिस्पॅच चलान तयार करा">Create Dispatch Challan</div>
+    <div class="modal-sub" data-en="Fill client details — a delivery challan will be generated from this batch." data-mr="क्लायंट तपशील भरा — या बॅचमधून डिलिव्हरी चलान तयार होईल.">Fill client details — a delivery challan will be generated from this batch.</div>
     <div class="fg">
-      <label>Client Name *</label>
+      <label data-en="Client Name *" data-mr="क्लायंटचे नाव *">Client Name *</label>
       <input type="text" id="ch-client-name" class="nx-input"
              style="width:100%; padding:10px 13px; background:var(--surface3); border:1px solid var(--border2); border-radius:var(--radius,8px); font-size:14px; font-family:var(--font); color:var(--text);"
+             data-en="Enter client name" data-mr="क्लायंटचे नाव टाका"
              placeholder="Enter client name" list="ch-client-suggestions" autocomplete="off">
       <datalist id="ch-client-suggestions"></datalist>
     </div>
     <div class="fg">
-      <label>Client Address</label>
+      <label data-en="Client Address" data-mr="क्लायंटचा पत्ता">Client Address</label>
       <textarea id="ch-client-address" rows="2"
              style="width:100%; padding:10px 13px; background:var(--surface3); border:1px solid var(--border2); border-radius:var(--radius,8px); font-size:14px; font-family:var(--font); color:var(--text); resize:vertical;"
-             placeholder="Optional"></textarea>
+             data-en="Optional" data-mr="ऐच्छिक" placeholder="Optional"></textarea>
     </div>
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
       <div class="fg" style="margin:0;">
-        <label>PO Number</label>
+        <label data-en="PO Number" data-mr="PO क्रमांक">PO Number</label>
         <input type="text" id="ch-po-number" list="poSuggestions"
                style="width:100%; padding:10px 13px; background:var(--surface3); border:1px solid var(--border2); border-radius:var(--radius,8px); font-size:14px; font-family:var(--font); color:var(--text);"
-               placeholder="Optional">
+               data-en="Optional" data-mr="ऐच्छिक" placeholder="Optional">
         <datalist id="poSuggestions"></datalist>
       </div>
       <div class="fg" style="margin:0;">
-        <label>Transport</label>
+        <label data-en="Transport" data-mr="वाहतूक">Transport</label>
         <input type="text" id="ch-vehicle"
                style="width:100%; padding:10px 13px; background:var(--surface3); border:1px solid var(--border2); border-radius:var(--radius,8px); font-size:14px; font-family:var(--font); color:var(--text);"
-               placeholder="Optional">
+               data-en="Optional" data-mr="ऐच्छिक" placeholder="Optional">
       </div>
     </div>
     <div class="modal-actions" style="margin-top:20px;">
-      <button class="btn btn-outline btn-sm" onclick="closeChallanModal()">Cancel</button>
-      <button class="btn btn-primary btn-sm" id="createChallanBtn" onclick="createDispatchChallan()">
+      <button class="btn btn-outline btn-sm" onclick="closeChallanModal()" data-en="Cancel" data-mr="रद्द करा">Cancel</button>
+      <button class="btn btn-primary btn-sm" id="createChallanBtn" onclick="createDispatchChallan()" data-en="Generate Challan →" data-mr="चलान तयार करा →">
         Generate Challan →
       </button>
     </div>
@@ -640,30 +641,30 @@
     <!-- AMENDMENT MODAL -->
     <div class="modal-overlay" id="amendModal">
         <div class="modal-box" style="max-width:440px;">
-            <div class="modal-title" style="color:#fbbf24;">&#9888; Add Missing Deduction</div>
+            <div class="modal-title" style="color:#fbbf24;" data-en="&#9888; Add Missing Deduction" data-mr="&#9888; न झालेली कपात जोडा">&#9888; Add Missing Deduction</div>
             <div id="amendChallanRef" style="font-size:12px; color:var(--mid); margin-bottom:16px;"></div>
             <div class="nx-form-group">
-                <label style="font-size:12px;">Raw Material</label>
+                <label style="font-size:12px;" data-en="Raw Material" data-mr="कच्चा माल">Raw Material</label>
                 <div id="amendMatMount"></div>
             </div>
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
                 <div class="nx-form-group">
-                    <label style="font-size:12px;">Quantity</label>
+                    <label style="font-size:12px;" data-en="Quantity" data-mr="प्रमाण">Quantity</label>
                     <input type="number" id="amendQty" class="nx-input" placeholder="0" min="0" step="any">
                 </div>
                 <div class="nx-form-group">
-                    <label style="font-size:12px;">Unit</label>
-                    <input type="text" id="amendUnit" class="nx-input" readonly placeholder="auto">
+                    <label style="font-size:12px;" data-en="Unit" data-mr="एकक">Unit</label>
+                    <input type="text" id="amendUnit" class="nx-input" readonly data-en="auto" data-mr="स्वयं" placeholder="auto">
                 </div>
             </div>
             <div class="nx-form-group">
-                <label style="font-size:12px;">Reason <span style="color:var(--mid);">(optional)</span></label>
-                <input type="text" id="amendReason" class="nx-input" placeholder="e.g. missed in original dispatch">
+                <label style="font-size:12px;"><span data-en="Reason" data-mr="कारण">Reason</span> <span style="color:var(--mid);" data-en="(optional)" data-mr="(ऐच्छिक)">(optional)</span></label>
+                <input type="text" id="amendReason" class="nx-input" data-en="e.g. missed in original dispatch" data-mr="उदा. मूळ डिस्पॅचमध्ये चुकले" placeholder="e.g. missed in original dispatch">
             </div>
             <div id="amendError" style="display:none; color:#ef4444; font-size:12px; margin-bottom:10px;"></div>
             <div style="display:flex; gap:10px;">
-                <button id="amendConfirmBtn" class="nx-btn nx-btn-primary" style="flex:1;">Confirm Deduction</button>
-                <button id="amendCancelBtn"  class="nx-btn nx-btn-ghost"   style="flex:1;">Cancel</button>
+                <button id="amendConfirmBtn" class="nx-btn nx-btn-primary" style="flex:1;" data-en="Confirm Deduction" data-mr="कपात पुष्टी करा">Confirm Deduction</button>
+                <button id="amendCancelBtn"  class="nx-btn nx-btn-ghost"   style="flex:1;" data-en="Cancel" data-mr="रद्द करा">Cancel</button>
             </div>
         </div>
     </div>
@@ -671,20 +672,20 @@
     <!-- CLOSE WIP MODAL -->
     <div class="modal-overlay" id="wipCloseModal">
         <div class="modal-box" style="max-width:420px;">
-            <div class="modal-title">Close WIP Batch</div>
+            <div class="modal-title" data-en="Close WIP Batch" data-mr="WIP बॅच बंद करा">Close WIP Batch</div>
             <div id="wipCloseMeta" style="font-size:12px; color:var(--mid); margin-bottom:16px;"></div>
             <div class="nx-form-group">
-                <label style="font-size:12px;">Quantity Finished</label>
+                <label style="font-size:12px;" data-en="Quantity Finished" data-mr="पूर्ण झालेले प्रमाण">Quantity Finished</label>
                 <input type="number" id="wipCloseQty" class="nx-input" placeholder="0" min="0" step="any">
             </div>
             <div class="nx-form-group">
-                <label style="font-size:12px;">Notes <span style="color:var(--mid);">(optional — e.g. shortfall reason)</span></label>
-                <input type="text" id="wipCloseNotes" class="nx-input" placeholder="e.g. 10 units scrapped">
+                <label style="font-size:12px;"><span data-en="Notes" data-mr="टीप">Notes</span> <span style="color:var(--mid);" data-en="(optional — e.g. shortfall reason)" data-mr="(ऐच्छिक — उदा. तूट कारण)">(optional — e.g. shortfall reason)</span></label>
+                <input type="text" id="wipCloseNotes" class="nx-input" data-en="e.g. 10 units scrapped" data-mr="उदा. १० नग वाया गेले" placeholder="e.g. 10 units scrapped">
             </div>
             <div id="wipCloseError" style="display:none; color:#ef4444; font-size:12px; margin-bottom:10px;"></div>
             <div style="display:flex; gap:10px;">
-                <button id="wipCloseConfirmBtn" class="nx-btn nx-btn-primary" style="flex:1;">Close Batch</button>
-                <button id="wipCloseCancelBtn"  class="nx-btn nx-btn-ghost"   style="flex:1;">Cancel</button>
+                <button id="wipCloseConfirmBtn" class="nx-btn nx-btn-primary" style="flex:1;" data-en="Close Batch" data-mr="बॅच बंद करा">Close Batch</button>
+                <button id="wipCloseCancelBtn"  class="nx-btn nx-btn-ghost"   style="flex:1;" data-en="Cancel" data-mr="रद्द करा">Cancel</button>
             </div>
         </div>
     </div>
@@ -692,12 +693,12 @@
     <!-- HARD DELETE MODAL -->
     <div class="modal-overlay" id="hardDeleteModal">
         <div class="modal-box" style="max-width:460px;">
-            <div class="modal-title" style="color:#ef4444;">Delete Challan Permanently</div>
+            <div class="modal-title" style="color:#ef4444;" data-en="Delete Challan Permanently" data-mr="चलान कायमचे हटवा">Delete Challan Permanently</div>
             <div id="hardDeleteMeta" style="font-size:13px; color:var(--mid); margin-bottom:16px;"></div>
             <div id="hardDeleteMessage" style="margin-bottom:16px;"></div>
             <div style="display:flex; gap:10px;">
-                <button id="hardDeleteConfirmBtn" class="nx-btn nx-btn-danger" style="flex:1;" disabled>Delete Permanently</button>
-                <button id="hardDeleteCancelBtn" class="nx-btn nx-btn-ghost"   style="flex:1;">Cancel</button>
+                <button id="hardDeleteConfirmBtn" class="nx-btn nx-btn-danger" style="flex:1;" disabled data-en="Delete Permanently" data-mr="कायमचे हटवा">Delete Permanently</button>
+                <button id="hardDeleteCancelBtn" class="nx-btn nx-btn-ghost"   style="flex:1;" data-en="Cancel" data-mr="रद्द करा">Cancel</button>
             </div>
         </div>
     </div>
@@ -743,6 +744,13 @@ function applyLang() {
       meta.textContent = `${p.name} × ${batchQty} — ${bomRows.length} ${t('BOM materials', 'BOM साहित्य')}`;
     }
   }
+
+  // Recent Issues / WIP panels are built entirely from t() at render time —
+  // re-run both so a toggle updates their badges/buttons in place instead of
+  // waiting for the next unrelated reload (navbar's toggle only ever calls
+  // this function, it never knows to re-fetch page-specific data itself).
+  if (typeof loadRecentIssues === 'function' && tenantId) loadRecentIssues();
+  if (typeof loadWipPanel === 'function' && tenantId) loadWipPanel();
 }
 
 
@@ -816,7 +824,7 @@ function buildMatTypeahead(materialsArr, opts) {
         var res=filter(term);
         dd.innerHTML=''; kbdIdx=-1;
         if(res.length===0){
-            dd.innerHTML='<div class="mat-dropdown-empty">No materials found</div>';
+            dd.innerHTML='<div class="mat-dropdown-empty">'+t('No materials found','कोणतेही साहित्य सापडले नाही')+'</div>';
             return;
         }
         res.forEach(function(m){
@@ -910,7 +918,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       issueBtn.disabled = true;
       issueBtn.style.opacity = '0.4';
       issueBtn.style.cursor = 'not-allowed';
-      issueBtn.title = 'Demo mode — read only. Contact Arjun: arjunjadhav29052006@gmail.com';
+      issueBtn.title = t('Demo mode — read only. Contact Arjun: arjunjadhav29052006@gmail.com', 'डेमो मोड — फक्त पाहण्यासाठी. अर्जुनशी संपर्क साधा: arjunjadhav29052006@gmail.com');
       issueBtn.removeAttribute('onclick');
     }
     const actionBar = document.getElementById('actionBar');
@@ -961,7 +969,9 @@ async function fetchStockMap() {
     .from('p2_stock_transactions')
     .select('raw_material_id, quantity')
     .eq('tenant_id', tenantId);
-  query = selectedPoolId ? query.eq('owned_by', selectedPoolId) : query.is('owned_by', null);
+  if (isSeparatePoolDeduction()) {
+    query = selectedPoolId ? query.eq('owned_by', selectedPoolId) : query.is('owned_by', null);
+  }
   const { data, error } = await query;
 
   if (error) { console.warn('Stock fetch error:', error.message); return; }
@@ -986,6 +996,7 @@ async function fetchCompany() {
 }
 
 async function fetchPrincipals() {
+  if (!isJobWorker()) { principals = []; renderPoolField(); return; }
   const { data, error } = await window.supabase
     .from('p2_clients')
     .select('id, name')
@@ -1002,30 +1013,29 @@ function renderPoolField() {
   const wrap = document.getElementById('poolFieldWrap');
   if (!wrap) return;
 
-  if (principals.length === 0) {
+  if (!isJobWorker() || !isSeparatePoolDeduction()) {
     wrap.style.display = 'none';
     selectedPoolId = null;
     return;
   }
 
   wrap.style.display = '';
-
-  if (principals.length === 1) {
-    selectedPoolId = principals[0].id;
-    wrap.innerHTML = `
-      <label data-en="Material Pool" data-mr="साहित्य पूल">Material Pool</label>
-      <div class="pool-confirm-text">${t('Consuming from:', 'कडून वापर:')} <strong>${esc(principals[0].name)}</strong></div>`;
-  } else {
-    selectedPoolId = null; // never pre-selected
-    const options = principals.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
-    wrap.innerHTML = `
-      <label data-en="Material Pool *" data-mr="साहित्य पूल *">Material Pool *</label>
-      <select id="poolSelect" class="nx-input" onchange="selectedPoolId = (this.value === 'own') ? null : (this.value || null);">
-        <option value="" disabled selected>${t('— Select —', '— निवडा —')}</option>
-        <option value="own">${t('Own stock', 'स्वतःचा स्टॉक')}</option>
-        ${options}
-      </select>`;
-  }
+  selectedPoolId = principals.length > 0 ? principals[0].id : null;
+  const options = principals.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
+  // F5 fix (Sept 5 2026): the gate above is isJobWorker() && isSeparatePoolDeduction(),
+  // not principals.length — a job-worker with 0 principals still gets this field,
+  // just with only "Own Stock" selectable, plus a hint pointing at Settings.
+  const noPrincipalHint = principals.length === 0
+    ? `<div style="font-size:11px;color:#f59e0b;margin-top:6px;">${t('No principal configured — go to Settings to add one', 'कोणताही प्रिन्सिपल कॉन्फिगर केलेला नाही — एक जोडण्यासाठी सेटिंग्जमध्ये जा')}</div>`
+    : '';
+  wrap.innerHTML = `
+    <label data-en="Deduct stock from" data-mr="स्टॉक कुठून वजा करायचा">Deduct stock from</label>
+    <select id="poolSelect" class="nx-input" onchange="selectedPoolId = (this.value === 'own') ? null : (this.value || null);">
+      <option value="own">${t('Own Stock', 'स्वतःचा स्टॉक')}</option>
+      ${options}
+    </select>${noPrincipalHint}`;
+  const sel = document.getElementById('poolSelect');
+  if (sel) sel.value = selectedPoolId || 'own';
 }
 
 
@@ -1049,10 +1059,6 @@ async function generateBOM() {
 
   if (!productId) { toast(t('Select a product first', 'आधी उत्पादन निवडा'), 'warn'); return; }
   if (!batchQty || batchQty < 1) { toast(t('Enter a valid batch quantity', 'योग्य बॅच प्रमाण टाका'), 'warn'); return; }
-  if (principals.length > 1 && !selectedPoolId) {
-    toast(t('Select which material pool this is for', 'हे कोणत्या साहित्य पूलसाठी आहे ते निवडा'), 'warn');
-    return;
-  }
 
   const btn = document.getElementById('generateBtn').querySelector('[data-en]');
   const genBtn = document.getElementById('generateBtn');
@@ -1139,7 +1145,7 @@ function buildRMTypeahead(idx) {
     var res = filterRM(term);
     dd.innerHTML = ''; kbdIdx = -1;
     if (res.length === 0) {
-      dd.innerHTML = '<div class="mat-ta-empty">No materials found</div>';
+      dd.innerHTML = '<div class="mat-ta-empty">' + t('No materials found','कोणतेही साहित्य सापडले नाही') + '</div>';
       return;
     }
     res.forEach(function(m) {
@@ -1386,7 +1392,7 @@ function activateBOMSection(productId, batchQty) {
   document.getElementById('actionBar').classList.add('visible');
 
   const p = products.find(x => x.id === productId);
-  const pName = p ? p.name : 'Product';
+  const pName = p ? p.name : t('Product','उत्पादन');
   document.getElementById('bomMeta').textContent =
     `${pName} × ${batchQty} — ${bomRows.length} ${t('BOM materials', 'BOM साहित्य')}`;
 
@@ -1396,7 +1402,7 @@ function activateBOMSection(productId, batchQty) {
   document.getElementById('ph-product').textContent = pName;
   document.getElementById('ph-batch').textContent   = batchQty;
   document.getElementById('ph-auth').textContent    =
-    company.name ? `For ${company.name} / Authorized Signatory` : 'Authorized Signatory';
+    company.name ? `${t('For','साठी')} ${company.name} / ${t('Authorized Signatory','अधिकृत स्वाक्षरी')}` : t('Authorized Signatory','अधिकृत स्वाक्षरी');
 }
 
 function updateActionBar() {
@@ -1415,10 +1421,10 @@ function printChallan() {
   document.getElementById('printTotalWrap').innerHTML = `
     <hr style="border:1px solid #000; margin:3mm 0;" />
     <div style="text-align:right; font-size:10pt; font-weight:700;">
-      TOTAL &nbsp;&nbsp; ${fmtN(total)} &nbsp; NOS
+      ${t('TOTAL','एकूण')} &nbsp;&nbsp; ${fmtN(total)} &nbsp; NOS
     </div>
     <div style="text-align:right; font-size:8pt; margin-top:1mm; color:#555;">
-      For ${esc(company.name)}
+      ${t('For','साठी')} ${esc(company.name)}
     </div>`;
   window.print();
 }
@@ -1510,11 +1516,6 @@ async function submitIssue() {
   const batchQty  = document.getElementById('batchQty').value;
   const issueDate = document.getElementById('issueDate').value;
   const notes     = document.getElementById('issueNotes').value.trim();
-
-  if (principals.length > 1 && !selectedPoolId) {
-    toast(t('Select which material pool this is for', 'हे कोणत्या साहित्य पूलसाठी आहे ते निवडा'), 'warn');
-    return;
-  }
 
   confirmBtn.disabled = true;
   if (btnLabel) btnLabel.textContent = t('Issuing…', 'इश्यू होत आहे…');
@@ -1645,7 +1646,7 @@ async function submitIssue() {
     <button class="btn btn-ghost btn-sm"
             style="color:#fbbf24;border-color:rgba(251,191,36,0.4);"
             onclick="openAmendModal(currentIssueOrderId, 'Challan ' + (currentIssueChallanNumber || ''))">
-      <span>+ Missing Deduction</span>
+      <span>${t('+ Missing Deduction', '+ न झालेली कपात')}</span>
     </button>
     <button class="btn btn-primary btn-sm" onclick="resetForNewIssue()">
       <span>${t('+ New Issue', '+ नवीन इश्यू')}</span>
@@ -1806,7 +1807,7 @@ async function createDispatchChallan() {
     if (vehicleNumber) localStorage.setItem('nexflow_last_transport', vehicleNumber);
 
     closeChallanModal();
-    toast(`✓ Challan ${currentIssueChallanNumber || ''} created`, 'ok');
+    toast(t(`✓ Challan ${currentIssueChallanNumber || ''} created`, `✓ चलान ${currentIssueChallanNumber || ''} तयार झाले`), 'ok');
 
     // Open challan in new tab
     setTimeout(() => {
@@ -1815,7 +1816,7 @@ async function createDispatchChallan() {
 
   } catch (err) {
     console.error('createDispatchChallan error:', err);
-    toast(t('Failed: ', 'अयशस्वी: ') + (err.message || 'Unknown error'), 'error');
+    toast(t('Failed: ', 'अयशस्वी: ') + (err.message || t('Unknown error','अज्ञात त्रुटी')), 'error');
   } finally {
     btn.disabled = false;
     btn.textContent = t('Generate Challan →', 'चलान तयार करा →');
@@ -1977,7 +1978,7 @@ async function loadRecentIssues() {
     if (error) throw error;
 
     if (!orders || orders.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:var(--mid); padding:16px;">No issues yet.</td></tr>';
+      tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:var(--mid); padding:16px;">${t('No issues yet.','अद्याप कोणतेही इश्यू नाहीत.')}</td></tr>`;
       return;
     }
 
@@ -1990,21 +1991,21 @@ async function loadRecentIssues() {
       const isDraft     = o.status === 'draft';
       const isCancelled = o.status === 'cancelled';
 
-      let badge = `<span class="nx-badge nx-badge-yellow" style="font-size:10px;">Draft</span>`;
-      if (!isDraft && !isCancelled) badge = `<span class="nx-badge nx-badge-green" style="font-size:10px;">Confirmed</span>`;
-      if (isCancelled) badge = `<span class="nx-badge" style="font-size:10px;background:rgba(239,68,68,0.15);color:#ef4444;border:1px solid rgba(239,68,68,0.3);">Cancelled</span>`;
+      let badge = `<span class="nx-badge nx-badge-yellow" style="font-size:10px;">${t('Draft','मसुदा')}</span>`;
+      if (!isDraft && !isCancelled) badge = `<span class="nx-badge nx-badge-green" style="font-size:10px;">${t('Confirmed','पुष्टी झाले')}</span>`;
+      if (isCancelled) badge = `<span class="nx-badge" style="font-size:10px;background:rgba(239,68,68,0.15);color:#ef4444;border:1px solid rgba(239,68,68,0.3);">${t('Cancelled','रद्द')}</span>`;
 
       let actionCell = '—';
       if (!isDraft && !isCancelled) {
         actionCell = `
-          <button onclick="window.open('challan.html?id=${o.id}','_blank')" class="btn btn-outline btn-sm" style="font-size:11px; padding:4px 10px;">View</button>
-          <button onclick="cancelChallan('${o.id}', '${challan.replace(/'/g,"")}')" class="btn btn-outline btn-sm" style="font-size:11px; padding:4px 10px; color:#ef4444; border-color:#ef4444;">Cancel</button>
+          <button onclick="window.open('challan.html?id=${o.id}','_blank')" class="btn btn-outline btn-sm" style="font-size:11px; padding:4px 10px;">${t('View','पहा')}</button>
+          <button onclick="cancelChallan('${o.id}', '${challan.replace(/'/g,"")}')" class="btn btn-outline btn-sm" style="font-size:11px; padding:4px 10px; color:#ef4444; border-color:#ef4444;">${t('Cancel','रद्द करा')}</button>
         `;
       } else if (isCancelled) {
-        actionCell = `<span style="color:var(--mid); font-size:11px;">Reversed</span>`;
+        actionCell = `<span style="color:var(--mid); font-size:11px;">${t('Reversed','उलट केले')}</span>`;
         if (getUserRole() === 'owner') {
           actionCell += `
-            <button onclick="openHardDeleteModal('${o.id}', '${challan.replace(/'/g,"")}')" class="btn btn-outline btn-sm" style="font-size:11px; padding:4px 10px; margin-left:6px; color:#ef4444; border-color:#ef4444;">Delete Permanently</button>
+            <button onclick="openHardDeleteModal('${o.id}', '${challan.replace(/'/g,"")}')" class="btn btn-outline btn-sm" style="font-size:11px; padding:4px 10px; margin-left:6px; color:#ef4444; border-color:#ef4444;">${t('Delete Permanently','कायमचे हटवा')}</button>
           `;
         }
       }
@@ -2020,7 +2021,7 @@ async function loadRecentIssues() {
       tbody.appendChild(tr);
     });
   } catch(err) {
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:var(--mid); padding:12px;">Could not load recent issues.</td></tr>';
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:var(--mid); padding:12px;">${t('Could not load recent issues.','अलीकडील इश्यू लोड करता आले नाहीत.')}</td></tr>`;
   }
 }
 
@@ -2131,7 +2132,7 @@ async function _wipCloseConfirmFn() {
 
         async function openAmendModal(orderId, challanRef) {
             _amendOrderId = orderId;
-            document.getElementById('amendChallanRef').textContent = 'Adding missing deduction to: ' + (challanRef || orderId);
+            document.getElementById('amendChallanRef').textContent = t('Adding missing deduction to: ', 'न झालेली कपात जोडत आहे: ') + (challanRef || orderId);
             document.getElementById('amendQty').value    = '';
             document.getElementById('amendUnit').value   = '';
             document.getElementById('amendReason').value = '';
@@ -2157,7 +2158,7 @@ async function _wipCloseConfirmFn() {
             var wrap=document.createElement('div'); wrap.style.cssText='position:relative;width:100%;';
             var inner=document.createElement('div'); inner.style.cssText='position:relative;display:flex;align-items:center;';
             var icon=document.createElement('i'); icon.style.cssText='position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--mid);pointer-events:none;font-size:14px;font-style:normal;'; icon.textContent='⌕';
-            var input=document.createElement('input'); input.type='text'; input.autocomplete='off'; input.className='nx-input'; input.style.cssText='padding-left:30px;padding-right:28px;'; input.placeholder='Search material or code...';
+            var input=document.createElement('input'); input.type='text'; input.autocomplete='off'; input.className='nx-input'; input.style.cssText='padding-left:30px;padding-right:28px;'; input.placeholder=t('Search material or code...','साहित्य किंवा कोड शोधा...');
             var clr=document.createElement('button'); clr.type='button'; clr.textContent='×'; clr.style.cssText='position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--mid);cursor:pointer;font-size:16px;padding:0;display:none;';
             inner.appendChild(icon); inner.appendChild(input); inner.appendChild(clr);
             var dd=document.createElement('div'); dd.style.cssText='position:fixed;background:var(--surface);border:1px solid var(--border2);border-radius:6px;z-index:10000;max-height:200px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,0.5);display:none;';
@@ -2168,7 +2169,7 @@ async function _wipCloseConfirmFn() {
             function filterM(t){var q=(t||'').toLowerCase().trim(); return q===''?mats.slice(0,50):mats.filter(function(m){return m.name.toLowerCase().includes(q)||(m.material_code&&m.material_code.toLowerCase().includes(q));});}
             function renderDD(term){
                 var res=filterM(term); dd.innerHTML=''; kbdIdx=-1;
-                if(res.length===0){dd.innerHTML='<div style="padding:10px;font-size:12px;color:var(--mid);text-align:center;">No materials found</div>';return;}
+                if(res.length===0){dd.innerHTML='<div style="padding:10px;font-size:12px;color:var(--mid);text-align:center;">'+t('No materials found','कोणतेही साहित्य सापडले नाही')+'</div>';return;}
                 res.forEach(function(m){
                     var d=document.createElement('div');
                     d.style.cssText='padding:8px 10px;font-size:13px;color:var(--text);cursor:pointer;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:6px;';
@@ -2207,10 +2208,10 @@ async function _wipCloseConfirmFn() {
             var unit   =_amendTA?_amendTA.getUnit():'';
             var qty    =parseFloat(document.getElementById('amendQty').value);
             var reason =document.getElementById('amendReason').value.trim();
-            if(!matId){errEl.textContent='Please select a raw material.';errEl.style.display='block';return;}
-            if(!qty||qty<=0){errEl.textContent='Enter a valid quantity.';errEl.style.display='block';return;}
+            if(!matId){errEl.textContent=t('Please select a raw material.','कृपया कच्चा माल निवडा.');errEl.style.display='block';return;}
+            if(!qty||qty<=0){errEl.textContent=t('Enter a valid quantity.','वैध प्रमाण टाका.');errEl.style.display='block';return;}
             var btn=document.getElementById('amendConfirmBtn');
-            btn.disabled=true; btn.textContent='Saving...';
+            btn.disabled=true; btn.textContent=t('Saving...','जतन करत आहे...');
             var _tid=(typeof tenantId!=='undefined'&&tenantId)?tenantId:'';
             try {
                 var res=await window.supabase.rpc('add_missing_deduction',{
@@ -2221,12 +2222,12 @@ async function _wipCloseConfirmFn() {
                 });
                 if(res.error) throw res.error;
                 document.getElementById('amendModal').classList.remove('open');
-                toast('Missing deduction added — stock updated.','ok');
+                toast(t('Missing deduction added — stock updated.','न झालेली कपात जोडली — स्टॉक अपडेट झाला.'),'ok');
                 _amendRMList=[];
             } catch(err){
-                errEl.textContent='Failed: '+err.message; errEl.style.display='block';
+                errEl.textContent=t('Failed: ','अयशस्वी: ')+err.message; errEl.style.display='block';
             } finally {
-                btn.disabled=false; btn.textContent='Confirm Deduction';
+                btn.disabled=false; btn.textContent=t('Confirm Deduction','कपात पुष्टी करा');
             }
         }
 

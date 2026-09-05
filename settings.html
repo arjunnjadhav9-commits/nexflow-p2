@@ -304,7 +304,7 @@
                         <div class="nx-form-group" id="jobworker-toggle-row" style="display:none;">
                             <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:400;">
                                 <input type="checkbox" id="is-job-worker-toggle" style="width:16px; height:16px; cursor:pointer;">
-                                <span data-en="We do job work for another company" data-mr="आम्ही दुसऱ्या कंपनीसाठी जॉब वर्क करतो">We do job work for another company</span>
+                                <span data-en="This factory does job work for other companies (principal manufacturers)" data-mr="हा कारखाना इतर कंपन्यांसाठी जॉब वर्क करतो">This factory does job work for other companies (principal manufacturers)</span>
                             </label>
                         </div>
                         <div class="nx-form-group" id="jobworker-confirmed-row" style="display:none;">
@@ -318,6 +318,19 @@
                         </div>
                         <div class="nx-form-group" id="principal-confirmed-row" style="display:none;">
                             <span style="color:#22c55e; font-size:13px; font-weight:600;" data-en="✓ Principal mode enabled" data-mr="✓ प्रिन्सिपल मोड सक्षम केले">✓ Principal mode enabled</span>
+                        </div>
+                        <!-- Separate pool deduction (job-worker only, bidirectional setting —
+                             unlike the one-way switches above, this row never hides itself). -->
+                        <div class="nx-form-group" id="separate-pool-toggle-row" style="display:none;">
+                            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:400;">
+                                <input type="checkbox" id="separate-pool-deduction-toggle" style="width:16px; height:16px; cursor:pointer;">
+                                <span data-en="Separate pool deduction" data-mr="स्वतंत्र पूल वजावट">Separate pool deduction</span>
+                            </label>
+                            <div style="font-size:11px; color:var(--mid); margin-top:6px; margin-left:24px;"
+                                 data-en="When on, dispatches deduct stock from the selected principal's pool or own stock separately. When off, all dispatches deduct from total inventory regardless of ownership."
+                                 data-mr="चालू असल्यास, डिस्पॅच निवडलेल्या प्रिन्सिपलच्या पूलमधून किंवा स्वतःच्या स्टॉकमधून स्वतंत्रपणे वजा होईल. बंद असल्यास, सर्व डिस्पॅच मालकीची पर्वा न करता एकूण साठ्यातून वजा होतील.">
+                                When on, dispatches deduct stock from the selected principal's pool or own stock separately. When off, all dispatches deduct from total inventory regardless of ownership.
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1268,7 +1281,7 @@
 
             const { data, error } = await window.supabase
                 .from('p2_tenant_settings')
-                .select('*')
+                .select('company_name, address_line1, address_line2, mobile, gstin, bank_name, bank_account, bank_ifsc, sac_code, aato_bracket, challan_sequence, challan_next_override, grn_sequence, invoice_sequence, challan_mode, is_job_work_setup_seen, is_job_worker, is_principal, separate_pool_deduction, telegram_chat_id, quiet_hours_start, quiet_hours_end')
                 .eq('tenant_id', tenantId)
                 .single();
 
@@ -1322,6 +1335,10 @@
                 if (principalRow) principalRow.style.display = data.is_principal ? 'none' : '';
                 const principalConfirmedRow = document.getElementById('principal-confirmed-row');
                 if (principalConfirmedRow) principalConfirmedRow.style.display = data.is_principal ? '' : 'none';
+                const separatePoolRow = document.getElementById('separate-pool-toggle-row');
+                if (separatePoolRow) separatePoolRow.style.display = data.is_job_worker ? '' : 'none';
+                const separatePoolToggle = document.getElementById('separate-pool-deduction-toggle');
+                if (separatePoolToggle) separatePoolToggle.checked = data.separate_pool_deduction === true;
             }
         } catch (error) {
             console.error('Error loading company details:', error);
@@ -1401,6 +1418,8 @@
                 .update({ is_job_worker: true }).eq('tenant_id', tenantId);
             if (error) throw error;
             document.getElementById('jobworker-toggle-row').style.display = 'none';
+            document.getElementById('jobworker-confirmed-row').style.display = '';
+            toast('Saved','ok');
         } catch (error) {
             console.error('Error saving is_job_worker:', error);
             e.target.checked = false;
@@ -1421,6 +1440,29 @@
         } catch (error) {
             console.error('Error saving is_principal:', error);
             e.target.checked = false;
+            toast('Failed to save','error');
+        }
+    });
+
+    // ── SEPARATE POOL DEDUCTION (bidirectional, unlike the one-way switches
+    // above) ─────────────────────────────────────────────────────────────────
+    // Fires on both check and uncheck. Updates cachedSeparatePoolDeduction
+    // (declared in js/supabase-client.js, a shared classic-script scope) so
+    // isSeparatePoolDeduction() reflects the new value immediately, no reload.
+    document.getElementById('separate-pool-deduction-toggle').addEventListener('change', async (e) => {
+        const newValue = e.target.checked;
+        try {
+            const { data: { user } } = await window.supabase.auth.getUser();
+            if (!user) { e.target.checked = !newValue; return; }
+            const tenantId = user.user_metadata?.tenant_id || user.id;
+            const { error } = await window.supabase.from('p2_tenant_settings')
+                .update({ separate_pool_deduction: newValue }).eq('tenant_id', tenantId);
+            if (error) throw error;
+            cachedSeparatePoolDeduction = newValue;
+            toast('Saved','ok');
+        } catch (error) {
+            console.error('Error saving separate_pool_deduction:', error);
+            e.target.checked = !newValue;
             toast('Failed to save','error');
         }
     });

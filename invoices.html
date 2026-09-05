@@ -111,16 +111,16 @@
             <!-- PAGE HEADER -->
             <div class="nx-page-header">
                 <div>
-                    <div class="nx-eyebrow">Billing</div>
+                    <div class="nx-eyebrow" data-en="Billing" data-mr="बिलिंग">Billing</div>
                     <div class="nx-page-title" data-en="Invoices" data-mr="इनव्हॉइस">
                         Invoices
                     </div>
-                    <div class="nx-page-sub">All generated client invoices — view, print, resend</div>
+                    <div class="nx-page-sub" data-en="All generated client invoices — view, print, resend" data-mr="सर्व तयार केलेले क्लायंट इनव्हॉइस — पहा, प्रिंट करा, पुन्हा पाठवा">All generated client invoices — view, print, resend</div>
                 </div>
                 <!-- Hidden until the Pro/Founder gate resolves in init() — this header
                      renders before that check, unlike #invoicesContent below it. -->
                 <div id="newInvoiceHeaderActions" style="display:none;">
-                    <button id="newConsolidatedInvoiceBtn" onclick="openConsolidatedModal()" class="nx-btn nx-btn-primary">+ New Consolidated Invoice</button>
+                    <button id="newConsolidatedInvoiceBtn" onclick="openConsolidatedModal()" class="nx-btn nx-btn-primary" data-en="+ New Consolidated Invoice" data-mr="+ नवीन एकत्रित इनव्हॉइस">+ New Consolidated Invoice</button>
                 </div>
             </div>
 
@@ -128,7 +128,7 @@
             <div id="loadingSpinner">
                 <div class="nx-logo-loader">
                     <div class="nx-logo-loader-mark"></div>
-                    <div class="nx-logo-loader-text">Loading...</div>
+                    <div class="nx-logo-loader-text" data-en="Loading..." data-mr="लोड होत आहे...">Loading...</div>
                 </div>
             </div>
 
@@ -156,43 +156,43 @@
                 <!-- SUMMARY STAT CARDS -->
                 <div class="nx-stat-grid nx-mb-24">
                     <div class="nx-stat">
-                        <div class="nx-stat-label">Total Invoices</div>
+                        <div class="nx-stat-label" data-en="Total Invoices" data-mr="एकूण इनव्हॉइस">Total Invoices</div>
                         <div class="nx-stat-value" id="statTotalCount">—</div>
                         <div class="nx-stat-unit" id="statTotalCountUnit">—</div>
                     </div>
                     <div class="nx-stat">
-                        <div class="nx-stat-label">Total Billed</div>
+                        <div class="nx-stat-label" data-en="Total Billed" data-mr="एकूण बिल">Total Billed</div>
                         <div class="nx-stat-value orange" id="statTotalAmount">—</div>
-                        <div class="nx-stat-unit">sum of matched invoices</div>
+                        <div class="nx-stat-unit" data-en="sum of matched invoices" data-mr="जुळलेल्या इनव्हॉइसची बेरीज">sum of matched invoices</div>
                     </div>
                 </div>
 
                 <!-- FILTERS -->
                 <div class="dh-filters">
                     <div class="nx-form-group">
-                        <label>Client</label>
+                        <label data-en="Client" data-mr="क्लायंट">Client</label>
                         <select id="filterClient" class="nx-input">
-                            <option value="">All</option>
+                            <option value="" data-en="All" data-mr="सर्व">All</option>
                         </select>
                     </div>
                     <div class="nx-form-group">
-                        <label>Mode</label>
+                        <label data-en="Mode" data-mr="मोड">Mode</label>
                         <select id="filterMode" class="nx-input">
-                            <option value="">All</option>
-                            <option value="single">Single</option>
-                            <option value="consolidated">Consolidated</option>
+                            <option value="" data-en="All" data-mr="सर्व">All</option>
+                            <option value="single" data-en="Single" data-mr="एकल">Single</option>
+                            <option value="consolidated" data-en="Consolidated" data-mr="एकत्रित">Consolidated</option>
                         </select>
                     </div>
                     <div class="nx-form-group">
-                        <label>Status</label>
+                        <label data-en="Status" data-mr="स्थिती">Status</label>
                         <select id="filterStatus" class="nx-input">
-                            <option value="">All</option>
-                            <option value="draft">Draft</option>
-                            <option value="sent">Sent</option>
-                            <option value="cancelled">Cancelled</option>
-                            <option value="pending_payment">Pending Payment</option>
-                            <option value="partial_payment">Partial</option>
-                            <option value="overdue_payment">Overdue</option>
+                            <option value="" data-en="All" data-mr="सर्व">All</option>
+                            <option value="draft" data-en="Draft" data-mr="मसुदा">Draft</option>
+                            <option value="sent" data-en="Sent" data-mr="पाठवले">Sent</option>
+                            <option value="cancelled" data-en="Cancelled" data-mr="रद्द">Cancelled</option>
+                            <option value="pending_payment" data-en="Pending Payment" data-mr="पेमेंट प्रलंबित">Pending Payment</option>
+                            <option value="partial_payment" data-en="Partial" data-mr="अंशतः">Partial</option>
+                            <option value="overdue_payment" data-en="Overdue" data-mr="मुदत उलटलेले">Overdue</option>
                         </select>
                     </div>
                 </div>
@@ -203,14 +203,14 @@
                         <table class="nx-table nx-invoice-table">
                             <thead>
                                 <tr>
-                                    <th class="col-invno">Invoice No</th>
-                                    <th class="col-date">Date</th>
-                                    <th class="col-client">Client</th>
-                                    <th class="col-mode">Mode</th>
-                                    <th class="col-period">Period</th>
-                                    <th class="col-amount">Amount (₹)</th>
-                                    <th class="col-status">Status</th>
-                                    <th class="col-actions">Detail</th>
+                                    <th class="col-invno" data-en="Invoice No" data-mr="इनव्हॉइस क्र">Invoice No</th>
+                                    <th class="col-date" data-en="Date" data-mr="तारीख">Date</th>
+                                    <th class="col-client" data-en="Client" data-mr="क्लायंट">Client</th>
+                                    <th class="col-mode" data-en="Mode" data-mr="मोड">Mode</th>
+                                    <th class="col-period" data-en="Period" data-mr="कालावधी">Period</th>
+                                    <th class="col-amount" data-en="Amount (₹)" data-mr="रक्कम (₹)">Amount (₹)</th>
+                                    <th class="col-status" data-en="Status" data-mr="स्थिती">Status</th>
+                                    <th class="col-actions" data-en="Detail" data-mr="तपशील">Detail</th>
                                 </tr>
                             </thead>
                             <tbody id="invoicesBody"></tbody>
@@ -219,7 +219,7 @@
 
                     <div id="emptyState" style="display:none;" class="nx-empty-state">
                         <div class="nx-empty-icon">🧾</div>
-                        <div>No invoices match the selected filters.</div>
+                        <div data-en="No invoices match the selected filters." data-mr="निवडलेल्या फिल्टरशी जुळणारे कोणतेही इनव्हॉइस नाहीत.">No invoices match the selected filters.</div>
                     </div>
                 </div>
 
@@ -291,41 +291,41 @@
     <!-- NEW CONSOLIDATED INVOICE MODAL -->
     <div id="consolidatedInvoiceModal" class="nx-modal-overlay" style="display:none;">
         <div class="nx-modal" style="max-width:480px;">
-            <div class="nx-modal-title" style="color:var(--orange);">New Consolidated Invoice</div>
+            <div class="nx-modal-title" style="color:var(--orange);" data-en="New Consolidated Invoice" data-mr="नवीन एकत्रित इनव्हॉइस">New Consolidated Invoice</div>
 
             <div class="nx-form-group" style="margin-bottom:14px;">
-                <label>Client</label>
+                <label data-en="Client" data-mr="क्लायंट">Client</label>
                 <select id="consInvoiceClient" class="nx-input">
-                    <option value="">Select client...</option>
+                    <option value="" data-en="Select client..." data-mr="क्लायंट निवडा...">Select client...</option>
                 </select>
             </div>
 
             <div style="display:flex; gap:12px; margin-bottom:14px;">
                 <div class="nx-form-group" style="flex:1; margin:0;">
-                    <label>Date From</label>
+                    <label data-en="Date From" data-mr="पासून तारीख">Date From</label>
                     <input type="date" id="consInvoiceFrom" class="nx-input">
                 </div>
                 <div class="nx-form-group" style="flex:1; margin:0;">
-                    <label>Date To</label>
+                    <label data-en="Date To" data-mr="पर्यंत तारीख">Date To</label>
                     <input type="date" id="consInvoiceTo" class="nx-input">
                 </div>
             </div>
 
             <div class="nx-form-group" style="margin-bottom:16px;">
-                <label>GST Type</label>
+                <label data-en="GST Type" data-mr="GST प्रकार">GST Type</label>
                 <select id="consInvoiceGstType" class="nx-input">
-                    <option value="cgst_sgst" selected>CGST + SGST</option>
-                    <option value="igst">IGST</option>
-                    <option value="none">None</option>
+                    <option value="cgst_sgst" selected data-en="CGST + SGST" data-mr="CGST + SGST">CGST + SGST</option>
+                    <option value="igst" data-en="IGST" data-mr="IGST">IGST</option>
+                    <option value="none" data-en="None" data-mr="काहीही नाही">None</option>
                 </select>
             </div>
 
             <div class="nx-form-group" style="margin-bottom:16px;">
-                <label>Include Challans</label>
+                <label data-en="Include Challans" data-mr="समाविष्ट चलन">Include Challans</label>
                 <select id="consInvoiceDispatchType" class="nx-input">
-                    <option value="product" selected>Product Dispatches Only</option>
-                    <option value="raw_material">RM Dispatches Only</option>
-                    <option value="both">Both Product + RM</option>
+                    <option value="product" selected data-en="Product Dispatches Only" data-mr="फक्त प्रॉडक्ट डिस्पॅच">Product Dispatches Only</option>
+                    <option value="raw_material" data-en="RM Dispatches Only" data-mr="फक्त कच्चा माल डिस्पॅच">RM Dispatches Only</option>
+                    <option value="both" data-en="Both Product + RM" data-mr="प्रॉडक्ट + कच्चा माल दोन्ही">Both Product + RM</option>
                 </select>
             </div>
 
@@ -336,7 +336,7 @@
 
             <div style="display:flex; gap:10px;">
                 <button id="consInvoiceConfirm" class="nx-btn nx-btn-green" style="flex:1;" data-en="Preview Line Items &rarr;" data-mr="वस्तू पूर्वावलोकन &rarr;">Preview Line Items &rarr;</button>
-                <button id="consInvoiceCancel" class="nx-btn nx-btn-ghost" style="flex:1;">Cancel</button>
+                <button id="consInvoiceCancel" class="nx-btn nx-btn-ghost" style="flex:1;" data-en="Cancel" data-mr="रद्द करा">Cancel</button>
             </div>
         </div>
     </div>
@@ -428,12 +428,12 @@
 
             <div class="nx-form-group" style="margin-bottom:14px;">
                 <label data-en="Reference No" data-mr="संदर्भ क्र.">Reference No</label>
-                <input type="text" id="rpReference" class="nx-input" placeholder="Optional">
+                <input type="text" id="rpReference" class="nx-input" data-en="Optional" data-mr="ऐच्छिक" placeholder="Optional">
             </div>
 
             <div class="nx-form-group" style="margin-bottom:16px;">
                 <label data-en="Notes" data-mr="टीप">Notes</label>
-                <input type="text" id="rpNotes" class="nx-input" placeholder="Optional">
+                <input type="text" id="rpNotes" class="nx-input" data-en="Optional" data-mr="ऐच्छिक" placeholder="Optional">
             </div>
 
             <div style="display:flex; gap:10px;">
@@ -449,11 +449,12 @@
             <div class="nx-modal-title" id="invoiceDetailTitle" style="color:var(--orange);"></div>
             <div id="invoiceDetailMeta" style="font-size:13px; color:var(--mid); margin-bottom:20px; line-height:1.7;"></div>
             <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                <button id="invoiceDetailViewBtn" class="nx-btn nx-btn-green" style="flex:1;">View / Print</button>
-                <button id="invoiceDetailPayBtn" class="nx-btn nx-btn-secondary" style="flex:1; display:none;">Record Payment</button>
+                <button id="invoiceDetailViewBtn" class="nx-btn nx-btn-green" style="flex:1;" data-en="View / Print" data-mr="पहा / प्रिंट करा">View / Print</button>
+                <button id="invoiceDetailPayBtn" class="nx-btn nx-btn-secondary" style="flex:1; display:none;" data-en="Record Payment" data-mr="पेमेंट नोंदवा">Record Payment</button>
+                <!-- Text is dynamic (▲/▼ toggles with expand state) — set via t() in openInvoiceDetail(), not data-en/data-mr. -->
                 <button id="invoiceDetailReceiptsBtn" class="nx-btn nx-btn-ghost" style="flex:1; display:none;">▼ Receipts</button>
-                <button id="invoiceDetailCancelBtn" class="nx-btn nx-btn-ghost" style="flex:1; display:none; color:var(--red);">Cancel Invoice</button>
-                <button id="invoiceDetailCloseBtn" class="nx-btn nx-btn-ghost" style="flex:1;">Close</button>
+                <button id="invoiceDetailCancelBtn" class="nx-btn nx-btn-ghost" style="flex:1; display:none; color:var(--red);" data-en="Cancel Invoice" data-mr="इनव्हॉइस रद्द करा">Cancel Invoice</button>
+                <button id="invoiceDetailCloseBtn" class="nx-btn nx-btn-ghost" style="flex:1;" data-en="Close" data-mr="बंद करा">Close</button>
             </div>
         </div>
     </div>
@@ -477,12 +478,12 @@
 
             <div class="nx-form-group" style="margin-bottom:14px;">
                 <label data-en="Reference No" data-mr="संदर्भ क्र.">Reference No</label>
-                <input type="text" id="raReference" class="nx-input" placeholder="Optional">
+                <input type="text" id="raReference" class="nx-input" data-en="Optional" data-mr="ऐच्छिक" placeholder="Optional">
             </div>
 
             <div class="nx-form-group" style="margin-bottom:16px;">
                 <label data-en="Notes" data-mr="टीप">Notes</label>
-                <textarea id="raNotes" class="nx-input" rows="3" placeholder="Optional" style="resize:vertical;"></textarea>
+                <textarea id="raNotes" class="nx-input" rows="3" data-en="Optional" data-mr="ऐच्छिक" placeholder="Optional" style="resize:vertical;"></textarea>
             </div>
 
             <div style="display:flex; gap:10px;">
@@ -520,6 +521,15 @@
             const btn = document.getElementById('lang-toggle');
             if (btn) btn.textContent = lang === 'mr' ? 'English' : 'मराठी';
             localStorage.setItem('nexflow_lang', lang);
+
+            // Static [data-en] elements are handled above, but table rows/badges
+            // are built with the t() helper at render time (CLAUDE.md: dynamic
+            // content can't rely on applyLang()) — the navbar's lang-toggle button
+            // only ever calls this function, so without an explicit re-render here
+            // a toggle while viewing a populated table would leave it in the old
+            // language until some unrelated action re-rendered it.
+            renderInvoices();
+            if (selectedAdvSupplierId) loadAdvanceHistory();
         }
         window.applyLang = applyLang;
 
@@ -695,16 +705,42 @@
             return { inv, totalReceived, amountTotal, balanceDue: amountTotal - totalReceived };
         }
 
-        const PAYMENT_STATUS_BADGE = {
-            paid:    { cls: 'nx-badge-green',  label: 'Paid' },
-            partial: { cls: 'nx-badge-orange', label: 'Partial' },
-            overdue: { cls: 'nx-badge-red',    label: 'Overdue' },
-            pending: { cls: 'nx-badge-grey',   label: 'Pending' }
-        };
+        // Functions, not static objects — t() reads localStorage fresh each call,
+        // so a static object built once at script-load time would freeze in
+        // whatever language was active on page load and never update on toggle.
+        function paymentStatusBadgeInfo(status) {
+            return {
+                paid:    { cls: 'nx-badge-green',  label: t('Paid', 'भरले') },
+                partial: { cls: 'nx-badge-orange', label: t('Partial', 'अंशतः') },
+                overdue: { cls: 'nx-badge-red',    label: t('Overdue', 'मुदत उलटलेले') },
+                pending: { cls: 'nx-badge-grey',   label: t('Pending', 'प्रलंबित') }
+            }[status];
+        }
 
-        const PAYMENT_MODE_LABEL = {
-            neft: 'NEFT', rtgs: 'RTGS', cheque: 'Cheque', upi: 'UPI', cash: 'Cash', adjustment: 'Adjustment'
-        };
+        function paymentModeLabel(mode) {
+            // NEFT/RTGS/UPI are universal acronyms — same in both languages,
+            // matching the Record Payment modal's own <option data-en/data-mr>.
+            return { neft: 'NEFT', rtgs: 'RTGS', cheque: t('Cheque','चेक'), upi: 'UPI', cash: t('Cash','रोख'), adjustment: t('Adjustment','समायोजन') }[mode];
+        }
+
+        function modeBadgeHtml(inv) {
+            return inv.invoice_mode === 'consolidated'
+                ? `<span class="nx-badge nx-badge-orange">${t('Consolidated', 'एकत्रित')}</span>`
+                : `<span class="nx-badge nx-badge-grey">${t('Single', 'एकल')}</span>`;
+        }
+
+        function statusBadgeHtml(inv) {
+            return inv.status === 'cancelled'
+                ? `<span class="nx-badge nx-badge-red">${t('Cancelled', 'रद्द')}</span>`
+                : inv.status === 'sent'
+                ? `<span class="nx-badge nx-badge-green">${t('Sent', 'पाठवले')}</span>`
+                : `<span class="nx-badge nx-badge-yellow">${t('Draft', 'मसुदा')}</span>`;
+        }
+
+        function paymentBadgeHtml(inv, paymentStatus) {
+            const info = paymentStatusBadgeInfo(paymentStatus);
+            return (inv.status === 'sent' && info) ? `<span class="nx-badge ${info.cls}">${info.label}</span>` : '';
+        }
 
         function renderReceiptsSubRow(receipts) {
             const rows = receipts.map(r => `
@@ -713,7 +749,7 @@
                     <td style="text-align:right;">${fmtMoney(r.gross_amount)}</td>
                     <td style="text-align:right;">${fmtMoney(r.tds_amount)}</td>
                     <td style="text-align:right;">${fmtMoney(r.net_amount)}</td>
-                    <td>${escInvHtml(PAYMENT_MODE_LABEL[r.payment_mode] || r.payment_mode || '-')}</td>
+                    <td>${escInvHtml(paymentModeLabel(r.payment_mode) || r.payment_mode || '-')}</td>
                     <td>${escInvHtml(r.reference_no || '-')}</td>
                 </tr>
             `).join('');
@@ -724,12 +760,12 @@
                         <table class="nx-table" style="font-size:12px;">
                             <thead>
                                 <tr>
-                                    <th>Date</th>
-                                    <th style="text-align:right;">Gross</th>
-                                    <th style="text-align:right;">TDS</th>
-                                    <th style="text-align:right;">Net</th>
-                                    <th>Mode</th>
-                                    <th>Reference</th>
+                                    <th>${t('Date','तारीख')}</th>
+                                    <th style="text-align:right;">${t('Gross','एकूण')}</th>
+                                    <th style="text-align:right;">${t('TDS','TDS')}</th>
+                                    <th style="text-align:right;">${t('Net','निव्वळ')}</th>
+                                    <th>${t('Mode','मोड')}</th>
+                                    <th>${t('Reference','संदर्भ')}</th>
                                 </tr>
                             </thead>
                             <tbody>${rows}</tbody>
@@ -799,7 +835,7 @@
 
             const totalAmount = filtered.reduce((sum, inv) => sum + (Number(inv.amount_total) || 0), 0);
             document.getElementById('statTotalCount').textContent = filtered.length;
-            document.getElementById('statTotalCountUnit').textContent = filtered.length === 1 ? 'invoice' : 'invoices';
+            document.getElementById('statTotalCountUnit').textContent = filtered.length === 1 ? t('invoice','इनव्हॉइस') : t('invoices','इनव्हॉइसेस');
             document.getElementById('statTotalAmount').textContent = fmtMoney(totalAmount);
 
             if (filtered.length === 0) {
@@ -812,23 +848,14 @@
             tbody.innerHTML = filtered.map(inv => {
                 const receipts = receiptsByInvoice.get(inv.id) || [];
                 const isConsolidated = inv.invoice_mode === 'consolidated';
-                const modeBadge = isConsolidated
-                    ? `<span class="nx-badge nx-badge-orange">Consolidated</span>`
-                    : `<span class="nx-badge nx-badge-grey">Single</span>`;
+                const modeBadge = modeBadgeHtml(inv);
                 const period = isConsolidated
                     ? `${fmtDate(inv.date_from)} – ${fmtDate(inv.date_to)}`
                     : '';
-                const statusBadge = inv.status === 'cancelled'
-                    ? `<span class="nx-badge nx-badge-red">Cancelled</span>`
-                    : inv.status === 'sent'
-                    ? `<span class="nx-badge nx-badge-green">Sent</span>`
-                    : `<span class="nx-badge nx-badge-yellow">Draft</span>`;
+                const statusBadge = statusBadgeHtml(inv);
 
                 const paymentStatus = derivePaymentStatus(inv, receipts);
-                const paymentBadgeInfo = PAYMENT_STATUS_BADGE[paymentStatus];
-                const paymentBadge = (inv.status === 'sent' && paymentBadgeInfo)
-                    ? `<span class="nx-badge ${paymentBadgeInfo.cls}">${paymentBadgeInfo.label}</span>`
-                    : '';
+                const paymentBadge = paymentBadgeHtml(inv, paymentStatus);
 
                 const mainRow = `
                     <tr class="nx-invoice-row" onclick="toggleMobileDetail('${inv.id}')">
@@ -840,7 +867,7 @@
                         <td class="col-amount">${fmtMoney(inv.amount_total)}</td>
                         <td class="col-status"><div style="display:flex; flex-direction:column; align-items:flex-start; gap:4px;">${statusBadge}${paymentBadge}</div></td>
                         <td class="col-actions" onclick="event.stopPropagation()">
-                            <button class="nx-btn nx-btn-ghost nx-btn-sm detail-btn" data-invoice-id="${inv.id}">Detail</button>
+                            <button class="nx-btn nx-btn-ghost nx-btn-sm detail-btn" data-invoice-id="${inv.id}">${t('Detail','तपशील')}</button>
                         </td>
                     </tr>
                 `;
@@ -850,9 +877,9 @@
                     <tr class="nx-mobile-detail-row">
                         <td colspan="8" style="padding:12px 16px; background:rgba(255,255,255,0.02);">
                             <div style="display:flex; flex-direction:column; gap:8px; font-size:13px;">
-                                <div><span style="color:var(--mid);">Date:</span> ${fmtDate(inv.invoice_date)}</div>
-                                <div><span style="color:var(--mid);">Mode:</span> ${modeBadge}</div>
-                                ${period ? `<div><span style="color:var(--mid);">Period:</span> ${period}</div>` : ''}
+                                <div><span style="color:var(--mid);">${t('Date','तारीख')}:</span> ${fmtDate(inv.invoice_date)}</div>
+                                <div><span style="color:var(--mid);">${t('Mode','मोड')}:</span> ${modeBadge}</div>
+                                ${period ? `<div><span style="color:var(--mid);">${t('Period','कालावधी')}:</span> ${period}</div>` : ''}
                             </div>
                         </td>
                     </tr>
@@ -869,7 +896,10 @@
         window.cancelInvoice = async (id) => {
             const inv = allInvoices.find(i => i.id === id);
             if (!inv) return;
-            if (!confirm(`Cancel invoice ${inv.invoice_number}? This cannot be undone.`)) return;
+            if (!confirm(t(
+                `Cancel invoice ${inv.invoice_number}? This cannot be undone.`,
+                `इनव्हॉइस ${inv.invoice_number} रद्द करायचे? हे परत केले जाऊ शकत नाही.`
+            ))) return;
 
             try {
                 const { error } = await window.supabase
@@ -883,7 +913,7 @@
                 applyFilters();
             } catch (err) {
                 console.error('cancelInvoice:', err);
-                alert('Could not cancel the invoice. Please try again.');
+                alert(t('Could not cancel the invoice. Please try again.', 'इनव्हॉइस रद्द करता आले नाही. कृपया पुन्हा प्रयत्न करा.'));
             }
         };
 
@@ -891,27 +921,18 @@
         function openInvoiceDetail(inv) {
             const receipts = receiptsByInvoice.get(inv.id) || [];
             const isConsolidated = inv.invoice_mode === 'consolidated';
-            const modeBadge = isConsolidated
-                ? `<span class="nx-badge nx-badge-orange">Consolidated</span>`
-                : `<span class="nx-badge nx-badge-grey">Single</span>`;
-            const statusBadge = inv.status === 'cancelled'
-                ? `<span class="nx-badge nx-badge-red">Cancelled</span>`
-                : inv.status === 'sent'
-                ? `<span class="nx-badge nx-badge-green">Sent</span>`
-                : `<span class="nx-badge nx-badge-yellow">Draft</span>`;
+            const modeBadge = modeBadgeHtml(inv);
+            const statusBadge = statusBadgeHtml(inv);
             const paymentStatus = derivePaymentStatus(inv, receipts);
-            const paymentBadgeInfo = PAYMENT_STATUS_BADGE[paymentStatus];
-            const paymentBadge = (inv.status === 'sent' && paymentBadgeInfo)
-                ? `<span class="nx-badge ${paymentBadgeInfo.cls}">${paymentBadgeInfo.label}</span>`
-                : '';
+            const paymentBadge = paymentBadgeHtml(inv, paymentStatus);
 
             document.getElementById('invoiceDetailTitle').textContent = inv.invoice_number;
             document.getElementById('invoiceDetailMeta').innerHTML = `
                 <span style="color:var(--white); font-weight:700;">${escInvHtml(inv.client_name || '-')}</span><br>
-                Date: ${fmtDate(inv.invoice_date)} &nbsp;&middot;&nbsp; ${modeBadge}<br>
-                Amount: ${fmtMoney(inv.amount_total)}<br>
+                ${t('Date','तारीख')}: ${fmtDate(inv.invoice_date)} &nbsp;&middot;&nbsp; ${modeBadge}<br>
+                ${t('Amount','रक्कम')}: ${fmtMoney(inv.amount_total)}<br>
                 ${statusBadge}${paymentBadge ? ' ' + paymentBadge : ''}
-                ${isConsolidated ? `<br>Period: ${fmtDate(inv.date_from)} &ndash; ${fmtDate(inv.date_to)}` : ''}
+                ${isConsolidated ? `<br>${t('Period','कालावधी')}: ${fmtDate(inv.date_from)} &ndash; ${fmtDate(inv.date_to)}` : ''}
             `;
 
             document.getElementById('invoiceDetailViewBtn').onclick = () => {
@@ -931,7 +952,7 @@
 
             const receiptsBtn = document.getElementById('invoiceDetailReceiptsBtn');
             if (receipts.length > 0) {
-                receiptsBtn.textContent = expandedInvoiceIds.has(inv.id) ? '▲ Receipts' : '▼ Receipts';
+                receiptsBtn.textContent = expandedInvoiceIds.has(inv.id) ? '▲ ' + t('Receipts','पावत्या') : '▼ ' + t('Receipts','पावत्या');
                 receiptsBtn.style.display = '';
                 receiptsBtn.onclick = () => {
                     document.getElementById('invoiceDetailModal').style.display = 'none';
@@ -984,7 +1005,7 @@
             document.getElementById('consInvoiceDispatchType').value = 'product';
 
             const select = document.getElementById('consInvoiceClient');
-            select.innerHTML = '<option value="">Loading...</option>';
+            select.innerHTML = `<option value="">${t('Loading...','लोड होत आहे...')}</option>`;
             document.getElementById('consolidatedInvoiceModal').style.display = 'flex';
 
             try {
@@ -995,11 +1016,11 @@
                     .order('name', { ascending: true });
                 if (error) throw error;
 
-                select.innerHTML = '<option value="">Select client...</option>' +
+                select.innerHTML = `<option value="">${t('Select client...','क्लायंट निवडा...')}</option>` +
                     (clients || []).map(c => `<option value="${escInvHtml(c.id)}">${escInvHtml(c.name)}</option>`).join('');
             } catch (err) {
                 console.error('openConsolidatedModal clients load:', err);
-                select.innerHTML = '<option value="">Could not load clients</option>';
+                select.innerHTML = `<option value="">${t('Could not load clients','क्लायंट लोड करता आले नाहीत')}</option>`;
             }
         };
 
@@ -1027,12 +1048,12 @@
                 const gstType = document.getElementById('consInvoiceGstType').value;
                 const dispatchType = document.getElementById('consInvoiceDispatchType').value;
 
-                if (!clientId) { showConsInvoiceError('Please select a client.'); return; }
-                if (!dateFrom || !dateTo) { showConsInvoiceError('Please select both a from and to date.'); return; }
+                if (!clientId) { showConsInvoiceError(t('Please select a client.','कृपया क्लायंट निवडा.')); return; }
+                if (!dateFrom || !dateTo) { showConsInvoiceError(t('Please select both a from and to date.','कृपया पासून आणि पर्यंत दोन्ही तारखा निवडा.')); return; }
 
                 const btn = document.getElementById('consInvoiceConfirm');
                 btn.disabled = true;
-                btn.textContent = 'Loading…';
+                btn.textContent = t('Loading…','लोड होत आहे…');
 
                 try {
                     const res = await fetch(`${SUPABASE_URL}/functions/v1/agent-query`, {
@@ -1061,10 +1082,10 @@
                     openConsPreviewModal(data);
                 } catch (err) {
                     console.error('preview_consolidated_invoice:', err);
-                    showConsInvoiceError(err.message || 'Could not load line items.');
+                    showConsInvoiceError(err.message || t('Could not load line items.','वस्तूंची यादी लोड करता आली नाही.'));
                 } finally {
                     btn.disabled = false;
-                    btn.textContent = 'Preview Line Items →';
+                    btn.textContent = t('Preview Line Items →','वस्तू पूर्वावलोकन →');
                 }
             });
         }
@@ -1152,7 +1173,7 @@
 
                 const btn = document.getElementById('consPreviewConfirm');
                 btn.disabled = true;
-                btn.textContent = 'Generating…';
+                btn.textContent = t('Generating…','तयार करत आहे…');
 
                 try {
                     const res = await fetch(`${SUPABASE_URL}/functions/v1/agent-query`, {
@@ -1175,14 +1196,14 @@
 
                     document.getElementById('consInvoicePreviewModal').style.display = 'none';
                     window.open(data.invoice_url, '_blank');
-                    if (data.already_exists) alert('Invoice already exists — opened.');
+                    if (data.already_exists) alert(t('Invoice already exists — opened.','इनव्हॉइस आधीच अस्तित्वात आहे — उघडले.'));
                     await loadInvoices();
                 } catch (err) {
                     console.error('confirm_consolidated_invoice:', err);
-                    showConsPreviewError(err.message || 'Could not generate invoice.');
+                    showConsPreviewError(err.message || t('Could not generate invoice.','इनव्हॉइस तयार करता आले नाही.'));
                 } finally {
                     btn.disabled = false;
-                    btn.textContent = 'Confirm & Generate Invoice';
+                    btn.textContent = t('Confirm & Generate Invoice','पुष्टी करा आणि इनव्हॉइस तयार करा');
                 }
             });
         }
@@ -1260,7 +1281,7 @@
 
                 const btn = document.getElementById('rpConfirm');
                 btn.disabled = true;
-                btn.textContent = 'Saving…';
+                btn.textContent = t('Saving…','जतन करत आहे…');
 
                 try {
                     // net_amount is a GENERATED column — never sent in the insert payload.
@@ -1298,13 +1319,15 @@
                     await refreshInvoiceReceipts(recordPaymentInvoiceId);
                     expandedInvoiceIds.add(recordPaymentInvoiceId);
                     renderInvoices();
-                    toast(wasDraft ? 'Payment recorded. Invoice marked as sent.' : 'Payment recorded', 'ok');
+                    toast(wasDraft
+                        ? t('Payment recorded. Invoice marked as sent.','पेमेंट नोंदवले. इनव्हॉइस पाठवले म्हणून चिन्हांकित.')
+                        : t('Payment recorded','पेमेंट नोंदवले'), 'ok');
                 } catch (err) {
                     console.error('recordPayment:', err);
-                    toast(err.message || 'Could not record the payment.', 'error');
+                    toast(err.message || t('Could not record the payment.','पेमेंट नोंदवता आले नाही.'), 'error');
                 } finally {
                     btn.disabled = false;
-                    btn.textContent = 'Save Payment';
+                    btn.textContent = t('Save Payment','पेमेंट जतन करा');
                 }
             });
         }

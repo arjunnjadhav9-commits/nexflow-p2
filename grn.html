@@ -164,6 +164,27 @@
                         <div style="font-size:11px;color:var(--mid);margin-top:4px;" data-en="Assigned automatically when you submit — not editable" data-mr="सबमिट केल्यावर आपोआप दिले जाईल — संपादन करता येणार नाही">Assigned automatically when you submit — not editable</div>
                     </div>
 
+                    <!-- Material Owner (Fix 1, Sept 4 2026; F5 fix, Sept 5 2026) — shown
+                         whenever isJobWorker() is true, regardless of principal count. When
+                         0 principals are configured, shows "Own Stock" only plus a
+                         misconfiguration hint (see renderOwnerField()). -->
+                    <div class="nx-form-group" id="ownerFieldGroup" style="display:none;">
+                        <label data-en="Material Owner" data-mr="मालाचा मालक">Material Owner</label>
+                        <div id="ownerToggleWrap" style="display:flex; gap:16px;"></div>
+                        <select id="ownerSelect" class="nx-input" style="display:none;"></select>
+                        <div id="ownerNoPrincipalHint" style="display:none;font-size:11px;color:var(--orange);margin-top:6px;"
+                             data-en="No principal configured — go to Settings to add one"
+                             data-mr="कोणताही प्रिन्सिपल कॉन्फिगर केलेला नाही — एक जोडण्यासाठी सेटिंग्जमध्ये जा">
+                            No principal configured — go to Settings to add one
+                        </div>
+                    </div>
+                    <div class="nx-form-group" id="principalChallanFields" style="display:none;">
+                        <label data-en="Principal's Challan No" data-mr="प्रिन्सिपलचा चलान क्र">Principal's Challan No</label>
+                        <input type="text" id="principalChallanNo" class="nx-input" placeholder="Required">
+                        <label style="margin-top:8px;" data-en="Principal's Challan Date" data-mr="प्रिन्सिपलच्या चलानाची तारीख">Principal's Challan Date</label>
+                        <input type="date" id="principalChallanDate" class="nx-input">
+                    </div>
+
                     <div class="nx-form-group">
                         <label id="supplierLabel" data-en="Supplier" data-mr="पुरवठादार">Supplier</label>
                         <div style="display:flex;gap:8px;">
@@ -290,6 +311,15 @@
         let tenantId  = null;
         let grnRows   = [];
 
+        // Fix 1 — principal pool inbound path (Sept 4 2026). jobWorkPrincipals
+        // is sourced from p2_clients.is_job_work_principal = true — the same
+        // convention production-issue.html's fetchPrincipals() already uses —
+        // not derived from p2_dispatch_orders, which would show zero
+        // principals on a brand-new principal's very first-ever GRN (nothing
+        // can be dispatched from a pool before anything was received into it).
+        let jobWorkPrincipals = []; // [{id, name}]
+        let selectedOwnerId   = null; // null = own stock, else a p2_clients.id
+
 
         function formHasData() {
             return grnRows.some(row => { const q = parseFloat(row.quantity); return !isNaN(q) && q > 0; });
@@ -336,7 +366,8 @@
                 await Promise.all([
                     loadSuppliers().catch(e => console.error('loadSuppliers failed:', e)),
                     loadMaterials().catch(e => console.error('loadMaterials failed:', e)),
-                    loadRecentGRN().catch(e => console.error('loadRecentGRN failed:', e))
+                    loadRecentGRN().catch(e => console.error('loadRecentGRN failed:', e)),
+                    loadJobWorkPrincipals().catch(e => console.error('loadJobWorkPrincipals failed:', e))
                 ]);
                 const today = new Date().toISOString().split('T')[0];
                 document.getElementById('grnDate').value = today;
@@ -364,6 +395,98 @@
                 const opt = document.createElement('option');
                 opt.value = s.id; opt.textContent = s.name; select.appendChild(opt);
             });
+        }
+
+        async function loadJobWorkPrincipals() {
+            if (!tenantId) return;
+            const { data, error } = await window.supabase
+                .from('p2_clients')
+                .select('id, name')
+                .eq('tenant_id', tenantId)
+                .eq('is_job_work_principal', true)
+                .order('name');
+            if (error) { console.error('Error loading principals:', error); return; }
+            jobWorkPrincipals = data || [];
+            renderOwnerField();
+        }
+
+        // Gate is isJobWorker() (F5 fix, Sept 5 2026) — not principal count.
+        // Non-job-worker: hide the field entirely, owned_by stays null (unchanged
+        // behavior). Job-worker with 0 principals: show "Own Stock" only, plus a
+        // hint that no principal is configured — the field is never hidden for a
+        // flagged job worker, so they can see something needs setting up in
+        // Settings. One principal: a two-option radio toggle. Two+: a dropdown.
+        function renderOwnerField() {
+            const group      = document.getElementById('ownerFieldGroup');
+            const toggleWrap = document.getElementById('ownerToggleWrap');
+            const select     = document.getElementById('ownerSelect');
+            const hint       = document.getElementById('ownerNoPrincipalHint');
+
+            if (!isJobWorker()) {
+                group.style.display = 'none';
+                toggleWrap.innerHTML = '';
+                select.innerHTML = '';
+                select.style.display = 'none';
+                hint.style.display = 'none';
+                onOwnerChange(null);
+                return;
+            }
+
+            group.style.display = '';
+
+            if (jobWorkPrincipals.length === 0) {
+                select.style.display = 'none';
+                select.innerHTML = '';
+                toggleWrap.style.display = 'flex';
+                toggleWrap.innerHTML =
+                    '<label style="display:flex;align-items:center;gap:6px;cursor:default;font-weight:400;">' +
+                        '<input type="radio" name="ownerToggle" value="" checked disabled>' +
+                        '<span data-en="Own Stock" data-mr="स्वतःचा साठा">Own Stock</span>' +
+                    '</label>';
+                hint.style.display = '';
+            } else if (jobWorkPrincipals.length === 1) {
+                hint.style.display = 'none';
+                const p = jobWorkPrincipals[0];
+                select.style.display = 'none';
+                select.innerHTML = '';
+                toggleWrap.style.display = 'flex';
+                toggleWrap.innerHTML =
+                    '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:400;">' +
+                        '<input type="radio" name="ownerToggle" value="" checked>' +
+                        '<span data-en="Own Stock" data-mr="स्वतःचा साठा">Own Stock</span>' +
+                    '</label>' +
+                    '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:400;">' +
+                        '<input type="radio" name="ownerToggle" value="' + p.id + '">' +
+                        '<span>' + escapeHtml(p.name) + "'s Material</span>" +
+                    '</label>';
+                toggleWrap.querySelectorAll('input[name="ownerToggle"]').forEach(input => {
+                    input.addEventListener('change', e => onOwnerChange(e.target.value || null));
+                });
+            } else {
+                hint.style.display = 'none';
+                toggleWrap.innerHTML = '';
+                toggleWrap.style.display = 'none';
+                select.style.display = '';
+                select.innerHTML = '<option value="" data-en="Own Stock" data-mr="स्वतःचा साठा">Own Stock</option>' +
+                    jobWorkPrincipals.map(p => '<option value="' + p.id + '">' + escapeHtml(p.name) + "'s Material</option>").join('');
+                select.value = '';
+                select.onchange = e => onOwnerChange(e.target.value || null);
+            }
+
+            // Every (re)render — including the reset-after-submit call — defaults
+            // back to Own Stock, so the JS state can never drift from what the
+            // freshly-rebuilt radio/select DOM visually shows.
+            onOwnerChange(null);
+            applyLang(localStorage.getItem('nexflow_lang') || 'en');
+        }
+
+        function onOwnerChange(newOwnerId) {
+            selectedOwnerId = newOwnerId || null;
+            document.getElementById('principalChallanFields').style.display = selectedOwnerId ? '' : 'none';
+            if (!selectedOwnerId) {
+                document.getElementById('principalChallanNo').value = '';
+                document.getElementById('principalChallanDate').value = '';
+            }
         }
 
         async function loadMaterials() {
@@ -658,6 +781,16 @@
             const validRows = grnRows.filter(row => row.material_id && row.quantity && parseFloat(row.quantity) > 0);
             if (validRows.length === 0) { toast(lang==='mr' ? 'कृपया किमान एक वैध ओळ जोडा' : 'Please add at least one valid material with quantity', 'error'); submitButton.disabled = false; return; }
 
+            // Fix 1 — principal challan fields are required only when this GRN
+            // is attributed to a principal's pool.
+            let principalChallanNo = null, principalChallanDate = null;
+            if (selectedOwnerId) {
+                principalChallanNo   = document.getElementById('principalChallanNo').value.trim();
+                principalChallanDate = document.getElementById('principalChallanDate').value;
+                if (!principalChallanNo)   { toast(lang==='mr' ? "कृपया प्रिन्सिपलचा चलान क्र प्रविष्ट करा" : "Please enter the principal's challan number", 'error'); submitButton.disabled = false; return; }
+                if (!principalChallanDate) { toast(lang==='mr' ? "कृपया प्रिन्सिपलच्या चलानाची तारीख प्रविष्ट करा" : "Please enter the principal's challan date", 'error'); submitButton.disabled = false; return; }
+            }
+
             const tid = tenantId;
 
             const sel = suppliers.find(s => s.id === supplierId);
@@ -680,7 +813,13 @@
                     supplier_id: supplierId, supplier_name: supplierName,
                     transaction_date: grnDate, invoice_no: row.invoice_no || null,
                     purchase_type: row.purchase_type || 'intrastate',
-                    grn_no: grnNo
+                    grn_no: grnNo,
+                    // Fix 1 — principal pool inbound path. owned_by/challan
+                    // fields are form-level (one physical delivery = one
+                    // owner), applied identically to every row in this batch.
+                    owned_by: selectedOwnerId || null,
+                    principal_challan_no: principalChallanNo,
+                    principal_challan_date: principalChallanDate
                 }));
 
                 const { data, error } = await window.supabase.from('p2_stock_transactions').insert(transactions);
@@ -692,6 +831,7 @@
                 addGRNRow();
                 document.getElementById('grnDate').value = new Date().toISOString().split('T')[0];
                 document.getElementById('grnNo').value = grnNo;
+                renderOwnerField(); // resets the owner toggle/dropdown back to Own Stock
                 await loadRecentGRN();
             } catch (error) {
                 console.error('Error submitting GRN:', error);

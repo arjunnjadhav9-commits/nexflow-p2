@@ -201,6 +201,11 @@
                             <label id="purposeLabel" data-en="Purpose" data-mr="उद्देश">Purpose</label>
                             <select id="movementPurpose" class="nx-input"></select>
                         </div>
+
+                        <div class="nx-form-group" id="poolFieldRow" style="display:none;">
+                            <label id="poolLabel" data-en="Deduct stock from" data-mr="स्टॉक कुठून वजा करायचा">Deduct stock from</label>
+                            <select id="poolSelect" class="nx-input"></select>
+                        </div>
                     </div>
 
                     <!-- RIGHT: Products -->
@@ -411,6 +416,7 @@
         let currentDispatchChallanNumber = null;
         let tenantId = null;
         let productTypeahead = null;
+        let jobWorkPrincipals = []; // principals for the pool dropdown, fetched once per load
 
         // ── Shared material/product typeahead (mirrors rm-dispatch.html) ──
         // materialsArr: array with .id OR .raw_material_id, .name, .unit, .material_code
@@ -537,7 +543,57 @@
             ).join('');
             document.getElementById('purposeFieldRow').style.display =
                 (isJobWorker() || isPrincipal()) ? '' : 'none';
-            select.addEventListener('change', toggleChallanLinksSection);
+            select.addEventListener('change', () => {
+                toggleChallanLinksSection();
+                updatePoolDefault();
+            });
+        }
+
+        // ── DEDUCT STOCK FROM (pool dropdown) ───────────────────────────────
+        async function loadJobWorkPrincipals() {
+            if (!isJobWorker()) { jobWorkPrincipals = []; return; }
+            const { data, error } = await window.supabase
+                .from('p2_clients')
+                .select('id, name')
+                .eq('tenant_id', tenantId)
+                .eq('is_job_work_principal', true)
+                .order('name');
+            if (error) { console.error('loadJobWorkPrincipals:', error); jobWorkPrincipals = []; return; }
+            jobWorkPrincipals = data || [];
+        }
+
+        function initPoolField() {
+            const row = document.getElementById('poolFieldRow');
+            const select = document.getElementById('poolSelect');
+            if (!isJobWorker() || !isSeparatePoolDeduction()) {
+                row.style.display = 'none';
+                return;
+            }
+            row.style.display = '';
+            select.innerHTML = '';
+            select.appendChild(new Option('Own Stock', 'own'));
+            jobWorkPrincipals.forEach(p => select.appendChild(new Option(p.name, p.id)));
+            updatePoolDefault();
+        }
+
+        // Re-evaluated fresh every time purpose changes (and once on load) — never
+        // forced, the user can always pick something else afterward.
+        function updatePoolDefault() {
+            const select = document.getElementById('poolSelect');
+            if (!select || document.getElementById('poolFieldRow').style.display === 'none') return;
+            const purpose = getMovementPurpose(document.getElementById('movementPurpose')?.value);
+            if (purpose.ownershipChanges === false && jobWorkPrincipals.length > 0) {
+                select.value = jobWorkPrincipals[0].id;
+            } else {
+                select.value = 'own';
+            }
+        }
+
+        function getSelectedOwnedBy() {
+            const row = document.getElementById('poolFieldRow');
+            if (!row || row.style.display === 'none') return null;
+            const val = document.getElementById('poolSelect')?.value;
+            return (!val || val === 'own') ? null : val;
         }
 
         // ── LINK TO ORIGINAL CHALLAN (Fix 2 — ITC-04 Table 5 cols 2-3) ─────
@@ -652,12 +708,16 @@
             }
         }
 
-        async function insertChallanLinks(returnDispatchId) {
+        function getChallanLinkRows() {
             const rows = Array.from(document.querySelectorAll('#challanLinksRows .challan-link-row'));
-            const links = rows.map(row => ({
+            return rows.map(row => ({
                 originalId: row.querySelector('.link-original-select')?.value,
                 qty: Number(row.querySelector('.link-qty-input')?.value || 0)
             })).filter(r => r.originalId && r.qty > 0);
+        }
+
+        async function insertChallanLinks(returnDispatchId) {
+            const links = getChallanLinkRows();
 
             if (!links.length) return;
 
@@ -699,7 +759,8 @@
                 const loadPromise = Promise.all([
                     loadProducts(),
                     loadRecentDispatches(),
-                    loadClients()
+                    loadClients(),
+                    loadJobWorkPrincipals()
                 ]);
 
                 const timeoutPromise = new Promise((_, reject) =>
@@ -707,6 +768,8 @@
                 );
 
                 await Promise.race([loadPromise, timeoutPromise]);
+
+                initPoolField();
 
                 loadingSpinner.style.display = 'none';
                 dispatchForm.style.display = 'block';
@@ -1045,6 +1108,7 @@
             try {
                 clearMessages();
 
+                const ownedBy = getSelectedOwnedBy();
                 const insufficientItems = [];
                 const tenantIdForCheck = tenantId || localStorage.getItem('supabase_tenant_id') || '00000000-0000-0000-0000-000000000000';
 
@@ -1071,12 +1135,18 @@
                         for (const ingredient of bomList) {
                             const qtyNeeded = ingredient.qty_per_unit * safeQty;
 
-                            const { data: txData, error: stockCheckErr } = await window.supabase
+                            let stockCheckQuery = window.supabase
                                 .from('p2_stock_transactions')
                                 .select('quantity')
                                 .eq('raw_material_id', ingredient.raw_material_id)
-                                .eq('tenant_id', tenantIdForCheck)
-                                .is('owned_by', null);
+                                .eq('tenant_id', tenantIdForCheck);
+                            if (isSeparatePoolDeduction()) {
+                                stockCheckQuery = ownedBy
+                                    ? stockCheckQuery.eq('owned_by', ownedBy)
+                                    : stockCheckQuery.is('owned_by', null);
+                            }
+
+                            const { data: txData, error: stockCheckErr } = await stockCheckQuery;
 
                             if (stockCheckErr) {
                                 console.error('Stock check balance lookup failed:', stockCheckErr);
@@ -1226,7 +1296,8 @@
                         p_dispatch_order_id: orderId,
                         p_tenant_id:         payload.tenant_id,
                         p_consumption_json:  JSON.stringify(consumptionArray),
-                        p_challan_number:    payload.challan_number
+                        p_challan_number:    payload.challan_number,
+                        p_owned_by:          ownedBy
                     });
 
                 if (confirmErr) throw confirmErr;
@@ -1498,6 +1569,7 @@
             // into the next dispatch.
             document.getElementById('challanLinksSection').style.display = 'none';
             clearChallanLinksRows();
+            updatePoolDefault();
         }
 
         function showError(msg) {

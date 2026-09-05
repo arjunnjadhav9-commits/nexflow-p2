@@ -74,14 +74,14 @@
 
             <div class="nx-page-header">
                 <div>
-                    <div class="nx-eyebrow">History</div>
-                    <div class="nx-page-title">All <span>Dispatches</span></div>
-                    <div class="nx-page-sub">Product · Raw Material · Production Issue — all in one place</div>
+                    <div class="nx-eyebrow" data-en="History" data-mr="इतिहास">History</div>
+                    <div class="nx-page-title" data-en="All Dispatches" data-mr="सर्व डिस्पॅच">All <span>Dispatches</span></div>
+                    <div class="nx-page-sub" data-en="Product · Raw Material · Production Issue — all in one place" data-mr="प्रॉडक्ट · कच्चा माल · प्रॉडक्शन इश्यू — सर्व एकाच ठिकाणी">Product · Raw Material · Production Issue — all in one place</div>
                 </div>
                 <div style="display:flex; gap:10px;" class="dh-no-print">
-                    <a href="index.html" class="nx-btn nx-btn-ghost">← Dashboard</a>
-                    <button id="exportCsvBtn" class="nx-btn nx-btn-secondary">↓ Export CSV</button>
-                    <button class="nx-btn nx-btn-secondary" onclick="window.print()">⎙ Print</button>
+                    <a href="index.html" class="nx-btn nx-btn-ghost" data-en="← Dashboard" data-mr="← डॅशबोर्ड">← Dashboard</a>
+                    <button id="exportCsvBtn" class="nx-btn nx-btn-secondary" data-en="↓ Export CSV" data-mr="↓ CSV निर्यात">↓ Export CSV</button>
+                    <button class="nx-btn nx-btn-secondary" onclick="window.print()" data-en="⎙ Print" data-mr="⎙ प्रिंट">⎙ Print</button>
                 </div>
             </div>
 
@@ -90,15 +90,15 @@
             <div id="loadingSpinner">
                 <div class="nx-logo-loader">
                     <div class="nx-logo-loader-mark"></div>
-                    <div class="nx-logo-loader-text">Loading...</div>
+                    <div class="nx-logo-loader-text" data-en="Loading..." data-mr="लोड होत आहे...">Loading...</div>
                 </div>
             </div>
 
             <div id="errorState" style="display:none;" class="nx-alert nx-alert-red nx-mb-24">
                 <span class="nx-alert-icon">⚠</span>
                 <div>
-                    <div class="nx-bold">Could not load dispatch history</div>
-                    <div>Check your connection and refresh.</div>
+                    <div class="nx-bold" data-en="Could not load dispatch history" data-mr="डिस्पॅच इतिहास लोड करू शकला नाही">Could not load dispatch history</div>
+                    <div data-en="Check your connection and refresh." data-mr="तुमचे कनेक्शन तपासा आणि रीफ्रेश करा.">Check your connection and refresh.</div>
                 </div>
             </div>
 
@@ -107,37 +107,37 @@
                 <!-- FILTERS -->
                 <div class="dh-filters dh-no-print">
                     <div class="nx-form-group">
-                        <label>From</label>
+                        <label data-en="From" data-mr="पासून">From</label>
                         <input type="date" id="filterFrom" class="nx-input">
                     </div>
                     <div class="nx-form-group">
-                        <label>To</label>
+                        <label data-en="To" data-mr="पर्यंत">To</label>
                         <input type="date" id="filterTo" class="nx-input">
                     </div>
                     <div class="nx-form-group">
-                        <label>Type</label>
+                        <label data-en="Type" data-mr="प्रकार">Type</label>
                         <select id="filterType" class="nx-input" style="height:38px; font-size:13px;">
-                            <option value="">All Types</option>
-                            <option value="product">Product</option>
-                            <option value="raw_material">Raw Material</option>
-                            <option value="bom_issue">Production Issue</option>
+                            <option value="" data-en="All Types" data-mr="सर्व प्रकार">All Types</option>
+                            <option value="product" data-en="Product" data-mr="प्रॉडक्ट">Product</option>
+                            <option value="raw_material" data-en="Raw Material" data-mr="कच्चा माल">Raw Material</option>
+                            <option value="bom_issue" data-en="Production Issue" data-mr="प्रॉडक्शन इश्यू">Production Issue</option>
                         </select>
                     </div>
                     <div class="nx-form-group">
-                        <label>Status</label>
+                        <label data-en="Status" data-mr="स्थिती">Status</label>
                         <select id="filterStatus" class="nx-input" style="height:38px; font-size:13px;">
-                            <option value="">All</option>
-                            <option value="confirmed">Confirmed</option>
-                            <option value="draft">Draft</option>
-                            <option value="cancelled">Cancelled</option>
+                            <option value="" data-en="All" data-mr="सर्व">All</option>
+                            <option value="confirmed" data-en="Confirmed" data-mr="पुष्टी झाले">Confirmed</option>
+                            <option value="draft" data-en="Draft" data-mr="मसुदा">Draft</option>
+                            <option value="cancelled" data-en="Cancelled" data-mr="रद्द">Cancelled</option>
                         </select>
                     </div>
                     <div class="nx-form-group dh-filter-search">
-                        <label>Client / Notes</label>
-                        <input type="text" id="filterClient" class="nx-input" placeholder="Search...">
+                        <label data-en="Client / Notes" data-mr="क्लायंट / टीप">Client / Notes</label>
+                        <input type="text" id="filterClient" class="nx-input" data-en="Search..." data-mr="शोधा..." placeholder="Search...">
                     </div>
-                    <button id="applyFiltersBtn" class="nx-btn nx-btn-primary" style="height:38px; white-space:nowrap;">Apply</button>
-                    <button id="resetFiltersBtn" class="nx-btn nx-btn-ghost" style="height:38px; white-space:nowrap;">Reset</button>
+                    <button id="applyFiltersBtn" class="nx-btn nx-btn-primary" style="height:38px; white-space:nowrap;" data-en="Apply" data-mr="लागू करा">Apply</button>
+                    <button id="resetFiltersBtn" class="nx-btn nx-btn-ghost" style="height:38px; white-space:nowrap;" data-en="Reset" data-mr="रीसेट">Reset</button>
                 </div>
 
                 <div class="dh-summary" id="summaryBar"></div>
@@ -147,13 +147,13 @@
                         <table class="nx-table" id="historyTable">
                             <thead>
                                 <tr>
-                                    <th>Challan No</th>
-                                    <th>Type</th>
-                                    <th>Date</th>
-                                    <th>Client / To</th>
-                                    <th>Items</th>
-                                    <th>Status</th>
-                                    <th class="dh-no-print" style="text-align:center;">Actions</th>
+                                    <th data-en="Challan No" data-mr="चलान क्र">Challan No</th>
+                                    <th data-en="Type" data-mr="प्रकार">Type</th>
+                                    <th data-en="Date" data-mr="तारीख">Date</th>
+                                    <th data-en="Client / To" data-mr="क्लायंट / प्रति">Client / To</th>
+                                    <th data-en="Items" data-mr="वस्तू">Items</th>
+                                    <th data-en="Status" data-mr="स्थिती">Status</th>
+                                    <th class="dh-no-print" style="text-align:center;" data-en="Actions" data-mr="क्रिया">Actions</th>
                                 </tr>
                             </thead>
                             <tbody id="historyBody"></tbody>
@@ -161,30 +161,30 @@
                     </div>
                     <div id="emptyState" style="display:none;" class="nx-empty-state">
                         <div class="nx-empty-icon">📋</div>
-                        <div>No dispatches found for the selected filters.</div>
+                        <div data-en="No dispatches found for the selected filters." data-mr="निवडलेल्या फिल्टरसाठी कोणतेही डिस्पॅच आढळले नाहीत.">No dispatches found for the selected filters.</div>
                     </div>
                 </div>
 
-                <!-- TOOLING REGISTER -->
-                <div class="nx-card nx-mb-16" style="margin-top:18px;">
+                <!-- TOOLING REGISTER — job-worker only (Fix 0 gate, Sept 4 2026) -->
+                <div id="toolingRegisterSection" class="nx-card nx-mb-16" style="margin-top:18px; display:none;">
                     <div class="nx-card-header">
-                        <div class="nx-card-title">Tooling Register — Exempt From s.143 Time Limit</div>
+                        <div class="nx-card-title" data-en="Tooling Register — Exempt From s.143 Time Limit" data-mr="टूलिंग नोंदणी — s.143 कालमर्यादेतून सूट">Tooling Register — Exempt From s.143 Time Limit</div>
                     </div>
-                    <div style="font-size:13px; color:var(--mid); margin-bottom:16px;">
+                    <div style="font-size:13px; color:var(--mid); margin-bottom:16px;" data-en="Dies, moulds, jigs and fixtures sent under Section 143 have no return deadline, but still need periodic confirmation that they remain with the job worker. &quot;Confirm Still Here&quot; logs an attestation — who checked, and when." data-mr="Section 143 अंतर्गत पाठवलेले डाय, मोल्ड, जिग आणि फिक्श्चर यांना परतीची कालमर्यादा नाही, पण जॉब वर्करकडे अजूनही आहेत याची वेळोवेळी पुष्टी आवश्यक आहे. &quot;Confirm Still Here&quot; एक साक्ष नोंदवते — कोणी तपासले आणि कधी.">
                         Dies, moulds, jigs and fixtures sent under Section 143 have no return deadline, but still need periodic confirmation that they remain with the job worker. "Confirm Still Here" logs an attestation — who checked, and when.
                     </div>
                     <div class="nx-table-wrap">
                         <table class="nx-table" id="toolingRegisterTable">
                             <thead>
                                 <tr>
-                                    <th>Challan No</th>
-                                    <th>Date</th>
-                                    <th>Client</th>
-                                    <th>Description</th>
-                                    <th>Asset Tag</th>
-                                    <th>Last Confirmed</th>
-                                    <th>Confirmed By</th>
-                                    <th class="dh-no-print" style="text-align:center;">Action</th>
+                                    <th data-en="Challan No" data-mr="चलान क्र">Challan No</th>
+                                    <th data-en="Date" data-mr="तारीख">Date</th>
+                                    <th data-en="Client" data-mr="क्लायंट">Client</th>
+                                    <th data-en="Description" data-mr="वर्णन">Description</th>
+                                    <th data-en="Asset Tag" data-mr="मालमत्ता टॅग">Asset Tag</th>
+                                    <th data-en="Last Confirmed" data-mr="शेवटची पुष्टी">Last Confirmed</th>
+                                    <th data-en="Confirmed By" data-mr="पुष्टी करणारे">Confirmed By</th>
+                                    <th class="dh-no-print" style="text-align:center;" data-en="Action" data-mr="क्रिया">Action</th>
                                 </tr>
                             </thead>
                             <tbody id="toolingRegisterBody"></tbody>
@@ -192,7 +192,7 @@
                     </div>
                     <div id="toolingRegisterEmpty" style="display:none;" class="nx-empty-state">
                         <div class="nx-empty-icon">🛠️</div>
-                        <div>No exempt tooling on record.</div>
+                        <div data-en="No exempt tooling on record." data-mr="कोणतेही सूट-प्राप्त टूलिंग नोंदीत नाही.">No exempt tooling on record.</div>
                     </div>
                 </div>
 
@@ -205,22 +205,22 @@
         <div class="nx-modal" style="max-width:520px;">
             <div class="nx-modal-title" id="detailModalTitle" style="color:var(--orange);">Dispatch Detail</div>
             <div id="detailModalMeta" style="font-size:13px; color:var(--mid); margin-bottom:16px; line-height:1.7;"></div>
-            <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--mid); margin-bottom:8px;">Items</div>
+            <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--mid); margin-bottom:8px;" data-en="Items" data-mr="वस्तू">Items</div>
             <div class="nx-table-wrap" style="max-height:260px; overflow-y:auto; margin-bottom:16px;">
                 <table class="nx-table" style="font-size:13px;">
-                    <thead><tr><th>Description</th><th style="text-align:right;">Qty</th><th>Unit</th></tr></thead>
+                    <thead><tr><th data-en="Description" data-mr="वर्णन">Description</th><th style="text-align:right;" data-en="Qty" data-mr="प्रमाण">Qty</th><th data-en="Unit" data-mr="एकक">Unit</th></tr></thead>
                     <tbody id="detailModalBody"></tbody>
                 </table>
             </div>
             <div id="detailChallanLinksSection" style="margin-bottom:16px;"></div>
             <div id="detailInvoiceSection" style="margin-bottom:16px;"></div>
             <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                <button id="detailPrintBtn" class="nx-btn nx-btn-green" style="flex:1;">View Challan</button>
-                <button id="detailCsvBtn" class="nx-btn nx-btn-secondary" style="flex:1;">↓ CSV</button>
-                <button id="detailAmendBtn" class="nx-btn nx-btn-ghost" style="flex:1;color:#fbbf24;border-color:rgba(251,191,36,0.4);display:none;">+ Missing Deduction</button>
-                <button id="detailCancelBtn" class="nx-btn nx-btn-ghost" style="flex:1; color:#ef4444; display:none;">Cancel Challan</button>
-                <button id="detailHardDeleteBtn" class="nx-btn nx-btn-danger" style="flex:1; display:none;">Delete Permanently</button>
-                <button id="detailCloseBtn" class="nx-btn nx-btn-ghost" style="flex:1;">Close</button>
+                <button id="detailPrintBtn" class="nx-btn nx-btn-green" style="flex:1;" data-en="View Challan" data-mr="चलान पहा">View Challan</button>
+                <button id="detailCsvBtn" class="nx-btn nx-btn-secondary" style="flex:1;" data-en="↓ CSV" data-mr="↓ CSV">↓ CSV</button>
+                <button id="detailAmendBtn" class="nx-btn nx-btn-ghost" style="flex:1;color:#fbbf24;border-color:rgba(251,191,36,0.4);display:none;" data-en="+ Missing Deduction" data-mr="+ न झालेली कपात">+ Missing Deduction</button>
+                <button id="detailCancelBtn" class="nx-btn nx-btn-ghost" style="flex:1; color:#ef4444; display:none;" data-en="Cancel Challan" data-mr="चलान रद्द करा">Cancel Challan</button>
+                <button id="detailHardDeleteBtn" class="nx-btn nx-btn-danger" style="flex:1; display:none;" data-en="Delete Permanently" data-mr="कायमचे हटवा">Delete Permanently</button>
+                <button id="detailCloseBtn" class="nx-btn nx-btn-ghost" style="flex:1;" data-en="Close" data-mr="बंद करा">Close</button>
             </div>
         </div>
     </div>
@@ -229,30 +229,30 @@
     <!-- AMENDMENT MODAL -->
     <div id="amendModal" class="nx-modal-overlay" style="display:none;z-index:9999;">
         <div class="nx-modal" style="max-width:440px;">
-            <div class="nx-modal-title" style="color:#fbbf24;">&#9888; Add Missing Deduction</div>
+            <div class="nx-modal-title" style="color:#fbbf24;" data-en="&#9888; Add Missing Deduction" data-mr="&#9888; न झालेली कपात जोडा">&#9888; Add Missing Deduction</div>
             <div id="amendChallanRef" style="font-size:12px; color:var(--mid); margin-bottom:16px;"></div>
             <div class="nx-form-group">
-                <label style="font-size:12px;">Raw Material</label>
+                <label style="font-size:12px;" data-en="Raw Material" data-mr="कच्चा माल">Raw Material</label>
                 <div id="amendMatMount"></div>
             </div>
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
                 <div class="nx-form-group">
-                    <label style="font-size:12px;">Quantity</label>
+                    <label style="font-size:12px;" data-en="Quantity" data-mr="प्रमाण">Quantity</label>
                     <input type="number" id="amendQty" class="nx-input" placeholder="0" min="0" step="any">
                 </div>
                 <div class="nx-form-group">
-                    <label style="font-size:12px;">Unit</label>
-                    <input type="text" id="amendUnit" class="nx-input" readonly placeholder="auto">
+                    <label style="font-size:12px;" data-en="Unit" data-mr="एकक">Unit</label>
+                    <input type="text" id="amendUnit" class="nx-input" readonly data-en="auto" data-mr="स्वयं" placeholder="auto">
                 </div>
             </div>
             <div class="nx-form-group">
-                <label style="font-size:12px;">Reason <span style="color:var(--mid);">(optional)</span></label>
-                <input type="text" id="amendReason" class="nx-input" placeholder="e.g. missed in original dispatch">
+                <label style="font-size:12px;"><span data-en="Reason" data-mr="कारण">Reason</span> <span style="color:var(--mid);" data-en="(optional)" data-mr="(ऐच्छिक)">(optional)</span></label>
+                <input type="text" id="amendReason" class="nx-input" data-en="e.g. missed in original dispatch" data-mr="उदा. मूळ डिस्पॅचमध्ये चुकले" placeholder="e.g. missed in original dispatch">
             </div>
             <div id="amendError" style="display:none; color:#ef4444; font-size:12px; margin-bottom:10px;"></div>
             <div style="display:flex; gap:10px;">
-                <button id="amendConfirmBtn" class="nx-btn nx-btn-primary" style="flex:1;">Confirm Deduction</button>
-                <button id="amendCancelBtn"  class="nx-btn nx-btn-ghost"   style="flex:1;">Cancel</button>
+                <button id="amendConfirmBtn" class="nx-btn nx-btn-primary" style="flex:1;" data-en="Confirm Deduction" data-mr="कपात पुष्टी करा">Confirm Deduction</button>
+                <button id="amendCancelBtn"  class="nx-btn nx-btn-ghost"   style="flex:1;" data-en="Cancel" data-mr="रद्द करा">Cancel</button>
             </div>
         </div>
     </div>
@@ -260,12 +260,12 @@
     <!-- HARD DELETE MODAL -->
     <div id="hardDeleteModal" class="nx-modal-overlay" style="display:none;z-index:9999;">
         <div class="nx-modal" style="max-width:460px;">
-            <div class="nx-modal-title" style="color:#ef4444;">Delete Challan Permanently</div>
+            <div class="nx-modal-title" style="color:#ef4444;" data-en="Delete Challan Permanently" data-mr="चलान कायमचे हटवा">Delete Challan Permanently</div>
             <div id="hardDeleteMeta" style="font-size:13px; color:var(--mid); margin-bottom:16px;"></div>
             <div id="hardDeleteMessage" style="margin-bottom:16px;"></div>
             <div style="display:flex; gap:10px;">
-                <button id="hardDeleteConfirmBtn" class="nx-btn nx-btn-danger" style="flex:1;" disabled>Delete Permanently</button>
-                <button id="hardDeleteCancelBtn" class="nx-btn nx-btn-ghost"   style="flex:1;">Cancel</button>
+                <button id="hardDeleteConfirmBtn" class="nx-btn nx-btn-danger" style="flex:1;" disabled data-en="Delete Permanently" data-mr="कायमचे हटवा">Delete Permanently</button>
+                <button id="hardDeleteCancelBtn" class="nx-btn nx-btn-ghost"   style="flex:1;" data-en="Cancel" data-mr="रद्द करा">Cancel</button>
             </div>
         </div>
     </div>
@@ -273,27 +273,27 @@
     <!-- GENERATE INVOICE MODAL -->
     <div id="invoiceModal" class="nx-modal-overlay" style="display:none;">
         <div class="nx-modal" style="max-width:560px;">
-            <div class="nx-modal-title" style="color:var(--orange);">Generate Invoice</div>
+            <div class="nx-modal-title" style="color:var(--orange);" data-en="Generate Invoice" data-mr="इनव्हॉइस तयार करा">Generate Invoice</div>
             <div id="invoiceModalClient" style="font-size:13px; color:var(--mid); margin-bottom:16px;"></div>
 
             <div id="invoiceModalAatoBanner" class="nx-alert nx-alert-orange" style="display:none; margin-bottom:16px;">
                 <span class="nx-alert-icon">⚠</span>
-                <div>Your registered turnover bracket may require e-invoicing (IRN) for this document. Nexflow does not generate an IRN — verify with your CA before sharing this invoice externally.</div>
+                <div data-en="Your registered turnover bracket may require e-invoicing (IRN) for this document. Nexflow does not generate an IRN — verify with your CA before sharing this invoice externally." data-mr="तुमच्या नोंदणीकृत उलाढाल श्रेणीनुसार या दस्तऐवजासाठी ई-इनव्हॉइसिंग (IRN) आवश्यक असू शकते. Nexflow IRN तयार करत नाही — हे इनव्हॉइस बाहेर शेअर करण्यापूर्वी तुमच्या CA कडे खात्री करा.">Your registered turnover bracket may require e-invoicing (IRN) for this document. Nexflow does not generate an IRN — verify with your CA before sharing this invoice externally.</div>
             </div>
 
             <div id="invoiceModalRatePrefillBanner" class="nx-alert nx-alert-orange" style="display:none; margin-bottom:16px;">
                 <span class="nx-alert-icon">⚠</span>
-                <div>Rate pre-filled from price history — verify before saving. Do not use KPML purchase rates for job work invoices.</div>
+                <div data-en="Rate pre-filled from price history — verify before saving. Do not use KPML purchase rates for job work invoices." data-mr="दर किंमत इतिहासातून आपोआप भरला आहे — जतन करण्यापूर्वी खात्री करा. जॉब वर्क इनव्हॉइससाठी KPML खरेदी दर वापरू नका.">Rate pre-filled from price history — verify before saving. Do not use KPML purchase rates for job work invoices.</div>
             </div>
 
             <div class="nx-table-wrap" style="max-height:260px; overflow-y:auto; margin-bottom:16px;">
                 <table class="nx-table" style="font-size:13px;">
                     <thead>
                         <tr>
-                            <th>Item</th>
-                            <th style="text-align:right;">Qty</th>
-                            <th>Unit</th>
-                            <th style="text-align:right;">Rate (₹)</th>
+                            <th data-en="Item" data-mr="वस्तू">Item</th>
+                            <th style="text-align:right;" data-en="Qty" data-mr="प्रमाण">Qty</th>
+                            <th data-en="Unit" data-mr="एकक">Unit</th>
+                            <th style="text-align:right;" data-en="Rate (₹)" data-mr="दर (₹)">Rate (₹)</th>
                         </tr>
                     </thead>
                     <tbody id="invoiceModalItems"></tbody>
@@ -301,18 +301,18 @@
             </div>
 
             <div class="nx-form-group" style="margin-bottom:16px;">
-                <label>GST Type</label>
+                <label data-en="GST Type" data-mr="GST प्रकार">GST Type</label>
                 <select id="invoiceGstType" class="nx-input">
-                    <option value="cgst_sgst" selected>CGST + SGST</option>
-                    <option value="igst">IGST</option>
-                    <option value="none">None</option>
+                    <option value="cgst_sgst" selected data-en="CGST + SGST" data-mr="CGST + SGST">CGST + SGST</option>
+                    <option value="igst" data-en="IGST" data-mr="IGST">IGST</option>
+                    <option value="none" data-en="None" data-mr="काहीही नाही">None</option>
                 </select>
             </div>
 
             <div id="invoiceModalRateConfirmGroup" style="display:none; margin-bottom:16px;">
                 <label style="display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer;">
                     <input type="checkbox" id="invoiceModalRateConfirmCheckbox">
-                    I have verified this rate is correct
+                    <span data-en="I have verified this rate is correct" data-mr="मी खात्री केली आहे की हा दर बरोबर आहे">I have verified this rate is correct</span>
                 </label>
             </div>
 
@@ -322,8 +322,8 @@
             </div>
 
             <div style="display:flex; gap:10px;">
-                <button id="invoiceModalConfirm" class="nx-btn nx-btn-green" style="flex:1;">Generate Invoice</button>
-                <button id="invoiceModalCancel" class="nx-btn nx-btn-ghost" style="flex:1;">Cancel</button>
+                <button id="invoiceModalConfirm" class="nx-btn nx-btn-green" style="flex:1;" data-en="Generate Invoice" data-mr="इनव्हॉइस तयार करा">Generate Invoice</button>
+                <button id="invoiceModalCancel" class="nx-btn nx-btn-ghost" style="flex:1;" data-en="Cancel" data-mr="रद्द करा">Cancel</button>
             </div>
         </div>
     </div>
@@ -340,6 +340,31 @@
         let canInvoice = false; // Pro/Founder gate, fresh-fetched — never isPro()/localStorage. Used by the Detail modal's invoice section.
         let aatoBracket = 'below_5cr'; // fresh-fetched alongside plan — drives the non-blocking e-invoicing banner in the Generate Invoice modal.
         let currentRole = 'owner';
+
+        // Language (Sept 4 2026 fix) — this page previously had no t()/applyLang()
+        // at all. Same pattern as every other P2 page: t() for dynamic content,
+        // applyLang() sweeps static [data-en] elements and then re-renders the
+        // dynamic tables (which build their own strings via t() at render time)
+        // so the navbar's lang-toggle button — which only ever calls
+        // window.applyLang() — actually updates what's on screen, not just the
+        // static labels.
+        function t(en, mr) {
+            return (localStorage.getItem('nexflow_lang') || 'en') === 'mr' ? mr : en;
+        }
+
+        function applyLang() {
+            const lang = localStorage.getItem('nexflow_lang') || 'en';
+            document.querySelectorAll('[data-en]').forEach(el => {
+                if (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA') {
+                    el.placeholder = lang === 'mr' ? el.dataset.mr : el.dataset.en;
+                } else {
+                    el.textContent = lang === 'mr' ? el.dataset.mr : el.dataset.en;
+                }
+            });
+            if (typeof filtered !== 'undefined' && Array.isArray(filtered) && filtered.length) renderTable();
+            if (typeof toolingRows !== 'undefined' && toolingRows.length) renderToolingRegister();
+        }
+        window.applyLang = applyLang;
 
         document.addEventListener('DOMContentLoaded', async () => {
             try {
@@ -376,9 +401,15 @@
 
                 setDefaultDates();
                 await loadHistory();
-                await loadToolingRegister();
+                // Job-worker-only feature (Fix 0 gate, Sept 4 2026) — isJobWorker()
+                // is populated by checkAuth() above, from js/supabase-client.js.
+                if (isJobWorker()) {
+                    document.getElementById('toolingRegisterSection').style.display = '';
+                    await loadToolingRegister();
+                }
                 setupEventHandlers();
                 setupInvoiceModalHandlers();
+                applyLang(); // apply initial language after data loaded
                 document.getElementById('loadingSpinner').style.display = 'none';
                 document.getElementById('mainContent').style.display    = 'block';
                 document.getElementById('mainContent').classList.add('nx-fade-in');
@@ -461,10 +492,28 @@
         }
 
         function typeBadge(dtype) {
-            if (dtype === 'product')      return '<span class="type-product">Product</span>';
-            if (dtype === 'raw_material') return '<span class="type-rm">RM</span>';
-            if (dtype === 'bom_issue')    return '<span class="type-issue">Issue</span>';
+            if (dtype === 'product')      return `<span class="type-product">${t('Product','प्रॉडक्ट')}</span>`;
+            if (dtype === 'raw_material') return `<span class="type-rm">${t('RM','RM')}</span>`;
+            if (dtype === 'bom_issue')    return `<span class="type-issue">${t('Issue','इश्यू')}</span>`;
             return `<span style="color:var(--mid); font-size:11px;">${dtype || '—'}</span>`;
+        }
+
+        // Shared status-badge builder — renderTable() and openDetail() both need
+        // the same three states, kept in one place so the labels can't drift.
+        function statusBadgeHtml(order, opts) {
+            opts = opts || {};
+            const sz = opts.fontSize ? `font-size:${opts.fontSize};` : '';
+            const isDraft = order.status === 'draft';
+            const isCancelled = order.status === 'cancelled';
+            let badge = `<span class="nx-badge nx-badge-yellow" style="${sz}">${t('Draft','मसुदा')}</span>`;
+            if (!isDraft && !isCancelled) badge = `<span class="nx-badge nx-badge-green" style="${sz}">${t('Confirmed','पुष्टी झाले')}</span>`;
+            if (isCancelled) badge = `<span class="nx-badge" style="${sz}background:rgba(239,68,68,0.15);color:#ef4444;border:1px solid rgba(239,68,68,0.3);">${t('Cancelled','रद्द')}</span>`;
+            if (order.is_exempt_tooling) {
+                badge += opts.exemptLong
+                    ? ` <span class="nx-badge nx-badge-orange" style="${sz}">${t('EXEMPT — No Time Limit','सूट — कोणतीही कालमर्यादा नाही')}</span>`
+                    : ` <span class="nx-badge nx-badge-orange">${t('EXEMPT','सूट')}</span>`;
+            }
+            return badge;
         }
 
         function renderTable() {
@@ -475,18 +524,18 @@
             const from = document.getElementById('filterFrom').value;
             const to   = document.getElementById('filterTo').value;
             document.getElementById('printHeader').textContent =
-                `Nexflow P2 — All Dispatch History · ${formatDate(from)} to ${formatDate(to)} · Printed ${new Date().toLocaleDateString('en-IN')}`;
+                `Nexflow P2 — ${t('All Dispatch History','सर्व डिस्पॅच इतिहास')} · ${formatDate(from)} ${t('to','ते')} ${formatDate(to)} · ${t('Printed','प्रिंट केले')} ${new Date().toLocaleDateString('en-IN')}`;
 
             const counts = { product: 0, raw_material: 0, bom_issue: 0 };
             filtered.forEach(o => { if (counts[o.dispatch_type] !== undefined) counts[o.dispatch_type]++; });
             const cancelledCount = filtered.filter(o => o.status === 'cancelled').length;
 
             document.getElementById('summaryBar').innerHTML =
-                `Showing <strong>${filtered.length}</strong> records · ` +
-                `<span class="type-product">${counts.product} Product</span> &nbsp; ` +
-                `<span class="type-rm">${counts.raw_material} RM</span> &nbsp; ` +
-                `<span class="type-issue">${counts.bom_issue} Issue</span>` +
-                (cancelledCount ? ` &nbsp; · <strong>${cancelledCount}</strong> Cancelled` : '');
+                `${t('Showing','दाखवत आहे')} <strong>${filtered.length}</strong> ${t('records','नोंदी')} · ` +
+                `<span class="type-product">${counts.product} ${t('Product','प्रॉडक्ट')}</span> &nbsp; ` +
+                `<span class="type-rm">${counts.raw_material} ${t('RM','RM')}</span> &nbsp; ` +
+                `<span class="type-issue">${counts.bom_issue} ${t('Issue','इश्यू')}</span>` +
+                (cancelledCount ? ` &nbsp; · <strong>${cancelledCount}</strong> ${t('Cancelled','रद्द')}` : '');
 
             if (filtered.length === 0) { empty.style.display = 'block'; return; }
             empty.style.display = 'none';
@@ -500,11 +549,7 @@
                 const challan  = (order.challan_number || '—').replace(/^CHAL-\d{8}-/, '');
                 const pills    = buildPills(order.items);
                 const clientStr = escapeHtml(order.client_name || '—');
-
-                let statusBadge = `<span class="nx-badge nx-badge-yellow">Draft</span>`;
-                if (!isDraft && !isCancelled) statusBadge = `<span class="nx-badge nx-badge-green">Confirmed</span>`;
-                if (isCancelled) statusBadge = `<span class="nx-badge" style="background:rgba(239,68,68,0.15);color:#ef4444;border:1px solid rgba(239,68,68,0.3);">Cancelled</span>`;
-                if (order.is_exempt_tooling) statusBadge += ` <span class="nx-badge nx-badge-orange">EXEMPT</span>`;
+                const statusBadge = statusBadgeHtml(order);
 
                 const row = document.createElement('tr');
                 row.innerHTML = `
@@ -516,13 +561,13 @@
                     <td>${statusBadge}</td>
                     <td style="text-align:center;" class="dh-no-print">
                         <div style="display:flex; gap:6px; justify-content:center;">
-                            <button class="nx-btn nx-btn-ghost nx-btn-sm detail-btn" data-order-id="${order.id}">Detail</button>
+                            <button class="nx-btn nx-btn-ghost nx-btn-sm detail-btn" data-order-id="${order.id}">${t('Detail','तपशील')}</button>
                             ${!isDraft && !isCancelled ? `
-                            <button onclick="window.open('challan.html?id=${order.id}','_blank')" class="nx-btn nx-btn-ghost nx-btn-sm">Challan</button>
-                            <button onclick="cancelChallanRow('${order.id}', '${(order.challan_number||'').replace(/'/g,"")}')" class="nx-btn nx-btn-ghost nx-btn-sm" style="color:#ef4444;">Cancel</button>` : ''}
-                            ${isCancelled ? `<span style="color:var(--mid); font-size:11px;">Reversed</span>` : ''}
+                            <button onclick="window.open('challan.html?id=${order.id}','_blank')" class="nx-btn nx-btn-ghost nx-btn-sm">${t('Challan','चलान')}</button>
+                            <button onclick="cancelChallanRow('${order.id}', '${(order.challan_number||'').replace(/'/g,"")}')" class="nx-btn nx-btn-ghost nx-btn-sm" style="color:#ef4444;">${t('Cancel','रद्द करा')}</button>` : ''}
+                            ${isCancelled ? `<span style="color:var(--mid); font-size:11px;">${t('Reversed','उलट केले')}</span>` : ''}
                             ${isCancelled && currentRole === 'owner' ? `
-                            <button onclick="openHardDeleteModal('${order.id}', '${(order.challan_number||'').replace(/'/g,"")}')" class="nx-btn nx-btn-danger nx-btn-sm">Delete Permanently</button>` : ''}
+                            <button onclick="openHardDeleteModal('${order.id}', '${(order.challan_number||'').replace(/'/g,"")}')" class="nx-btn nx-btn-danger nx-btn-sm">${t('Delete Permanently','कायमचे हटवा')}</button>` : ''}
                         </div>
                     </td>
                 `;
@@ -536,7 +581,7 @@
             let html = items.slice(0, MAX).map(i =>
                 `<span class="dh-product-pill">${escapeHtml(i.name)} · ${i.qty} ${i.unit}</span>`
             ).join('');
-            if (items.length > MAX) html += `<span class="dh-product-pill" style="color:var(--mid);">+${items.length - MAX} more</span>`;
+            if (items.length > MAX) html += `<span class="dh-product-pill" style="color:var(--mid);">+${items.length - MAX} ${t('more','अधिक')}</span>`;
             return html;
         }
 
@@ -625,7 +670,7 @@
                     : formatDate(row.created_at?.split('T')[0]);
                 const challan = (row.challan_number || '—').replace(/^CHAL-\d{8}-/, '');
 
-                let lastConfirmedBadge = `<span class="nx-badge nx-badge-red">Never confirmed</span>`;
+                let lastConfirmedBadge = `<span class="nx-badge nx-badge-red">${t('Never confirmed','कधीच पुष्टी नाही')}</span>`;
                 if (row.last_confirmed_at) {
                     const days = Math.floor((Date.now() - new Date(row.last_confirmed_at).getTime()) / 86400000);
                     const cls = days < 183 ? 'nx-badge-green' : (days < 365 ? 'nx-badge-yellow' : 'nx-badge-red');
@@ -642,7 +687,7 @@
                     <td>${lastConfirmedBadge}</td>
                     <td>${escapeHtml(row.confirmedByLabel)}</td>
                     <td style="text-align:center;" class="dh-no-print">
-                        ${canConfirm ? `<button onclick="confirmToolingStillHere('${row.id}', this)" class="nx-btn nx-btn-ghost nx-btn-sm">Confirm Still Here</button>` : ''}
+                        ${canConfirm ? `<button onclick="confirmToolingStillHere('${row.id}', this)" class="nx-btn nx-btn-ghost nx-btn-sm">${t('Confirm Still Here','अजूनही येथे आहे याची पुष्टी करा')}</button>` : ''}
                     </td>
                 `;
                 tbody.appendChild(tr);
@@ -661,11 +706,11 @@
                     .eq('tenant_id', tenantId);
                 if (error) throw error;
 
-                toast('Confirmed — attestation logged', 'ok');
+                toast(t('Confirmed — attestation logged','पुष्टी झाली — साक्ष नोंदवली'), 'ok');
                 await loadToolingRegister();
             } catch (err) {
                 console.error('confirmToolingStillHere:', err);
-                toast('Confirm failed: ' + (err.message || ''), 'error');
+                toast(t('Confirm failed: ','पुष्टी अयशस्वी: ') + (err.message || ''), 'error');
             } finally {
                 if (btn) btn.disabled = false;
             }
@@ -691,27 +736,24 @@
                 : formatDate(order.created_at?.split('T')[0]);
             const challan  = (order.challan_number || '—').replace(/^CHAL-\d{8}-/, '');
 
-            let statusBadge = `<span class="nx-badge nx-badge-yellow" style="font-size:11px;">Draft</span>`;
-            if (!isDraft && !isCancelled) statusBadge = `<span class="nx-badge nx-badge-green" style="font-size:11px;">Confirmed</span>`;
-            if (isCancelled) statusBadge = `<span class="nx-badge" style="font-size:11px;background:rgba(239,68,68,0.15);color:#ef4444;border:1px solid rgba(239,68,68,0.3);">Cancelled</span>`;
-            if (order.is_exempt_tooling) statusBadge += ` <span class="nx-badge nx-badge-orange" style="font-size:11px;">EXEMPT — No Time Limit</span>`;
+            const statusBadge = statusBadgeHtml(order, { fontSize: '11px', exemptLong: true });
 
-            document.getElementById('detailModalTitle').textContent = `Challan ${challan}`;
+            document.getElementById('detailModalTitle').textContent = `${t('Challan','चलान')} ${challan}`;
             document.getElementById('detailModalMeta').innerHTML = `
                 <span style="color:var(--white); font-weight:700;">${escapeHtml(order.client_name || '—')}</span><br>
                 ${order.client_address ? escapeHtml(order.client_address) + '<br>' : ''}
-                Date: ${dateStr} &nbsp;·&nbsp; ${typeBadge(order.dispatch_type)}
+                ${t('Date','तारीख')}: ${dateStr} &nbsp;·&nbsp; ${typeBadge(order.dispatch_type)}
                 &nbsp;·&nbsp;
                 ${statusBadge}
-                ${order.po_number       ? '<br>PO: '      + escapeHtml(order.po_number)        : ''}
-                ${order.your_challan_ref ? '<br>Ref: '    + escapeHtml(order.your_challan_ref) : ''}
-                ${order.vehicle_number  ? '<br>Vehicle: ' + escapeHtml(order.vehicle_number)   : ''}
+                ${order.po_number       ? '<br>' + t('PO','PO') + ': '      + escapeHtml(order.po_number)        : ''}
+                ${order.your_challan_ref ? '<br>' + t('Ref','संदर्भ') + ': '    + escapeHtml(order.your_challan_ref) : ''}
+                ${order.vehicle_number  ? '<br>' + t('Vehicle','वाहन') + ': ' + escapeHtml(order.vehicle_number)   : ''}
             `;
 
             const tbody = document.getElementById('detailModalBody');
             tbody.innerHTML = '';
             if (!order.items.length) {
-                tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--mid);padding:16px;">No items recorded.</td></tr>';
+                tbody.innerHTML = `<tr><td colspan="3" style="text-align:center;color:var(--mid);padding:16px;">${t('No items recorded.','कोणतीही नोंद आढळली नाही.')}</td></tr>`;
             } else {
                 order.items.forEach(item => {
                     const tr = document.createElement('tr');
@@ -809,11 +851,11 @@
                     const orig = originalMap[l.original_dispatch_id];
                     const challanNo = orig ? (orig.challan_number || '—').replace(/^CHAL-\d{8}-/, '') : '—';
                     const dateStr = orig?.dispatch_date ? formatDate(orig.dispatch_date) : '—';
-                    return `Return against: Challan ${escapeHtml(challanNo)} (${dateStr}), ${l.quantity_settled} settled`;
+                    return `${t('Return against','याविरुद्ध परत')}: ${t('Challan','चलान')} ${escapeHtml(challanNo)} (${dateStr}), ${l.quantity_settled} ${t('settled','निकाली')}`;
                 });
 
                 section.innerHTML = `
-                    <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--mid); margin-bottom:6px;">Linked Original Challans</div>
+                    <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--mid); margin-bottom:6px;">${t('Linked Original Challans','जोडलेली मूळ चलान')}</div>
                     <div style="font-size:13px; color:var(--light); line-height:1.7;">${lines.map(l => `<div>${l}</div>`).join('')}</div>
                 `;
             } catch (err) {
@@ -827,7 +869,7 @@
         // page-load query that used to back the list-row invoice button).
         async function refreshDetailInvoiceSection(orderId, movementPurpose) {
             const invoiceSection = document.getElementById('detailInvoiceSection');
-            invoiceSection.innerHTML = '<div style="font-size:12px; color:var(--mid);">Checking invoice…</div>';
+            invoiceSection.innerHTML = `<div style="font-size:12px; color:var(--mid);">${t('Checking invoice…','इनव्हॉइस तपासत आहे…')}</div>`;
 
             try {
                 const { data: existingInvoice } = await window.supabase
@@ -847,22 +889,22 @@
                 if (existingInvoice) {
                     invoiceSection.innerHTML = `
                         <button class="nx-btn nx-btn-ghost" style="width:100%; color:var(--orange);"
-                            onclick="window.open('/invoice.html?token=${existingInvoice.invoice_token}','_blank')">View Invoice →</button>
+                            onclick="window.open('/invoice.html?token=${existingInvoice.invoice_token}','_blank')">${t('View Invoice →','इनव्हॉइस पहा →')}</button>
                         <div style="font-size:11px; color:var(--mid); margin-top:6px; text-align:center;">
-                            Invoice ${escapeHtml(existingInvoice.invoice_number || '')} · ${escapeHtml(existingInvoice.status || '')}
+                            ${t('Invoice','इनव्हॉइस')} ${escapeHtml(existingInvoice.invoice_number || '')} · ${escapeHtml(existingInvoice.status || '')}
                         </div>`;
                 } else if (movementPurpose && movementPurpose !== 'sale' && canInvoice && currentRole !== 'accountant') {
                     const purposeLabel = getMovementPurpose(movementPurpose).label_en;
                     invoiceSection.innerHTML = `
                         <button class="nx-btn nx-btn-secondary" style="width:100%;" disabled
-                            title="This is a ${escapeHtml(purposeLabel)} movement, not a sale — no tax invoice can be raised on it.">Generate Invoice</button>
+                            title="${t(`This is a ${escapeHtml(purposeLabel)} movement, not a sale — no tax invoice can be raised on it.`, `हा ${escapeHtml(purposeLabel)} हालचाल आहे, विक्री नाही — यावर टॅक्स इनव्हॉइस तयार करता येणार नाही.`)}">${t('Generate Invoice','इनव्हॉइस तयार करा')}</button>
                         <div style="font-size:11px; color:var(--mid); margin-top:6px; text-align:center;">
-                            Disabled — ${escapeHtml(purposeLabel)}, not a sale
+                            ${t('Disabled','अक्षम')} — ${escapeHtml(purposeLabel)}, ${t('not a sale','विक्री नाही')}
                         </div>`;
                 } else if (canInvoice && currentRole !== 'accountant') {
                     invoiceSection.innerHTML = `
                         <button class="nx-btn nx-btn-secondary" style="width:100%;"
-                            onclick="openInvoiceModal('${orderId}')">Generate Invoice</button>`;
+                            onclick="openInvoiceModal('${orderId}')">${t('Generate Invoice','इनव्हॉइस तयार करा')}</button>`;
                 } else {
                     invoiceSection.innerHTML = '';
                 }
@@ -874,7 +916,10 @@
 
         window.cancelChallanRow = async (orderId, challanNumber) => {
             const displayNo = (challanNumber || '').replace(/^CHAL-\d{8}-/, '') || challanNumber;
-            if (!confirm(`Cancel challan ${displayNo}? This will reverse the stock deduction and restore materials. This cannot be undone.`)) return;
+            if (!confirm(t(
+                `Cancel challan ${displayNo}? This will reverse the stock deduction and restore materials. This cannot be undone.`,
+                `चलान ${displayNo} रद्द करायचे? यामुळे स्टॉक कपात उलट होईल आणि साहित्य परत येईल. हे पूर्ववत करता येणार नाही.`
+            ))) return;
 
             // confirm() is blocking but returns before the RPC starts — a fast
             // double confirm+click could otherwise fire two concurrent cancel
@@ -890,12 +935,12 @@
                 });
                 if (error) throw error;
 
-                toast('Challan cancelled — stock restored', 'ok');
+                toast(t('Challan cancelled — stock restored','चलान रद्द — स्टॉक परत केला'), 'ok');
                 document.getElementById('detailModal').style.display = 'none';
                 await loadHistory();
             } catch (err) {
                 console.error('cancelChallanRow:', err);
-                toast('Cancel failed: ' + (err.message || ''), 'error');
+                toast(t('Cancel failed: ','रद्द करणे अयशस्वी: ') + (err.message || ''), 'error');
             } finally {
                 if (cancelBtn) cancelBtn.disabled = false;
             }
@@ -905,13 +950,13 @@
         let hardDeleteTarget = null;
 
         function hardDeleteReasonText(reasons) {
-            if (!reasons || !reasons.length) return 'This challan cannot be permanently deleted.';
-            if (reasons.includes('OWNER_ONLY')) return 'Only the owner can permanently delete a challan.';
-            if (reasons.includes('NOT_FOUND')) return 'This challan could not be found.';
-            if (reasons.includes('STATUS')) return 'Only draft or cancelled challans can be permanently deleted.';
-            if (reasons.includes('INVOICE_SINGLE') || reasons.includes('INVOICE_CONSOLIDATED')) return 'An invoice has already been generated for this challan — it cannot be permanently deleted.';
-            if (reasons.includes('GRN_LINKED')) return 'A GRN has already been recorded against this challan by the recipient — it cannot be permanently deleted.';
-            return 'This challan cannot be permanently deleted.';
+            if (!reasons || !reasons.length) return t('This challan cannot be permanently deleted.','हे चालन कायमचे हटवता येणार नाही.');
+            if (reasons.includes('OWNER_ONLY')) return t('Only the owner can permanently delete a challan.','फक्त मालकच चालन कायमचे हटवू शकतो.');
+            if (reasons.includes('NOT_FOUND')) return t('This challan could not be found.','हे चालन सापडले नाही.');
+            if (reasons.includes('STATUS')) return t('Only draft or cancelled challans can be permanently deleted.','फक्त मसुदा किंवा रद्द केलेली चालने कायमची हटवता येतात.');
+            if (reasons.includes('INVOICE_SINGLE') || reasons.includes('INVOICE_CONSOLIDATED')) return t('An invoice has already been generated for this challan — it cannot be permanently deleted.','या चालनासाठी आधीच इनव्हॉइस तयार झाले आहे — ते कायमचे हटवता येणार नाही.');
+            if (reasons.includes('GRN_LINKED')) return t('A GRN has already been recorded against this challan by the recipient — it cannot be permanently deleted.','प्राप्तकर्त्याने या चालनासाठी आधीच GRN नोंदवले आहे — ते कायमचे हटवता येणार नाही.');
+            return t('This challan cannot be permanently deleted.','हे चालन कायमचे हटवता येणार नाही.');
         }
 
         window.openHardDeleteModal = async (orderId, challanNumber, fromDetailModal) => {
@@ -920,8 +965,8 @@
             const msg = document.getElementById('hardDeleteMessage');
             const confirmBtn = document.getElementById('hardDeleteConfirmBtn');
 
-            document.getElementById('hardDeleteMeta').textContent = `Challan ${challanNumber || '—'}`;
-            msg.innerHTML = `<div style="font-size:13px; color:var(--mid);">Checking eligibility…</div>`;
+            document.getElementById('hardDeleteMeta').textContent = `${t('Challan','चलान')} ${challanNumber || '—'}`;
+            msg.innerHTML = `<div style="font-size:13px; color:var(--mid);">${t('Checking eligibility…','पात्रता तपासत आहे…')}</div>`;
             confirmBtn.disabled = true;
             modal.style.display = 'flex';
 
@@ -936,7 +981,7 @@
                     msg.innerHTML = `
                         <div class="nx-alert nx-alert-yellow" style="margin-bottom:0;">
                             <span class="nx-alert-icon">⚠</span>
-                            <span>This will permanently delete challan #${challanNumber || ''} and cannot be undone. The challan number will be available for reuse.</span>
+                            <span>${t(`This will permanently delete challan #${challanNumber || ''} and cannot be undone. The challan number will be available for reuse.`, `यामुळे चालन #${challanNumber || ''} कायमचे हटवले जाईल आणि हे पूर्ववत करता येणार नाही. चालन क्रमांक पुन्हा वापरण्यासाठी उपलब्ध होईल.`)}</span>
                         </div>`;
                     confirmBtn.disabled = false;
                 } else {
@@ -952,7 +997,7 @@
                 msg.innerHTML = `
                     <div class="nx-alert nx-alert-red" style="margin-bottom:0;">
                         <span class="nx-alert-icon">⚠</span>
-                        <span>Could not check eligibility: ${err.message || ''}</span>
+                        <span>${t('Could not check eligibility: ','पात्रता तपासता आली नाही: ')}${err.message || ''}</span>
                     </div>`;
                 confirmBtn.disabled = true;
             }
@@ -981,14 +1026,14 @@
                 });
                 if (error) throw error;
 
-                toast('Challan permanently deleted', 'ok');
+                toast(t('Challan permanently deleted','चालन कायमचे हटवले'), 'ok');
                 document.getElementById('hardDeleteModal').style.display = 'none';
                 if (hardDeleteTarget.fromDetailModal) document.getElementById('detailModal').style.display = 'none';
                 hardDeleteTarget = null;
                 await loadHistory();
             } catch (err) {
                 console.error('hard_delete_dispatch:', err);
-                toast('Delete failed: ' + (err.message || ''), 'error');
+                toast(t('Delete failed: ','हटवणे अयशस्वी: ') + (err.message || ''), 'error');
                 confirmBtn.disabled = false;
             }
         });
@@ -1031,7 +1076,7 @@
             document.getElementById('invoiceModalRateConfirmGroup').style.display = 'none';
             document.getElementById('invoiceModalRateConfirmCheckbox').checked = false;
             document.getElementById('invoiceModalItems').innerHTML =
-                '<tr><td colspan="4" style="text-align:center; color:var(--mid); padding:16px;">Loading...</td></tr>';
+                `<tr><td colspan="4" style="text-align:center; color:var(--mid); padding:16px;">${t('Loading...','लोड होत आहे...')}</td></tr>`;
             document.getElementById('invoiceModal').style.display = 'flex';
 
             try {
@@ -1053,7 +1098,7 @@
 
                 if (!items || items.length === 0) {
                     document.getElementById('invoiceModalItems').innerHTML =
-                        '<tr><td colspan="4" style="text-align:center; color:var(--mid); padding:16px;">No items found.</td></tr>';
+                        `<tr><td colspan="4" style="text-align:center; color:var(--mid); padding:16px;">${t('No items found.','कोणतीही वस्तू आढळली नाही.')}</td></tr>`;
                     return;
                 }
 
@@ -1072,7 +1117,7 @@
                             .order('effective_date', { ascending: false });
                         if (priceErr) {
                             console.error('openInvoiceModal product price fetch:', priceErr);
-                            toast('Could not load product price history — enter rates manually.', 'error');
+                            toast(t('Could not load product price history — enter rates manually.','उत्पादन किंमत इतिहास लोड करता आला नाही — दर स्वतः टाका.'), 'error');
                         }
                         (prices || []).forEach(p => {
                             if (!priceById.has(p.product_id)) priceById.set(p.product_id, p.price);
@@ -1089,7 +1134,7 @@
                             .order('effective_date', { ascending: false });
                         if (priceErr) {
                             console.error('openInvoiceModal material price fetch:', priceErr);
-                            toast('Could not load material price history — enter rates manually.', 'error');
+                            toast(t('Could not load material price history — enter rates manually.','साहित्य किंमत इतिहास लोड करता आला नाही — दर स्वतः टाका.'), 'error');
                         }
                         (prices || []).forEach(p => {
                             if (!priceById.has(p.raw_material_id)) priceById.set(p.raw_material_id, p.price_per_unit);
@@ -1112,7 +1157,7 @@
                     const prefilledFromProductPrice = usesProductPricing && !!key && priceById.has(key);
                     return {
                         dispatch_item_id: it.id,
-                        description: it.product_id ? (it.p2_products?.name || 'Unknown Item') : (it.material_name || it.material_code || 'Unknown Item'),
+                        description: it.product_id ? (it.p2_products?.name || t('Unknown Item','अज्ञात वस्तू')) : (it.material_name || it.material_code || t('Unknown Item','अज्ञात वस्तू')),
                         qty: it.qty_dispatched,
                         unit: it.unit,
                         rate,
@@ -1144,7 +1189,7 @@
             } catch (err) {
                 console.error('openInvoiceModal:', err);
                 document.getElementById('invoiceModalItems').innerHTML =
-                    '<tr><td colspan="4" style="text-align:center; color:#ef4444; padding:16px;">Could not load items.</td></tr>';
+                    `<tr><td colspan="4" style="text-align:center; color:#ef4444; padding:16px;">${t('Could not load items.','वस्तू लोड करता आल्या नाहीत.')}</td></tr>`;
             }
         };
 
@@ -1177,7 +1222,10 @@
                     if (input.value === item.originalRate) hasUnverifiedPrefill = true;
                 });
                 if (hasUnverifiedPrefill && !document.getElementById('invoiceModalRateConfirmCheckbox').checked) {
-                    showInvoiceModalError('Please verify the pre-filled rate(s) and check "I have verified this rate is correct" before generating this invoice.');
+                    showInvoiceModalError(t(
+                        'Please verify the pre-filled rate(s) and check "I have verified this rate is correct" before generating this invoice.',
+                        'हे इनव्हॉइस तयार करण्यापूर्वी आपोआप भरलेले दर तपासा आणि "मी खात्री केली आहे की हा दर बरोबर आहे" टिक करा.'
+                    ));
                     return;
                 }
 
@@ -1194,7 +1242,7 @@
 
                 const btn = document.getElementById('invoiceModalConfirm');
                 btn.disabled = true;
-                btn.textContent = 'Generating…';
+                btn.textContent = t('Generating…','तयार करत आहे…');
 
                 try {
                     const res = await fetch(`${SUPABASE_URL}/functions/v1/agent-query`, {
@@ -1216,10 +1264,10 @@
                     await refreshDetailInvoiceSection(invoiceModalOrderId, allOrders.find(o => o.id === invoiceModalOrderId)?.movement_purpose);
                 } catch (err) {
                     console.error('confirm_generate_invoice:', err);
-                    showInvoiceModalError(err.message || 'Could not generate invoice.');
+                    showInvoiceModalError(err.message || t('Could not generate invoice.','इनव्हॉइस तयार करता आले नाही.'));
                 } finally {
                     btn.disabled = false;
-                    btn.textContent = 'Generate Invoice';
+                    btn.textContent = t('Generate Invoice','इनव्हॉइस तयार करा');
                 }
             });
         }
@@ -1232,7 +1280,7 @@
         // Matches the standard dispatch CSV format but scoped to a single challan.
         window.exportChallanCSV = async function(orderId) {
             const order = allOrders.find(o => o.id === orderId);
-            if (!order) { toast('Order not found.', 'error'); return; }
+            if (!order) { toast(t('Order not found.','ऑर्डर सापडली नाही.'), 'error'); return; }
 
             try {
                 const challan = (order.challan_number || '').replace(/^CHAL-\d{8}-/, '');
@@ -1278,18 +1326,18 @@
                 document.body.appendChild(a); a.click(); document.body.removeChild(a);
                 URL.revokeObjectURL(url);
 
-                toast(`Challan ${challan} exported.`, 'ok');
+                toast(t(`Challan ${challan} exported.`, `चलान ${challan} निर्यात केले.`), 'ok');
             } catch(err) {
                 console.error('exportChallanCSV error:', err);
-                toast('Export failed: ' + (err.message || ''), 'error');
+                toast(t('Export failed: ','निर्यात अयशस्वी: ') + (err.message || ''), 'error');
             }
         };
 
         // ── CSV EXPORT ────────────────────────────────────────────────
         document.getElementById('exportCsvBtn').addEventListener('click', async () => {
-            if (!filtered.length) { toast('No records to export.', 'warn'); return; }
+            if (!filtered.length) { toast(t('No records to export.','निर्यात करण्यासाठी कोणत्याही नोंदी नाहीत.'), 'warn'); return; }
             const btn = document.getElementById('exportCsvBtn');
-            btn.disabled = true; btn.textContent = 'Exporting...';
+            btn.disabled = true; btn.textContent = t('Exporting...','निर्यात होत आहे...');
 
             try {
                 const headers = ['Challan No', 'Type', 'Date', 'Client', 'Address', 'PO Number', 'Challan Ref', 'Vehicle', 'Status', 'Item', 'Qty', 'Unit'];
@@ -1333,11 +1381,11 @@
                 a.href = url; a.download = `${slug}_all_dispatches_${from}_to_${to}.csv`;
                 document.body.appendChild(a); a.click(); document.body.removeChild(a);
                 URL.revokeObjectURL(url);
-                toast(`Exported ${rows.length} rows.`, 'ok');
+                toast(t(`Exported ${rows.length} rows.`, `${rows.length} पंक्ती निर्यात केल्या.`), 'ok');
             } catch(err) {
-                toast('Export failed.', 'error');
+                toast(t('Export failed.','निर्यात अयशस्वी.'), 'error');
             } finally {
-                btn.disabled = false; btn.textContent = '↓ Export CSV';
+                btn.disabled = false; btn.textContent = t('↓ Export CSV','↓ CSV निर्यात');
             }
         });
 
@@ -1396,7 +1444,7 @@
 
         async function openAmendModal(orderId, challanRef) {
             _amendOrderId = orderId;
-            document.getElementById('amendChallanRef').textContent = 'Adding missing deduction to: ' + (challanRef || orderId);
+            document.getElementById('amendChallanRef').textContent = t('Adding missing deduction to: ', 'न झालेली कपात जोडत आहे: ') + (challanRef || orderId);
             document.getElementById('amendQty').value    = '';
             document.getElementById('amendUnit').value   = '';
             document.getElementById('amendReason').value = '';
@@ -1422,7 +1470,7 @@
             var wrap=document.createElement('div'); wrap.style.cssText='position:relative;width:100%;';
             var inner=document.createElement('div'); inner.style.cssText='position:relative;display:flex;align-items:center;';
             var icon=document.createElement('i'); icon.style.cssText='position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--mid);pointer-events:none;font-size:14px;font-style:normal;'; icon.textContent='⌕';
-            var input=document.createElement('input'); input.type='text'; input.autocomplete='off'; input.className='nx-input'; input.style.cssText='padding-left:30px;padding-right:28px;'; input.placeholder='Search material or code...';
+            var input=document.createElement('input'); input.type='text'; input.autocomplete='off'; input.className='nx-input'; input.style.cssText='padding-left:30px;padding-right:28px;'; input.placeholder=t('Search material or code...','साहित्य किंवा कोड शोधा...');
             var clr=document.createElement('button'); clr.type='button'; clr.textContent='×'; clr.style.cssText='position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--mid);cursor:pointer;font-size:16px;padding:0;display:none;';
             inner.appendChild(icon); inner.appendChild(input); inner.appendChild(clr);
             var dd=document.createElement('div'); dd.style.cssText='position:fixed;background:var(--surface);border:1px solid var(--border2);border-radius:6px;z-index:10000;max-height:200px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,0.5);display:none;';
@@ -1433,7 +1481,7 @@
             function filterM(t){var q=(t||'').toLowerCase().trim(); return q===''?mats.slice(0,50):mats.filter(function(m){return m.name.toLowerCase().includes(q)||(m.material_code&&m.material_code.toLowerCase().includes(q));});}
             function renderDD(term){
                 var res=filterM(term); dd.innerHTML=''; kbdIdx=-1;
-                if(res.length===0){dd.innerHTML='<div style="padding:10px;font-size:12px;color:var(--mid);text-align:center;">No materials found</div>';return;}
+                if(res.length===0){dd.innerHTML='<div style="padding:10px;font-size:12px;color:var(--mid);text-align:center;">'+t('No materials found','कोणतेही साहित्य सापडले नाही')+'</div>';return;}
                 res.forEach(function(m){
                     var d=document.createElement('div');
                     d.style.cssText='padding:8px 10px;font-size:13px;color:var(--text);cursor:pointer;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:6px;';
@@ -1470,10 +1518,10 @@
             var unit   =_amendTA?_amendTA.getUnit():'';
             var qty    =parseFloat(document.getElementById('amendQty').value);
             var reason =document.getElementById('amendReason').value.trim();
-            if(!matId){errEl.textContent='Please select a raw material.';errEl.style.display='block';return;}
-            if(!qty||qty<=0){errEl.textContent='Enter a valid quantity.';errEl.style.display='block';return;}
+            if(!matId){errEl.textContent=t('Please select a raw material.','कृपया कच्चा माल निवडा.');errEl.style.display='block';return;}
+            if(!qty||qty<=0){errEl.textContent=t('Enter a valid quantity.','वैध प्रमाण टाका.');errEl.style.display='block';return;}
             var btn=document.getElementById('amendConfirmBtn');
-            btn.disabled=true; btn.textContent='Saving...';
+            btn.disabled=true; btn.textContent=t('Saving...','जतन करत आहे...');
             var _tid=(typeof tenantId!=='undefined'&&tenantId)?tenantId:'';
             try {
                 var res=await window.supabase.rpc('add_missing_deduction',{
@@ -1484,12 +1532,12 @@
                 });
                 if(res.error) throw res.error;
                 document.getElementById('amendModal').style.display='none';
-                toast('Missing deduction added — stock updated.','ok');
+                toast(t('Missing deduction added — stock updated.','न झालेली कपात जोडली — स्टॉक अपडेट झाला.'),'ok');
                 _amendRMList=[];
             } catch(err){
-                errEl.textContent='Failed: '+err.message; errEl.style.display='block';
+                errEl.textContent=t('Failed: ','अयशस्वी: ')+err.message; errEl.style.display='block';
             } finally {
-                btn.disabled=false; btn.textContent='Confirm Deduction';
+                btn.disabled=false; btn.textContent=t('Confirm Deduction','कपात पुष्टी करा');
             }
         }
 

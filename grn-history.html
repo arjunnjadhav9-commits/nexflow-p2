@@ -161,6 +161,7 @@
                                     <th data-en="GRN No" data-mr="GRN क्र">GRN No</th>
                                     <th data-en="Date" data-mr="तारीख">Date</th>
                                     <th data-en="Supplier" data-mr="पुरवठादार">Supplier</th>
+                                    <th id="ownerColHeader" style="display:none;" data-en="Owner" data-mr="मालक">Owner</th>
                                     <th data-en="Materials" data-mr="सामग्री">Materials</th>
                                     <th data-en="Invoice No" data-mr="बिल क्र">Invoice No</th>
                                     <th class="dh-no-print" style="text-align:center;" data-en="Actions" data-mr="क्रिया">Actions</th>
@@ -252,6 +253,10 @@
                 const { data: { user } } = await window.supabase.auth.getUser();
                 tenantId = user.user_metadata?.tenant_id || user.id;
 
+                // Owner column (Sept 4 2026 fix) — hidden entirely for a
+                // non-job-worker tenant, where every GRN is own-stock anyway.
+                document.getElementById('ownerColHeader').style.display = isJobWorker() ? '' : 'none';
+
                 setDefaultDates();
                 await loadHistory();
                 setupEventHandlers();
@@ -285,10 +290,9 @@
 
             let query = window.supabase
                 .from('p2_stock_transactions')
-                .select('id, grn_no, transaction_date, quantity, rate, invoice_no, p2_suppliers(id, name), p2_raw_materials(name, unit)')
+                .select('id, grn_no, transaction_date, quantity, rate, invoice_no, owned_by, p2_suppliers(id, name), p2_raw_materials(name, unit)')
                 .eq('tenant_id', tenantId)
                 .eq('transaction_type', 'grn')
-                .is('owned_by', null)
                 .order('transaction_date', { ascending: false })
                 .order('created_at',       { ascending: false });
 
@@ -299,6 +303,22 @@
             if (error) throw error;
 
             const rows = data || [];
+
+            // Owner column (Sept 4 2026 fix) — batch-resolve principal names
+            // for whatever owned_by UUIDs are actually present in this result
+            // set, instead of a per-row query. Own-stock rows (owned_by null,
+            // the common case) need no lookup at all.
+            const ownerIds = [...new Set(rows.map(r => r.owned_by).filter(Boolean))];
+            let ownerNameById = {};
+            if (ownerIds.length > 0) {
+                const { data: owners, error: ownersErr } = await window.supabase
+                    .from('p2_clients')
+                    .select('id, name')
+                    .eq('tenant_id', tenantId)
+                    .in('id', ownerIds);
+                if (ownersErr) console.error('Error loading principal names:', ownersErr);
+                (owners || []).forEach(c => { ownerNameById[c.id] = c.name; });
+            }
 
             // Group by grn_no (entries without a grn_no get their own row each)
             // Each group = one GRN row in the table
@@ -313,6 +333,11 @@
                         date:      row.transaction_date,
                         supplier:  row.p2_suppliers?.name || '—',
                         invoice_no: row.invoice_no || null,
+                        // Fix 1 (grn.html) writes the same owned_by to every row
+                        // in one GRN batch, so the first row's value is correct
+                        // for the whole group — same idiom as supplier/date above.
+                        owned_by:   row.owned_by || null,
+                        owner_name: row.owned_by ? (ownerNameById[row.owned_by] || t('Unknown', 'अज्ञात')) : null,
                         items: []
                     };
                     grnOrder.push(key);
@@ -382,6 +407,9 @@
 
             filtered.forEach((grn, idx) => {
                 const materialPills = buildMaterialPills(grn.items);
+                const ownerCell = isJobWorker()
+                    ? `<td>${grn.owned_by ? escapeHtml(grn.owner_name) : t('Own Stock', 'स्वतःचा साठा')}</td>`
+                    : '';
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td>
@@ -391,6 +419,7 @@
                     </td>
                     <td>${formatDate(grn.date)}</td>
                     <td class="nx-td-bold">${escapeHtml(grn.supplier)}</td>
+                    ${ownerCell}
                     <td><div class="dh-materials">${materialPills}</div></td>
                     <td style="color:var(--mid); font-size:12px;">${escapeHtml(grn.invoice_no || '—')}</td>
                     <td style="text-align:center;" class="dh-no-print">

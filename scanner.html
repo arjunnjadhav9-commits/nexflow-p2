@@ -635,7 +635,12 @@
                     supplier_name: supplierName,
                     transaction_date: grnDateVal,
                     invoice_no: item.invoiceNo,
-                    grn_no: grnNo
+                    grn_no: grnNo,
+                    // Scanner GRN is own-stock only by design (Fix 1, Sept 4 2026) —
+                    // this is a fast, one-handed QR-scan flow and deliberately has no
+                    // Material Owner selector. A principal delivery must be entered
+                    // via grn.html instead, where that selector lives.
+                    owned_by: null
                 }));
 
                 const { error } = await window.supabase.from('p2_stock_transactions').insert(transactions);
