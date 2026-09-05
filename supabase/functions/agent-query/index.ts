@@ -602,6 +602,15 @@ interface ConfirmReceiveGrnRequest {
   item_rates?: (number | null)[]
 }
 
+// Tax invoice line items should never print internal unit labels like
+// 'Stator'/'Stack' — those map to NOS for invoicing purposes only. Product
+// master, dispatch items, and challan display all stay untouched.
+function normaliseInvoiceUnit(unit: string): string {
+  const u = (unit || '').toLowerCase().trim()
+  if (u === 'stator' || u === 'stack') return 'NOS'
+  return unit
+}
+
 // Case-insensitive substring match in either direction (extracted text is
 // often a partial/loose version of the real name, or vice versa).
 function findMatches<T extends { name: string }>(query: string, candidates: T[]): T[] {
@@ -1937,7 +1946,7 @@ async function buildInvoiceItemsForOrder(
       dispatch_date: order.dispatch_date,
       description: it.material_name ?? product?.name ?? it.material_code ?? 'Unknown Item',
       qty,
-      unit: it.unit,
+      unit: normaliseInvoiceUnit(it.unit),
       rate,
       amount: qty * rate,
       hsn_sac: hsnSac ?? '',
@@ -2374,7 +2383,7 @@ async function confirmGenerateInvoice(
       dispatch_date: order.dispatch_date,
       description: it.material_name ?? product?.name ?? it.material_code ?? 'Unknown Item',
       qty,
-      unit: it.unit,
+      unit: normaliseInvoiceUnit(it.unit),
       rate,
       amount: qty * rate,
       hsn_sac: hsnSac ?? '',

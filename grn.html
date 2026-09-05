@@ -114,12 +114,16 @@
 
         #loadingSpinner{display:flex;align-items:center;justify-content:center;padding:60px 20px;}
         #errorState{display:none;}
+
+        /* GRN-only: left-align instead of center (shared .nx-page centers via
+           margin:0 auto across 20 pages — this override is scoped here only). */
+        .nx-page-left { margin: 0 auto 0 40px; }
     </style>
 </head>
 <body>
     <div id="navbar-container"></div>
     <div class="nx-main">
-        <div class="nx-page">
+        <div class="nx-page nx-page-left">
 
             <div class="nx-page-header">
                 <div>

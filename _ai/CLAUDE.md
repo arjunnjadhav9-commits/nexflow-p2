@@ -1687,7 +1687,7 @@ live tenant," always diff against the most recent prior snapshot, not the Step-2
   passes p_owned_by for any movement type — the parameter is omitted entirely, so it
   always defaults to NULL (own stock), including for the three RETURN_PURPOSES
   (job_work_return, scrap_return, unused_material_return). Returns deduct from own stock
-  instead of principal's pool. MUST FIX before merging Session 4 to main.
+  instead of principal's pool. FIXED (Session 5, Sept 5 2026).
 - s.143 clock: starts from dispatch_date (KPML's send date) not principal_challan_date
   (vendor's receive date). These differ. ITC-04 ageing slightly wrong until fixed.
 - Scanner own-stock design: scanner.html always writes owned_by = null. If storekeepers
@@ -1695,6 +1695,31 @@ live tenant," always diff against the most recent prior snapshot, not the Step-2
   Extend to scanner only after field use confirms this is a real workflow.
 - Per-material pool override (Type E): one production run consuming from two different
   pools simultaneously is not supported. Build when first client requests it.
+- F3: confirmConsolidatedInvoice has no movement_purpose filter — sweeps job_work_return
+  challans into consolidated invoices. Fix before first KPML invoice is raised.
+- F9: settings.html client creation writes user.id instead of tenantId — staff cannot
+  create principal clients.
+
+## Shipped Sept 5, 2026
+
+- **Return dispatch pool fix**: dispatch.html now derives and passes p_owned_by for return
+  movements via a form-page dropdown, not modal derivation. rm-dispatch.html same.
+- **F1 fix**: stock pre-check now filters on derivedOwnedBy, not hardcoded own stock.
+- **F2 fix**: rm-dispatch pool derivation now gates on ownershipChanges === false in
+  addition to isJobWorker().
+- **separate_pool_deduction setting**: new boolean column on p2_tenant_settings (migration
+  20260905_separate_pool_deduction.sql). isSeparatePoolDeduction() helper in
+  js/supabase-client.js. Toggle in Settings Advanced section. Mode 1 (false, default) =
+  unified inventory, no pool attribution. Mode 2 (true) = separate pool deduction,
+  existing behavior.
+- **Always-visible "Deduct stock from" dropdown** on dispatch.html, rm-dispatch.html,
+  production-issue.html. Shown when isJobWorker() && isSeparatePoolDeduction(). Defaults
+  per ownershipChanges flag from movement-purpose.js. Always overridable by user.
+- **Stock in Inventory tab on dashboard**: replaces ALL tab. Sums stock across all pools
+  per material, no status badge, history shows all transactions regardless of owned_by.
+- **F5 fix**: grn.html and production-issue.html now gate on isJobWorker() as primary
+  condition, not principal count. 0-principal job-worker gets "Own Stock only" state with
+  orange hint pointing to Settings.
 
 ## GST Scope — PERMANENTLY LOCKED
 Nexflow P2 generates tax invoices for client billing. It does NOT handle GST filing, GSTR
