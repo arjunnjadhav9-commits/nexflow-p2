@@ -62,6 +62,13 @@ Mobile-first: owners use phones. Must work on mobile browser.
   Generate Invoice modal for 5cr_to_10cr/above_10cr. Never blocks generation.
 - p2_raw_materials — raw material master (name, unit, min_stock_level, is_active, material_code,
   hsn_sac, gst_rate — both already existed, confirmed present here for reference)
+  uqc text — added Session 3 (Sept 4 2026, migration 20260904_uqc_codes.sql). GSTN Unique
+  Quantity Code (NOS/KGS/MTR/LTR/PCS/SQM/CBM/OTH), distinct from unit which stays free text
+  for on-screen/challan display. Backfilled: KGS for kg/kgs, NOS for nos/pcs/pieces, MTR for
+  mtr/mts, LTR for ltr/ltrs; anything else set to OTH (not left NULL — OTH means "checked,
+  doesn't map cleanly", NULL means "never set"). Required for ITC-04 Table 4/5. UI: UQC
+  dropdown in settings.html Raw Materials tab; warning banner shown when any material has
+  uqc IS NULL.
 - p2_suppliers — supplier master (is_active — CSV-imported suppliers default to
   is_active=false, invisible in dropdowns/matching unless checked), gstin text
   (added Aug 7 — supplier GSTIN, optional, printed on CA export GRN sheet)
@@ -80,8 +87,19 @@ Mobile-first: owners use phones. Must work on mobile browser.
   owned_by uuid nullable — whose material. NULL = mine.
   held_by uuid nullable — who physically holds it. NULL = me.
   FK → p2_clients(id) — added Step 2I.
+  principal_challan_no text, principal_challan_date date — added Fix 1 (Sept 4 2026,
+  migration 20260904_grn_principal_pool.sql). Set only on GRN rows attributed to a
+  principal's pool via grn.html's Material Owner selector (gated behind isJobWorker()).
+  NOT set anywhere else. scanner.html's independent GRN-confirm path (confirmGRN())
+  is own-stock only by design — always writes owned_by: null explicitly, no Material
+  Owner UI — a principal delivery must go through grn.html instead. If field use shows
+  storekeepers commonly receive principal deliveries via the QR-scan flow, extending
+  the same selector to scanner.html is a natural follow-up, not yet built.
 - p2_products — finished goods, has product_code (unique index per tenant), hsn_sac text
   (added Aug 7 — HSN/SAC, optional, for CA export)
+  uqc text — added Session 3 (Sept 4 2026, migration 20260904_uqc_codes.sql). Same GSTN
+  UQC code and backfill logic as p2_raw_materials.uqc above. UI: UQC dropdown in
+  products.html add/edit form; warning banner shown when any product has uqc IS NULL.
 - p2_product_bom — recipe. Uses raw_material_id and qty_per_unit (not product_id-only or qty).
 - p2_wip_transactions — append-only WIP ledger (Step 2G). Columns: id, tenant_id,
   product_id FK → p2_products(id), owned_by uuid nullable FK → p2_clients(id),
@@ -120,6 +138,26 @@ Mobile-first: owners use phones. Must work on mobile browser.
   only.
   owned_by uuid nullable — whose material this dispatch moves. NULL = own material.
   FK → p2_clients(id) — added Step 2I.
+  asset_tag text, last_confirmed_at timestamptz, confirmed_by uuid REFERENCES auth.users(id)
+  — added Session 3 (Sept 4 2026, migration 20260904_tooling_register.sql). Backs the
+  Tooling Register: is_exempt_tooling = true dispatches have no s.143 return deadline, so
+  these back a periodic-attestation surface instead of a clock. asset_tag is a free-text
+  identifier for the physical die/jig/fixture; last_confirmed_at/confirmed_by are stamped
+  by the "Confirm Still Here" action in all-dispatch-history.html (owner/supervisor only).
+- p2_challan_links — new table (Session 3, Sept 4 2026, migration 20260904_parent_challan.sql).
+  Links a return dispatch to one or more original outward challans — a return can settle
+  several outward challans partially, so this is a link table with a quantity rather than a
+  single FK on p2_dispatch_orders. Columns: id, tenant_id, return_dispatch_id FK →
+  p2_dispatch_orders(id), original_dispatch_id FK → p2_dispatch_orders(id),
+  quantity_settled numeric(12,3) CHECK > 0, notes text, created_at. CHECK
+  no_self_link (return_dispatch_id != original_dispatch_id). RLS via get_my_tenant_id(),
+  FOR ALL — no separate DELETE restriction. Indexes: (tenant_id, return_dispatch_id),
+  (tenant_id, original_dispatch_id). Required for ITC-04 Table 5 columns 2–3 — without this
+  link, return dispatches cannot be matched to their original outward challan. Written by
+  dispatch.html's insertChallanLinks() only on a successful confirm of a RETURN_PURPOSES
+  dispatch (job_work_return, unused_material_return, scrap_return); UI is the "Link to
+  Original Challan" section on dispatch.html and the Detail modal on
+  all-dispatch-history.html.
 - p2_dispatch_items — line items in a dispatch. Columns: id, tenant_id, dispatch_order_id,
   material_name, material_code, qty_dispatched, unit, raw_material_id, product_id, notes, created_at.
   IMPORTANT: product dispatches have NULL material_name at DB level — product name must be
@@ -200,6 +238,72 @@ Mobile-first: owners use phones. Must work on mobile browser.
   supabase_realtime ADD TABLE p2_notifications — required for the navbar bell's live badge
   update. See "Shipped Aug 31, 2026" below for the full notify/telegram-webhook/bell pipeline.
 
+## RLS Fixes — Sessions 1 and 2 (Sept 3–4 2026)
+
+### set_tenant_id() trigger — CRITICAL FIX
+The trigger function public.set_tenant_id() was using auth.uid() to set tenant_id
+on INSERT. For staff users, auth.uid() = their own user ID, not the tenant ID.
+Every staff INSERT across 10 tables was silently rejected by RLS.
+
+Fixed: auth.uid() → get_my_tenant_id() in the trigger function body.
+Affects: p2_dispatch_items, p2_dispatch_orders, p2_stock_transactions,
+p2_suppliers, p2_tenant_settings, p2_user_roles, p2_raw_materials,
+p2_product_bom, p2_products, p2_wip_transactions.
+
+Applied directly in the SQL Editor via CREATE OR REPLACE FUNCTION
+public.set_tenant_id() — no migration file for this one (named explicitly in the
+Session 2&3 commit message; not captured as a .sql file, consistent with a few other
+direct-DDL fixes in this project's history).
+
+### Write policy fixes (auth.uid() → get_my_tenant_id())
+All INSERT/UPDATE/DELETE policies across 13 tables were using auth.uid() in
+WITH CHECK / USING clauses. This silently blocked all non-owner staff writes.
+Fixed in migration 20260904_fix_staff_rls_write_policies.sql.
+
+Tables fixed: p2_agent_logs, p2_client_po_numbers, p2_clients, p2_invoices,
+p2_material_prices, p2_pending_invites, p2_product_bom, p2_product_prices,
+p2_products, p2_raw_materials, p2_suppliers, p2_tenant_settings, p2_user_roles (INSERT only).
+
+Deliberately excluded:
+- p2_tenants: id = auth.uid() is correct (owner-only writes, id IS the tenant's own auth uid)
+- p2_user_roles DELETE: tenant_id = auth.uid() AND user_id <> tenant_id is intentional
+  owner-only staff removal — swapping to get_my_tenant_id() would let any staff member
+  delete any other staff member.
+
+### p2_user_roles SELECT policy — widened to tenant-wide read
+Confirmed live: p2_user_roles_select_policy now uses get_my_tenant_id(), so any staff
+member can read every role row for their own tenant, not just their own row. Three
+redundant SELECT policies ("Users can read own role", "Users can view own role", "Users
+can view tenant members") were dropped as part of the same cleanup — superseded by the
+single p2_user_roles_select_policy. Required for the Tooling Register's "Confirmed By"
+display (all-dispatch-history.html resolves confirmed_by uuids via a p2_user_roles
+lookup, which needs to see rows belonging to staff other than the current viewer).
+
+### RLS enablement
+20260803_staff_rls_fix.sql created policies on 15 tables but never ran
+ENABLE ROW LEVEL SECURITY. Fixed in 20260903_enable_rls_all_tables.sql.
+p2_tenants was already correctly enabled with proper policies — excluded from this migration.
+
+### p2_stock_transactions FK constraints dropped
+p2_stock_transactions_tenant_id_fkey and p2_stock_transactions_principal_tenant_id_fkey
+were both referencing p2_tenants directly. After RLS was enabled on p2_tenants,
+staff users could not insert GRNs — the FK check ran outside RLS context and failed.
+Both constraints dropped. RLS on p2_stock_transactions already enforces tenant isolation.
+
+### p2_tenants SELECT policy updated
+Staff users need to read their tenant row for FK validation and plan checks.
+Policy updated: USING (id = auth.uid() OR id = get_my_tenant_id())
+
+### View RLS fixes (Session 1, Sept 3 2026)
+v_p2_wip_balance: recreated WITH (security_invoker = true) + explicit
+  WHERE tenant_id = get_my_tenant_id() — browser-only consumer (production-issue.html).
+v_p2_invoice_payment_status: recreated WITH (security_invoker = true) +
+  REVOKE SELECT FROM anon, authenticated — service-role-only consumer
+  (check-low-stock). Browser access blocked entirely.
+  No explicit tenant filter — service role calls it cross-tenant per tenant loop.
+v_p2_supplier_advance_balance: already fixed Sept 2 2026 (security_invoker = true +
+  explicit get_my_tenant_id() in every subquery).
+
 ## Key Business Rules
 - Stock balance = SUM of all p2_stock_transactions for that material — never store
   balance directly. v_p2_stock_balance is the view for this; it has NO is_active column —
@@ -209,6 +313,16 @@ Mobile-first: owners use phones. Must work on mobile browser.
   column. Never add .is('owned_by', null) as a PostgREST filter on this view — the column
   does not exist in the view's output and will cause a 500 error. The ownership filter is
   baked into the view definition itself.
+- v_p2_stock_balance_by_owner — new view (Session 4, Sept 4 2026, migration
+  20260904_stock_balance_by_owner.sql). Sibling to v_p2_stock_balance above, built to
+  expose the dimension that view deliberately hides. WITH (security_invoker = true) plus an
+  explicit WHERE tenant_id = get_my_tenant_id(). Groups p2_stock_transactions by
+  (tenant_id, raw_material_id, owned_by), LEFT JOINs p2_clients for owner_name (NULL
+  owned_by = own stock, no join needed), includes material_name, material_code, unit, uqc,
+  min_stock_level, current_stock. HAVING SUM(quantity) != 0 — zero-balance rows excluded.
+  Depends on p2_raw_materials.uqc (20260904_uqc_codes.sql) already existing. Powers
+  index.html's pool tabs (All / Own Stock / [Principal]), gated behind isJobWorker().
+  v_p2_stock_balance itself is untouched — every existing consumer is unaffected.
 - On dispatch CONFIRM: reads BOM, inserts negative-qty consumption transactions,
   sets reference_id atomically with the dispatch order header.
 - Challan header: 100% from p2_tenant_settings — zero hardcoded client details.
@@ -462,6 +576,8 @@ Haiku's `top_n` field. supplier_history returns every matching GRN, no `.limit()
 
 **Intentionally deferred (do not build yet):**
 - stock_value — needs p2_material_prices populated; SS Engineering has 0 price records
+- send_challan, send_invoice, send_tally_export — planned Pro-only features, not yet restored.
+  Gate behind plan === 'pro' || plan === 'founder' when restoring.
 
 ### Critical agent gotchas
 - Adding a new intent: add it to HaikuIntent, the system prompt, executeQuery(), and
@@ -1495,6 +1611,91 @@ zero dispatch-count change — nothing in this session's diff touches `p2_stock_
 `v_p2_stock_balance`, or dispatch-status logic. When checking "did today's changes touch a
 live tenant," always diff against the most recent prior snapshot, not the Step-2 baseline.
 
+## Shipped Sept 3–4, 2026 — Sessions 1–4
+
+### Security and RLS (Session 1)
+- set_tenant_id() trigger: auth.uid() → get_my_tenant_id() (10 tables)
+- Write policies: auth.uid() → get_my_tenant_id() across 13 tables
+- handle-new-user Edge Function: deleted (unauthenticated privilege escalation —
+  arbitrary (user_id, tenant_id, role) insert with service role. DB trigger handles
+  new user setup. Zero callers confirmed before deletion.)
+- RLS enabled on 16 p2_* tables (was created but never enabled)
+- Two FK constraints dropped from p2_stock_transactions (blocked staff GRN inserts)
+- View RLS: v_p2_wip_balance and v_p2_invoice_payment_status fixed
+
+### Financial accuracy (Session 2)
+- Payment modal: field order changed to Net first → TDS → Deductions → Gross (computed).
+  Balance due display added at top (Invoice Total / Already Received / Balance Due).
+  Over-payment guard: blocks if net > remaining balance.
+  Marathi: all 8 labels, both buttons, all 6 payment mode options translated.
+- Accountant role: dashboard permission added to js/roles.js
+- navbar.js: plan query changed from p2_tenants (wrong table, broke for staff) to
+  p2_tenant_settings. This was causing 400 errors on every page load for staff roles.
+- production-issue.html: issue number no longer burned on failed confirm —
+  pendingIssueChallanNumber reused across retry attempts
+- dispatch.html: draft mode removed entirely. All saves go straight to confirmed.
+  .neq('status','draft') added to loadRecentDispatches(). Existing draft rows hidden.
+- Error handling: fail-closed stock check in dispatch.html (was fail-open — a query
+  error let the dispatch through as if stock were sufficient). Price-prefill queries
+  in all-dispatch-history.html now surface errors instead of silently showing blank rates.
+- js/auth.js and settings.html: 2 production console.log statements removed
+
+### Compliance gaps (Session 3)
+- Tooling register: asset_tag, last_confirmed_at, confirmed_by columns added to
+  p2_dispatch_orders. all-dispatch-history.html shows Tooling Register section
+  (gated behind isJobWorker()). EXEMPT badge shown on exempt tooling rows.
+  "Confirm Still Here" button stamps attestation. Owner/supervisor only.
+- p2_challan_links: new table linking return dispatches to original outward challans.
+  dispatch.html shows "Link to Original Challan" section for return movement purposes.
+  all-dispatch-history.html Detail modal shows linked challans.
+- UQC codes: uqc column added to p2_raw_materials and p2_products. Backfilled.
+  UQC dropdown in settings.html and products.html. Warning banner for null UQC.
+- 43B(h) report: renamed receivables section to "Client Payment Status".
+  New "Supplier Payment Compliance — 43B(h)" card with explanation and placeholder.
+  (Actual payables register not yet built — see Backlog.)
+- p2_user_roles SELECT policy: widened to tenant-wide read (get_my_tenant_id())
+  so staff can see other staff members within their own tenant. Required for
+  tooling register "Confirmed By" display. Three redundant SELECT policies dropped
+  in the same cleanup (see RLS Fixes section above).
+
+### Structural gaps (Session 4)
+- is_job_worker gate: wiring completed across all job-worker UI. isJobWorker() function
+  in js/supabase-client.js is the single source. All gated features check this before rendering.
+- Principal pool GRN (grn.html): Material Owner selector shown when isJobWorker() = true
+  and p2_clients has is_job_work_principal = true entries. Three-way: 0 principals = hidden,
+  1 principal = radio toggle, 2+ = dropdown. Principal's Challan No + Date required when
+  principal selected. owned_by, principal_challan_no, principal_challan_date written to
+  p2_stock_transactions. scanner.html explicitly writes owned_by: null — own-stock only
+  by design. A principal delivery must go through grn.html.
+- v_p2_stock_balance_by_owner: new view (see Database Tables section).
+- index.html pool tabs: shown when isJobWorker() = true. All/Own Stock/[Principal Name].
+  Client-side filter on cached allStockLevels. Stat cards reflect active pool.
+  Non-job-worker path: unchanged, still queries v_p2_stock_balance.
+- WhatsApp challan share: button on challan.html. Web Share API with wa.me fallback.
+  Shares link (not PDF). URL appears once — text and url params separated.
+  Available to all plans. Hidden on print.
+- Marathi: invoices.html, production-issue.html, all-dispatch-history.html fully translated.
+  Dynamic content re-renders on language toggle (applyLang() now calls render functions).
+- grn-history.html: .is('owned_by', null) filter removed. All GRNs shown regardless of
+  ownership. Owner column added (hidden for non-job-worker tenants). Batch-resolves
+  principal names via p2_clients lookup.
+- all-dispatch-history.html: invoice rate pre-fill warning + checkbox guard for Datta
+  Prasad's 97 KPML SAP PO rates (Fix 4 from Session 1, carried forward).
+
+### Known open items (not yet fixed)
+- Return dispatch pool bug: dispatch.html's confirm_dispatch_transaction RPC call never
+  passes p_owned_by for any movement type — the parameter is omitted entirely, so it
+  always defaults to NULL (own stock), including for the three RETURN_PURPOSES
+  (job_work_return, scrap_return, unused_material_return). Returns deduct from own stock
+  instead of principal's pool. MUST FIX before merging Session 4 to main.
+- s.143 clock: starts from dispatch_date (KPML's send date) not principal_challan_date
+  (vendor's receive date). These differ. ITC-04 ageing slightly wrong until fixed.
+- Scanner own-stock design: scanner.html always writes owned_by = null. If storekeepers
+  receive principal material via QR scan, it records as own stock. Acceptable for now.
+  Extend to scanner only after field use confirms this is a real workflow.
+- Per-material pool override (Type E): one production run consuming from two different
+  pools simultaneously is not supported. Build when first client requests it.
+
 ## GST Scope — PERMANENTLY LOCKED
 Nexflow P2 generates tax invoices for client billing. It does NOT handle GST filing, GSTR
 generation, or financial reporting. GSTR-1/GSTR-3B submission is Tally's job. Never revisit
@@ -1609,3 +1810,58 @@ Sales strategy:
   warnings, vendor stock alerts) that will change that
 - Dependency: notify Edge Function already built,
   p2_notifications table already exists — no schema changes needed
+
+### Return Dispatch Pool Fix (CRITICAL — do first)
+dispatch.html must pass the correct p_owned_by to confirm_dispatch_transaction
+for job_work_return, unused_material_return, scrap_return movements.
+Currently the parameter is never passed at all, so it defaults to null → deducts
+from own stock instead of principal's pool.
+Source for p_owned_by: p2_challan_links → original_dispatch_id →
+p2_dispatch_orders.owned_by. If no link, require user to select principal from dropdown.
+
+### Physical Stock Count Screen
+Most important missing feature for the "replace the accountant" promise.
+Nexflow reports what was typed. A real stock register compares what was typed
+against what's in the racks and shows the variance.
+Flow: last working day of month, operator counts each material on phone, system
+shows "system says 400 — you count?" → accept or adjust. Variance report with
+rupee value. Adjustment posts to correct pool (own or principal).
+Build before ITC-04 working paper.
+
+### ITC-04 Working Paper Export
+The CA channel unlock. Makes a CA recommend Nexflow to every factory client.
+Format: flat Excel, one row per challan line, paste-ready into GSTN utility.
+Sheet 0: reconciliation summary + ageing (the product — two days of CA work in
+10 minutes). Sheets 1–4: Table 4, 5A, 5B, 5C paste-ready.
+Prerequisites already built: p2_challan_links, principal_challan_no/date, UQC codes.
+Still needed: s.143 clock from principal_challan_date, pre-export validation screen.
+
+### Principal Material Passbook
+The KPML demo closer. Per-principal, per-material ledger showing:
+In (with KPML challan no + date), Out (consumed against which production order),
+Returned (on which return challan), Balance remaining, s.143 clock per lot.
+Exportable as ITC-04 working paper for that principal.
+70% built: ownership columns, s.143 clock, consumption path all exist.
+Missing: passbook screen itself.
+
+### Supplier Payables Register
+p2_supplier_advances tracks advances paid. Missing: a payables register showing
+what the factory owes its MSME suppliers, days outstanding, 43B(h) breach risk.
+The actual 43B(h) legal risk is on payables (who you owe) not receivables (who owes you).
+The 43B(h) surface in export.html currently measures receivables — placeholder only.
+
+### Credit/Debit Notes
+Monthly event — returned goods, price corrections, short deliveries.
+No path today except cancel and re-raise (breaks invoice sequence, confuses CA).
+
+### KPML Read-Only Principal Dashboard (Step 5 — build October 2026)
+One screen. KPML logs in, sees their material across all three vendors.
+Per-vendor, per-material: current stock balance, s.143 clock status, reconciliation gap.
+New tenant type: principal account (is_principal = true, is_job_worker = false).
+This is the KPML demo. Build before the November meeting.
+Dependencies: Session 4 pool tabs (done), return dispatch fix (pending).
+
+### send_challan / send_invoice / send_tally_export (Pro-only restore)
+Already tracked as "intentionally deferred" under AI Agent — Architecture above.
+Restore as Pro-only agent intents, gated on plan === 'pro' || plan === 'founder',
+same canRecordPayment pattern. Do not restore without the plan gate.

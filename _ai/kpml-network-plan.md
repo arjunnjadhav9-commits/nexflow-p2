@@ -13,6 +13,13 @@
 > deliverable — the priority is a read-only principal dashboard showing KPML their material across
 > all three vendors. See Section 16 for revised timeline.
 
+> **Sept 4 2026 update — Sessions 1–4 complete.** Infrastructure is done.
+> All RLS policies fixed, ownership layer working, principal pool GRN built.
+> Three KPML vendors (SS Engineering, Datta Prasad, Shivprasad) live with real data.
+> One critical bug remaining: return dispatch deducts from wrong pool (see open items).
+> Next build target: KPML read-only principal dashboard (October 2026).
+> Revised timeline: dashboard Oct → KPML meeting Nov → pilot Dec.
+
 ---
 
 ## 1. The Core Insight

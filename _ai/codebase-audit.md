@@ -12,6 +12,38 @@ last_updated: Sept 2026
 **Ground truth for intent:** `_ai/CLAUDE.md` (1610 lines, read in full).
 **Live tenants affected by everything below:** S.S. Engineering, Datta Prasad Enterprises, Shivprasad Industries — all three are KPML job workers under s.143.
 
+> **Audit date: Sept 3 2026. Resolution status as of Sept 4 2026.**
+> Sessions 1–4 addressed the majority of findings. Status per category:
+>
+> FIXED: RLS not enabled on p2_stock_transactions and 15 other tables.
+> FIXED: set_tenant_id() trigger using auth.uid() (blocked all staff writes across 10 tables).
+> FIXED: All 13 tables with auth.uid() write policies — now get_my_tenant_id().
+> FIXED: handle-new-user unauthenticated privilege escalation endpoint — deleted.
+> FIXED: grn.html lines 662/728 tenant ID bug for staff roles.
+> FIXED: Challan number burning on draft saves (dispatch.html).
+> FIXED: production-issue.html number burning on failed confirm.
+> FIXED: Payment modal field order, balance due display, over-payment guard, Marathi.
+> FIXED: Accountant role missing dashboard permission.
+> FIXED: 7 dead agent command references in manual.html.
+> FIXED: v_p2_wip_balance and v_p2_invoice_payment_status cross-tenant view leaks.
+> FIXED: Datta Prasad invoice rate trap — warning banner + checkbox guard.
+> FIXED: dispatch.html fail-open stock check → fail-closed.
+> FIXED: grn-history.html filtering out principal GRNs.
+> FIXED: p2_user_roles SELECT policy — widened to get_my_tenant_id(), three redundant
+>   policies dropped.
+>
+> STILL OPEN:
+> - Return dispatch pool bug: dispatch.html's confirm_dispatch_transaction call never
+>   passes p_owned_by for any movement type, so it always defaults to NULL. Deducts from
+>   own stock instead of principal's pool on returns. CRITICAL — fix before merge.
+> - v_p2_stock_balance: definition not in repo (UNVERIFIED status from original audit
+>   remains — confirm via SQL Editor if needed).
+> - p2_tenants: no policy for staff write access to their own tenant row (DELETE/UPDATE
+>   still owner-only via auth.uid() — intentional for tenants, flagged only).
+> - scanner.html: GRNs always own-stock only — no Material Owner selector.
+>   Deliberate design decision documented in CLAUDE.md.
+> - Per-material pool override (Type E BOM): not built — deferred until client requests.
+
 ## Tag legend
 
 | Tag | Meaning |

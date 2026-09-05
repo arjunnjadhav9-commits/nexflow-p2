@@ -1399,6 +1399,17 @@ conversation from the vendor-side price.
 
 # Part 6 — Product implications
 
+> **Status as of Sept 4 2026:** The following implications have been acted on:
+> - UQC codes: built (p2_raw_materials.uqc, p2_products.uqc, backfilled)
+> - parent_challan_id: built (p2_challan_links table)
+> - principal_challan_no/date: built (p2_stock_transactions columns)
+> - Tooling register: built (asset_tag, last_confirmed_at, confirmed_by)
+> - v_p2_stock_balance_by_owner: built
+> - 43B(h) direction: relabelled (placeholder — payables register not yet built)
+>
+> Still to build: ITC-04 working paper export, s.143 clock from principal_challan_date,
+> physical stock count screen, Rule 55 compliance (client GSTIN etc — deferred until CA asks).
+
 ## 6.1 The ITC-04 export — exact spec
 
 **Grouping:** per principal → per period → per UQC. **Sheets:** as §1.7 — Cover/Reconciliation, Table 4,
