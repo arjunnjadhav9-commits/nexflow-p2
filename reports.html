@@ -15,6 +15,7 @@
     <script src="js/auth.js"></script>
     <script src="js/utils.js"></script>
     <script src="js/navbar.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
 
     <style>
         @media print {
@@ -23,6 +24,18 @@
             #printable-report { position: absolute; left: 0; top: 0; width: 100%; }
             .no-print { display: none !important; }
         }
+        .sc-overlay{position:fixed;inset:0;z-index:600;background:var(--bg);display:flex;flex-direction:column;}
+        .sc-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border);}
+        .sc-title{font-family:var(--condensed);font-weight:800;font-size:18px;color:var(--text);text-transform:uppercase;}
+        .sc-close-btn{background:none;border:none;color:var(--mid);font-size:22px;cursor:pointer;line-height:1;}
+        .sc-progress{padding:6px 20px;font-size:12px;color:var(--mid);}
+        .sc-table-wrap{flex:1;overflow-y:auto;}
+        .sc-footer{position:sticky;bottom:0;background:var(--surface);border-top:1px solid var(--border);padding:14px 20px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;}
+        .sc-post-overlay{position:fixed;inset:0;z-index:700;background:rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;padding:20px;}
+        .sc-count-input{width:100%;min-width:90px;background:var(--surface3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-family:var(--font);font-size:13px;padding:7px 10px;text-align:right;outline:none;}
+        .sc-count-input:focus{border-color:var(--orange);}
+        @media(max-width:900px){.sc-count-input{font-size:16px;min-height:44px;}}
+        .sc-var-zero{color:var(--green);} .sc-var-neg{color:var(--red);font-weight:700;} .sc-var-pos{color:var(--orange);font-weight:700;}
     </style>
 </head>
 <body>
@@ -105,6 +118,70 @@
                             data-en="Generate Report" data-mr="अहवाल तयार करा">Generate Report</button>
                     <button id="print-report" class="nx-btn nx-btn-secondary no-print"
                             data-en="Print" data-mr="छपाई">Print</button>
+                </div>
+            </div>
+
+            <!-- PHYSICAL STOCK COUNT CARD -->
+            <div class="nx-card nx-mb-24 no-print" id="sc-card" style="display:none;">
+                <div class="nx-card-header">
+                    <div class="nx-card-title" data-en="Physical Stock Count" data-mr="भौतिक साठा मोजणी">Physical Stock Count</div>
+                </div>
+                <p style="color:var(--mid); font-size:13px; margin:0 0 14px;"
+                   data-en="Count what's actually on the shelf and compare against system records."
+                   data-mr="शेल्फवर प्रत्यक्षात काय आहे ते मोजा आणि सिस्टम नोंदींशी तुलना करा.">
+                    Count what's actually on the shelf and compare against system records.
+                </p>
+                <button id="sc-entry-btn" type="button" class="nx-btn nx-btn-primary" onclick="scOpenOverlay()">Start Stock Count</button>
+            </div>
+
+            <!-- PHYSICAL STOCK COUNT — FULL-SCREEN OVERLAY -->
+            <div id="sc-overlay" class="sc-overlay no-print" style="display:none;">
+                <div class="sc-header">
+                    <div class="sc-title" id="sc-title">STOCK COUNT</div>
+                    <button type="button" class="sc-close-btn" onclick="scRequestClose()">✕</button>
+                </div>
+                <div class="sc-progress" id="sc-progress">0 / 0 counted · 0 variances</div>
+                <div class="nx-stabs" id="sc-pool-tabs" style="display:none; margin:0 20px;"></div>
+                <div style="padding:10px 20px;">
+                    <input type="text" id="sc-search" class="nx-input" placeholder="Search material or code..." style="width:100%;">
+                </div>
+                <div class="nx-table-wrap sc-table-wrap" style="margin:0 20px;">
+                    <table class="nx-table">
+                        <thead><tr>
+                            <th>Code</th><th data-en="Material" data-mr="सामग्री">Material</th><th>Unit</th>
+                            <th data-en="System Qty" data-mr="सिस्टम प्रमाण">System Qty</th>
+                            <th data-en="Your Count" data-mr="तुमची गणना">Your Count</th>
+                            <th data-en="Variance" data-mr="फरक">Variance</th>
+                            <th>Value (₹)</th>
+                        </tr></thead>
+                        <tbody id="sc-tbody"></tbody>
+                    </table>
+                </div>
+                <div class="sc-footer">
+                    <div class="sc-summary" id="sc-summary">0 counted · 0 variances · Net variance: ₹0</div>
+                    <button id="sc-download-btn" type="button" class="nx-btn nx-btn-secondary" style="display:none;" onclick="scDownloadReport()">Download Report</button>
+                    <button id="sc-post-btn" type="button" class="nx-btn nx-btn-primary" disabled onclick="scOpenPostModal()">Post Variances</button>
+                </div>
+            </div>
+
+            <!-- POST VARIANCES MODAL -->
+            <div id="sc-post-overlay" class="sc-post-overlay" style="display:none;">
+                <div class="nx-modal" style="max-width:640px; max-height:80vh; display:flex; flex-direction:column;">
+                    <div class="nx-modal-title" data-en="Post Variances" data-mr="फरक नोंदवा">Post Variances</div>
+                    <div class="nx-table-wrap" style="flex:1; overflow-y:auto; margin:14px 0;">
+                        <table class="nx-table" id="sc-post-table">
+                            <thead><tr><th>Material</th><th>System</th><th data-en="Your Count" data-mr="तुमची गणना">Your Count</th><th data-en="Variance" data-mr="फरक">Variance</th><th>Value (₹)</th></tr></thead>
+                            <tbody id="sc-post-tbody"></tbody>
+                        </table>
+                    </div>
+                    <label style="display:flex; gap:8px; align-items:center; font-size:13px; color:var(--light);">
+                        <input type="checkbox" id="sc-verify-checkbox">
+                        <span data-en="I have physically verified these counts" data-mr="मी या गणना प्रत्यक्ष तपासल्या आहेत">I have physically verified these counts</span>
+                    </label>
+                    <div style="display:flex; gap:10px; margin-top:16px;">
+                        <button type="button" class="nx-btn nx-btn-ghost" style="flex:1;" onclick="scClosePostModal()">Cancel</button>
+                        <button type="button" class="nx-btn nx-btn-primary" style="flex:1;" id="sc-confirm-post-btn" disabled onclick="scConfirmPost()">Post Variances</button>
+                    </div>
                 </div>
             </div>
 
@@ -392,6 +469,444 @@
         }
         window.applyLang = applyLang;
 
+        // ══════════════════════════════════════════════════════════
+        // ── PHYSICAL STOCK COUNT (Session 7, Phase 1) ───────────────
+        // ══════════════════════════════════════════════════════════
+        function todayIST() {
+            // en-CA locale formats as YYYY-MM-DD. Shifting to the Asia/Kolkata
+            // timezone before reading the date avoids the toISOString() trap
+            // (that always reads the UTC calendar date, which is wrong near
+            // IST midnight).
+            return new Date().toLocaleString('en-CA', { timeZone: 'Asia/Kolkata' }).split(',')[0];
+        }
+
+        function scFmtDate(isoDateStr) {
+            const [y, m, d] = isoDateStr.split('-').map(Number);
+            const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+            return String(d).padStart(2, '0') + ' ' + months[m - 1] + ' ' + y;
+        }
+
+        function t(en, mr) {
+            return (localStorage.getItem('nexflow_lang') || 'en') === 'mr' ? mr : en;
+        }
+
+        let scTenantId = null;
+        let scMaterials = [];
+        let scPrincipals = [];
+        let scBalanceMap = new Map();
+        let scPriceMap = new Map();
+        let scPool = 'own';
+        let scSession = { counts: {} };
+        let scSaveTimer = null;
+        let scOpenRequestId = 0;
+        let scPendingPostRows = [];
+        let scLastPostedSnapshot = null;
+
+        function scSessionKey(poolKey) {
+            return 'nexflow_stockcount_' + scTenantId + '_' + todayIST() + '_' + poolKey;
+        }
+
+        function scUpdateEntryButton() {
+            const prefix = 'nexflow_stockcount_' + scTenantId + '_' + todayIST() + '_';
+            let counted = 0;
+            for (const key of Object.keys(localStorage)) {
+                if (key.startsWith(prefix)) {
+                    try {
+                        const sess = JSON.parse(localStorage.getItem(key));
+                        counted += Object.keys(sess.counts || {}).length;
+                    } catch (e) { /* corrupt entry, ignore */ }
+                }
+            }
+            const btn = document.getElementById('sc-entry-btn');
+            if (counted > 0) {
+                btn.textContent = t('Resume Count', 'मोजणी पुन्हा सुरू करा') + ' (' + counted + ' ' + t('counted', 'मोजले') + ')';
+            } else {
+                btn.textContent = t('Start Stock Count', 'साठा मोजणी सुरू करा') + ' — ' + scFmtDate(todayIST());
+            }
+        }
+
+        async function scOpenOverlay() {
+            const requestId = ++scOpenRequestId;
+            document.getElementById('sc-overlay').style.display = 'flex';
+            document.getElementById('sc-title').textContent = t('STOCK COUNT', 'साठा मोजणी') + ' — ' + scFmtDate(todayIST()).toUpperCase();
+            document.getElementById('sc-download-btn').style.display = 'none';
+            document.getElementById('sc-tbody').innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--mid);">' + t('Loading...', 'लोड होत आहे...') + '</td></tr>';
+
+            try {
+                const materialsPromise = window.supabase
+                    .from('p2_raw_materials')
+                    .select('id, name, material_code, unit, uqc')
+                    .eq('tenant_id', scTenantId)
+                    .eq('is_active', true)
+                    .order('name');
+
+                const principalsPromise = isJobWorker()
+                    ? window.supabase.from('p2_clients').select('id, name').eq('tenant_id', scTenantId).eq('is_job_work_principal', true).order('name')
+                    : Promise.resolve({ data: [], error: null });
+
+                // Belt-and-suspenders: explicit tenant_id filter on both branches,
+                // never relying on RLS alone to scope the balance view.
+                const balancePromise = isJobWorker()
+                    ? window.supabase.from('v_p2_stock_balance_by_owner').select('raw_material_id, owned_by, current_stock').eq('tenant_id', scTenantId)
+                    : window.supabase.from('v_p2_stock_balance').select('raw_material_id, current_stock').eq('tenant_id', scTenantId);
+
+                const pricesPromise = window.supabase
+                    .from('p2_material_prices')
+                    .select('raw_material_id, price_per_unit, effective_date')
+                    .eq('tenant_id', scTenantId)
+                    .order('effective_date', { ascending: false });
+
+                const [materialsRes, principalsRes, balanceRes, pricesRes] = await Promise.all([
+                    materialsPromise, principalsPromise, balancePromise, pricesPromise
+                ]);
+
+                if (requestId !== scOpenRequestId) return; // a newer open has superseded this one
+
+                if (materialsRes.error) throw materialsRes.error;
+                if (principalsRes.error) throw principalsRes.error;
+                if (balanceRes.error) throw balanceRes.error;
+                if (pricesRes.error) throw pricesRes.error;
+
+                scMaterials = materialsRes.data || [];
+                scPrincipals = principalsRes.data || [];
+
+                scBalanceMap = new Map();
+                (balanceRes.data || []).forEach(row => {
+                    const key = isJobWorker() ? (row.raw_material_id + '|' + (row.owned_by ?? 'own')) : row.raw_material_id;
+                    scBalanceMap.set(key, row.current_stock);
+                });
+
+                scPriceMap = new Map();
+                (pricesRes.data || []).forEach(row => {
+                    if (!scPriceMap.has(row.raw_material_id)) scPriceMap.set(row.raw_material_id, row.price_per_unit);
+                });
+
+                const tabsRow = document.getElementById('sc-pool-tabs');
+                if (isJobWorker() && scPrincipals.length > 0) {
+                    const tabs = [{ id: 'own', label: t('Own Stock', 'स्वतःचा साठा') }, ...scPrincipals.map(p => ({ id: p.id, label: p.name }))];
+                    tabsRow.innerHTML = tabs.map(tb =>
+                        '<button type="button" class="nx-stab sc-pool-tab-btn' + (tb.id === scPool ? ' active' : '') + '" data-pool="' + tb.id + '">' +
+                        String(tb.label).replace(/</g, '&lt;') + '</button>'
+                    ).join('');
+                    tabsRow.style.display = 'flex';
+                    tabsRow.querySelectorAll('.sc-pool-tab-btn').forEach(btn => {
+                        btn.addEventListener('click', () => scSwitchPool(btn.dataset.pool));
+                    });
+                } else {
+                    tabsRow.style.display = 'none';
+                    tabsRow.innerHTML = '';
+                }
+
+                scSwitchPool('own');
+
+                const searchInput = document.getElementById('sc-search');
+                searchInput.value = '';
+                searchInput.oninput = () => scRenderTable();
+
+            } catch (error) {
+                if (requestId !== scOpenRequestId) return;
+                console.error('Error loading stock count:', error);
+                document.getElementById('sc-tbody').innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--red);">' + t('Error loading materials: ', 'सामग्री लोड करताना त्रुटी: ') + error.message + '</td></tr>';
+            }
+        }
+
+        function scSwitchPool(poolKey) {
+            scPool = poolKey;
+            document.querySelectorAll('.sc-pool-tab-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.pool === poolKey);
+            });
+            scLoadSession();
+            scRenderTable();
+            scUpdateSummary();
+        }
+
+        function scLoadSession() {
+            const raw = localStorage.getItem(scSessionKey(scPool));
+            if (raw) {
+                try {
+                    const parsed = JSON.parse(raw);
+                    scSession = { counts: parsed.counts || {} };
+                } catch (e) {
+                    scSession = { counts: {} };
+                }
+            } else {
+                scSession = { counts: {} };
+            }
+        }
+
+        function scGetSystemQty(materialId) {
+            const key = isJobWorker() ? (materialId + '|' + scPool) : materialId;
+            const val = scBalanceMap.get(key);
+            return val === undefined || val === null ? 0 : val;
+        }
+
+        function scComputeVarianceValue(materialId, systemQty) {
+            const typed = scSession.counts[materialId];
+            if (typed === undefined || typed === '') return { variance: null, value: null };
+            const physical = parseFloat(typed);
+            if (isNaN(physical)) return { variance: null, value: null };
+            const variance = physical - systemQty;
+            const price = scPriceMap.get(materialId);
+            const value = (price === undefined || price === null) ? null : variance * price;
+            return { variance, value };
+        }
+
+        function scVarianceCellHtml(variance) {
+            if (variance === null) return { text: '—', cls: '' };
+            if (variance === 0) return { text: '0', cls: 'sc-var-zero' };
+            if (variance < 0) return { text: variance.toFixed(3), cls: 'sc-var-neg' };
+            return { text: '+' + variance.toFixed(3), cls: 'sc-var-pos' };
+        }
+
+        function scValueCellHtml(value) {
+            if (value === null) return '—';
+            return '₹' + value.toFixed(2);
+        }
+
+        function scRenderTable() {
+            const search = (document.getElementById('sc-search').value || '').toLowerCase().trim();
+            const tbody = document.getElementById('sc-tbody');
+            const filtered = scMaterials.filter(m =>
+                !search || m.name.toLowerCase().includes(search) || (m.material_code || '').toLowerCase().includes(search)
+            );
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--mid);">' + t('No materials found', 'कोणतीही सामग्री आढळली नाही') + '</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = filtered.map(m => {
+                const systemQty = scGetSystemQty(m.id);
+                const typed = scSession.counts[m.id] ?? '';
+                const { variance, value } = scComputeVarianceValue(m.id, systemQty);
+                const varCell = scVarianceCellHtml(variance);
+                return '<tr data-mid="' + m.id + '">' +
+                    '<td>' + (m.material_code || '—') + '</td>' +
+                    '<td class="nx-td-bold">' + String(m.name).replace(/</g, '&lt;') + '</td>' +
+                    '<td>' + m.unit + '</td>' +
+                    '<td style="text-align:right;" id="sc-sys-' + m.id + '">' + systemQty.toFixed(3) + '</td>' +
+                    '<td><input type="number" min="0" step="0.001" class="sc-count-input" data-mid="' + m.id + '" value="' + typed + '" placeholder="0"></td>' +
+                    '<td style="text-align:right;" id="sc-var-' + m.id + '" class="' + varCell.cls + '">' + varCell.text + '</td>' +
+                    '<td style="text-align:right;" id="sc-val-' + m.id + '">' + scValueCellHtml(value) + '</td>' +
+                '</tr>';
+            }).join('');
+
+            tbody.querySelectorAll('.sc-count-input').forEach(input => {
+                input.addEventListener('input', e => scHandleCountInput(e.target.dataset.mid, e.target.value));
+                input.addEventListener('focus', e => e.target.scrollIntoView({ block: 'center', behavior: 'smooth' }));
+            });
+        }
+
+        // Updates only the affected row's variance/value cells in place — must
+        // NOT call scRenderTable() here, since rebuilding the tbody on every
+        // keystroke destroys the focused input's cursor/focus on mobile.
+        function scHandleCountInput(materialId, rawValue) {
+            if (rawValue === '') {
+                delete scSession.counts[materialId];
+            } else {
+                scSession.counts[materialId] = rawValue;
+            }
+
+            const systemQty = scGetSystemQty(materialId);
+            const { variance, value } = scComputeVarianceValue(materialId, systemQty);
+            const varCell = scVarianceCellHtml(variance);
+            const varEl = document.getElementById('sc-var-' + materialId);
+            const valEl = document.getElementById('sc-val-' + materialId);
+            if (varEl) { varEl.textContent = varCell.text; varEl.className = varCell.cls; }
+            if (valEl) { valEl.textContent = scValueCellHtml(value); }
+
+            scUpdateSummary();
+            scDebouncedSave();
+        }
+
+        function scDebouncedSave() {
+            clearTimeout(scSaveTimer);
+            scSaveTimer = setTimeout(scSaveSession, 500);
+        }
+
+        function scSaveSession() {
+            localStorage.setItem(scSessionKey(scPool), JSON.stringify({ counts: scSession.counts, savedAt: new Date().toISOString() }));
+        }
+
+        function scUpdateSummary() {
+            let counted = 0, variances = 0, netValue = 0;
+            scMaterials.forEach(m => {
+                const systemQty = scGetSystemQty(m.id);
+                const { variance, value } = scComputeVarianceValue(m.id, systemQty);
+                if (variance !== null) {
+                    counted++;
+                    if (variance !== 0) variances++;
+                    if (value !== null) netValue += value;
+                }
+            });
+
+            document.getElementById('sc-progress').textContent =
+                counted + ' / ' + scMaterials.length + ' ' + t('counted', 'मोजले') + ' · ' + variances + ' ' + t('variances', 'फरक');
+            document.getElementById('sc-summary').textContent =
+                counted + ' ' + t('counted', 'मोजले') + ' · ' + variances + ' ' + t('variances', 'फरक') + ' · ' + t('Net variance', 'निव्वळ फरक') + ': ₹' + netValue.toFixed(2);
+
+            document.getElementById('sc-post-btn').disabled = !(variances >= 1 && counted >= 1);
+        }
+
+        function scRequestClose() {
+            const countedInPool = Object.keys(scSession.counts).length;
+            if (countedInPool > 0) {
+                const ok = confirm(t(
+                    "Your counts are saved — you can resume this pool's count later. Close now?",
+                    'तुमची गणना जतन झाली आहे — तुम्ही नंतर हा साठा मोजणी सुरू ठेवू शकता. आता बंद करायचे?'
+                ));
+                if (!ok) return;
+            }
+            document.getElementById('sc-overlay').style.display = 'none';
+            scUpdateEntryButton();
+        }
+
+        function scOpenPostModal() {
+            const rows = [];
+            scMaterials.forEach(m => {
+                const systemQty = scGetSystemQty(m.id);
+                const { variance, value } = scComputeVarianceValue(m.id, systemQty);
+                if (variance !== null && variance !== 0) {
+                    rows.push({ id: m.id, name: m.name, unit: m.unit, systemQty, physical: parseFloat(scSession.counts[m.id]), variance, value, price: scPriceMap.get(m.id) ?? null });
+                }
+            });
+
+            if (rows.length === 0) return;
+
+            document.getElementById('sc-post-tbody').innerHTML = rows.map(r => {
+                const varCell = scVarianceCellHtml(r.variance);
+                return '<tr data-mid="' + r.id + '">' +
+                    '<td class="nx-td-bold">' + String(r.name).replace(/</g, '&lt;') + '</td>' +
+                    '<td style="text-align:right;">' + r.systemQty.toFixed(3) + '</td>' +
+                    '<td style="text-align:right;">' + r.physical.toFixed(3) + '</td>' +
+                    '<td style="text-align:right;" class="' + varCell.cls + '">' + varCell.text + '</td>' +
+                    '<td style="text-align:right;">' + scValueCellHtml(r.value) + '</td>' +
+                '</tr>';
+            }).join('');
+
+            document.getElementById('sc-confirm-post-btn').textContent = t('Post', 'नोंदवा') + ' ' + rows.length + ' ' + t('Adjustments', 'समायोजने');
+            document.getElementById('sc-confirm-post-btn').disabled = true;
+            document.getElementById('sc-verify-checkbox').checked = false;
+            document.getElementById('sc-verify-checkbox').onchange = e => {
+                document.getElementById('sc-confirm-post-btn').disabled = !e.target.checked;
+            };
+
+            scPendingPostRows = rows;
+            document.getElementById('sc-post-overlay').style.display = 'flex';
+        }
+
+        function scClosePostModal() {
+            document.getElementById('sc-post-overlay').style.display = 'none';
+        }
+
+        async function scConfirmPost() {
+            const btn = document.getElementById('sc-confirm-post-btn');
+            if (btn.disabled) return;
+            btn.disabled = true;
+
+            try {
+                const rows = scPendingPostRows;
+                const nowIst = todayIST();
+                const postedAtDisplay = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+                const inserts = rows.map(r => ({
+                    tenant_id: scTenantId,
+                    raw_material_id: r.id,
+                    quantity: r.variance,
+                    transaction_type: 'adjustment',
+                    transaction_date: nowIst,
+                    notes: 'Physical Stock Count — ' + nowIst,
+                    owned_by: scPool === 'own' ? null : scPool,
+                    rate: r.price ?? null
+                }));
+
+                const { error } = await window.supabase.from('p2_stock_transactions').insert(inserts);
+                if (error) throw error;
+
+                const poolLabel = scPool === 'own' ? t('Own Stock', 'स्वतःचा साठा') : ((scPrincipals.find(p => p.id === scPool) || {}).name || scPool);
+
+                scLastPostedSnapshot = {
+                    poolLabel,
+                    postedAtDisplay,
+                    rows: scMaterials.map(m => {
+                        const systemQty = scGetSystemQty(m.id);
+                        const { variance, value } = scComputeVarianceValue(m.id, systemQty);
+                        return {
+                            code: m.material_code || '', name: m.name, uqc: m.uqc || '', unit: m.unit,
+                            systemQty, physical: scSession.counts[m.id] !== undefined ? parseFloat(scSession.counts[m.id]) : null,
+                            variance, price: scPriceMap.get(m.id) ?? null, value
+                        };
+                    }).filter(r => r.physical !== null)
+                };
+
+                toast(rows.length + ' ' + t('adjustments posted', 'समायोजने नोंदवली'), 'ok');
+
+                localStorage.removeItem(scSessionKey(scPool));
+                scSession = { counts: {} };
+                scRenderTable();
+                scUpdateSummary();
+                scUpdateEntryButton();
+
+                document.getElementById('sc-post-overlay').style.display = 'none';
+                document.getElementById('sc-download-btn').style.display = '';
+
+            } catch (error) {
+                console.error('Error posting variances:', error);
+                toast(t('Failed to post adjustments: ', 'समायोजने नोंदवण्यात अयशस्वी: ') + error.message, 'error');
+                btn.disabled = false;
+            }
+        }
+
+        function scDownloadReport() {
+            if (!scLastPostedSnapshot) return;
+            const snap = scLastPostedSnapshot;
+            const dateLabel = todayIST().split('-').reverse().join(''); // DDMMYYYY
+
+            const workbook = new ExcelJS.Workbook();
+            const sheet = workbook.addWorksheet('Stock Count ' + dateLabel);
+            sheet.columns = [
+                { header: 'Code', key: 'code', width: 14 },
+                { header: 'Material', key: 'material', width: 32 },
+                { header: 'UQC', key: 'uqc', width: 8 },
+                { header: 'System Qty', key: 'systemQty', width: 14, numFmt: '#,##0.000' },
+                { header: 'Physical Qty', key: 'physicalQty', width: 14, numFmt: '#,##0.000' },
+                { header: 'Variance', key: 'variance', width: 12, numFmt: '#,##0.000' },
+                { header: 'Rate (₹)', key: 'rate', width: 12, numFmt: '#,##0.00' },
+                { header: 'Variance Value (₹)', key: 'varianceValue', width: 16, numFmt: '#,##0.00' },
+                { header: 'Pool', key: 'pool', width: 16 },
+                { header: 'Posted At (IST)', key: 'postedAt', width: 20 }
+            ];
+
+            sheet.getRow(1).eachCell(cell => {
+                cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFF5C1A' } };
+                cell.alignment = { horizontal: 'center', vertical: 'middle' };
+            });
+
+            snap.rows.forEach(r => {
+                sheet.addRow({
+                    code: r.code, material: r.name, uqc: r.uqc,
+                    systemQty: r.systemQty, physicalQty: r.physical,
+                    variance: r.variance, rate: r.price ?? '', varianceValue: r.value ?? '',
+                    pool: snap.poolLabel, postedAt: snap.postedAtDisplay
+                });
+            });
+
+            sheet.views = [{ state: 'frozen', ySplit: 1 }];
+
+            workbook.xlsx.writeBuffer().then(buffer => {
+                const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'Stock_Count_' + dateLabel + '_' + snap.poolLabel.replace(/\s+/g, '_') + '.xlsx';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            });
+        }
+
         document.addEventListener('DOMContentLoaded', async () => {
             const authed = await checkAuth();
             if (!authed) return;
@@ -402,6 +917,16 @@
             }
             const saved = localStorage.getItem('nexflow_lang') || 'en';
             applyLang(saved);
+
+            // ── Physical Stock Count init ──
+            const { data: { user } } = await window.supabase.auth.getUser();
+            if (user) {
+                scTenantId = user.user_metadata?.tenant_id || user.id;
+                if (['owner', 'supervisor'].includes(role)) {
+                    document.getElementById('sc-card').style.display = '';
+                    scUpdateEntryButton();
+                }
+            }
         });
     </script>
 <script src="js/agent-chat.js"></script>
