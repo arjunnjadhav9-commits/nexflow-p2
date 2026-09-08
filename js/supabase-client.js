@@ -22,7 +22,23 @@ async function checkAuth() {
     // tenant_id = user's own id for an owner, but for an invited staff member their
     // own auth user_id is NOT the tenant — the owner's id was stamped into their JWT
     // user_metadata at invite time (see invite-staff Edge Function).
-    const tenantId = user.user_metadata?.tenant_id || user.id;
+    let tenantId = user.user_metadata?.tenant_id;
+
+    if (!tenantId) {
+        // No tenant_id in JWT metadata — not just invited staff; also a user
+        // created directly in the Auth dashboard (bypasses the signup trigger
+        // that stamps metadata). Falling back to user.id is wrong whenever
+        // this user's real tenant isn't their own auth uid. Resolve the same
+        // way the DB already does for exactly this case: call
+        // get_my_tenant_id() itself (SECURITY DEFINER — checks p2_tenants
+        // first, then p2_user_roles, 20260803_staff_rls_fix.sql) rather than
+        // reimplementing its logic here with a direct p2_user_roles read —
+        // that specific pattern is the one js/auth.js's fetchUserRole()
+        // already avoids (documented recursion risk).
+        const { data: resolvedTenantId } = await window.supabase.rpc('get_my_tenant_id');
+        tenantId = resolvedTenantId || user.id; // preserve today's last-resort behaviour
+    }
+
     localStorage.setItem('nexflow_tenant_id', tenantId);
     localStorage.setItem('supabase_tenant_id', tenantId); //
 

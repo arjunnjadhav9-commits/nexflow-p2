@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Principal Dashboard | Nexflow P2</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%230c0e14'/><text y='.9em' font-size='80' x='10' fill='%23ff5c1a'>N</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800;900&family=Barlow+Condensed:wght@500;600;700;800;900&display=swap">
+<link rel="stylesheet" href="css/nexflow-design.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/supabase-client.js"></script>
+<script src="js/roles.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/navbar.js"></script>
+<script src="js/s143-clock.js"></script>
+<style>
+    /* Not in js/navbar.js's NAV_LINKS — NAV_LINKS is filtered by role only
+       (canAccess()) inside initNavbar(), which runs independently of and not
+       synchronized with each page's own checkAuth()/isPrincipal() resolution,
+       so there is no race-free way to gate a global nav entry on a tenant
+       flag today. Reached instead via a banner link on index.html, gated
+       in-page after checkAuth() resolves — same "reach via a link, self-gate
+       on load" convention itc04-workingpaper.html and gstr2b-reconcile.html
+       already use for export.html. This page still gates its own content
+       directly in init(), same as those two. */
+    #loadingSpinner { display: flex; align-items: center; justify-content: center; padding: 60px 20px; }
+    #errorState, #roleGateError, #notPrincipalError, #mainContent { display: none; }
+
+    .pd-vendor-card { margin-bottom: 20px; }
+    .pd-vendor-name { font-family: var(--condensed); font-weight: 800; font-size: 18px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .pd-section-label { font-size: 12px; font-weight: 700; color: var(--mid); text-transform: uppercase; letter-spacing: 0.5px; margin: 16px 0 8px; }
+    .pd-not-linked { color: var(--mid); font-style: italic; font-size: 12px; }
+</style>
+</head>
+<body>
+<div id="navbar-container"></div>
+
+<div class="nx-main">
+<div class="nx-page">
+
+    <!-- PAGE HEADER -->
+    <div class="nx-page-header">
+        <div>
+            <div class="nx-eyebrow">Your Network</div>
+            <div class="nx-page-title">Principal <span>Dashboard</span></div>
+            <div class="nx-page-sub">Your material at each vendor, corroborated from their own ledger — read-only</div>
+        </div>
+    </div>
+
+    <!-- LOADING -->
+    <div id="loadingSpinner">
+        <div class="nx-logo-loader">
+            <div class="nx-logo-loader-mark"></div>
+            <div class="nx-logo-loader-text">Loading...</div>
+        </div>
+    </div>
+
+    <!-- GENERIC ERROR -->
+    <div id="errorState" class="nx-alert nx-alert-red nx-mb-24">
+        <span class="nx-alert-icon">⚠</span>
+        <div>
+            <div class="nx-bold">Could not load data</div>
+            <div>Check your connection and refresh the page.</div>
+        </div>
+    </div>
+
+    <!-- ROLE GATE -->
+    <div id="roleGateError" class="nx-alert nx-alert-red nx-mb-24">
+        <span class="nx-alert-icon">⚠</span>
+        <div>
+            <div class="nx-bold">Access Restricted</div>
+            <div>Only the owner, accountant, or supervisor can access this page.</div>
+        </div>
+    </div>
+
+    <!-- NOT A PRINCIPAL -->
+    <div id="notPrincipalError" class="nx-alert nx-alert-orange nx-mb-24">
+        <span class="nx-alert-icon">⚠</span>
+        <div>
+            <div class="nx-bold">Not applicable</div>
+            <div>This dashboard shows a principal's material held at their vendors. This tenant is not set up as a principal account.</div>
+        </div>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div id="mainContent">
+
+        <!-- NO LINKS -->
+        <div id="noLinksNotice" class="nx-alert nx-alert-orange nx-mb-24" style="display:none;">
+            <span class="nx-alert-icon">⚠</span>
+            <div>No vendor is linked to this account yet.</div>
+        </div>
+
+        <div id="vendorCards"></div>
+
+    </div>
+</div>
+</div>
+
+<script>
+// ═══ HELPERS (same shape as itc04-workingpaper.html) ════════════════════════
+function todayIST() {
+    return new Date().toLocaleString('en-CA', { timeZone: 'Asia/Kolkata' }).split(',')[0];
+}
+
+function escapeHtml(str) {
+    return String(str ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function fmtQty(n) {
+    if (n === null || n === undefined || Number.isNaN(n)) return '—';
+    return Number(n).toLocaleString('en-IN', { maximumFractionDigits: 3 });
+}
+
+function fmtDate(isoDateStr) {
+    if (!isoDateStr) return '—';
+    const [y, m, d] = isoDateStr.split('-').map(Number);
+    if (!y || !m || !d) return isoDateStr;
+    return `${String(d).padStart(2,'0')}/${String(m).padStart(2,'0')}/${y}`;
+}
+
+const STATUS_META = {
+    within_limit:   { label: 'Within Limit',   badge: 'nx-badge-green'  },
+    warning:        { label: 'Warning',        badge: 'nx-badge-yellow' },
+    breach_warning: { label: 'Breach Warning', badge: 'nx-badge-orange' },
+    breached:       { label: 'Breached',       badge: 'nx-badge-red'    }
+};
+function statusBadgeHtml(status) {
+    const meta = STATUS_META[status] || STATUS_META.within_limit;
+    return `<span class="nx-badge ${meta.badge}">${meta.label}</span>`;
+}
+
+// ═══ FETCH — the single scoped access path ══════════════════════════════════
+// get_principal_vendor_material() is the only route to this data. Do not add
+// a second query against another tenant's p2_stock_transactions/p2_clients/
+// p2_raw_materials anywhere in this file — see the scope-boundary comment on
+// the function itself (20260908_get_principal_vendor_material.sql).
+async function fetchVendorMaterial() {
+    const { data, error } = await window.supabase.rpc('get_principal_vendor_material');
+    if (error) throw error;
+    return data || [];
+}
+
+// Splits the RPC's flat row set into per-vendor groups, each with a balance
+// list (current_stock rows) and a clock list (individual GRN-lot rows) —
+// matches the RPC's two UNION ALL branches.
+function groupByVendor(rows) {
+    const vendors = new Map();
+    rows.forEach(r => {
+        if (!vendors.has(r.vendor_tenant_id)) {
+            vendors.set(r.vendor_tenant_id, { vendorName: r.vendor_name, balance: [], clockLots: [] });
+        }
+        const v = vendors.get(r.vendor_tenant_id);
+        if (r.current_stock !== null) {
+            v.balance.push(r);
+        } else {
+            v.clockLots.push(r);
+        }
+    });
+    return [...vendors.values()].sort((a, b) => a.vendorName.localeCompare(b.vendorName));
+}
+
+// ═══ RENDER ══════════════════════════════════════════════════════════════════
+function renderBalanceTable(rows) {
+    if (!rows.length) return '<div class="pd-not-linked">No current balance recorded.</div>';
+    return `
+        <div class="nx-table-wrap">
+            <table class="nx-table">
+                <thead>
+                    <tr><th>Material</th><th>Code</th><th>HSN/SAC</th><th>Unit</th><th>Current Stock</th></tr>
+                </thead>
+                <tbody>
+                    ${rows.map(r => `
+                        <tr>
+                            <td>${escapeHtml(r.material_name)}</td>
+                            <td>${escapeHtml(r.material_code) || '—'}</td>
+                            <td>${escapeHtml(r.hsn_sac) || '—'}</td>
+                            <td>${escapeHtml(r.uqc) || escapeHtml(r.unit) || '—'}</td>
+                            <td>${fmtQty(r.current_stock)}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        </div>
+    `;
+}
+
+function renderClockTable(rows) {
+    if (!rows.length) return '<div class="pd-not-linked">No GRN lots on record.</div>';
+    const today = todayIST();
+    const withClock = rows.map(r => {
+        const clock = computeS143Clock(
+            { principal_challan_date: r.principal_challan_date, transaction_date: r.transaction_date },
+            today
+        );
+        return { ...r, clock };
+    });
+    return `
+        <div class="nx-table-wrap">
+            <table class="nx-table">
+                <thead>
+                    <tr>
+                        <th>Material</th><th>Your Challan No.</th><th>Your Challan Date</th>
+                        <th>Vendor GRN Date</th><th>Clock Start</th><th>Deadline</th>
+                        <th>Days Elapsed</th><th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${withClock.map(r => `
+                        <tr>
+                            <td>${escapeHtml(r.material_name)}</td>
+                            <td>${escapeHtml(r.principal_challan_no) || '<span class="pd-not-linked">— missing —</span>'}</td>
+                            <td>${r.principal_challan_date ? fmtDate(r.principal_challan_date) : '<span class="pd-not-linked">— missing —</span>'}</td>
+                            <td>${fmtDate(r.transaction_date)}</td>
+                            <td>${r.clock ? fmtDate(r.clock.clockStart) : '—'}</td>
+                            <td>${r.clock ? fmtDate(r.clock.deadlineDate) : '—'}</td>
+                            <td>${r.clock ? r.clock.daysElapsed : '—'}</td>
+                            <td>${r.clock ? statusBadgeHtml(r.clock.status) : '—'}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        </div>
+    `;
+}
+
+function renderVendorCard(vendor) {
+    return `
+        <div class="nx-card pd-vendor-card">
+            <div class="nx-card-header">
+                <div class="pd-vendor-name">${escapeHtml(vendor.vendorName)}</div>
+            </div>
+            <div class="pd-section-label">Current Stock</div>
+            ${renderBalanceTable(vendor.balance)}
+            <div class="pd-section-label">s.143 Return Clock — Individual Lots</div>
+            ${renderClockTable(vendor.clockLots)}
+        </div>
+    `;
+}
+
+function renderDashboard(vendors) {
+    const container = document.getElementById('vendorCards');
+    const noLinksNotice = document.getElementById('noLinksNotice');
+    if (vendors.length === 0) {
+        noLinksNotice.style.display = 'flex';
+        container.innerHTML = '';
+        return;
+    }
+    noLinksNotice.style.display = 'none';
+    container.innerHTML = vendors.map(renderVendorCard).join('');
+}
+
+// ═══ INIT ════════════════════════════════════════════════════════════════════
+async function init() {
+    try {
+        const authed = await checkAuth();
+        if (!authed) return;
+
+        const role = getUserRole();
+        if (!['owner', 'accountant', 'supervisor'].includes(role)) {
+            document.getElementById('loadingSpinner').style.display = 'none';
+            document.getElementById('roleGateError').style.display = 'flex';
+            return;
+        }
+
+        if (!isPrincipal()) {
+            document.getElementById('loadingSpinner').style.display = 'none';
+            document.getElementById('notPrincipalError').style.display = 'flex';
+            return;
+        }
+
+        const rows = await fetchVendorMaterial();
+        const vendors = groupByVendor(rows);
+        renderDashboard(vendors);
+
+        document.getElementById('loadingSpinner').style.display = 'none';
+        document.getElementById('mainContent').style.display = 'block';
+    } catch (err) {
+        console.error('principal-dashboard.html init error:', err);
+        document.getElementById('loadingSpinner').style.display = 'none';
+        document.getElementById('errorState').style.display = 'flex';
+    }
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
