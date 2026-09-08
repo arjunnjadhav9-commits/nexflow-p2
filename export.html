@@ -144,6 +144,15 @@
     <a href="gstr2b-reconcile.html" class="nx-btn nx-btn-secondary">Open Reconciliation →</a>
   </div>
 
+  <!-- ITC-04 WORKING PAPER -->
+  <div id="itc04Card" class="nx-card nx-mb-16" style="display:none; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;">
+    <div>
+      <div class="nx-card-title" style="margin-bottom:4px;">ITC-04 Working Paper</div>
+      <div style="font-size:13px; color:var(--mid);">Job-work challan register — Tables 4/5A/5B/5C, paste-ready for your CA's ITC-04 filing.</div>
+    </div>
+    <a href="itc04-workingpaper.html" class="nx-btn nx-btn-secondary">Open Working Paper →</a>
+  </div>
+
   <!-- STEP 1: Platform + Type -->
   <div class="nx-card nx-mb-16">
     <div class="nx-card-header">
@@ -2472,6 +2481,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('supplier43bhSection').style.display = 'block';
     document.getElementById('gstr1WorkbookSection').style.display = 'block';
     document.getElementById('gstr1WorkbookMonth').value = `${y}-${m}`;
+  }
+
+  // ITC-04 Working Paper entry card — job-worker tenants on Pro/Founder only
+  // (role is already covered by the page-level redirect above). Fresh fetch,
+  // never isPro()/localStorage.
+  const tenantIdForItc04 = await getTenantId();
+  const { data: itc04Settings } = await window.supabase
+    .from('p2_tenant_settings')
+    .select('plan, is_job_worker')
+    .eq('tenant_id', tenantIdForItc04)
+    .maybeSingle();
+  const itc04Plan = itc04Settings?.plan || 'lite';
+  if (itc04Settings?.is_job_worker && (itc04Plan === 'pro' || itc04Plan === 'founder')) {
+    document.getElementById('itc04Card').style.display = 'flex';
   }
 });
 </script>

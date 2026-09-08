@@ -1,0 +1,1138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ITC-04 Working Paper | Nexflow P2</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%230c0e14'/><text y='.9em' font-size='80' x='10' fill='%23ff5c1a'>N</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800;900&family=Barlow+Condensed:wght@500;600;700;800;900&display=swap">
+<link rel="stylesheet" href="css/nexflow-design.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/supabase-client.js"></script>
+<script src="js/roles.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/navbar.js"></script>
+<script src="js/s143-clock.js"></script>
+<style>
+    /* Not in js/navbar.js's NAV_LINKS — reached only via the link on
+       export.html, gates its own content directly in init() via
+       getUserRole() / a fresh p2_tenant_settings fetch, same as
+       gstr2b-reconcile.html. */
+    #loadingSpinner { display: flex; align-items: center; justify-content: center; padding: 60px 20px; }
+    #errorState, #planGateError, #roleGateError, #notJobWorkerError, #mainContent { display: none; }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* Pool-attribution precondition warning — must be visually prominent,
+       not a small text line (per Session 8 sign-off). */
+    #poolAttributionWarning {
+        display: none;
+        border-left: 4px solid var(--orange);
+        background: var(--orange-dim);
+        border-radius: var(--radius-lg);
+        padding: 14px 16px;
+        margin-bottom: 16px;
+        font-size: 13px;
+        line-height: 1.6;
+    }
+    #poolAttributionWarning .itc-warning-title {
+        font-weight: 800;
+        color: var(--orange);
+        margin-bottom: 4px;
+        font-family: var(--condensed);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        font-size: 13px;
+    }
+    #poolAttributionWarning .itc-warning-action {
+        margin-top: 6px;
+        font-weight: 700;
+    }
+
+    .itc-filter-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 14px;
+        align-items: flex-end;
+    }
+    .itc-filter-row .nx-form-group { margin: 0; min-width: 180px; flex: 1; }
+    .itc-preset-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+    .itc-preset-btn {
+        background: none; border: 1px solid var(--border2); color: var(--mid);
+        font-size: 11px; padding: 5px 10px; border-radius: 6px; cursor: pointer; white-space: nowrap;
+    }
+    .itc-preset-btn:hover, .itc-preset-btn.active { border-color: var(--orange); color: var(--orange); }
+
+    .itc-badge-note { font-size: 10px; color: var(--mid); font-weight: 400; text-transform: none; letter-spacing: 0; margin-left: 4px; }
+    .itc-not-linked { color: var(--mid); font-style: italic; font-size: 12px; }
+    .itc-secondary-ref { font-size: 11px; color: var(--mid); }
+</style>
+</head>
+<body>
+<div id="navbar-container"></div>
+
+<div class="nx-main">
+<div class="nx-page">
+
+    <!-- PAGE HEADER -->
+    <div class="nx-page-header">
+        <div>
+            <div class="nx-eyebrow">Accountant Tools</div>
+            <div class="nx-page-title">ITC-04 <span>Working Paper</span></div>
+            <div class="nx-page-sub">Job-work challan register for your CA's ITC-04 filing — Tables 4, 5A, 5B, 5C</div>
+        </div>
+    </div>
+
+    <!-- LOADING -->
+    <div id="loadingSpinner">
+        <div class="nx-logo-loader">
+            <div class="nx-logo-loader-mark"></div>
+            <div class="nx-logo-loader-text">Loading...</div>
+        </div>
+    </div>
+
+    <!-- GENERIC ERROR -->
+    <div id="errorState" class="nx-alert nx-alert-red nx-mb-24">
+        <span class="nx-alert-icon">⚠</span>
+        <div>
+            <div class="nx-bold">Could not load data</div>
+            <div>Check your connection and refresh the page.</div>
+        </div>
+    </div>
+
+    <!-- PLAN GATE -->
+    <div id="planGateError" class="nx-alert nx-alert-orange nx-mb-24">
+        <span class="nx-alert-icon">⚠</span>
+        <div>
+            <div class="nx-bold">Pro Feature</div>
+            <div>The ITC-04 Working Paper is available on the Pro and Founder plan. You're currently on Lite.</div>
+        </div>
+    </div>
+
+    <!-- ROLE GATE -->
+    <div id="roleGateError" class="nx-alert nx-alert-red nx-mb-24">
+        <span class="nx-alert-icon">⚠</span>
+        <div>
+            <div class="nx-bold">Access Restricted</div>
+            <div>Only the owner, accountant, or supervisor can access this page.</div>
+        </div>
+    </div>
+
+    <!-- NOT A JOB WORKER -->
+    <div id="notJobWorkerError" class="nx-alert nx-alert-orange nx-mb-24">
+        <span class="nx-alert-icon">⚠</span>
+        <div>
+            <div class="nx-bold">Not applicable</div>
+            <div>ITC-04 tracks material held for a principal under job work. This tenant is not set up as a job worker — see Settings → Advanced.</div>
+        </div>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div id="mainContent">
+
+        <!-- POOL ATTRIBUTION PRECONDITION WARNING -->
+        <div id="poolAttributionWarning">
+            <div class="itc-warning-title">⚠ Return movements are not pool-attributed</div>
+            <div>Tables 5A, 5B, and 5C need every return/direct-supply dispatch to record whose material it was. That attribution is currently switched off for this tenant, so those three tables will show no rows even after real returns happen — Table 4 (material received) is unaffected.</div>
+            <div class="itc-warning-action">Go to Settings → Advanced → enable Separate Pool Deduction to populate Tables 5A, 5B, and 5C.</div>
+        </div>
+
+        <!-- FILTERS -->
+        <div class="nx-card nx-mb-16">
+            <div class="nx-card-header">
+                <div class="nx-card-title">Filters</div>
+            </div>
+
+            <div id="noPrincipalNotice" class="nx-alert nx-alert-orange nx-mb-16" style="display:none;">
+                <span class="nx-alert-icon">⚠</span>
+                <div>No principal is configured yet. Add one under Settings → Clients (mark "Job Work Principal") before generating a working paper.</div>
+            </div>
+
+            <div id="filterFields">
+                <div class="itc-filter-row nx-mb-16">
+                    <div class="nx-form-group" id="principalFieldGroup">
+                        <label>Principal</label>
+                        <div id="principalToggleWrap"></div>
+                        <select id="principalSelect" class="nx-input" style="display:none;"></select>
+                    </div>
+                    <div class="nx-form-group">
+                        <label>From</label>
+                        <input type="date" id="fromDate" class="nx-input">
+                    </div>
+                    <div class="nx-form-group">
+                        <label>To</label>
+                        <input type="date" id="toDate" class="nx-input">
+                    </div>
+                    <div class="nx-form-group">
+                        <label>Status</label>
+                        <select id="statusFilter" class="nx-input">
+                            <option value="all">All</option>
+                            <option value="within_limit">Green — Within Limit</option>
+                            <option value="warning">Amber — Warning</option>
+                            <option value="breach_warning">Red — Breach Warning</option>
+                            <option value="breached">Red — Breached</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="itc-preset-row">
+                    <button type="button" class="itc-preset-btn" data-preset="h1">This Half-Year (Apr–Sep)</button>
+                    <button type="button" class="itc-preset-btn" data-preset="h2">This Half-Year (Oct–Mar)</button>
+                    <button type="button" class="itc-preset-btn" data-preset="fy">This Financial Year (Apr–Mar)</button>
+                </div>
+            </div>
+
+            <div id="generateError" class="nx-alert nx-alert-red nx-mt-16" style="display:none;">
+                <span class="nx-alert-icon">⚠</span>
+                <div id="generateErrorText"></div>
+            </div>
+
+            <button id="generateBtn" class="nx-btn nx-btn-primary nx-btn-full nx-mt-16">Generate Working Paper</button>
+        </div>
+
+        <!-- SUMMARY + TABS -->
+        <div id="resultsSection" style="display:none;">
+
+            <div class="nx-stat-grid nx-mb-24">
+                <div class="nx-stat nx-stat-green">
+                    <div class="nx-stat-label">Within Limit</div>
+                    <div class="nx-stat-value" id="statGreenCount">—</div>
+                    <div class="nx-stat-unit" id="statGreenQty">—</div>
+                </div>
+                <div class="nx-stat">
+                    <div class="nx-stat-label">Warning</div>
+                    <div class="nx-stat-value" id="statAmberCount">—</div>
+                    <div class="nx-stat-unit" id="statAmberQty">—</div>
+                </div>
+                <div class="nx-stat nx-stat-red">
+                    <div class="nx-stat-label">Breach Warning</div>
+                    <div class="nx-stat-value" id="statRedWarnCount">—</div>
+                    <div class="nx-stat-unit" id="statRedWarnQty">—</div>
+                </div>
+                <div class="nx-stat nx-stat-red">
+                    <div class="nx-stat-label">Breached</div>
+                    <div class="nx-stat-value" id="statBreachedCount">—</div>
+                    <div class="nx-stat-unit" id="statBreachedQty">—</div>
+                </div>
+            </div>
+
+            <div class="nx-card nx-mb-16">
+                <div class="nx-card-header">
+                    <div class="nx-card-title">Summary</div>
+                </div>
+                <div id="summaryBody" style="font-size:13px; line-height:1.9;"></div>
+            </div>
+
+            <div class="nx-stabs nx-mb-16">
+                <button id="tab-t4" class="nx-stab active">Table 4 — Sent for Job Work</button>
+                <button id="tab-t5a" class="nx-stab">Table 5A — Received Back</button>
+                <button id="tab-t5b" class="nx-stab">Table 5B — Scrap Returned</button>
+                <button id="tab-t5c" class="nx-stab">Table 5C — Direct Supply</button>
+            </div>
+
+            <!-- TABLE 4 -->
+            <div id="content-t4" class="tab-panel active">
+                <div class="nx-table-wrap">
+                    <table class="nx-table">
+                        <thead>
+                            <tr>
+                                <th>Job Worker GSTIN</th><th>Job Worker Name</th>
+                                <th>Principal Challan No.</th><th>Principal Challan Date</th>
+                                <th>Nexflow GRN Ref</th>
+                                <th>Description</th><th>UQC</th><th>Quantity</th><th>Est. Value (₹)</th>
+                                <th>Days Elapsed</th><th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="t4Tbody"></tbody>
+                    </table>
+                </div>
+                <div id="t4Empty" class="nx-text-mid" style="display:none; text-align:center; padding:24px;">No GRN receipts from this principal in the selected period.</div>
+            </div>
+
+            <!-- TABLE 5A -->
+            <div id="content-t5a" class="tab-panel">
+                <div class="nx-table-wrap">
+                    <table class="nx-table">
+                        <thead>
+                            <tr>
+                                <th>Return Challan No.</th><th>Return Date</th><th>Purpose</th>
+                                <th>Description</th><th>UQC</th><th>Quantity</th>
+                                <th>Original Challan</th><th>Time Taken (days)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="t5aTbody"></tbody>
+                    </table>
+                </div>
+                <div id="t5aEmpty" class="nx-text-mid" style="display:none; text-align:center; padding:24px;">No return dispatches to this principal in the selected period.</div>
+            </div>
+
+            <!-- TABLE 5B -->
+            <div id="content-t5b" class="tab-panel">
+                <div class="nx-table-wrap">
+                    <table class="nx-table">
+                        <thead>
+                            <tr>
+                                <th>Return Challan No.</th><th>Return Date</th>
+                                <th>Description</th><th>UQC</th><th>Quantity</th>
+                                <th>Original Challan</th><th>Time Taken (days)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="t5bTbody"></tbody>
+                    </table>
+                </div>
+                <div id="t5bEmpty" class="nx-text-mid" style="display:none; text-align:center; padding:24px;">No scrap returns to this principal in the selected period.</div>
+            </div>
+
+            <!-- TABLE 5C -->
+            <div id="content-t5c" class="tab-panel">
+                <div class="nx-table-wrap">
+                    <table class="nx-table">
+                        <thead>
+                            <tr>
+                                <th>Challan No.</th><th>Challan Date</th><th>Buyer</th><th>Buyer GSTIN</th>
+                                <th>Description</th><th>UQC</th><th>Quantity</th>
+                                <th>Invoice No.</th><th>Invoice Date</th><th>Invoice Status</th><th>Value (₹)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="t5cTbody"></tbody>
+                    </table>
+                </div>
+                <div id="t5cEmpty" class="nx-text-mid" style="display:none; text-align:center; padding:24px;">No direct-supply-from-job-worker dispatches to this principal in the selected period.</div>
+            </div>
+
+            <button id="downloadExcelBtn" class="nx-btn nx-btn-secondary nx-btn-full nx-mt-16">⬇ Download Excel Working Paper</button>
+        </div>
+
+    </div>
+</div>
+</div>
+
+<script>
+// ═══ STATE ══════════════════════════════════════════════════════════════════
+let tenantId = null;
+let tenantGstin = '';
+let tenantCompanyName = '';
+let jobWorkPrincipals = [];
+let selectedPrincipalId = null;
+
+// Last-generated result set, kept for the Excel download so it can't diverge
+// from what's on screen.
+let lastResult = null;
+
+// ═══ HELPERS ════════════════════════════════════════════════════════════════
+function todayIST() {
+    // en-CA locale formats as YYYY-MM-DD. Never toISOString().split('T')[0]
+    // (reads the UTC calendar date, wrong near IST midnight).
+    return new Date().toLocaleString('en-CA', { timeZone: 'Asia/Kolkata' }).split(',')[0];
+}
+
+function escapeHtml(str) {
+    return String(str ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function fmtAmt(n) {
+    if (n === null || n === undefined || Number.isNaN(n)) return '—';
+    return '₹' + Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function fmtQty(n) {
+    if (n === null || n === undefined || Number.isNaN(n)) return '—';
+    return Number(n).toLocaleString('en-IN', { maximumFractionDigits: 3 });
+}
+
+function fmtDate(isoDateStr) {
+    if (!isoDateStr) return '—';
+    const [y, m, d] = isoDateStr.split('-').map(Number);
+    if (!y || !m || !d) return isoDateStr;
+    return `${String(d).padStart(2,'0')}/${String(m).padStart(2,'0')}/${y}`;
+}
+
+const STATUS_META = {
+    within_limit:   { label: 'Within Limit',   badge: 'nx-badge-green'  },
+    warning:        { label: 'Warning',        badge: 'nx-badge-yellow' },
+    breach_warning: { label: 'Breach Warning', badge: 'nx-badge-orange' },
+    breached:       { label: 'Breached',       badge: 'nx-badge-red'    }
+};
+function statusBadgeHtml(status) {
+    const meta = STATUS_META[status] || STATUS_META.within_limit;
+    return `<span class="nx-badge ${meta.badge}">${meta.label}</span>`;
+}
+
+// Strips the parent dispatch's material_name/product_id row into a single
+// description string, resolving via the batched material/product maps built
+// per-fetch. Product dispatches have material_name = NULL at DB level.
+function resolveItemDescription(item, materialsById, productsById) {
+    if (item.raw_material_id && materialsById.has(item.raw_material_id)) {
+        const m = materialsById.get(item.raw_material_id);
+        return { description: m.name, uqc: m.uqc || 'OTH' };
+    }
+    if (item.product_id && productsById.has(item.product_id)) {
+        const p = productsById.get(item.product_id);
+        return { description: p.name, uqc: p.uqc || 'OTH' };
+    }
+    return { description: item.material_name || '(unresolved item)', uqc: 'OTH' };
+}
+
+// ═══ DATE RANGE PRESETS ═════════════════════════════════════════════════════
+function applyPreset(preset) {
+    const [y, m] = todayIST().split('-').map(Number);
+    const fyStartYear = m >= 4 ? y : y - 1;
+    let from, to;
+    if (preset === 'h1') { from = `${fyStartYear}-04-01`; to = `${fyStartYear}-09-30`; }
+    else if (preset === 'h2') { from = `${fyStartYear}-10-01`; to = `${fyStartYear + 1}-03-31`; }
+    else if (preset === 'fy') { from = `${fyStartYear}-04-01`; to = `${fyStartYear + 1}-03-31`; }
+    else return;
+    document.getElementById('fromDate').value = from;
+    document.getElementById('toDate').value = to;
+    document.querySelectorAll('.itc-preset-btn').forEach(b => b.classList.toggle('active', b.dataset.preset === preset));
+}
+
+// ═══ PRINCIPAL SELECTOR ═════════════════════════════════════════════════════
+// Deliberately no "Own Stock" option — every ITC-04 row requires
+// owned_by IS NOT NULL by construction. 0 -> empty-state notice
+// (filters hidden). 1 -> auto-selected, read-only label. 2+ -> required
+// dropdown, no blank option.
+async function loadJobWorkPrincipals() {
+    const { data, error } = await window.supabase
+        .from('p2_clients')
+        .select('id, name')
+        .eq('tenant_id', tenantId)
+        .eq('is_job_work_principal', true)
+        .order('name');
+    if (error) { console.error('loadJobWorkPrincipals:', error); jobWorkPrincipals = []; }
+    else jobWorkPrincipals = data || [];
+    renderPrincipalField();
+}
+
+function renderPrincipalField() {
+    const noPrincipalNotice = document.getElementById('noPrincipalNotice');
+    const filterFields = document.getElementById('filterFields');
+    const toggleWrap = document.getElementById('principalToggleWrap');
+    const select = document.getElementById('principalSelect');
+
+    if (jobWorkPrincipals.length === 0) {
+        noPrincipalNotice.style.display = 'flex';
+        filterFields.style.display = 'none';
+        document.getElementById('generateBtn').style.display = 'none';
+        selectedPrincipalId = null;
+        return;
+    }
+
+    noPrincipalNotice.style.display = 'none';
+    filterFields.style.display = '';
+    document.getElementById('generateBtn').style.display = '';
+
+    if (jobWorkPrincipals.length === 1) {
+        select.style.display = 'none';
+        select.innerHTML = '';
+        const p = jobWorkPrincipals[0];
+        toggleWrap.innerHTML = `<div class="nx-input" style="background:var(--surface2); cursor:default;">${escapeHtml(p.name)}</div>`;
+        selectedPrincipalId = p.id;
+    } else {
+        toggleWrap.innerHTML = '';
+        select.style.display = '';
+        select.innerHTML = '<option value="">Select principal...</option>' +
+            jobWorkPrincipals.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+        select.onchange = e => { selectedPrincipalId = e.target.value || null; };
+        selectedPrincipalId = null;
+    }
+}
+
+// ═══ FETCH — TABLE 4 (GRN receipts) ═════════════════════════════════════════
+async function fetchTable4(dateFrom, dateTo) {
+    const { data, error } = await window.supabase
+        .from('p2_stock_transactions')
+        .select(`
+            id, raw_material_id, quantity, rate, grn_no, transaction_date,
+            principal_challan_no, principal_challan_date,
+            p2_raw_materials ( name, material_code, uqc )
+        `)
+        .eq('tenant_id', tenantId)
+        .eq('transaction_type', 'grn')
+        .eq('owned_by', selectedPrincipalId)
+        .gte('transaction_date', dateFrom)
+        .lte('transaction_date', dateTo)
+        .order('transaction_date', { ascending: true });
+    if (error) throw error;
+
+    const today = todayIST();
+    return (data || []).map(row => {
+        const clock = computeS143Clock(
+            { principal_challan_date: row.principal_challan_date, transaction_date: row.transaction_date },
+            today
+        );
+        return {
+            id: row.id,
+            materialName: row.p2_raw_materials?.name || '(deleted material)',
+            uqc: row.p2_raw_materials?.uqc || 'OTH',
+            quantity: Number(row.quantity),
+            estValue: row.rate ? Number(row.quantity) * Number(row.rate) : null,
+            grnNo: row.grn_no,
+            transactionDate: row.transaction_date,
+            principalChallanNo: row.principal_challan_no,
+            principalChallanDate: row.principal_challan_date,
+            clockStart: clock?.clockStart,
+            daysElapsed: clock?.daysElapsed ?? 0,
+            status: clock?.status || 'within_limit'
+        };
+    });
+}
+
+// ═══ FETCH — TABLE 5A / 5B (return dispatches) ══════════════════════════════
+const TABLE_5A_PURPOSES = ['job_work_return', 'rework_return', 'unused_material_return'];
+const TABLE_5B_PURPOSES = ['scrap_return'];
+
+async function fetchReturnTable(purposes, dateFrom, dateTo) {
+    const { data: orders, error: ordersErr } = await window.supabase
+        .from('p2_dispatch_orders')
+        .select('id, challan_number, dispatch_date, movement_purpose')
+        .eq('tenant_id', tenantId)
+        .eq('status', 'confirmed')
+        .eq('owned_by', selectedPrincipalId)
+        .in('movement_purpose', purposes)
+        .gte('dispatch_date', dateFrom)
+        .lte('dispatch_date', dateTo)
+        .order('dispatch_date', { ascending: true });
+    if (ordersErr) throw ordersErr;
+    if (!orders || orders.length === 0) return [];
+
+    const orderIds = orders.map(o => o.id);
+
+    const [{ data: items, error: itemsErr }, { data: links, error: linksErr }] = await Promise.all([
+        window.supabase
+            .from('p2_dispatch_items')
+            .select('dispatch_order_id, raw_material_id, product_id, material_name, qty_dispatched')
+            .in('dispatch_order_id', orderIds),
+        window.supabase
+            .from('p2_challan_links')
+            .select('return_dispatch_id, original_dispatch_id, quantity_settled')
+            .eq('tenant_id', tenantId)
+            .in('return_dispatch_id', orderIds)
+    ]);
+    if (itemsErr) throw itemsErr;
+    if (linksErr) throw linksErr;
+
+    // Batched material/product resolution.
+    const rawMaterialIds = [...new Set((items || []).map(i => i.raw_material_id).filter(Boolean))];
+    const productIds = [...new Set((items || []).map(i => i.product_id).filter(Boolean))];
+    const [{ data: materials }, { data: products }] = await Promise.all([
+        rawMaterialIds.length
+            ? window.supabase.from('p2_raw_materials').select('id, name, uqc').in('id', rawMaterialIds)
+            : Promise.resolve({ data: [] }),
+        productIds.length
+            ? window.supabase.from('p2_products').select('id, name, uqc').in('id', productIds)
+            : Promise.resolve({ data: [] })
+    ]);
+    const materialsById = new Map((materials || []).map(m => [m.id, m]));
+    const productsById = new Map((products || []).map(p => [p.id, p]));
+
+    // Resolve linked originals (batched .in() lookup against p2_dispatch_orders).
+    const originalIds = [...new Set((links || []).map(l => l.original_dispatch_id))];
+    let originalsById = new Map();
+    if (originalIds.length) {
+        const { data: originals, error: origErr } = await window.supabase
+            .from('p2_dispatch_orders')
+            .select('id, challan_number, dispatch_date')
+            .in('id', originalIds);
+        if (origErr) throw origErr;
+        originalsById = new Map((originals || []).map(o => [o.id, o]));
+    }
+    const linksByReturnId = new Map();
+    (links || []).forEach(l => {
+        if (!linksByReturnId.has(l.return_dispatch_id)) linksByReturnId.set(l.return_dispatch_id, []);
+        linksByReturnId.get(l.return_dispatch_id).push(l);
+    });
+
+    const itemsByOrderId = new Map();
+    (items || []).forEach(it => {
+        if (!itemsByOrderId.has(it.dispatch_order_id)) itemsByOrderId.set(it.dispatch_order_id, []);
+        itemsByOrderId.get(it.dispatch_order_id).push(it);
+    });
+
+    const rows = [];
+    orders.forEach(order => {
+        const orderItems = itemsByOrderId.get(order.id) || [];
+        const orderLinks = linksByReturnId.get(order.id) || [];
+
+        // Original-challan / Time Taken handling — see plan §Table 5A/5B.
+        // 0 links: honestly "Not Linked", never a fabricated number.
+        // 1 link: show it, compute Time Taken.
+        // >1 link: p2_challan_links is dispatch-level, not item-level, so a
+        // specific link's quantity_settled can't be safely attributed to one
+        // item row when there are multiple items — show a combined summary,
+        // Time Taken left blank.
+        let originalRef = '— Not Linked —';
+        let timeTaken = null;
+        if (orderLinks.length === 1) {
+            const orig = originalsById.get(orderLinks[0].original_dispatch_id);
+            if (orig) {
+                const displayNo = (orig.challan_number || '').replace(/^CHAL-\d{8}-/, '');
+                originalRef = `${displayNo} — ${fmtDate(orig.dispatch_date)}`;
+                timeTaken = s143DaysBetween(orig.dispatch_date, order.dispatch_date);
+            }
+        } else if (orderLinks.length > 1) {
+            originalRef = `Multiple challans linked (${orderLinks.length})`;
+        }
+
+        if (orderItems.length === 0) {
+            rows.push({
+                challanNo: (order.challan_number || '').replace(/^CHAL-\d{8}-/, ''),
+                dispatchDate: order.dispatch_date,
+                movementPurpose: order.movement_purpose,
+                description: '(no line items)',
+                uqc: '—',
+                quantity: null,
+                originalRef, timeTaken
+            });
+            return;
+        }
+        orderItems.forEach(item => {
+            const resolved = resolveItemDescription(item, materialsById, productsById);
+            rows.push({
+                challanNo: (order.challan_number || '').replace(/^CHAL-\d{8}-/, ''),
+                dispatchDate: order.dispatch_date,
+                movementPurpose: order.movement_purpose,
+                description: resolved.description,
+                uqc: resolved.uqc,
+                quantity: Number(item.qty_dispatched),
+                originalRef, timeTaken
+            });
+        });
+    });
+    return rows;
+}
+
+// ═══ FETCH — TABLE 5C (direct supply from job worker) ═══════════════════════
+async function fetchTable5C(dateFrom, dateTo) {
+    const { data: orders, error: ordersErr } = await window.supabase
+        .from('p2_dispatch_orders')
+        .select('id, challan_number, dispatch_date, client_name')
+        .eq('tenant_id', tenantId)
+        .eq('status', 'confirmed')
+        .eq('owned_by', selectedPrincipalId)
+        .eq('movement_purpose', 'direct_supply_from_jobworker')
+        .gte('dispatch_date', dateFrom)
+        .lte('dispatch_date', dateTo)
+        .order('dispatch_date', { ascending: true });
+    if (ordersErr) throw ordersErr;
+    if (!orders || orders.length === 0) return [];
+
+    const orderIds = orders.map(o => o.id);
+    const challanNumberByOrderId = new Map(orders.map(o => [o.id, o.challan_number]));
+
+    const [{ data: items, error: itemsErr }, { data: singleInvoices, error: singleErr }, { data: consolInvoices, error: consolErr }] = await Promise.all([
+        window.supabase
+            .from('p2_dispatch_items')
+            .select('dispatch_order_id, raw_material_id, product_id, material_name, qty_dispatched')
+            .in('dispatch_order_id', orderIds),
+        window.supabase
+            .from('p2_invoices')
+            .select('dispatch_order_id, invoice_number, invoice_date, status, client_name, client_gstin, amount_subtotal')
+            .eq('tenant_id', tenantId)
+            .eq('invoice_mode', 'single')
+            .in('dispatch_order_id', orderIds),
+        window.supabase
+            .from('p2_invoices')
+            .select('dispatch_order_ids, invoice_number, invoice_date, status, client_name, client_gstin, items')
+            .eq('tenant_id', tenantId)
+            .eq('invoice_mode', 'consolidated')
+            .overlaps('dispatch_order_ids', orderIds)
+    ]);
+    if (itemsErr) throw itemsErr;
+    if (singleErr) throw singleErr;
+    if (consolErr) throw consolErr;
+
+    const rawMaterialIds = [...new Set((items || []).map(i => i.raw_material_id).filter(Boolean))];
+    const productIds = [...new Set((items || []).map(i => i.product_id).filter(Boolean))];
+    const [{ data: materials }, { data: products }] = await Promise.all([
+        rawMaterialIds.length
+            ? window.supabase.from('p2_raw_materials').select('id, name, uqc').in('id', rawMaterialIds)
+            : Promise.resolve({ data: [] }),
+        productIds.length
+            ? window.supabase.from('p2_products').select('id, name, uqc').in('id', productIds)
+            : Promise.resolve({ data: [] })
+    ]);
+    const materialsById = new Map((materials || []).map(m => [m.id, m]));
+    const productsById = new Map((products || []).map(p => [p.id, p]));
+
+    // Enrichment-only invoice matching — never the primary source of
+    // qty/description (see plan: p2_invoices.items has no product_id/
+    // raw_material_id FK, so it can't safely drive those columns).
+    const invoiceByOrderId = new Map();
+    (singleInvoices || []).forEach(inv => {
+        invoiceByOrderId.set(inv.dispatch_order_id, {
+            invoiceNo: inv.invoice_number, invoiceDate: inv.invoice_date, status: inv.status,
+            buyerName: inv.client_name, buyerGstin: inv.client_gstin, value: inv.amount_subtotal
+        });
+    });
+    (consolInvoices || []).forEach(inv => {
+        (inv.dispatch_order_ids || []).forEach(orderId => {
+            const challanNo = challanNumberByOrderId.get(orderId);
+            if (!challanNo) return;
+            const matchingItems = (inv.items || []).filter(it => it.challan_number === challanNo);
+            if (!matchingItems.length) return;
+            const value = matchingItems.reduce((sum, it) => sum + Number(it.amount || 0), 0);
+            invoiceByOrderId.set(orderId, {
+                invoiceNo: inv.invoice_number, invoiceDate: inv.invoice_date, status: inv.status,
+                buyerName: inv.client_name, buyerGstin: inv.client_gstin, value
+            });
+        });
+    });
+
+    const itemsByOrderId = new Map();
+    (items || []).forEach(it => {
+        if (!itemsByOrderId.has(it.dispatch_order_id)) itemsByOrderId.set(it.dispatch_order_id, []);
+        itemsByOrderId.get(it.dispatch_order_id).push(it);
+    });
+
+    const rows = [];
+    orders.forEach(order => {
+        const orderItems = itemsByOrderId.get(order.id) || [];
+        const inv = invoiceByOrderId.get(order.id) || null;
+        // Value can only be attributed unambiguously to a single line item
+        // when the dispatch has exactly one — otherwise it's shown once as
+        // a dispatch-level note rather than guessed per material.
+        const singleItem = orderItems.length === 1;
+
+        if (orderItems.length === 0) {
+            rows.push({
+                challanNo: (order.challan_number || '').replace(/^CHAL-\d{8}-/, ''),
+                dispatchDate: order.dispatch_date, buyerName: order.client_name || inv?.buyerName,
+                buyerGstin: inv?.buyerGstin, description: '(no line items)', uqc: '—', quantity: null,
+                invoiceNo: inv?.invoiceNo, invoiceDate: inv?.invoiceDate, invoiceStatus: inv?.status,
+                value: inv?.value ?? null
+            });
+            return;
+        }
+        orderItems.forEach(item => {
+            const resolved = resolveItemDescription(item, materialsById, productsById);
+            rows.push({
+                challanNo: (order.challan_number || '').replace(/^CHAL-\d{8}-/, ''),
+                dispatchDate: order.dispatch_date, buyerName: order.client_name || inv?.buyerName,
+                buyerGstin: inv?.buyerGstin, description: resolved.description, uqc: resolved.uqc,
+                quantity: Number(item.qty_dispatched),
+                invoiceNo: inv?.invoiceNo, invoiceDate: inv?.invoiceDate, invoiceStatus: inv?.status,
+                value: (singleItem && inv) ? inv.value : null,
+                multiItemNote: (!singleItem && inv) ? true : false
+            });
+        });
+    });
+    return rows;
+}
+
+// ═══ SUMMARY AGGREGATE BALANCE ═══════════════════════════════════════════════
+async function fetchAggregateBalance() {
+    const { data, error } = await window.supabase
+        .from('v_p2_stock_balance_by_owner')
+        .select('material_name, current_stock, uqc')
+        .eq('tenant_id', tenantId)
+        .eq('owned_by', selectedPrincipalId);
+    if (error) { console.error('fetchAggregateBalance:', error); return []; }
+    return data || [];
+}
+
+// ═══ RENDER ══════════════════════════════════════════════════════════════════
+function applyStatusFilter(t4Rows) {
+    const filter = document.getElementById('statusFilter').value;
+    if (filter === 'all') return t4Rows;
+    return t4Rows.filter(r => r.status === filter);
+}
+
+function renderSummary(t4Rows, t5aRows, t5bRows, t5cRows, aggregateBalance) {
+    const counts = { within_limit: 0, warning: 0, breach_warning: 0, breached: 0 };
+    const qtyByStatus = { within_limit: 0, warning: 0, breach_warning: 0, breached: 0 };
+    t4Rows.forEach(r => { counts[r.status]++; qtyByStatus[r.status] += r.quantity; });
+
+    document.getElementById('statGreenCount').textContent = counts.within_limit;
+    document.getElementById('statGreenQty').textContent = fmtQty(qtyByStatus.within_limit) + ' units';
+    document.getElementById('statAmberCount').textContent = counts.warning;
+    document.getElementById('statAmberQty').textContent = fmtQty(qtyByStatus.warning) + ' units';
+    document.getElementById('statRedWarnCount').textContent = counts.breach_warning;
+    document.getElementById('statRedWarnQty').textContent = fmtQty(qtyByStatus.breach_warning) + ' units';
+    document.getElementById('statBreachedCount').textContent = counts.breached;
+    document.getElementById('statBreachedQty').textContent = fmtQty(qtyByStatus.breached) + ' units';
+
+    const totalQtySent = t4Rows.reduce((s, r) => s + r.quantity, 0);
+    const totalQtyReturned = t5aRows.reduce((s, r) => s + (r.quantity || 0), 0) + t5bRows.reduce((s, r) => s + (r.quantity || 0), 0);
+    const totalValue5C = t5cRows.reduce((s, r) => s + (r.value || 0), 0);
+    const missingChallanDate = t4Rows.filter(r => !r.principalChallanDate).length;
+    const unlinkedReturns = t5aRows.filter(r => r.originalRef === '— Not Linked —').length + t5bRows.filter(r => r.originalRef === '— Not Linked —').length;
+
+    const balanceHtml = aggregateBalance.length
+        ? aggregateBalance.map(b => `${escapeHtml(b.material_name)}: ${fmtQty(b.current_stock)} ${b.uqc || 'OTH'}`).join(' · ')
+        : 'No outstanding balance recorded for this principal.';
+
+    document.getElementById('summaryBody').innerHTML = `
+        <div><b>Total quantity sent (Table 4, this period):</b> ${fmtQty(totalQtySent)} units</div>
+        <div><b>Total quantity returned (Tables 5A+5B, this period):</b> ${fmtQty(totalQtyReturned)} units</div>
+        <div><b>Total value — direct supply (Table 5C, this period):</b> ${fmtAmt(totalValue5C)}</div>
+        <div><b>Net outstanding balance (all-time, from stock ledger):</b> ${balanceHtml}</div>
+        <div style="margin-top:10px; padding-top:10px; border-top:1px solid var(--border2); color:var(--mid); font-size:12px;">
+            ${missingChallanDate ? `⚠ ${missingChallanDate} Table 4 row(s) have no Principal Challan Date on record — the clock fell back to the Nexflow GRN receipt date instead.<br>` : ''}
+            ${unlinkedReturns ? `⚠ ${unlinkedReturns} return(s) in Tables 5A/5B have no original challan link recorded — shown as "Not Linked", not estimated.<br>` : ''}
+            <b>Disclaimers:</b> every Table 4 row's clock keeps running for the full 365 days regardless of whether that specific lot has already been returned elsewhere — no lot-level matching exists, so the net outstanding balance above (not the per-lot Table 4 view) is the true current exposure. All receipts are treated as "inputs" (365-day clock) — this export does not distinguish capital goods or exempt tooling. Table 5B captures scrap_return movements only. Verify with your CA whether inter-jobworker transfers (inter_jobworker_transfer movements) should also be included before filing ITC-04.
+        </div>
+    `;
+}
+
+function renderTable4(rows) {
+    const tbody = document.getElementById('t4Tbody');
+    tbody.innerHTML = rows.map(r => `
+        <tr>
+            <td>${escapeHtml(tenantGstin)}</td>
+            <td>${escapeHtml(tenantCompanyName)}</td>
+            <td>${escapeHtml(r.principalChallanNo) || '<span class="itc-not-linked">— missing —</span>'}</td>
+            <td>${r.principalChallanDate ? fmtDate(r.principalChallanDate) : '<span class="itc-not-linked">— missing —</span>'}</td>
+            <td class="itc-secondary-ref">${escapeHtml(r.grnNo)} · ${fmtDate(r.transactionDate)}</td>
+            <td>${escapeHtml(r.materialName)}</td>
+            <td>${escapeHtml(r.uqc)}</td>
+            <td>${fmtQty(r.quantity)}</td>
+            <td>${r.estValue !== null ? fmtAmt(r.estValue) : '—'}</td>
+            <td>${r.daysElapsed}</td>
+            <td>${statusBadgeHtml(r.status)}</td>
+        </tr>
+    `).join('');
+    document.getElementById('t4Empty').style.display = rows.length ? 'none' : 'block';
+}
+
+function renderReturnTable(rows, tbodyId, emptyId, includePurposeCol) {
+    const tbody = document.getElementById(tbodyId);
+    tbody.innerHTML = rows.map(r => `
+        <tr>
+            <td>${escapeHtml(r.challanNo)}</td>
+            <td>${fmtDate(r.dispatchDate)}</td>
+            ${includePurposeCol ? `<td>${escapeHtml(r.movementPurpose)}</td>` : ''}
+            <td>${escapeHtml(r.description)}</td>
+            <td>${escapeHtml(r.uqc)}</td>
+            <td>${r.quantity !== null ? fmtQty(r.quantity) : '—'}</td>
+            <td>${r.originalRef === '— Not Linked —' ? `<span class="itc-not-linked">${r.originalRef}</span>` : escapeHtml(r.originalRef)}</td>
+            <td>${r.timeTaken !== null && r.timeTaken !== undefined ? r.timeTaken : '—'}</td>
+        </tr>
+    `).join('');
+    document.getElementById(emptyId).style.display = rows.length ? 'none' : 'block';
+}
+
+function renderTable5C(rows) {
+    const tbody = document.getElementById('t5cTbody');
+    tbody.innerHTML = rows.map(r => `
+        <tr>
+            <td>${escapeHtml(r.challanNo)}</td>
+            <td>${fmtDate(r.dispatchDate)}</td>
+            <td>${escapeHtml(r.buyerName) || '—'}</td>
+            <td>${escapeHtml(r.buyerGstin) || '—'}</td>
+            <td>${escapeHtml(r.description)}</td>
+            <td>${escapeHtml(r.uqc)}</td>
+            <td>${r.quantity !== null ? fmtQty(r.quantity) : '—'}</td>
+            <td>${escapeHtml(r.invoiceNo) || '—'}</td>
+            <td>${r.invoiceDate ? fmtDate(r.invoiceDate) : '—'}</td>
+            <td>${escapeHtml(r.invoiceStatus) || '—'}</td>
+            <td>${r.value !== null ? fmtAmt(r.value) : (r.multiItemNote ? '<span class="itc-not-linked">see invoice — multiple items</span>' : '—')}</td>
+        </tr>
+    `).join('');
+    document.getElementById('t5cEmpty').style.display = rows.length ? 'none' : 'block';
+}
+
+// ═══ TABS ════════════════════════════════════════════════════════════════════
+function switchToTab(tab) {
+    ['t4', 't5a', 't5b', 't5c'].forEach(t => {
+        document.getElementById('tab-' + t).classList.toggle('active', t === tab);
+        document.getElementById('content-' + t).classList.toggle('active', t === tab);
+    });
+}
+
+// ═══ GENERATE ════════════════════════════════════════════════════════════════
+async function generateWorkingPaper() {
+    const errorBox = document.getElementById('generateError');
+    const errorText = document.getElementById('generateErrorText');
+    errorBox.style.display = 'none';
+
+    if (!selectedPrincipalId) {
+        errorText.textContent = 'Select a principal first.';
+        errorBox.style.display = 'flex';
+        return;
+    }
+    const dateFrom = document.getElementById('fromDate').value;
+    const dateTo = document.getElementById('toDate').value;
+    if (!dateFrom || !dateTo || dateFrom > dateTo) {
+        errorText.textContent = 'Enter a valid From/To date range.';
+        errorBox.style.display = 'flex';
+        return;
+    }
+
+    const btn = document.getElementById('generateBtn');
+    const originalLabel = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Generating...';
+
+    try {
+        const [t4All, t5a, t5b, t5c, aggregateBalance] = await Promise.all([
+            fetchTable4(dateFrom, dateTo),
+            fetchReturnTable(TABLE_5A_PURPOSES, dateFrom, dateTo),
+            fetchReturnTable(TABLE_5B_PURPOSES, dateFrom, dateTo),
+            fetchTable5C(dateFrom, dateTo),
+            fetchAggregateBalance()
+        ]);
+
+        const t4 = applyStatusFilter(t4All);
+
+        lastResult = {
+            principalName: jobWorkPrincipals.find(p => p.id === selectedPrincipalId)?.name || 'Principal',
+            dateFrom, dateTo, t4, t5a, t5b, t5c, aggregateBalance
+        };
+
+        renderSummary(t4, t5a, t5b, t5c, aggregateBalance);
+        renderTable4(t4);
+        renderReturnTable(t5a, 't5aTbody', 't5aEmpty', true);
+        renderReturnTable(t5b, 't5bTbody', 't5bEmpty', false);
+        renderTable5C(t5c);
+
+        document.getElementById('resultsSection').style.display = 'block';
+        switchToTab('t4');
+    } catch (err) {
+        console.error('generateWorkingPaper:', err);
+        errorText.textContent = 'Could not generate the working paper — check your connection and try again.';
+        errorBox.style.display = 'flex';
+    } finally {
+        btn.disabled = false;
+        btn.textContent = originalLabel;
+    }
+}
+
+// ═══ EXCEL EXPORT ════════════════════════════════════════════════════════════
+function styleHeaderRow(row) {
+    row.eachCell((cell) => {
+        cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFF5C1A' } };
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+    });
+}
+
+async function downloadXLSX(workbook, filename) {
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+
+const STATUS_FILL = {
+    within_limit:   'FFD4F7DC',
+    warning:        'FFFFF0B3',
+    breach_warning: 'FFFFC9C9',
+    breached:       'FFFF4D4D'
+};
+
+async function downloadExcel() {
+    if (!lastResult) return;
+    const btn = document.getElementById('downloadExcelBtn');
+    const originalLabel = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Building workbook...';
+
+    try {
+        const workbook = new ExcelJS.Workbook();
+        const { principalName, dateFrom, dateTo, t4, t5a, t5b, t5c, aggregateBalance } = lastResult;
+
+        // ── SUMMARY ──
+        const summarySheet = workbook.addWorksheet('Summary');
+        summarySheet.columns = [{ key: 'label', width: 40 }, { key: 'value', width: 60 }];
+        const summaryRows = [
+            ['Tenant GSTIN', tenantGstin],
+            ['Tenant Name', tenantCompanyName],
+            ['Principal', principalName],
+            ['Period', `${fmtDate(dateFrom)} to ${fmtDate(dateTo)}`],
+            [''],
+            ['Within Limit (Green)', t4.filter(r => r.status === 'within_limit').length],
+            ['Warning (Amber)', t4.filter(r => r.status === 'warning').length],
+            ['Breach Warning (Red)', t4.filter(r => r.status === 'breach_warning').length],
+            ['Breached (Red)', t4.filter(r => r.status === 'breached').length],
+            [''],
+            ['Total quantity sent (Table 4, this period)', t4.reduce((s, r) => s + r.quantity, 0)],
+            ['Total quantity returned (Tables 5A+5B, this period)', t5a.reduce((s, r) => s + (r.quantity || 0), 0) + t5b.reduce((s, r) => s + (r.quantity || 0), 0)],
+            ['Total value — direct supply (Table 5C, this period)', t5c.reduce((s, r) => s + (r.value || 0), 0)],
+            [''],
+            ['Net outstanding balance (all-time, from stock ledger)', '']
+        ];
+        summaryRows.forEach(r => summarySheet.addRow(r));
+        aggregateBalance.forEach(b => summarySheet.addRow(['', `${b.material_name}: ${b.current_stock} ${b.uqc || 'OTH'}`]));
+        summarySheet.addRow(['']);
+        summarySheet.addRow(['Disclaimers', 'All receipts treated as "inputs" (365-day clock) — no capital-goods/exempt-tooling distinction. Table 4 rows keep running the full 365 days regardless of returns elsewhere (no lot-level matching) — the net outstanding balance above is the true current exposure. Table 5B captures scrap_return movements only; verify with your CA whether inter_jobworker_transfer movements should also be included before filing ITC-04. Original-challan links in Tables 5A/5B are shown only where actually recorded in Nexflow — otherwise marked Not Linked, never estimated.']);
+
+        // ── TABLE 4 ──
+        const t4Sheet = workbook.addWorksheet('Table 4');
+        t4Sheet.columns = [
+            { header: 'GSTIN of Job Worker', key: 'gstin', width: 18 },
+            { header: 'Name of Job Worker', key: 'name', width: 24 },
+            { header: 'Principal Challan No.', key: 'pChallanNo', width: 20 },
+            { header: 'Principal Challan Date', key: 'pChallanDate', width: 18 },
+            { header: 'Nexflow GRN Ref (not for filing)', key: 'grnRef', width: 24 },
+            { header: 'Description of Goods', key: 'desc', width: 28 },
+            { header: 'UQC', key: 'uqc', width: 10 },
+            { header: 'Quantity', key: 'qty', width: 12, numFmt: '#,##0.###' },
+            { header: 'Estimated Value (₹)', key: 'value', width: 16, numFmt: '#,##0.00' },
+            { header: 'Days Elapsed', key: 'days', width: 12 },
+            { header: 'Status', key: 'status', width: 16 }
+        ];
+        styleHeaderRow(t4Sheet.getRow(1));
+        t4.forEach(r => {
+            const row = t4Sheet.addRow({
+                gstin: tenantGstin, name: tenantCompanyName,
+                pChallanNo: r.principalChallanNo || '', pChallanDate: r.principalChallanDate || '',
+                grnRef: `${r.grnNo} / ${r.transactionDate}`,
+                desc: r.materialName, uqc: r.uqc, qty: r.quantity,
+                value: r.estValue, days: r.daysElapsed, status: STATUS_META[r.status].label
+            });
+            row.getCell('status').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: STATUS_FILL[r.status] } };
+            if (r.status === 'breached') row.getCell('status').font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        });
+        t4Sheet.views = [{ state: 'frozen', ySplit: 1 }];
+
+        // ── TABLE 5A / 5B ──
+        const buildReturnSheet = (name, rows, includePurposeCol) => {
+            const sheet = workbook.addWorksheet(name);
+            const cols = [
+                { header: 'Return Challan No.', key: 'challanNo', width: 18 },
+                { header: 'Return Date', key: 'date', width: 14 }
+            ];
+            if (includePurposeCol) cols.push({ header: 'Purpose', key: 'purpose', width: 20 });
+            cols.push(
+                { header: 'Description', key: 'desc', width: 28 },
+                { header: 'UQC', key: 'uqc', width: 10 },
+                { header: 'Quantity', key: 'qty', width: 12, numFmt: '#,##0.###' },
+                { header: 'Original Challan', key: 'orig', width: 26 },
+                { header: 'Time Taken (days)', key: 'timeTaken', width: 16 }
+            );
+            sheet.columns = cols;
+            styleHeaderRow(sheet.getRow(1));
+            rows.forEach(r => {
+                const rowData = {
+                    challanNo: r.challanNo, date: r.dispatchDate,
+                    desc: r.description, uqc: r.uqc, qty: r.quantity,
+                    orig: r.originalRef, timeTaken: r.timeTaken ?? ''
+                };
+                if (includePurposeCol) rowData.purpose = r.movementPurpose;
+                sheet.addRow(rowData);
+            });
+            sheet.views = [{ state: 'frozen', ySplit: 1 }];
+        };
+        buildReturnSheet('Table 5A', t5a, true);
+        buildReturnSheet('Table 5B', t5b, false);
+
+        // ── TABLE 5C ──
+        const t5cSheet = workbook.addWorksheet('Table 5C');
+        t5cSheet.columns = [
+            { header: 'Challan No.', key: 'challanNo', width: 18 },
+            { header: 'Challan Date', key: 'date', width: 14 },
+            { header: 'Buyer Name', key: 'buyer', width: 24 },
+            { header: 'Buyer GSTIN', key: 'buyerGstin', width: 18 },
+            { header: 'Description', key: 'desc', width: 28 },
+            { header: 'UQC', key: 'uqc', width: 10 },
+            { header: 'Quantity', key: 'qty', width: 12, numFmt: '#,##0.###' },
+            { header: 'Invoice No.', key: 'invNo', width: 18 },
+            { header: 'Invoice Date', key: 'invDate', width: 14 },
+            { header: 'Invoice Status', key: 'invStatus', width: 14 },
+            { header: 'Value (₹)', key: 'value', width: 16, numFmt: '#,##0.00' }
+        ];
+        styleHeaderRow(t5cSheet.getRow(1));
+        t5c.forEach(r => t5cSheet.addRow({
+            challanNo: r.challanNo, date: r.dispatchDate, buyer: r.buyerName || '', buyerGstin: r.buyerGstin || '',
+            desc: r.description, uqc: r.uqc, qty: r.quantity,
+            invNo: r.invoiceNo || '', invDate: r.invoiceDate || '', invStatus: r.invoiceStatus || '',
+            value: r.value
+        }));
+        t5cSheet.views = [{ state: 'frozen', ySplit: 1 }];
+
+        const safeName = principalName.replace(/[^a-zA-Z0-9]+/g, '_');
+        const filename = `ITC04_WorkingPaper_${safeName}_${dateFrom}_to_${dateTo}.xlsx`;
+        await downloadXLSX(workbook, filename);
+        toast(`Downloaded: ${filename}`, 'ok');
+    } catch (err) {
+        console.error('downloadExcel:', err);
+        toast('Could not build the Excel file.', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = originalLabel;
+    }
+}
+
+// ═══ WIRE EVENTS ═════════════════════════════════════════════════════════════
+function wireEvents() {
+    document.getElementById('generateBtn').addEventListener('click', generateWorkingPaper);
+    document.getElementById('downloadExcelBtn').addEventListener('click', downloadExcel);
+    document.querySelectorAll('.itc-preset-btn').forEach(b => {
+        b.addEventListener('click', () => applyPreset(b.dataset.preset));
+    });
+    ['t4', 't5a', 't5b', 't5c'].forEach(tab => {
+        document.getElementById('tab-' + tab).addEventListener('click', () => switchToTab(tab));
+    });
+}
+
+// ═══ INIT ════════════════════════════════════════════════════════════════════
+async function init() {
+    try {
+        const authed = await checkAuth();
+        if (!authed) return;
+
+        const role = getUserRole();
+        if (!['owner', 'accountant', 'supervisor'].includes(role)) {
+            document.getElementById('loadingSpinner').style.display = 'none';
+            document.getElementById('roleGateError').style.display = 'flex';
+            return;
+        }
+
+        const { data: { user } } = await window.supabase.auth.getUser();
+        tenantId = user.user_metadata?.tenant_id || user.id;
+
+        // Fresh fetch from DB, not isPro()/localStorage — those can be stale.
+        const { data: settingsData } = await window.supabase
+            .from('p2_tenant_settings')
+            .select('plan, is_job_worker, gstin, company_name, separate_pool_deduction')
+            .eq('tenant_id', tenantId)
+            .maybeSingle();
+
+        const plan = settingsData?.plan || 'lite';
+        if (plan !== 'pro' && plan !== 'founder') {
+            document.getElementById('loadingSpinner').style.display = 'none';
+            document.getElementById('planGateError').style.display = 'flex';
+            return;
+        }
+
+        if (!settingsData?.is_job_worker) {
+            document.getElementById('loadingSpinner').style.display = 'none';
+            document.getElementById('notJobWorkerError').style.display = 'flex';
+            return;
+        }
+
+        tenantGstin = settingsData?.gstin || '';
+        tenantCompanyName = settingsData?.company_name || '';
+
+        if (settingsData.separate_pool_deduction !== true) {
+            document.getElementById('poolAttributionWarning').style.display = 'block';
+        }
+
+        const today = todayIST();
+        document.getElementById('fromDate').value = today.slice(0, 8) + '01';
+        document.getElementById('toDate').value = today;
+
+        await loadJobWorkPrincipals();
+        wireEvents();
+
+        document.getElementById('loadingSpinner').style.display = 'none';
+        document.getElementById('mainContent').style.display = 'block';
+    } catch (err) {
+        console.error('itc04-workingpaper.html init error:', err);
+        document.getElementById('loadingSpinner').style.display = 'none';
+        document.getElementById('errorState').style.display = 'flex';
+    }
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js"></script>
+</body>
+</html>
