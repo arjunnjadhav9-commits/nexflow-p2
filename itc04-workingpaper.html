@@ -927,6 +927,73 @@ const STATUS_FILL = {
     breached:       'FFFF4D4D'
 };
 
+// Excel-only — Table 5A's on-screen render (renderReturnTable) is untouched;
+// this maps the raw movement_purpose enum to a human-readable label only at
+// the point the Excel row is built.
+const PURPOSE_LABELS = {
+    job_work_return: 'Job Work Return',
+    rework_return: 'Rework Return',
+    unused_material_return: 'Unused Material Return'
+};
+
+// ── Summary sheet helpers ──
+const SUMMARY_SECTION_FILL = 'FFE8E8E8';
+const SUMMARY_STATUS_FILL = {
+    within_limit:   'FFD4F7DC',
+    warning:        'FFFFF3CD',
+    breach_warning: 'FFFFE0E0',
+    breached:       'FFFF4444'
+};
+const SUMMARY_DISCLAIMER_FILL = 'FFFFF3CD';
+
+function addSummarySectionHeader(sheet, label) {
+    const row = sheet.addRow([label, '']);
+    row.eachCell({ includeEmpty: true }, (cell) => {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: SUMMARY_SECTION_FILL } };
+        cell.font = { bold: true };
+    });
+    return row;
+}
+
+function addSummaryLabelRow(sheet, label, value) {
+    const row = sheet.addRow([label, value]);
+    row.getCell(1).font = { bold: true };
+    return row;
+}
+
+function addSummaryStatusRow(sheet, label, value, statusKey) {
+    const row = sheet.addRow([label, value]);
+    const fillArgb = SUMMARY_STATUS_FILL[statusKey];
+    row.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fillArgb } };
+    row.getCell(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fillArgb } };
+    row.getCell(1).font = { bold: true };
+    if (statusKey === 'breached') {
+        row.getCell(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        row.getCell(2).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    }
+    return row;
+}
+
+function addSummaryBalanceHeaderRow(sheet) {
+    const row = sheet.addRow(['Material', 'Balance']);
+    row.eachCell((cell) => {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: SUMMARY_SECTION_FILL } };
+        cell.font = { bold: true };
+    });
+    return row;
+}
+
+function addSummaryDisclaimerRow(sheet, label, text) {
+    const row = sheet.addRow([label, text]);
+    row.getCell(1).font = { bold: true, italic: true };
+    row.getCell(2).font = { italic: true };
+    row.getCell(2).alignment = { wrapText: true, vertical: 'top' };
+    row.eachCell((cell) => {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: SUMMARY_DISCLAIMER_FILL } };
+    });
+    return row;
+}
+
 async function downloadExcel() {
     if (!lastResult) return;
     const btn = document.getElementById('downloadExcelBtn');
@@ -941,27 +1008,44 @@ async function downloadExcel() {
         // ── SUMMARY ──
         const summarySheet = workbook.addWorksheet('Summary');
         summarySheet.columns = [{ key: 'label', width: 40 }, { key: 'value', width: 60 }];
-        const summaryRows = [
-            ['Tenant GSTIN', tenantGstin],
-            ['Tenant Name', tenantCompanyName],
-            ['Principal', principalName],
-            ['Period', `${fmtDate(dateFrom)} to ${fmtDate(dateTo)}`],
-            [''],
-            ['Within Limit (Green)', t4.filter(r => r.status === 'within_limit').length],
-            ['Warning (Amber)', t4.filter(r => r.status === 'warning').length],
-            ['Breach Warning (Red)', t4.filter(r => r.status === 'breach_warning').length],
-            ['Breached (Red)', t4.filter(r => r.status === 'breached').length],
-            [''],
-            ['Total quantity sent (Table 4, this period)', t4.reduce((s, r) => s + r.quantity, 0)],
-            ['Total quantity returned (Tables 5A+5B, this period)', t5a.reduce((s, r) => s + (r.quantity || 0), 0) + t5b.reduce((s, r) => s + (r.quantity || 0), 0)],
-            ['Total value — direct supply (Table 5C, this period)', t5c.reduce((s, r) => s + (r.value || 0), 0)],
-            [''],
-            ['Net outstanding balance (all-time, from stock ledger)', '']
-        ];
-        summaryRows.forEach(r => summarySheet.addRow(r));
-        aggregateBalance.forEach(b => summarySheet.addRow(['', `${b.material_name}: ${b.current_stock} ${b.uqc || 'OTH'}`]));
+
+        // Fix 1 — orange title row, A1:B1 merged. Everything else follows at
+        // row 2+ simply because this is added first.
+        const titleRow = summarySheet.addRow(['ITC-04 WORKING PAPER', '']);
+        summarySheet.mergeCells('A1:B1');
+        titleRow.getCell(1).font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 13 };
+        titleRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFF5C1A' } };
+        titleRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+
+        addSummarySectionHeader(summarySheet, 'Filing Details');
+        addSummaryLabelRow(summarySheet, 'Tenant GSTIN', tenantGstin);
+        addSummaryLabelRow(summarySheet, 'Tenant Name', tenantCompanyName);
+        addSummaryLabelRow(summarySheet, 'Principal', principalName);
+        addSummaryLabelRow(summarySheet, 'Period', `${fmtDate(dateFrom)} to ${fmtDate(dateTo)}`);
+
         summarySheet.addRow(['']);
-        summarySheet.addRow(['Disclaimers', 'All receipts treated as "inputs" (365-day clock) — no capital-goods/exempt-tooling distinction. Table 4 rows keep running the full 365 days regardless of returns elsewhere (no lot-level matching) — the net outstanding balance above is the true current exposure. Table 5B captures scrap_return movements only; verify with your CA whether inter_jobworker_transfer movements should also be included before filing ITC-04. Original-challan links in Tables 5A/5B are shown only where actually recorded in Nexflow — otherwise marked Not Linked, never estimated.']);
+        addSummarySectionHeader(summarySheet, 'Status Summary');
+        addSummaryStatusRow(summarySheet, 'Within Limit (Green)', t4.filter(r => r.status === 'within_limit').length, 'within_limit');
+        addSummaryStatusRow(summarySheet, 'Warning (Amber)', t4.filter(r => r.status === 'warning').length, 'warning');
+        addSummaryStatusRow(summarySheet, 'Breach Warning (Red)', t4.filter(r => r.status === 'breach_warning').length, 'breach_warning');
+        addSummaryStatusRow(summarySheet, 'Breached (Red)', t4.filter(r => r.status === 'breached').length, 'breached');
+
+        summarySheet.addRow(['']);
+        addSummarySectionHeader(summarySheet, 'Quantity Summary');
+        addSummaryLabelRow(summarySheet, 'Total quantity sent (Table 4, this period)', t4.reduce((s, r) => s + r.quantity, 0));
+        addSummaryLabelRow(summarySheet, 'Total quantity returned (Tables 5A+5B, this period)', t5a.reduce((s, r) => s + (r.quantity || 0), 0) + t5b.reduce((s, r) => s + (r.quantity || 0), 0));
+        addSummaryLabelRow(summarySheet, 'Total value — direct supply (Table 5C, this period)', t5c.reduce((s, r) => s + (r.value || 0), 0));
+
+        summarySheet.addRow(['']);
+        addSummarySectionHeader(summarySheet, 'Net Outstanding Balance (All-Time, From Stock Ledger)');
+        addSummaryLabelRow(summarySheet, 'Net outstanding balance (all-time, from stock ledger)', '');
+        // Fix 3 — proper two-column mini-table instead of "Name: Value" crammed into column B.
+        addSummaryBalanceHeaderRow(summarySheet);
+        aggregateBalance.forEach(b => summarySheet.addRow([b.material_name, `${b.current_stock} ${b.uqc || 'OTH'}`]));
+
+        summarySheet.addRow(['']);
+        addSummarySectionHeader(summarySheet, 'Notes & Disclaimers');
+        addSummaryDisclaimerRow(summarySheet, 'Disclaimers', 'All receipts treated as "inputs" (365-day clock) — no capital-goods/exempt-tooling distinction. Table 4 rows keep running the full 365 days regardless of returns elsewhere (no lot-level matching) — the net outstanding balance above is the true current exposure. Table 5B captures scrap_return movements only; verify with your CA whether inter_jobworker_transfer movements should also be included before filing ITC-04. Original-challan links in Tables 5A/5B are shown only where actually recorded in Nexflow — otherwise marked Not Linked, never estimated.');
 
         // ── TABLE 4 ──
         const t4Sheet = workbook.addWorksheet('Table 4');
@@ -1015,7 +1099,7 @@ async function downloadExcel() {
                     desc: r.description, uqc: r.uqc, qty: r.quantity,
                     orig: r.originalRef, timeTaken: r.timeTaken ?? ''
                 };
-                if (includePurposeCol) rowData.purpose = r.movementPurpose;
+                if (includePurposeCol) rowData.purpose = PURPOSE_LABELS[r.movementPurpose] || r.movementPurpose;
                 sheet.addRow(rowData);
             });
             sheet.views = [{ state: 'frozen', ySplit: 1 }];
