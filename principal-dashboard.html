@@ -33,6 +33,19 @@
     .pd-vendor-name { font-family: var(--condensed); font-weight: 800; font-size: 18px; text-transform: uppercase; letter-spacing: 0.5px; }
     .pd-section-label { font-size: 12px; font-weight: 700; color: var(--mid); text-transform: uppercase; letter-spacing: 0.5px; margin: 16px 0 8px; }
     .pd-not-linked { color: var(--mid); font-style: italic; font-size: 12px; }
+
+    /* View A — vendor list */
+    .pd-list-actions { text-align: right; }
+    .pd-count-zero { color: var(--mid); }
+    .pd-count-breach { color: var(--red); font-weight: 700; }
+
+    /* View B — detail */
+    .pd-back-btn { margin-bottom: 16px; }
+    .pd-detail-heading { font-family: var(--condensed); font-weight: 800; font-size: 22px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 20px; }
+
+    /* Outstanding invoices footer */
+    .pd-invoice-footer { margin-top: 10px; font-size: 13px; color: var(--mid); }
+    .pd-invoice-footer strong { color: var(--text); }
 </style>
 </head>
 <body>
@@ -94,7 +107,16 @@
             <div>No vendor is linked to this account yet.</div>
         </div>
 
-        <div id="vendorCards"></div>
+        <!-- VIEW A — VENDOR LIST -->
+        <div id="vendorListView">
+            <div id="vendorListTableWrap"></div>
+        </div>
+
+        <!-- VIEW B — VENDOR DETAIL -->
+        <div id="vendorDetailView" style="display:none;">
+            <button type="button" id="backToListBtn" class="nx-btn nx-btn-secondary nx-btn-sm pd-back-btn">← All Vendors</button>
+            <div id="vendorDetailContent"></div>
+        </div>
 
     </div>
 </div>
@@ -113,6 +135,11 @@ function escapeHtml(str) {
 function fmtQty(n) {
     if (n === null || n === undefined || Number.isNaN(n)) return '—';
     return Number(n).toLocaleString('en-IN', { maximumFractionDigits: 3 });
+}
+
+function fmtMoney(n) {
+    const v = Number(n) || 0;
+    return '₹' + v.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function fmtDate(isoDateStr) {
@@ -134,36 +161,115 @@ function statusBadgeHtml(status) {
 }
 
 // ═══ FETCH — the single scoped access path ══════════════════════════════════
-// get_principal_vendor_material() is the only route to this data. Do not add
-// a second query against another tenant's p2_stock_transactions/p2_clients/
-// p2_raw_materials anywhere in this file — see the scope-boundary comment on
-// the function itself (20260908_get_principal_vendor_material.sql).
+// get_principal_vendor_material() and get_principal_vendor_invoices() are the
+// only two routes to this data. Do not add a second query against another
+// tenant's p2_stock_transactions/p2_clients/p2_raw_materials/p2_invoices/
+// p2_payment_receipts anywhere in this file — see the scope-boundary comments
+// on the functions themselves (20260908_get_principal_vendor_material.sql,
+// 20260909_get_principal_vendor_invoices.sql).
 async function fetchVendorMaterial() {
     const { data, error } = await window.supabase.rpc('get_principal_vendor_material');
     if (error) throw error;
     return data || [];
 }
 
-// Splits the RPC's flat row set into per-vendor groups, each with a balance
-// list (current_stock rows) and a clock list (individual GRN-lot rows) —
-// matches the RPC's two UNION ALL branches.
-function groupByVendor(rows) {
+async function fetchVendorInvoices() {
+    const { data, error } = await window.supabase.rpc('get_principal_vendor_invoices');
+    if (error) throw error;
+    return data || [];
+}
+
+// Splits the material RPC's flat row set into per-vendor groups, each with a
+// balance list (current_stock rows) and a clock list (individual GRN-lot
+// rows) — matches the RPC's two UNION ALL branches. Each clock lot gets its
+// computed s.143 status attached once here, reused by both the vendor-list
+// counts and the detail-view clock table.
+function groupByVendor(materialRows, invoiceRows) {
+    const today = todayIST();
     const vendors = new Map();
-    rows.forEach(r => {
-        if (!vendors.has(r.vendor_tenant_id)) {
-            vendors.set(r.vendor_tenant_id, { vendorName: r.vendor_name, balance: [], clockLots: [] });
+
+    function getVendor(id, name) {
+        if (!vendors.has(id)) {
+            vendors.set(id, { vendorTenantId: id, vendorName: name, balance: [], clockLots: [], invoices: [] });
         }
-        const v = vendors.get(r.vendor_tenant_id);
+        return vendors.get(id);
+    }
+
+    materialRows.forEach(r => {
+        const v = getVendor(r.vendor_tenant_id, r.vendor_name);
         if (r.current_stock !== null) {
             v.balance.push(r);
         } else {
-            v.clockLots.push(r);
+            const clock = computeS143Clock(
+                { principal_challan_date: r.principal_challan_date, transaction_date: r.transaction_date },
+                today
+            );
+            v.clockLots.push({ ...r, clock });
         }
     });
+
+    invoiceRows.forEach(r => {
+        const v = getVendor(r.vendor_tenant_id, r.vendor_name);
+        v.invoices.push(r);
+    });
+
     return [...vendors.values()].sort((a, b) => a.vendorName.localeCompare(b.vendorName));
 }
 
-// ═══ RENDER ══════════════════════════════════════════════════════════════════
+// ═══ VENDOR LIST — VIEW A ════════════════════════════════════════════════════
+function vendorListStats(vendor) {
+    const materialsCount = vendor.balance.filter(r => Number(r.current_stock) > 0).length;
+    const breachWarningCount = vendor.clockLots.filter(r => r.clock && r.clock.status === 'breach_warning').length;
+    const breachedCount = vendor.clockLots.filter(r => r.clock && r.clock.status === 'breached').length;
+
+    const lastGrnDates = vendor.clockLots
+        .map(r => r.principal_challan_date || r.transaction_date)
+        .filter(Boolean)
+        .sort();
+    const lastGrn = lastGrnDates.length ? lastGrnDates[lastGrnDates.length - 1] : null;
+
+    return { materialsCount, breachWarningCount, breachedCount, lastGrn };
+}
+
+function renderVendorListRow(vendor) {
+    const s = vendorListStats(vendor);
+    return `
+        <tr>
+            <td>${escapeHtml(vendor.vendorName)}</td>
+            <td>${s.materialsCount}</td>
+            <td class="${s.breachWarningCount > 0 ? '' : 'pd-count-zero'}">${s.breachWarningCount}</td>
+            <td class="${s.breachedCount > 0 ? 'pd-count-breach' : 'pd-count-zero'}">${s.breachedCount}</td>
+            <td class="pd-not-linked">— (rate not tracked)</td>
+            <td>${s.lastGrn ? fmtDate(s.lastGrn) : '—'}</td>
+            <td class="pd-list-actions"><button type="button" class="nx-btn nx-btn-secondary nx-btn-sm" onclick="showVendorDetail('${vendor.vendorTenantId}')">View Details →</button></td>
+        </tr>
+    `;
+}
+
+function renderVendorList(vendors) {
+    const wrap = document.getElementById('vendorListTableWrap');
+    if (!vendors.length) {
+        wrap.innerHTML = '';
+        return;
+    }
+    wrap.innerHTML = `
+        <div class="nx-table-wrap">
+            <table class="nx-table">
+                <thead>
+                    <tr>
+                        <th>Vendor Name</th><th>Materials</th><th>Breach Warning</th>
+                        <th>Breached</th><th>Total Value at Risk</th><th>Last GRN</th><th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${vendors.map(renderVendorListRow).join('')}
+                </tbody>
+            </table>
+        </div>
+    `;
+}
+
+// ═══ VENDOR DETAIL — VIEW B ══════════════════════════════════════════════════
 function renderBalanceTable(rows) {
     if (!rows.length) return '<div class="pd-not-linked">No current balance recorded.</div>';
     return `
@@ -190,14 +296,6 @@ function renderBalanceTable(rows) {
 
 function renderClockTable(rows) {
     if (!rows.length) return '<div class="pd-not-linked">No GRN lots on record.</div>';
-    const today = todayIST();
-    const withClock = rows.map(r => {
-        const clock = computeS143Clock(
-            { principal_challan_date: r.principal_challan_date, transaction_date: r.transaction_date },
-            today
-        );
-        return { ...r, clock };
-    });
     return `
         <div class="nx-table-wrap">
             <table class="nx-table">
@@ -209,7 +307,7 @@ function renderClockTable(rows) {
                     </tr>
                 </thead>
                 <tbody>
-                    ${withClock.map(r => `
+                    ${rows.map(r => `
                         <tr>
                             <td>${escapeHtml(r.material_name)}</td>
                             <td>${escapeHtml(r.principal_challan_no) || '<span class="pd-not-linked">— missing —</span>'}</td>
@@ -227,30 +325,91 @@ function renderClockTable(rows) {
     `;
 }
 
-function renderVendorCard(vendor) {
+// Outstanding = anything not fully paid. RPC returns every sent/cancelled
+// invoice for the vendor; this filter is a display concern only — same
+// division of labour as groupByVendor() above.
+function renderInvoicesSection(invoices) {
+    const outstanding = invoices.filter(i => i.payment_status !== 'paid');
+
+    if (!outstanding.length) {
+        return '<div class="pd-not-linked">No outstanding invoices.</div>';
+    }
+
+    const totalOutstanding = outstanding.reduce((sum, i) => sum + (Number(i.amount_outstanding) || 0), 0);
+    const riskCount = outstanding.filter(i => i.risk_43b_h).length;
+
+    const table = `
+        <div class="nx-table-wrap">
+            <table class="nx-table">
+                <thead>
+                    <tr>
+                        <th>Invoice No.</th><th>Date</th><th>Amount</th><th>Paid</th>
+                        <th>Outstanding</th><th>Days Since</th><th>43B(h) Risk</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${outstanding.map(i => `
+                        <tr>
+                            <td>${escapeHtml(i.invoice_number)}</td>
+                            <td>${fmtDate(i.invoice_date)}</td>
+                            <td>${fmtMoney(i.amount_total)}</td>
+                            <td>${fmtMoney(i.amount_paid)}</td>
+                            <td>${fmtMoney(i.amount_outstanding)}</td>
+                            <td>${i.days_since_invoice ?? '—'}</td>
+                            <td>${i.risk_43b_h ? '<span class="nx-badge nx-badge-red">AT RISK</span>' : '<span class="nx-badge nx-badge-green">OK</span>'}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        </div>
+        <div class="pd-invoice-footer">Total outstanding: <strong>${fmtMoney(totalOutstanding)}</strong> · <strong>${riskCount}</strong> invoice${riskCount === 1 ? '' : 's'} at 43B(h) risk</div>
+    `;
+    return table;
+}
+
+function renderVendorDetail(vendor) {
     return `
+        <div class="pd-detail-heading">${escapeHtml(vendor.vendorName)}</div>
         <div class="nx-card pd-vendor-card">
-            <div class="nx-card-header">
-                <div class="pd-vendor-name">${escapeHtml(vendor.vendorName)}</div>
-            </div>
             <div class="pd-section-label">Current Stock</div>
             ${renderBalanceTable(vendor.balance)}
             <div class="pd-section-label">s.143 Return Clock — Individual Lots</div>
             ${renderClockTable(vendor.clockLots)}
+            <div class="pd-section-label">Outstanding Invoices</div>
+            ${renderInvoicesSection(vendor.invoices)}
         </div>
     `;
 }
 
+// ═══ VIEW ROUTING (client-side only, no hash — internal read-only tool) ═════
+let vendorsById = new Map();
+
+function showVendorList() {
+    document.getElementById('vendorListView').style.display = 'block';
+    document.getElementById('vendorDetailView').style.display = 'none';
+}
+
+function showVendorDetail(vendorTenantId) {
+    const vendor = vendorsById.get(vendorTenantId);
+    if (!vendor) return;
+    document.getElementById('vendorDetailContent').innerHTML = renderVendorDetail(vendor);
+    document.getElementById('vendorListView').style.display = 'none';
+    document.getElementById('vendorDetailView').style.display = 'block';
+    window.scrollTo(0, 0);
+}
+
 function renderDashboard(vendors) {
-    const container = document.getElementById('vendorCards');
     const noLinksNotice = document.getElementById('noLinksNotice');
+    vendorsById = new Map(vendors.map(v => [v.vendorTenantId, v]));
+
     if (vendors.length === 0) {
         noLinksNotice.style.display = 'flex';
-        container.innerHTML = '';
+        document.getElementById('vendorListTableWrap').innerHTML = '';
         return;
     }
     noLinksNotice.style.display = 'none';
-    container.innerHTML = vendors.map(renderVendorCard).join('');
+    renderVendorList(vendors);
+    showVendorList();
 }
 
 // ═══ INIT ════════════════════════════════════════════════════════════════════
@@ -272,9 +431,14 @@ async function init() {
             return;
         }
 
-        const rows = await fetchVendorMaterial();
-        const vendors = groupByVendor(rows);
+        const [materialRows, invoiceRows] = await Promise.all([
+            fetchVendorMaterial(),
+            fetchVendorInvoices()
+        ]);
+        const vendors = groupByVendor(materialRows, invoiceRows);
         renderDashboard(vendors);
+
+        document.getElementById('backToListBtn').addEventListener('click', showVendorList);
 
         document.getElementById('loadingSpinner').style.display = 'none';
         document.getElementById('mainContent').style.display = 'block';
