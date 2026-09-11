@@ -4,7 +4,10 @@
     "https://esm.sh/@supabase/supabase-js@2": "https://esm.sh/@supabase/supabase-js@2.110.8"
   },
   "remote": {
-    "https://esm.sh/@supabase/supabase-js@2.110.8": "3fe5b529aba9ea7d19e980feb977d4da1f9300cb5378942b32f1522c21649623"
+    "https://esm.sh/@anthropic-ai/sdk@0.32.0": "a045b705fa96ae4ad43a5300b0a2d0beddeed55d83b2be84707d08091e505aa2",
+    "https://esm.sh/@supabase/supabase-js@2.110.8": "3fe5b529aba9ea7d19e980feb977d4da1f9300cb5378942b32f1522c21649623",
+    "https://esm.sh/exceljs@4.3.0": "11e4802222e29f41cc68193aa6e108439e846cf6b99ff91654b3d55eceab231c",
+    "https://esm.sh/jszip@3.10.1": "0428be12429bcc51e7067c0f35e99e09b65db0f40843497cf9c23f1bdfff27c3"
   },
   "workspace": {
     "packageJson": {

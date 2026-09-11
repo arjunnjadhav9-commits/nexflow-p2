@@ -7,7 +7,10 @@
 // The five confirm_*/resend_invoice/preview_consolidated_invoice body.action
 // handlers below Deno.serve are UI-triggered writes (invoices.html,
 // all-dispatch-history.html, receive.html) — unrelated to the chat agent,
-// kept as-is.
+// kept as-is. suggest_hsn (export.html HSN Audit, E3) is a sixth body.action
+// handler, also unrelated to chat — it's a read + Haiku classification, not
+// a write, and deliberately does NOT consume the daily agent quota (see
+// suggestHsn() below).
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import Anthropic from 'https://esm.sh/@anthropic-ai/sdk@0.32.0'
@@ -87,6 +90,30 @@ interface PreviewConsolidatedInvoiceRequest {
   date_to: string
   gst_type: string
   dispatch_type?: 'product' | 'raw_material' | 'both'
+}
+
+// export.html HSN Audit — checks whether an EXISTING hsn_sac looks correct
+// for the material/product it's on (contrast with §3.3's original "suggest a
+// code for a blank field" design, which this is not). hsn_sac is always
+// non-null here — the caller pre-filters blank codes into an immediate
+// 'no_code' verdict client-side and never sends them here.
+interface SuggestHsnItem {
+  id: string
+  name: string
+  unit: string
+  kind: 'raw_material' | 'product'
+  hsn_sac: string
+}
+interface SuggestHsnRequest {
+  action: 'suggest_hsn'
+  tenant_id: string
+  items: SuggestHsnItem[]
+}
+interface HsnAuditVerdict {
+  id: string
+  verdict: 'correct' | 'likely_wrong' | 'definitely_wrong'
+  reason: string
+  suggested_hsn: string | null
 }
 
 // Frozen line-item snapshot stored in p2_invoices.items — challan_number/
@@ -2878,6 +2905,165 @@ async function resendInvoiceAction(
   return respond({ status: 'ok', invoice_number: invoice.invoice_number, invoice_url: invoiceUrl })
 }
 
+// A suggested code must be 4/6/8 digits (standard HSN depth) or a 6-digit
+// SAC starting '99'. Chapter (first two digits) must be a real HS chapter
+// (01-97) or 99 (services). Anything else is discarded, never shown.
+function isValidHsnSuggestion(code: string): boolean {
+  if (!/^\d{4}$/.test(code) && !/^\d{6}$/.test(code) && !/^\d{8}$/.test(code) && !/^99\d{4}$/.test(code)) {
+    return false
+  }
+  const chapter = parseInt(code.slice(0, 2), 10)
+  return chapter === 99 || (chapter >= 1 && chapter <= 97)
+}
+
+// export.html HSN Audit — checks whether an EXISTING hsn_sac on a raw
+// material or product looks correct, rather than suggesting one for a blank
+// field (that's a different, not-yet-built feature — see
+// enterprise-strategy.md §3.3). Clones callHaiku()'s exact low-level call
+// mechanics (model, text-block extraction, ```json fence stripping) since
+// the audit's system/user prompt and output shape are unrelated to the chat
+// classification prompt callHaiku() itself sends.
+async function auditHsnCodes(
+  anthropicClient: Anthropic,
+  items: SuggestHsnItem[],
+  isJobWorker: boolean
+): Promise<{ results: HsnAuditVerdict[] } | { error: string }> {
+  const systemPrompt = 'You are a GST HSN/SAC classification expert for Indian manufacturing. Return ONLY valid JSON — no preamble, no markdown, no explanation outside the JSON structure.'
+
+  const userPrompt = `Tenant is_job_worker: ${isJobWorker}
+
+For each item below, evaluate whether the provided hsn_sac is a correct HSN (goods) or SAC (services) code for that material/product name and unit.
+
+Verdict tiers:
+- "correct" — the code is a plausible match for this material/product.
+- "likely_wrong" — chapter mismatch or imprecise, but in the same general area.
+- "definitely_wrong" — a structural error: wrong code type entirely (e.g. a product HSN on a job-work service line, a goods HSN on a service, or a completely wrong chapter with no plausible connection).
+
+Special rule: if is_job_worker is true AND an item's kind is "product" AND its hsn_sac does NOT start with "99", the verdict MUST be "definitely_wrong" and the reason MUST say that job-work charges must use SAC 998898, not a product HSN.
+
+Items:
+${JSON.stringify(items)}
+
+Respond with ONLY valid JSON matching exactly this shape, one entry per item id, in any order:
+{ "results": [ { "id": string, "verdict": "correct" | "likely_wrong" | "definitely_wrong", "reason": string, "suggested_hsn": string | null } ] }
+suggested_hsn must be populated only when verdict is "likely_wrong" or "definitely_wrong" — omit or null it for "correct".`
+
+  try {
+    const response = await anthropicClient.messages.create({
+      model: 'claude-haiku-4-5',
+      max_tokens: 3000,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userPrompt }],
+    })
+
+    const textBlock = response.content.find(
+      (block: { type: string; text?: string }) => block.type === 'text'
+    )
+    const rawText = textBlock && textBlock.type === 'text' ? textBlock.text : ''
+
+    let cleanedText = rawText.trim()
+    if (cleanedText.startsWith('```')) {
+      cleanedText = cleanedText
+        .replace(/^```(?:json)?\s*/, '')
+        .replace(/```\s*$/, '')
+        .trim()
+    }
+
+    let parsed: { results?: unknown }
+    try {
+      parsed = JSON.parse(cleanedText)
+    } catch {
+      return { error: 'Failed to parse model response' }
+    }
+
+    if (!Array.isArray(parsed.results)) {
+      return { error: 'Model response missing results array' }
+    }
+
+    const byId = new Map(items.map((it) => [it.id, it]))
+    const seen = new Set<string>()
+    const results: HsnAuditVerdict[] = []
+
+    for (const raw of parsed.results as Array<Record<string, unknown>>) {
+      const id = typeof raw.id === 'string' ? raw.id : null
+      if (!id || !byId.has(id) || seen.has(id)) continue
+      seen.add(id)
+
+      let verdict = raw.verdict
+      let reason = typeof raw.reason === 'string' && raw.reason ? raw.reason : 'No reason given'
+      if (verdict !== 'correct' && verdict !== 'likely_wrong' && verdict !== 'definitely_wrong') {
+        verdict = 'likely_wrong'
+        reason = 'Unrecognised verdict from model'
+      }
+
+      let suggestedHsn = typeof raw.suggested_hsn === 'string' ? raw.suggested_hsn.trim() : null
+      if (verdict === 'correct' || !suggestedHsn || !isValidHsnSuggestion(suggestedHsn)) {
+        suggestedHsn = null
+      }
+
+      results.push({ id, verdict: verdict as HsnAuditVerdict['verdict'], reason, suggested_hsn: suggestedHsn })
+    }
+
+    // Model dropped an item entirely — never silently treat a missing
+    // response as 'correct'. Same conservative posture as the shape
+    // validation above.
+    for (const it of items) {
+      if (!seen.has(it.id)) {
+        results.push({ id: it.id, verdict: 'likely_wrong', reason: 'No response from model', suggested_hsn: null })
+      }
+    }
+
+    return { results }
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'Anthropic API request failed' }
+  }
+}
+
+async function suggestHsn(
+  supabaseClient: ReturnType<typeof createClient>,
+  anthropicClient: Anthropic,
+  body: Partial<SuggestHsnRequest>
+): Promise<Response> {
+  const { tenant_id, items } = body
+
+  if (!tenant_id) {
+    return respond({ status: 'error', error: 'tenant_id is required' }, 400)
+  }
+  if (!Array.isArray(items) || items.length === 0) {
+    return respond({ status: 'error', error: 'items is required and must be a non-empty array' }, 400)
+  }
+  if (items.length > 25) {
+    return respond({ status: 'error', error: 'Maximum 25 items per call' }, 400)
+  }
+  const invalidItem = items.find((it) =>
+    !it || typeof it.id !== 'string' || !it.id ||
+    typeof it.name !== 'string' || !it.name ||
+    typeof it.unit !== 'string' || !it.unit ||
+    typeof it.hsn_sac !== 'string' || !it.hsn_sac.trim() ||
+    (it.kind !== 'raw_material' && it.kind !== 'product')
+  )
+  if (invalidItem) {
+    return respond({ status: 'error', error: 'Every item requires id, name, unit, kind (raw_material|product), and a non-blank hsn_sac' }, 400)
+  }
+
+  const { data: settings } = await supabaseClient
+    .from('p2_tenant_settings')
+    .select('is_job_worker')
+    .eq('tenant_id', tenant_id)
+    .maybeSingle()
+  const isJobWorker = (settings as { is_job_worker?: boolean } | null)?.is_job_worker ?? false
+
+  const audit = await auditHsnCodes(anthropicClient, items, isJobWorker)
+
+  if ('error' in audit) {
+    void logInteraction(supabaseClient, tenant_id, '', 'hsn_audit', { item_count: items.length }, null, false, audit.error)
+    return respond({ status: 'error', error: audit.error }, 500)
+  }
+
+  void logInteraction(supabaseClient, tenant_id, '', 'hsn_audit', { item_count: items.length }, null, true, null)
+  return respond({ status: 'ok', results: audit.results })
+}
+
 Deno.serve(async (req) => {
   // CORS preflight
   if (req.method === 'OPTIONS') {
@@ -2898,7 +3084,8 @@ Deno.serve(async (req) => {
       Partial<Omit<ResendInvoiceRequest, 'action'>> &
       Partial<Omit<ConfirmConsolidatedInvoiceRequest, 'action'>> &
       Partial<Omit<PreviewConsolidatedInvoiceRequest, 'action'>> &
-      { action?: 'confirm_receive_grn' | 'confirm_generate_invoice' | 'resend_invoice' | 'confirm_consolidated_invoice' | 'preview_consolidated_invoice' } = await req.json()
+      Partial<Omit<SuggestHsnRequest, 'action'>> &
+      { action?: 'confirm_receive_grn' | 'confirm_generate_invoice' | 'resend_invoice' | 'confirm_consolidated_invoice' | 'preview_consolidated_invoice' | 'suggest_hsn' } = await req.json()
 
     // Cross-tenant auth guard: every action below (and the plain-message path
     // further down) takes tenant_id from this same body — verify it against
@@ -2925,6 +3112,10 @@ Deno.serve(async (req) => {
 
     if (body.action === 'preview_consolidated_invoice') {
       return await previewConsolidatedInvoice(supabase, body as Partial<PreviewConsolidatedInvoiceRequest>)
+    }
+
+    if (body.action === 'suggest_hsn') {
+      return await suggestHsn(supabase, anthropic, body as Partial<SuggestHsnRequest>)
     }
 
     if (body.action === 'confirm_receive_grn') {

@@ -307,6 +307,20 @@
         </div>
     </div>
 
+    <!-- DUPLICATE INVOICE WARNING MODAL — Fix 2 (Sept 9 2026). Soft confirm
+         only, never a hard block; the DB partial unique index (when added)
+         is the real backstop against the same material twice on one invoice. -->
+    <div id="duplicateInvoiceModal" class="nx-modal-overlay" style="display:none;">
+        <div class="nx-modal">
+            <div class="nx-modal-title" style="color:var(--orange);">⚠ Possible Duplicate Invoice</div>
+            <div id="duplicateInvoiceBody" style="font-size:13px;color:var(--text);line-height:1.6;margin-bottom:16px;"></div>
+            <div style="display:flex;gap:10px;margin-top:4px;">
+                <button type="button" id="confirmDuplicateBtn" class="nx-btn nx-btn-primary nx-btn-full">Yes, this is a different delivery</button>
+                <button type="button" id="cancelDuplicateBtn" class="nx-btn nx-btn-ghost nx-btn-full">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <div class="nx-toast-wrap" id="toastWrap"></div>
 
     <script>
@@ -751,55 +765,65 @@
 
         document.getElementById('addRowBtn').addEventListener('click', addGRNRow);
 
-        document.getElementById('grnForm').addEventListener('submit', async e => {
-            e.preventDefault();
+        // Fix 2 — duplicate invoice guard (Sept 9 2026). Looks for existing GRN
+        // rows under the same supplier whose normalised invoice_no matches one
+        // of the invoice numbers in the batch about to be submitted. Advisory
+        // only: a query error here fails OPEN (returns no duplicates) rather
+        // than blocking submission on an unrelated network hiccup — the real
+        // backstop is the DB layer, not this check.
+        async function checkDuplicateInvoice(tid, supplierId, validRows) {
+            const targets = new Set(validRows.map(r => normaliseInvoiceNo(r.invoice_no)).filter(Boolean));
+            if (targets.size === 0) return [];
 
-            // Double-submit guard: get_next_grn_number is an atomic counter that
-            // happily hands out a fresh, valid number on every call rather than
-            // erroring on a resubmission — without this, a double-click (or a
-            // slow network + impatient second click) submits the same rows
-            // twice under two different GRN numbers, double-counting every
-            // received material's stock.
+            const { data, error } = await window.supabase
+                .from('p2_stock_transactions')
+                .select('grn_no, invoice_no, transaction_date')
+                .eq('tenant_id', tid)
+                .eq('supplier_id', supplierId)
+                .eq('transaction_type', 'grn')
+                .not('invoice_no', 'is', null);
+
+            if (error) { console.error('Duplicate invoice check failed:', error); return []; }
+
+            const matches = new Map(); // normalised invoice_no -> first matching existing row
+            (data || []).forEach(row => {
+                const norm = normaliseInvoiceNo(row.invoice_no);
+                if (targets.has(norm) && !matches.has(norm)) matches.set(norm, row);
+            });
+            return [...matches.values()];
+        }
+
+        // Shows the warning modal and resolves once via onConfirm or onCancel.
+        // Listeners are attached fresh and torn down on close so repeated
+        // duplicate warnings across a session never stack handlers.
+        function showDuplicateInvoiceModal(duplicates, onConfirm, onCancel) {
+            const body = document.getElementById('duplicateInvoiceBody');
+            body.innerHTML = duplicates.map(d =>
+                '<div style="margin-bottom:8px;">Invoice <b>' + escapeHtml(d.invoice_no) + '</b> was already received under ' +
+                '<span class="grn-no-badge">' + escapeHtml(d.grn_no || '—') + '</span> on ' + formatDate(d.transaction_date) +
+                '. Are you sure this is a different delivery?</div>'
+            ).join('');
+            document.getElementById('duplicateInvoiceModal').style.display = 'flex';
+
+            const confirmBtn = document.getElementById('confirmDuplicateBtn');
+            const cancelBtn  = document.getElementById('cancelDuplicateBtn');
+
+            function cleanup() {
+                document.getElementById('duplicateInvoiceModal').style.display = 'none';
+                confirmBtn.removeEventListener('click', handleConfirm);
+                cancelBtn.removeEventListener('click', handleCancel);
+            }
+            function handleConfirm() { cleanup(); onConfirm(); }
+            function handleCancel()  { cleanup(); onCancel(); }
+            confirmBtn.addEventListener('click', handleConfirm);
+            cancelBtn.addEventListener('click', handleCancel);
+        }
+
+        // The actual RPC-then-insert submission, extracted so both the
+        // no-duplicate path and the "yes, proceed anyway" path from the
+        // warning modal call the same code.
+        async function submitGrnTransactions(tid, supplierId, supplierName, grnDate, validRows, principalChallanNo, principalChallanDate, lang) {
             const submitButton = document.getElementById('submitButton');
-            if (submitButton.disabled) return;
-            submitButton.disabled = true;
-
-            const supplierId = document.getElementById('supplierSelect').value;
-            const grnDate    = document.getElementById('grnDate').value;
-            const lang       = localStorage.getItem('nexflow_lang') || 'en';
-
-            if (!supplierId) { toast(lang==='mr' ? 'कृपया पुरवठादार निवडा' : 'Please select a supplier', 'error'); document.getElementById('supplierSelect').focus(); submitButton.disabled = false; return; }
-            if (grnRows.length === 0) { toast(lang==='mr' ? 'कृपया किमान एक ओळ जोडा' : 'Please add at least one row', 'error'); submitButton.disabled = false; return; }
-
-            let hasError = false;
-            for (let i = 0; i < grnRows.length; i++) {
-                const row = grnRows[i];
-                if (!row.material_id) { toast(lang==='mr' ? 'ओळ '+(i+1)+': कृपया सामग्री निवडा' : 'Row '+(i+1)+': Please select a material', 'error'); hasError=true; break; }
-                if (!row.quantity || row.quantity === '') { toast(lang==='mr' ? 'ओळ '+(i+1)+': कृपया परिमाण प्रविष्ट करा' : 'Row '+(i+1)+': Please enter quantity', 'error'); hasError=true; break; }
-                const qty = parseFloat(row.quantity);
-                if (isNaN(qty) || qty <= 0) { toast(lang==='mr' ? 'ओळ '+(i+1)+': परिमाण ० पेक्षा जास्त असणे आवश्यक आहे' : 'Row '+(i+1)+': Quantity must be greater than 0', 'error'); hasError=true; break; }
-                if (!row.invoice_no || !row.invoice_no.trim()) { toast(lang==='mr' ? 'GST नोंदींसाठी पुरवठादार चलान क्रमांक आवश्यक आहे.' : 'Supplier invoice number is required for GST records.', 'error'); hasError=true; break; }
-            }
-            if (hasError) { submitButton.disabled = false; return; }
-
-            const validRows = grnRows.filter(row => row.material_id && row.quantity && parseFloat(row.quantity) > 0);
-            if (validRows.length === 0) { toast(lang==='mr' ? 'कृपया किमान एक वैध ओळ जोडा' : 'Please add at least one valid material with quantity', 'error'); submitButton.disabled = false; return; }
-
-            // Fix 1 — principal challan fields are required only when this GRN
-            // is attributed to a principal's pool.
-            let principalChallanNo = null, principalChallanDate = null;
-            if (selectedOwnerId) {
-                principalChallanNo   = document.getElementById('principalChallanNo').value.trim();
-                principalChallanDate = document.getElementById('principalChallanDate').value;
-                if (!principalChallanNo)   { toast(lang==='mr' ? "कृपया प्रिन्सिपलचा चलान क्र प्रविष्ट करा" : "Please enter the principal's challan number", 'error'); submitButton.disabled = false; return; }
-                if (!principalChallanDate) { toast(lang==='mr' ? "कृपया प्रिन्सिपलच्या चलानाची तारीख प्रविष्ट करा" : "Please enter the principal's challan date", 'error'); submitButton.disabled = false; return; }
-            }
-
-            const tid = tenantId;
-
-            const sel = suppliers.find(s => s.id === supplierId);
-            const supplierName = sel ? sel.name : null;
-
             try {
                 // GRN numbers are exclusively issued by the get_next_grn_number
                 // RPC — the same atomic, tenant-locked counter the AI Copilot's
@@ -853,6 +877,70 @@
             } finally {
                 submitButton.disabled = false;
             }
+        }
+
+        document.getElementById('grnForm').addEventListener('submit', async e => {
+            e.preventDefault();
+
+            // Double-submit guard: get_next_grn_number is an atomic counter that
+            // happily hands out a fresh, valid number on every call rather than
+            // erroring on a resubmission — without this, a double-click (or a
+            // slow network + impatient second click) submits the same rows
+            // twice under two different GRN numbers, double-counting every
+            // received material's stock.
+            const submitButton = document.getElementById('submitButton');
+            if (submitButton.disabled) return;
+            submitButton.disabled = true;
+
+            const supplierId = document.getElementById('supplierSelect').value;
+            const grnDate    = document.getElementById('grnDate').value;
+            const lang       = localStorage.getItem('nexflow_lang') || 'en';
+
+            if (!supplierId) { toast(lang==='mr' ? 'कृपया पुरवठादार निवडा' : 'Please select a supplier', 'error'); document.getElementById('supplierSelect').focus(); submitButton.disabled = false; return; }
+            if (grnRows.length === 0) { toast(lang==='mr' ? 'कृपया किमान एक ओळ जोडा' : 'Please add at least one row', 'error'); submitButton.disabled = false; return; }
+
+            let hasError = false;
+            for (let i = 0; i < grnRows.length; i++) {
+                const row = grnRows[i];
+                if (!row.material_id) { toast(lang==='mr' ? 'ओळ '+(i+1)+': कृपया सामग्री निवडा' : 'Row '+(i+1)+': Please select a material', 'error'); hasError=true; break; }
+                if (!row.quantity || row.quantity === '') { toast(lang==='mr' ? 'ओळ '+(i+1)+': कृपया परिमाण प्रविष्ट करा' : 'Row '+(i+1)+': Please enter quantity', 'error'); hasError=true; break; }
+                const qty = parseFloat(row.quantity);
+                if (isNaN(qty) || qty <= 0) { toast(lang==='mr' ? 'ओळ '+(i+1)+': परिमाण ० पेक्षा जास्त असणे आवश्यक आहे' : 'Row '+(i+1)+': Quantity must be greater than 0', 'error'); hasError=true; break; }
+                if (!row.invoice_no || !row.invoice_no.trim()) { toast(lang==='mr' ? 'GST नोंदींसाठी पुरवठादार चलान क्रमांक आवश्यक आहे.' : 'Supplier invoice number is required for GST records.', 'error'); hasError=true; break; }
+            }
+            if (hasError) { submitButton.disabled = false; return; }
+
+            const validRows = grnRows.filter(row => row.material_id && row.quantity && parseFloat(row.quantity) > 0);
+            if (validRows.length === 0) { toast(lang==='mr' ? 'कृपया किमान एक वैध ओळ जोडा' : 'Please add at least one valid material with quantity', 'error'); submitButton.disabled = false; return; }
+
+            // Fix 1 — principal challan fields are required only when this GRN
+            // is attributed to a principal's pool.
+            let principalChallanNo = null, principalChallanDate = null;
+            if (selectedOwnerId) {
+                principalChallanNo   = document.getElementById('principalChallanNo').value.trim();
+                principalChallanDate = document.getElementById('principalChallanDate').value;
+                if (!principalChallanNo)   { toast(lang==='mr' ? "कृपया प्रिन्सिपलचा चलान क्र प्रविष्ट करा" : "Please enter the principal's challan number", 'error'); submitButton.disabled = false; return; }
+                if (!principalChallanDate) { toast(lang==='mr' ? "कृपया प्रिन्सिपलच्या चलानाची तारीख प्रविष्ट करा" : "Please enter the principal's challan date", 'error'); submitButton.disabled = false; return; }
+            }
+
+            const tid = tenantId;
+
+            const sel = suppliers.find(s => s.id === supplierId);
+            const supplierName = sel ? sel.name : null;
+
+            // Fix 2 — warn (never block) if any invoice number in this batch
+            // already exists under this supplier on a different GRN.
+            const duplicates = await checkDuplicateInvoice(tid, supplierId, validRows);
+            if (duplicates.length > 0) {
+                showDuplicateInvoiceModal(
+                    duplicates,
+                    () => submitGrnTransactions(tid, supplierId, supplierName, grnDate, validRows, principalChallanNo, principalChallanDate, lang),
+                    () => { submitButton.disabled = false; }
+                );
+                return;
+            }
+
+            await submitGrnTransactions(tid, supplierId, supplierName, grnDate, validRows, principalChallanNo, principalChallanDate, lang);
         });
 
         document.getElementById('addSupplierBtn').addEventListener('click', () => {
@@ -933,6 +1021,14 @@
 
         function escapeHtml(str) {
             return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        }
+
+        // Byte-identical to gstr2b-reconcile.html's normaliseInvoiceNo() — the
+        // duplicate-invoice warning below and the GSTR-2B matcher must agree
+        // on what counts as "the same invoice number", or a duplicate caught
+        // here would silently disagree with reconciliation later.
+        function normaliseInvoiceNo(str) {
+            return String(str || '').replace(/[\s\-\/]/g, '').toUpperCase();
         }
 
         function populateReconcileMonths() {

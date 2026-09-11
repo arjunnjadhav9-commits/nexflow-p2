@@ -118,6 +118,18 @@
      four TABLE13_ROLES-gated siblings above, so it was visible by default
      to any role clearing the page gate regardless of the role check below. */
   #gstr1WorkbookSection { display: none; }
+
+  /* HSN Audit (E3) — TABLE13_ROLES-gated like its siblings above. */
+  #hsnAuditSection { display: none; }
+  #hsnAuditProgress { display: none; }
+  #hsnAuditResults { display: none; }
+  /* Left-border verdict colour coding — declared on the first <td>, not the
+     <tr>, since .nx-table uses border-collapse:collapse and a border on
+     <tr> itself doesn't render under that in any browser. */
+  #hsnAuditBody tr.hsn-row-correct > td:first-child          { border-left: 3px solid var(--green); }
+  #hsnAuditBody tr.hsn-row-likely_wrong > td:first-child     { border-left: 3px solid var(--orange); }
+  #hsnAuditBody tr.hsn-row-definitely_wrong > td:first-child { border-left: 3px solid var(--red); }
+  #hsnAuditBody tr.hsn-row-no_code > td:first-child          { border-left: 3px solid var(--mid); }
 </style>
 </head>
 <body>
@@ -464,6 +476,52 @@
     <button id="gstr1WorkbookGenBtn" onclick="downloadGstr1Workbook()" class="nx-btn nx-btn-primary nx-btn-full">⬇ Download GSTR-1 Workbook</button>
   </div>
 
+  <!-- HSN AUDIT (E3) — checks EXISTING hsn_sac codes against Haiku, never suggests for blank ones -->
+  <div id="hsnAuditSection" class="nx-card nx-mb-16">
+    <div class="nx-card-header">
+      <div class="nx-card-title">HSN Audit</div>
+    </div>
+    <div style="font-size:13px; color:var(--mid); margin-bottom:16px;">
+      Checks every raw material and product's existing HSN/SAC code with AI and flags the ones that look wrong — a wrong code produces a wrong GSTR-1 Table 12, which surfaces as your error in your buyer's GSTR-2B.
+    </div>
+
+    <button id="hsnAuditRunBtn" onclick="runHsnAudit()" class="nx-btn nx-btn-secondary nx-mb-16">Run HSN Audit</button>
+
+    <div id="hsnAuditProgress" style="align-items:center; gap:10px; margin-bottom:16px; font-size:13px; color:var(--mid);">
+      <span class="spin">⟳</span>
+      <span id="hsnAuditProgressText"></span>
+    </div>
+
+    <div id="hsnAuditResults">
+      <div class="nx-alert nx-alert-orange nx-mb-16">
+        <span class="nx-alert-icon">⚠</span>
+        <span style="font-size:13px;">HSN codes are AI-assessed. Verify all flagged codes with your CA before filing.</span>
+      </div>
+
+      <div id="hsnAuditSummary" style="font-size:13px; color:var(--mid); margin-bottom:12px;"></div>
+
+      <div class="nx-table-wrap nx-mb-16">
+        <table class="nx-table" style="font-size:12px;">
+          <thead>
+            <tr>
+              <th>Type</th>
+              <th>Name</th>
+              <th>Code</th>
+              <th>Current HSN</th>
+              <th>Verdict</th>
+              <th>Reason</th>
+              <th>Suggested HSN</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="hsnAuditBody"></tbody>
+        </table>
+      </div>
+
+      <button id="hsnAuditDownloadBtn" onclick="downloadHsnAuditExcel()" class="nx-btn nx-btn-primary nx-btn-full" style="display:none;">⬇ Download Report</button>
+    </div>
+  </div>
+
 </div>
 </div>
 
@@ -471,6 +529,7 @@
 // ─── STATE ───────────────────────────────────────────────────────────────────
 let currentPlatform = 'tally';
 let currentType     = 'masters';
+let currentUserRole = null; // set in INIT — used by hsnAuditActionCell() for access-aware Fix links
 
 // ─── UOM MAP ─────────────────────────────────────────────────────────────────
 const UOM_MAP = {
@@ -571,7 +630,7 @@ function getPlaceOfSupply(gstin) {
 // ₹2.5L per the original spec — CBIC Notification 12/2024 lowered this to
 // ₹1L effective 1 Nov 2024; confirm the current figure with your CA before
 // filing. Change only this constant if it needs updating.
-const B2CL_THRESHOLD = 250000;
+const B2CL_THRESHOLD = 100000;
 
 // Shared orange header style \u2014 matches agent-query's styleHeaderRow.
 function styleHeaderRow(row) {
@@ -1409,7 +1468,19 @@ function invoiceSeriesKey(invoiceNumber) {
 // sequences, not one sequence with gaps between them. prefix = everything
 // before the trailing digit run; num = that digit run.
 function challanSeriesKey(challanNumber) {
-  const match = String(challanNumber ?? '').match(/^(\D*)(\d+)$/);
+  const str = String(challanNumber ?? '');
+  // Legacy confirm_dispatch_transaction fallback format (pre-fix): CHAL-YYYYMMDD-NNNN.
+  // NNNN is drawn from the same p2_tenant_settings.challan_sequence counter as every
+  // other challan for this tenant, not a separate series — fold it into the bare
+  // (prefix '') series, matching how every on-screen/PDF/Excel display already
+  // strips the CHAL-YYYYMMDD- prefix (all-dispatch-history.html, dispatch.html,
+  // challan.html, etc. all do .replace(/^CHAL-\d{8}-/, '')).
+  const legacyMatch = str.match(/^CHAL-\d{8}-(\d+)$/);
+  if (legacyMatch) {
+    const num = parseInt(legacyMatch[1], 10);
+    return Number.isFinite(num) && num >= 1 ? { prefix: '', num } : null;
+  }
+  const match = str.match(/^(\D*)(\d+)$/);
   if (!match) return null;
   const num = parseInt(match[2], 10);
   if (!Number.isFinite(num) || num < 1) return null;
@@ -1547,10 +1618,19 @@ function computeTable13Buckets(invoiceRows, dispatchRows, cancelledLogRows, mont
     return { label, fromDisplay, toDisplay, totalIssued, totalCancelled, netIssued: totalIssued - totalCancelled, gapCount };
   }
 
+  // Job-work-family purposes — none of these transfer ownership (see
+  // js/movement-purpose.js), so they're all non-supply delivery challans for
+  // GSTR-1 purposes. sale and direct_supply_from_jobworker DO transfer
+  // ownership and stay out of this bucket (Tax Invoice / Other instead).
+  const JOB_WORK_BUCKET_PURPOSES = new Set([
+    'job_work_issue', 'job_work_return', 'unused_material_return', 'scrap_return',
+    'rework_return', 'rework_dispatch', 'capital_goods_issue', 'inter_jobworker_transfer'
+  ]);
+
   return [
     buildInvoiceBucket(),
-    buildChallanBucket('Delivery Challans (Job Work)', (p) => p === 'job_work_issue'),
-    buildChallanBucket('Delivery Challans (Other)', (p) => p !== 'job_work_issue') // includes NULL
+    buildChallanBucket('Delivery Challans (Job Work)', (p) => JOB_WORK_BUCKET_PURPOSES.has(p)),
+    buildChallanBucket('Delivery Challans (Other)', (p) => !JOB_WORK_BUCKET_PURPOSES.has(p)) // sale, direct_supply_from_jobworker, and NULL
   ];
 }
 
@@ -2441,6 +2521,255 @@ async function downloadGstr1Workbook() {
   }
 }
 
+// ─── HSN AUDIT (E3) ────────────────────────────────────────────────────────────
+// Checks EXISTING hsn_sac codes with Haiku — a different feature from
+// enterprise-strategy.md §3.3's "suggest a code for a blank field" design.
+// See supabase/functions/agent-query/index.ts's suggestHsn()/auditHsnCodes().
+const HSN_AUDIT_BATCH_SIZE = 25;
+let hsnAuditResults = [];
+const HSN_VERDICT_LABELS = { correct: 'Correct', likely_wrong: 'Likely Wrong', definitely_wrong: 'Definitely Wrong', no_code: 'No Code' };
+const HSN_VERDICT_ORDER = { definitely_wrong: 0, likely_wrong: 1, no_code: 2, correct: 3 };
+
+function escHsnHtml(s) {
+  const div = document.createElement('div');
+  div.textContent = s ?? '';
+  return div.innerHTML;
+}
+
+// Access-aware Fix link: settings.html is owner-only (redirects everyone
+// else to index.html); products.html requires the 'products' permission,
+// which accountant does not have (js/roles.js ROLE_PERMISSIONS). A role
+// without real edit access to the destination sees plain grey text instead
+// of a link that would just bounce them.
+function hsnAuditActionCell(row) {
+  if (row.verdict === 'correct') return '';
+  const linkStyle = 'color:var(--orange); font-weight:600; text-decoration:none;';
+  if (row.kind === 'raw_material') {
+    if (currentUserRole === 'owner') {
+      return `<a href="settings.html?tab=materials" target="_blank" style="${linkStyle}">Fix →</a>`;
+    }
+    return `<span style="color:var(--mid); font-size:11px;">Ask the owner to fix in Settings</span>`;
+  }
+  // product
+  if (currentUserRole === 'owner' || currentUserRole === 'supervisor') {
+    return `<a href="products.html" target="_blank" style="${linkStyle}">Fix →</a>`;
+  }
+  return `<span style="color:var(--mid); font-size:11px;">Ask the owner or supervisor to fix</span>`;
+}
+
+function renderHsnAuditResults() {
+  const body = document.getElementById('hsnAuditBody');
+  body.innerHTML = hsnAuditResults.map(row => `
+    <tr class="hsn-row-${row.verdict}">
+      <td>${row.kind === 'raw_material' ? 'Raw Material' : 'Product'}</td>
+      <td class="nx-td-bold">${escHsnHtml(row.name)}</td>
+      <td>${escHsnHtml(row.code || '—')}</td>
+      <td>${escHsnHtml(row.hsn_sac || '—')}</td>
+      <td>${HSN_VERDICT_LABELS[row.verdict]}</td>
+      <td>${escHsnHtml(row.reason || '')}</td>
+      <td>${escHsnHtml(row.suggested_hsn || '—')}</td>
+      <td>${hsnAuditActionCell(row)}</td>
+    </tr>
+  `).join('');
+
+  const counts = { correct: 0, likely_wrong: 0, definitely_wrong: 0, no_code: 0 };
+  hsnAuditResults.forEach(r => { counts[r.verdict]++; });
+  document.getElementById('hsnAuditSummary').textContent =
+    `${counts.correct} correct · ${counts.likely_wrong} likely wrong · ${counts.definitely_wrong} definitely wrong · ${counts.no_code} no code`;
+
+  document.getElementById('hsnAuditResults').style.display = 'block';
+  document.getElementById('hsnAuditDownloadBtn').style.display = hsnAuditResults.length ? 'block' : 'none';
+}
+
+// Fire-and-forget, silent — only ever writes 'ai_verified' for verdict
+// 'correct' rows. likely_wrong/definitely_wrong/no_code need human
+// correction first (which stamps 'ai_corrected' at save time in
+// settings.html/products.html — not built this session).
+async function writeBackHsnSource(results, tenantId) {
+  try {
+    const correctMaterialIds = results.filter(r => r.kind === 'raw_material' && r.verdict === 'correct').map(r => r.id);
+    const correctProductIds  = results.filter(r => r.kind === 'product'      && r.verdict === 'correct').map(r => r.id);
+    if (correctMaterialIds.length) {
+      await window.supabase.from('p2_raw_materials').update({ hsn_source: 'ai_verified' }).eq('tenant_id', tenantId).in('id', correctMaterialIds);
+    }
+    if (correctProductIds.length) {
+      await window.supabase.from('p2_products').update({ hsn_source: 'ai_verified' }).eq('tenant_id', tenantId).in('id', correctProductIds);
+    }
+  } catch {
+    // Silent by design — see spec: no toast, no UI change on write-back failure.
+  }
+}
+
+async function runHsnAudit() {
+  const btn = document.getElementById('hsnAuditRunBtn');
+  const progress = document.getElementById('hsnAuditProgress');
+  const progressText = document.getElementById('hsnAuditProgressText');
+
+  hsnAuditResults = [];
+  document.getElementById('hsnAuditResults').style.display = 'none';
+  btn.disabled = true;
+  progress.style.display = 'flex';
+  progressText.textContent = 'Fetching materials and products...';
+
+  // Hoisted so a batch failure partway through can still render whatever
+  // completed before it, instead of discarding it (fail-closed on the
+  // request, not on the work already done).
+  const noCodeRows = [];
+  const auditedRows = [];
+  let tenantId = null;
+
+  try {
+    tenantId = await getTenantId();
+
+    const { data: materials, error: materialsError } = await window.supabase
+      .from('p2_raw_materials')
+      .select('id, name, unit, hsn_sac, hsn_source, material_code')
+      .eq('tenant_id', tenantId)
+      .eq('is_active', true);
+    if (materialsError) throw materialsError;
+
+    // p2_products has no is_active column — fetch all.
+    const { data: products, error: productsError } = await window.supabase
+      .from('p2_products')
+      .select('id, name, unit, hsn_sac, hsn_source, product_code')
+      .eq('tenant_id', tenantId);
+    if (productsError) throw productsError;
+
+    const toAudit = [];
+    (materials ?? []).forEach(m => {
+      const item = { id: m.id, kind: 'raw_material', name: m.name, code: m.material_code, unit: m.unit, hsn_sac: m.hsn_sac };
+      if (!m.hsn_sac || !m.hsn_sac.trim()) {
+        noCodeRows.push({ ...item, verdict: 'no_code', reason: 'No HSN code set', suggested_hsn: null });
+      } else {
+        toAudit.push(item);
+      }
+    });
+    (products ?? []).forEach(p => {
+      const item = { id: p.id, kind: 'product', name: p.name, code: p.product_code, unit: p.unit, hsn_sac: p.hsn_sac };
+      if (!p.hsn_sac || !p.hsn_sac.trim()) {
+        noCodeRows.push({ ...item, verdict: 'no_code', reason: 'No HSN code set', suggested_hsn: null });
+      } else {
+        toAudit.push(item);
+      }
+    });
+
+    if (toAudit.length) {
+      const { data: { session } } = await window.supabase.auth.getSession();
+      const authToken = session?.access_token;
+      if (!authToken) throw new Error('Not authenticated. Please log in again.');
+
+      const itemById = new Map(toAudit.map(it => [it.id, it]));
+      let done = 0;
+      for (let i = 0; i < toAudit.length; i += HSN_AUDIT_BATCH_SIZE) {
+        const batch = toAudit.slice(i, i + HSN_AUDIT_BATCH_SIZE);
+        progressText.textContent = `Auditing ${done} of ${toAudit.length} items...`;
+
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/agent-query`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+          body: JSON.stringify({
+            action: 'suggest_hsn',
+            tenant_id: tenantId,
+            items: batch.map(it => ({ id: it.id, name: it.name, unit: it.unit, kind: it.kind, hsn_sac: it.hsn_sac }))
+          })
+        });
+        const data = await res.json();
+        if (data.status !== 'ok') throw new Error(data.error || 'HSN audit request failed');
+
+        data.results.forEach(r => {
+          const local = itemById.get(r.id);
+          if (!local) return;
+          auditedRows.push({ ...local, verdict: r.verdict, reason: r.reason, suggested_hsn: r.suggested_hsn });
+        });
+
+        done += batch.length;
+        progressText.textContent = `Auditing ${done} of ${toAudit.length} items...`;
+      }
+    }
+
+    hsnAuditResults = mergeAndSortHsnAuditRows(noCodeRows, auditedRows);
+    renderHsnAuditResults();
+    void writeBackHsnSource(hsnAuditResults, tenantId);
+  } catch (err) {
+    toast(err.message, 'error');
+    // Render whatever completed before the failure rather than discarding
+    // it — noCodeRows is always complete by this point (computed before any
+    // network call), auditedRows holds every batch that succeeded so far.
+    if (noCodeRows.length || auditedRows.length) {
+      hsnAuditResults = mergeAndSortHsnAuditRows(noCodeRows, auditedRows);
+      renderHsnAuditResults();
+      if (tenantId) void writeBackHsnSource(hsnAuditResults, tenantId);
+    }
+  } finally {
+    btn.disabled = false;
+    progress.style.display = 'none';
+  }
+}
+
+function mergeAndSortHsnAuditRows(noCodeRows, auditedRows) {
+  return [...noCodeRows, ...auditedRows].sort((a, b) => {
+    const order = HSN_VERDICT_ORDER[a.verdict] - HSN_VERDICT_ORDER[b.verdict];
+    return order !== 0 ? order : a.name.localeCompare(b.name);
+  });
+}
+
+async function downloadHsnAuditExcel() {
+  const btn = document.getElementById('hsnAuditDownloadBtn');
+  const originalLabel = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Generating...';
+  try {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('HSN Audit');
+    sheet.columns = [
+      { header: 'Type',           key: 'type',     width: 14 },
+      { header: 'Name',           key: 'name',     width: 30 },
+      { header: 'Code',           key: 'code',     width: 16 },
+      { header: 'Current HSN',    key: 'hsn',      width: 14 },
+      { header: 'Verdict',        key: 'verdict',  width: 18 },
+      { header: 'Reason',         key: 'reason',   width: 40 },
+      { header: 'Suggested HSN',  key: 'suggested',width: 16 }
+    ];
+    styleHeaderRow(sheet.getRow(1));
+
+    const HSN_ROW_FILL = { correct: 'FFD4F7DC', likely_wrong: 'FFFFF0B3', definitely_wrong: 'FFFFC9C9', no_code: 'FFE8E8E8' };
+    const counts = { correct: 0, likely_wrong: 0, definitely_wrong: 0, no_code: 0 };
+    hsnAuditResults.forEach(r => {
+      counts[r.verdict]++;
+      const row = sheet.addRow({
+        type: r.kind === 'raw_material' ? 'Raw Material' : 'Product',
+        name: r.name, code: r.code || '', hsn: r.hsn_sac || '',
+        verdict: HSN_VERDICT_LABELS[r.verdict], reason: r.reason || '',
+        suggested: r.suggested_hsn || ''
+      });
+      row.eachCell({ includeEmpty: true }, cell => {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: HSN_ROW_FILL[r.verdict] } };
+      });
+    });
+    sheet.views = [{ state: 'frozen', ySplit: 1 }];
+
+    sheet.addRow([]);
+    const summaryHeaderRow = sheet.addRow(['Summary']);
+    summaryHeaderRow.getCell(1).font = { bold: true };
+    sheet.addRow(['Correct', counts.correct]);
+    sheet.addRow(['Likely Wrong', counts.likely_wrong]);
+    sheet.addRow(['Definitely Wrong', counts.definitely_wrong]);
+    sheet.addRow(['No Code', counts.no_code]);
+
+    const disclaimerRow = sheet.addRow(['HSN codes are AI-assessed. Verify all flagged codes with your CA before filing.']);
+    disclaimerRow.getCell(1).font = { italic: true, color: { argb: 'FF808080' } };
+
+    const filename = `nexflow-hsn-audit-${new Date().toISOString().slice(0,10)}.xlsx`;
+    await downloadXLSX(workbook, filename);
+    toast(`Downloaded: ${filename}`, 'ok');
+  } catch (err) {
+    toast(err.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalLabel;
+  }
+}
+
 
 // ─── INIT ────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
@@ -2458,6 +2787,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.location.href = 'index.html?denied=1';
     return;
   }
+  currentUserRole = role;
 
   const now  = new Date();
   const y    = now.getFullYear();
@@ -2481,6 +2811,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('supplier43bhSection').style.display = 'block';
     document.getElementById('gstr1WorkbookSection').style.display = 'block';
     document.getElementById('gstr1WorkbookMonth').value = `${y}-${m}`;
+    document.getElementById('hsnAuditSection').style.display = 'block';
   }
 
   // ITC-04 Working Paper entry card — job-worker tenants on Pro/Founder only

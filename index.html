@@ -94,6 +94,29 @@
             </div>
 
 
+            <!-- PRINCIPAL DASHBOARD BANNER — shown only for is_principal tenants.
+                 Reached via this link rather than a global nav entry: NAV_LINKS
+                 in js/navbar.js is filtered by role only inside initNavbar(),
+                 which runs independently of this page's own checkAuth(), so
+                 there's no race-free way to gate a nav item on isPrincipal()
+                 today. Same "reach via a link, self-gate on load" convention
+                 already used for itc04-workingpaper.html/gstr2b-reconcile.html
+                 via export.html. -->
+            <div id="principalDashboardBanner"
+                 class="nx-alert nx-mb-24"
+                 style="display:none; background:linear-gradient(135deg,#1a1200,#2a1f00); border:1px solid var(--orange);">
+                <span class="nx-alert-icon">🌐</span>
+                <div style="flex:1;">
+                    <div class="nx-bold">Your material across your vendors</div>
+                    <div style="font-size:13px; margin-top:2px;">
+                        See current stock and s.143 clock status for every linked vendor, corroborated from their own ledger.
+                    </div>
+                </div>
+                <a href="principal-dashboard.html" class="nx-btn nx-btn-primary nx-btn-sm" style="white-space:nowrap;">
+                    Open Principal Dashboard →
+                </a>
+            </div>
+
             <!-- UPGRADE BANNER (Lite users at 120+ materials) -->
             <div id="upgradeBanner" style="display:none;"
                  class="nx-alert nx-mb-24"
@@ -1131,6 +1154,10 @@
                 document.getElementById('grnEntryBtn')?.style.setProperty('display', 'none');
                 document.getElementById('welcomeSettingsLink')?.style.setProperty('display', 'none');
                 document.getElementById('emptySettingsLink')?.style.setProperty('display', 'none');
+            }
+
+            if (isPrincipal()) {
+                document.getElementById('principalDashboardBanner').style.display = 'flex';
             }
 
             await checkFirstLogin();

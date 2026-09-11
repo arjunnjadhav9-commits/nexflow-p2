@@ -69,6 +69,11 @@ Mobile-first: owners use phones. Must work on mobile browser.
   doesn't map cleanly", NULL means "never set"). Required for ITC-04 Table 4/5. UI: UQC
   dropdown in settings.html Raw Materials tab; warning banner shown when any material has
   uqc IS NULL.
+  hsn_source text CHECK IN ('manual','imported','ai_verified','ai_corrected') — added Session 14
+  (Sept 9 2026, migration 20260909_hsn_audit_source.sql). Nullable, no default, never
+  backfilled — existing rows stay NULL. Written only by export.html's HSN Audit ('ai_verified'
+  on Haiku-confirmed-correct rows) and, in a future session, settings.html on manual correction
+  ('ai_corrected') — never by a trigger. See "Shipped Sept 9, 2026 — Session 14 (E3)".
 - p2_suppliers — supplier master (is_active — CSV-imported suppliers default to
   is_active=false, invisible in dropdowns/matching unless checked), gstin text
   (added Aug 7 — supplier GSTIN, optional, printed on CA export GRN sheet)
@@ -100,6 +105,9 @@ Mobile-first: owners use phones. Must work on mobile browser.
   uqc text — added Session 3 (Sept 4 2026, migration 20260904_uqc_codes.sql). Same GSTN
   UQC code and backfill logic as p2_raw_materials.uqc above. UI: UQC dropdown in
   products.html add/edit form; warning banner shown when any product has uqc IS NULL.
+  hsn_source text CHECK IN ('manual','imported','ai_verified','ai_corrected') — added Session 14
+  (Sept 9 2026, migration 20260909_hsn_audit_source.sql). Same shape/provenance rules as
+  p2_raw_materials.hsn_source above.
 - p2_product_bom — recipe. Uses raw_material_id and qty_per_unit (not product_id-only or qty).
 - p2_wip_transactions — append-only WIP ledger (Step 2G). Columns: id, tenant_id,
   product_id FK → p2_products(id), owned_by uuid nullable FK → p2_clients(id),
@@ -119,7 +127,10 @@ Mobile-first: owners use phones. Must work on mobile browser.
   message resolved via scoped p2_clients lookup.
   dispatch_type values: bom_issue, raw_material, product.
   status values: draft, confirmed, cancelled — NO 'pending'.
-  challan_number column (NOT challan_no). NO notes column — use challan_note if needed.
+  challan_number column (NOT challan_no). Fallback format changed Sept 9 2026 from
+  CHAL-YYYYMMDD-NNNN (18 chars, over cap) to CH-YYMMDD-NNNN (14 chars). CHECK constraint
+  chk_challan_number_length (length <= 16, NOT VALID) added same date.
+  NO notes column — use challan_note if needed.
   dispatch_token column: uuid NOT NULL DEFAULT gen_random_uuid(), unique index — added July 26.
   movement_purpose text NOT NULL DEFAULT 'sale' CHECK IN (10 values — see
   kpml-network-plan.md §8.2) — Step 2E.
@@ -352,7 +363,12 @@ v_p2_supplier_advance_balance: already fixed Sept 2 2026 (security_invoker = tru
   ₹1,00,000/yr), payment expected 10 Sep 2026. Guarantee: no cost increase for
   3 years after Year 1; all new features included at no extra cost. plan stays
   'founder' in DB until payment is confirmed — do NOT change plan value before
-  payment is received. See Pricing section below for full agreement detail.
+  payment is received.
+  Payment expected 10 Sep 2026. On confirmation: UPDATE p2_tenant_settings SET
+  plan = 'pro' WHERE tenant_id = '3b68db90-a07c-491e-8913-c829ca969620';
+  agent_tier stays 'standard' — do not touch it.
+  See Pricing section below for full agreement detail.
+  NOTE: flip plan = 'pro' immediately on payment confirmation. agent_tier stays 'standard'.
 
 - Shivprasad Industries: tenant_id 6fe0680a-c53d-4e4f-b851-308ca905bb3c,
   plan = 'founder', onboarded Aug 19 2026. Type B job worker for KPML under s.143.
@@ -544,7 +560,7 @@ see "Proactive Telegram layer" below.
 6. logInteraction() — fire-and-forget at every exit point
 
 ### body.action handlers — UI-only, NOT reachable from chat
-These 5 exist purely because independent HTML pages POST straight to this Edge Function; the
+These 6 exist purely because independent HTML pages POST straight to this Edge Function; the
 Haiku/message flow above never touches them and agent-chat.js has no code path that sends an
 `action` field.
 - confirm_generate_invoice — all-dispatch-history.html "Generate Invoice" modal, single-mode only.
@@ -555,6 +571,9 @@ Haiku/message flow above never touches them and agent-chat.js has no code path t
 - confirm_receive_grn — receive.html "Auto-fill GRN" (Tier 4 Phase 2), the one exception to
   trusting the caller's tenant_id — verified against a real JWT since the caller is a different
   tenant than the dispatch's sender.
+- suggest_hsn — export.html "HSN Audit" (E3, Session 14). Read + Haiku classification, not a
+  write. Does NOT call checkAndIncrementUsage — deliberately outside the daily agent quota. See
+  "Shipped Sept 9, 2026 — Session 14 (E3)".
 
 ### READ_ONLY_INTENTS — the single source of truth (28 total)
 Lives only in agent-query/index.ts. agent-chat.js needs no copy — every intent is read-only, so
@@ -1690,6 +1709,8 @@ live tenant," always diff against the most recent prior snapshot, not the Step-2
   instead of principal's pool. FIXED (Session 5, Sept 5 2026).
 - s.143 clock: starts from dispatch_date (KPML's send date) not principal_challan_date
   (vendor's receive date). These differ. ITC-04 ageing slightly wrong until fixed.
+  ESCALATED Sept 7 2026 — now a Phase 3 blocker, see "Known Open Items / Blocking Issues"
+  below.
 - Scanner own-stock design: scanner.html always writes owned_by = null. If storekeepers
   receive principal material via QR scan, it records as own stock. Acceptable for now.
   Extend to scanner only after field use confirms this is a real workflow.
@@ -1697,8 +1718,9 @@ live tenant," always diff against the most recent prior snapshot, not the Step-2
   pools simultaneously is not supported. Build when first client requests it.
 - F3: confirmConsolidatedInvoice has no movement_purpose filter — sweeps job_work_return
   challans into consolidated invoices. Fix before first KPML invoice is raised.
+  FIXED (Session 6 code; deployment verified Session 11, Sept 9 2026).
 - F9: settings.html client creation writes user.id instead of tenantId — staff cannot
-  create principal clients.
+  create principal clients. FIXED (Session 6; verified Session 11, Sept 9 2026).
 
 ## Shipped Sept 5, 2026
 
@@ -1817,6 +1839,931 @@ any of them, same as the set_tenant_id() precedent above.
 - `p2_stock_transactions(tenant_id, raw_material_id)` — new index.
 - `p2_invoices(tenant_id, invoice_date)` — new index.
 - `p2_tenant_settings`: added `telegram_bind_token_expires_at timestamptz`.
+
+## Shipped Sept 6, 2026 — Session 7 (Phase 1)
+
+### Physical Stock Count Screen
+- Entry point: card on reports.html, visible to owner/supervisor only
+  (layered on top of the existing canAccess(role,'reports') gate).
+  No new nav link, no new page, no migrations, no Edge Functions.
+- Full-screen count overlay (z-index 600, above navbar) with:
+  - Per-pool independent sessions: Own Stock tab + one tab per
+    is_job_work_principal=true client. No "All" tab — cross-pool
+    counts cannot be posted to one owned_by value unambiguously.
+  - Non-job-worker tenants see no tabs (implicit own-stock session).
+  - System qty from v_p2_stock_balance (own) and
+    v_p2_stock_balance_by_owner (principal pools). Both queried once
+    on overlay open, never re-queried during the session.
+  - All active materials shown; zero-balance materials show 0 (not
+    missing) — source of truth for material list is p2_raw_materials,
+    balance views only supply the qty.
+  - In-place variance/value updates per keystroke (no full re-render
+    — preserves mobile input focus/cursor).
+  - localStorage autosave debounced 500ms.
+    Key: nexflow_stockcount_${tenantId}_${todayIST()}_${poolKey}
+    poolKey = 'own' or principal's p2_clients.id.
+    Value: {counts: {raw_material_id: "typed string"}, savedAt: ISO}.
+    Old keys (wrong date) are never read — natural daily expiry.
+    Cleared only on successful post.
+- Post Variances modal (z-index 700) with verification checkbox and
+  double-submit guard. Batch inserts signed adjustment rows to
+  p2_stock_transactions:
+    transaction_type: 'adjustment'
+    notes: 'Physical Stock Count — YYYY-MM-DD'
+    transaction_date: todayIST() — IST date, confirmed 2026-09-06
+    owned_by: null (own) or principal's p2_clients.id
+    rate: latest price_per_unit from p2_material_prices (null if none)
+  Verified in DB: transaction_date IST-correct, owned_by null for own
+  stock, quantity sign correct (shrinkage = negative).
+- ExcelJS variance report (cdnjs 4.3.0, newly added script tag to
+  reports.html): orange header, all counted materials including
+  zero-variance rows (proves completeness), columns: Code | Material |
+  UQC | System Qty | Physical Qty | Variance | Rate (₹) |
+  Variance Value (₹) | Pool | Posted At (IST).
+- Marathi translations: all static labels via data-en/data-mr,
+  all dynamic strings via local t(en,mr) helper.
+- todayIST() implemented as:
+  new Date().toLocaleString('en-CA',{timeZone:'Asia/Kolkata'}).split(',')[0]
+  Never toISOString().split('T')[0].
+
+## Shipped Sept 8, 2026 — Session 8 (Phase 3)
+
+### s.143 Clock Fix
+- Clock is computed at READ TIME from p2_stock_transactions GRN rows where
+  owned_by IS NOT NULL
+- clockStart = COALESCE(principal_challan_date, transaction_date)
+- principal_challan_date lives on p2_stock_transactions (added by
+  20260904_grn_principal_pool.sql), NOT on p2_challan_links (that table has
+  no such column)
+- The existing set_s143_clock() trigger fires for the OPPOSITE direction
+  (this tenant acting as principal issuing material out) and was left
+  untouched — it is correct for its own use case
+- Pure helper in js/s143-clock.js (no DOM, no Supabase calls)
+- Known simplification: all GRN receipts treated as 365-day inputs — no
+  capital goods 3-year band, no tooling exemption on the GRN side (those
+  flags exist on dispatch-side only)
+- Commits: 969cb3a (js/s143-clock.js), 4c66ea7 (Excel polish)
+
+### ITC-04 Working Paper Export
+- New page: itc04-workingpaper.html
+- Entry card added to export.html
+- Role gate: owner, accountant, supervisor
+- Plan gate: Pro and Founder only (matches GSTR-2B precedent)
+- English-only (matches CA-facing export.html precedent)
+- Tables 4 / 5A / 5B / 5C per GSTN ITC-04 structure
+- Table 4 source: p2_stock_transactions GRN rows, owned_by IS NOT NULL,
+  movement implied by GRN receipt
+- Table 5A source: p2_dispatch_orders, movement_purpose IN
+  (job_work_return, rework_return, unused_material_return)
+- Table 5B source: scrap_return movement_purpose
+- Table 5C source: direct_supply_from_jobworker dispatches
+- Original challan link via p2_challan_links join —
+  0 links → "Not Linked" (honest, never fabricated)
+  1 link → challan no + time taken computed
+  >1 link → "Multiple challans linked (N)", time blank
+- Excel: orange headers, status cell colour coding
+  (green/amber/light-red/strong-red), Summary sheet with section headers,
+  balance mini-table (Material | Balance), amber disclaimer row, italic
+  disclaimer text
+- Table 5A Purpose column: human-readable labels in Excel only
+  (Job Work Return, Rework Return, Unused Material Return)
+- Warning banner when separate_pool_deduction = false (Tables 5A/5B/5C
+  will be empty in that mode)
+- Known limitation: Table 5A/5B returns will show Not Linked for all real
+  KPML returns because p2_challan_links only offers this tenant's own
+  prior dispatches as candidates — KPML is not a Nexflow tenant so no
+  matching original exists
+- This page becomes Part 1 of the Monthly AI Filing Package (E2) per
+  enterprise-strategy.md §3.2
+
+### Commits
+- 969cb3a — js/s143-clock.js (standalone, Part A)
+- 1221834 — itc04-workingpaper.html + export.html card (Part B)
+- 4c66ea7 — Excel Summary sheet polish (Fix 1-6)
+
+## Shipped Sept 8, 2026 — Session 9 (Phase 2)
+
+### KPML Principal Dashboard
+
+**Three design questions answered:**
+- Q1: KPML is a normal p2_tenants row with is_principal=true,
+  is_job_worker=false. No separate table.
+- Q2: Same Supabase Auth flow as vendors. Same signup,
+  same roles, same staff-invite.
+- Q3: KPML sees ONLY owned_by=KPML rows at each vendor.
+  Never vendor own stock, never other principals' material.
+  Enforced in a single SECURITY DEFINER RPC, not RLS.
+
+**New table: p2_network_links**
+  principal_tenant_id, vendor_tenant_id, status
+  (active/revoked — never delete, history preserved)
+  UNIQUE(principal_tenant_id, vendor_tenant_id)
+  RLS: tenant can SELECT rows where it is either side
+  Insert: manual only in this phase, no self-serve UI yet
+
+**New RPC: get_principal_vendor_material()**
+  SECURITY DEFINER, no tenant-id parameter (resolved
+  internally via get_my_tenant_id())
+  Returns: vendor_tenant_id, vendor_name, raw_material_id,
+  material_name, material_code, unit, uqc, hsn_sac,
+  current_stock (balance branch, null on clock rows),
+  principal_challan_no, principal_challan_date,
+  transaction_date (clock branch, null on balance rows)
+  Scope boundary comment in function — never returns
+  vendor own stock (owned_by IS NULL), other principals'
+  material, or any aggregate spanning vendors.
+  This function is the single enforcement point for Q3.
+
+**New page: principal-dashboard.html**
+  Gate: checkAuth() + isPrincipal() + role
+  ['owner','accountant','supervisor']
+  No plan gate. No Marathi. English-only.
+  Entry: banner on index.html when isPrincipal() is true
+  Current layout: one card per vendor, current stock table
+  + s.143 clock table per lot using js/s143-clock.js
+  All four s.143 status bands verified: within_limit,
+  warning, breach_warning, breached
+  Known limitation: does not scale beyond ~3 vendors —
+  needs vendor list → detail navigation for production use
+  (planned for Session 10)
+
+**checkAuth() fix in js/supabase-client.js**
+  When user_metadata.tenant_id is absent (user created
+  directly in Auth dashboard, not via invite flow),
+  now calls get_my_tenant_id() RPC instead of falling
+  back to user.id directly.
+  Previous behaviour: user.id used as tenantId when
+  metadata absent → p2_tenant_settings query used wrong
+  UUID → settingsData null → cachedIsPrincipal false.
+  Also poisoned fetchUserRole() in js/auth.js — that
+  function short-circuits to 'owner' when userId===tenantId
+  (line 2), so the wrong tenantId also caused role cache
+  corruption. Fix lands before fetchUserRole() is called.
+  Direct p2_user_roles query avoided — that pattern causes
+  infinite recursion (documented in js/auth.js comments,
+  same reason fetchUserRole uses get_my_role RPC).
+  get_my_tenant_id() is SECURITY DEFINER, already GRANT
+  EXECUTE'd to authenticated (20260803_staff_rls_fix.sql).
+  Zero behaviour change for existing owner accounts —
+  user_metadata.tenant_id is present for all invited
+  staff and normal signups, new branch never executes.
+
+**KPML production setup**
+  KPML tenant id: cc23eb60-329b-40ac-8d4a-0667c28546a5
+  KPML login: kpml@nexflowautomations.in (owner role)
+  Auth user id: ba17a756-986c-428b-9e21-49269aaedc60
+  p2_user_roles row links ba17a756 → cc23eb60 as owner
+  Linked vendor for demo: test tenant fe2b94fb with 5
+  seeded GRN rows covering all four s.143 clock bands
+  Real vendor linking (SS Eng, Datta Prasad, Shivprasad)
+  deferred — those tenants have no owned_by data yet
+  (is_job_work_principal was false on their KPML client
+  rows, so GRNs were never recorded with owned_by set)
+
+**Known open items for Session 10:**
+  1. Principal dashboard needs vendor list → click →
+     isolated vendor detail view. Current card layout
+     does not scale to 30+ vendors / 100+ materials.
+     Design: vendor list page (name, material count,
+     breach count, total value at risk) → click →
+     full detail page for that vendor only (current
+     stock + s.143 clock table).
+  2. Principal-side payment visibility: KPML needs to
+     see outstanding invoices per vendor and record
+     payments against them on the principal dashboard.
+     Vendor-side payment ledger already shipped
+     (p2_payment_receipts, invoices.html modal, Aug 28).
+     What's missing: a cross-tenant RPC that reads
+     vendor invoice + payment status for the principal,
+     scoped exactly like get_principal_vendor_material().
+     43B(h) angle is the commercial hook — if KPML fails
+     to pay an MSME vendor within 45 days of agreed
+     credit period, KPML cannot deduct that expense in
+     income tax. Dashboard showing outstanding payables
+     per vendor + days overdue is a direct tax compliance
+     tool for KPML's CA. This was planned since Aug 2026
+     (kpml-network-plan.md N1) but not yet built on the
+     principal side.
+  3. Real vendor data: SS Engineering, Datta Prasad,
+     Shivprasad need their KPML client rows updated to
+     is_job_work_principal=true and past GRNs re-recorded
+     with owned_by set before the November demo can show
+     real vendor data. This is a data migration task,
+     not a code task — discuss with each client before
+     touching their records.
+
+## Shipped Sept 9, 2026 — Session 11
+
+### Session 11 — Bug fixes (KPML demo blockers)
+
+**F8 fixed — GSTR-1 Table 13 job-work bucket (export.html)**
+computeTable13Buckets() now correctly buckets all 8 job-work-family
+movement purposes into "Delivery Challans (Job Work)":
+job_work_issue, job_work_return, unused_material_return, scrap_return,
+rework_return, rework_dispatch, capital_goods_issue, inter_jobworker_transfer.
+sale, direct_supply_from_jobworker, and NULL stay in their existing buckets.
+Both the on-screen Table 13 and the GSTR-1 Excel Workbook doc sheet are fixed
+in one change since both call computeTable13Buckets().
+Local constant JOB_WORK_BUCKET_PURPOSES (Set) defined inside the function —
+matches codebase convention, no shared module needed.
+
+**F3 verified deployed — confirmConsolidatedInvoice movement_purpose filter**
+Fixed in Session 6 code, deployment confirmed via live test Sept 9 2026:
+three job_work_return dispatches (challans 3057–3059) on test tenant correctly
+excluded from consolidated invoice sweep. No code change this session.
+
+**F9 verified fixed — settings.html client creation tenant resolution**
+Fixed in Session 6. settings.html:2178 confirmed using correct pattern
+(user.user_metadata?.tenant_id || user.id). No code change this session.
+
+**Challan number format fixed — two-part**
+Part A (DB, SQL Editor): confirm_dispatch_transaction fallback branch changed
+from CHAL-YYYYMMDD-NNNN (18 chars, over Rule 46(b)/55 cap) to
+CH-YYMMDD-NNNN (14 chars). Date now uses AT TIME ZONE 'Asia/Kolkata'
+(was bare NOW() = UTC, would give yesterday's date for late-evening IST
+dispatches). Verified: 0 CHAL- rows on test tenant before change.
+ALTER TABLE p2_dispatch_orders ADD CONSTRAINT chk_challan_number_length
+CHECK (length(challan_number) <= 16) NOT VALID — enforces cap on new
+rows only, does not touch any existing rows (NOT VALID is required here,
+not optional — a plain CHECK would fail on any existing CHAL- rows on
+other tenants).
+Part B (export.html): challanSeriesKey() extended with a legacy-format
+branch — CHAL-YYYYMMDD-NNNN rows are now parsed and folded into the
+bare-number series (prefix '') instead of being silently dropped from
+gap detection. Purely additive — all previously-matching inputs
+unchanged.
+CA confirmation still needed: confirm CH-YYMMDD-NNNN is acceptable
+under Rule 55 before deploying Part A to live tenants. Test tenant only
+for now.
+
+**Principal Dashboard v2 — complete**
+Vendor list → detail navigation, payment visibility,
+get_principal_vendor_invoices RPC, 43B(h) risk surface.
+
+## Shipped Sept 9, 2026 — Session 12
+
+### Session 12 — s.143 clock verification + GRN duplicate invoice guard
+
+**FIX 1 — s.143 clock (doc correction only)**
+js/s143-clock.js already implements clockStart = row.principal_challan_date
+|| row.transaction_date (shipped Session 8, commit 969cb3a). Both
+principal-dashboard.html and itc04-workingpaper.html already pass
+principal_challan_date through correctly. CLAUDE.md "Known Open Items"
+had not been updated after Session 8 shipped — corrected now.
+No code change.
+
+**FIX 2 — GRN duplicate invoice guard (grn.html, UI only)**
+No DB index — SS Engineering's coil-by-coil workflow (multiple rows of
+the same material under one invoice number, all in one batch, identical
+created_at) is legitimate and indistinguishable from a duplicate at the
+DB level. UI warning is the correct and sufficient guard.
+
+Added normaliseInvoiceNo() — byte-identical to gstr2b-reconcile.html:299.
+Added checkDuplicateInvoice() — queries existing GRN rows for the
+selected supplier before the get_next_grn_number RPC call (so no GRN
+number is burned on a cancelled submission). Fails open on query error
+(advisory only, never a hard block).
+Added #duplicateInvoiceModal — "Invoice X was already received under
+GRN-Y on [date]. Are you sure this is a different delivery?" Cancel
+aborts cleanly. "Yes, this is a different delivery" proceeds to
+submitGrnTransactions() unchanged.
+RPC-then-insert logic extracted into submitGrnTransactions() — shared
+by clean path and confirmed-duplicate path, no behavioral change to
+the insert itself.
+
+No migration. No DB index. scanner.html's own confirmGRN() path also
+writes invoice_no per row (from its own entryInvoice field) with no
+duplicate check at all — untouched this session, known gap, out of
+scope. "Own-stock only by design" (scanner.html's existing property)
+does not imply "no invoice-duplicate risk" — the two are unrelated;
+a scanner-entered GRN can still duplicate a supplier invoice already
+keyed via grn.html or another scanner session, silently.
+
+## Shipped Sept 9, 2026 — Session 13 (E4)
+
+### E4 — One-Click Full Export (settings.html)
+
+New file js/full-export.js. Settings.html Company Details tab gains "Export All Data" card —
+owner-only, every plan including Lite.
+
+Zip contains: 20 CSVs (all p2_* tables, UTF-8 BOM, paged 1000 rows), manifest.json
+(schema_version 1.0, row counts per table), README.txt (Tally import instructions, ledger
+remap note, Bridge Agent warning, WhatsApp support contact),
+documents/tally/vouchers-FY2026-27.xml (current FY Sales + Purchase vouchers, §3.1 envelope
+format, balance assertion per voucher, owned_by IS NULL enforced in query for purchases,
+multi-rate purchase grouping), documents/invoices/ and documents/challans/ (current FY PDFs,
+headless buildInvoicePdf/buildChallanPdf).
+
+Verified Sept 9 2026: 18 vouchers all net zero, BOM working, PDFs render correctly. Filename:
+nexflow-export-<company>-<YYYY-MM-DD>.zip
+
+p2_tenant_settings uses orderColumn: 'tenant_id' (no id column). p2_user_roles uses
+orderColumn: 'user_id' (no id column). sha256 per file deferred to v2 (async, needs
+restructure). REMOTEID uses FNV-1a hash — NOT the canonical Bridge Agent REMOTEID (Session 18
+will use a different, permanent hash). README warns: treat XML as one-time historical import
+if Bridge Agent is planned.
+
+## Shipped Sept 9, 2026 — Session 14 (E3)
+
+### E3 — HSN Audit Tool (export.html)
+
+Audits EXISTING hsn_sac codes on p2_raw_materials/p2_products with Haiku — different from
+enterprise-strategy.md §3.3's original "AI HSN Autofill" design (which suggests a code for a
+*blank* field; not built). New "HSN Audit" card on export.html, after the GSTR-1 Excel Workbook
+card. Access: TABLE13_ROLES (owner/accountant/supervisor), all plans including Lite, no plan
+gate. No new page, no new Edge Function.
+
+Migration `20260909_hsn_audit_source.sql`: `hsn_source text CHECK IN ('manual','imported',
+'ai_verified','ai_corrected')` added to both tables, nullable, no default, never backfilled —
+existing rows stay NULL (display logic treats NULL as 'manual'). Written client-side only:
+export.html's audit sets `'ai_verified'` on `verdict='correct'` rows (silent, fire-and-forget,
+no toast). `'ai_corrected'` (a user manually fixing a flagged code in settings.html/
+products.html) is **not built yet** — noted as a follow-up.
+
+New `suggest_hsn` body.action handler on agent-query (sixth body.action handler alongside the
+five confirm_*/resend_invoice/preview_consolidated_invoice ones — see AI Agent — Architecture
+above). Verifies caller tenant like the other five. Max 25 items/call (400 if exceeded).
+Deliberately does **not** call `checkAndIncrementUsage`/consume the daily agent quota — same
+reasoning as §3.3: this is data-quality tooling, not the chat copilot, and Lite's 0-quota would
+otherwise lock it out entirely. `auditHsnCodes()` clones `callHaiku()`'s exact low-level call
+mechanics (model `claude-haiku-4-5`, text-block extraction, \`\`\`json fence stripping) with its
+own system/user prompt — unrelated to the chat classification prompt. Shape-validates every
+returned verdict/suggested_hsn (bad verdict → forced to `likely_wrong`; malformed or
+wrong-chapter `suggested_hsn` → discarded; an id the model dropped entirely → synthesized
+`likely_wrong`/"No response from model", never silently treated as correct). Special rule:
+`is_job_worker=true` + product kind + `hsn_sac` not starting `'99'` → prompt instructs
+`definitely_wrong`/SAC 998898 (prompt-level only, not re-enforced server-side). Logs to
+`p2_agent_logs` with `intent='hsn_audit'`, fire-and-forget.
+
+export.html client flow: fetches active `p2_raw_materials` (`is_active=true`) and all
+`p2_products` (no `is_active` column on that table), splits client-side into `no_code`
+(blank/whitespace `hsn_sac`, immediate verdict, never sent to Haiku) and `to_audit`, calls
+`suggest_hsn` in **sequential** batches of 25 (never parallel), progress line "Auditing X of Y
+items...". A batch failure partway through still renders whatever batches already succeeded
+(`noCodeRows`/`auditedRows` hoisted above the try block for this reason) — toast on error, not
+a blocking full-page failure. Results table: Type | Name | Code | Current HSN | Verdict |
+Reason | Suggested HSN | Action, left-border colour per verdict (green/amber/red/grey via
+`var(--green)`/`var(--orange)`/`var(--red)`/`var(--mid)` on the row's first `<td>` — `<tr>`
+itself can't carry a border under `.nx-table`'s `border-collapse:collapse`), sorted worst-first
+(`definitely_wrong` → `likely_wrong` → `no_code` → `correct`). Disclaimer ("HSN codes are
+AI-assessed. Verify all flagged codes with your CA before filing.") always shown with results.
+"Download Report" (ExcelJS, reuses the page's existing `exceljs@4.3.0` script tag — no second
+one added): filename `nexflow-hsn-audit-<YYYY-MM-DD>.xlsx`, one sheet, orange header via the
+existing `styleHeaderRow()`, row fill per verdict (reusing itc04-workingpaper.html's
+green/amber/red ARGB convention — `FFD4F7DC`/`FFFFF0B3`/`FFFFC9C9`, plus `FFE8E8E8` grey for
+no_code), summary rows + italic disclaimer row at the bottom.
+
+**Action-column access gap (deliberate):** settings.html is owner-only (redirects every other
+role to index.html); products.html requires the `products` permission, which `accountant`
+doesn't have (js/roles.js `ROLE_PERMISSIONS`). A "Fix →" link to either page for a role that
+can't actually edit there would be a dead-end redirect, so the Action cell is role-aware: owner
+always gets a real "Fix →" link to `settings.html?tab=materials` (raw material rows) or
+`products.html` (product rows); supervisor gets the products.html link but plain grey text for
+raw-material rows ("Ask the owner to fix in Settings"); accountant gets grey text for both
+("Ask the owner..."/"Ask the owner or supervisor to fix"). `correct` rows have no Action cell.
+
+**settings.html gained a small `?tab=` deep link** (new, not previously existing) so the
+raw-material Fix link actually lands on the Raw Materials tab — settings.html always defaulted
+to the Company Details tab on load before this, with no URL-based tab switching at all. Only
+`?tab=materials` is handled (the only value any caller sends); anything else/missing falls
+through to the pre-existing `switchToTab('company')` default. Calls the same
+`switchToTab('materials'); loadMaterials();` pair the existing Materials tab click handler uses.
+
+Corrected two details from the original task spec against the live schema before building:
+p2_raw_materials' name column is `name`, not `material_name`; the results table needs a `Code`
+column (material_code/product_code) distinct from `Current HSN`, fetched even though the
+original field list for the fetch step didn't name it.
+
+Migration applied to all four tenants (test + SS Engineering + Datta Prasad + Shivprasad)
+Sept 9 2026. agent-query deployed with suggest_hsn as sixth body.action handler.
+Verified on test tenant: verdicts correct, quota untouched, ai_verified write-back confirmed
+in DB, p2_agent_logs has intent='hsn_audit' entries.
+
+## Shipped Sept 9, 2026 — Session 15 (E2 Part 1)
+
+### E2 — Monthly AI Filing Package, Part 1
+
+Automatic monthly filing package: runs on the 5th of each month (cron 30 2 5 * *,
+8:00 AM IST), generates a zip per tenant, uploads to Supabase Storage (private bucket),
+emails a 7-day signed download link to the CA/accountant, sends an in-app + Telegram
+notification to the owner. No owner action required.
+
+New Edge Function: `supabase/functions/filing-package/index.ts` (~1,720 lines).
+`verify_jwt=false`. Uses `SB_SECRET_KEY` for all DB/Storage access.
+Two trigger modes:
+- `{ mode: 'monthly_cron' }` — cron path, always returns HTTP 200, per-tenant failures
+  caught and recorded, never thrown up to the response, tenants processed strictly
+  sequentially (never parallel).
+- `{ action: 'generate', tenant_id, period_month? }` — manual path from settings.html
+  "Generate Now" button, verifyCallerTenant check applied.
+
+Zip contents (what's inside per tenant):
+- `gstr1-reference-{YYYY-MM}.xlsx` — 5-sheet GSTR-1 reference workbook (b2b/b2cs/b2cl/
+  hsn/doc), labeled explicitly as reference/cross-check data, NOT a GSTN Offline Tool
+  import file. CAs use Tally/ClearTax/GSPs for actual filing. B2CL_THRESHOLD = 100000
+  (Notification 12/2024, confirmed by CA Sept 9 2026).
+- `purchase-register-{YYYY-MM}.xlsx` — GRN purchases this period, for GSTR-3B ITC figure.
+- `itc04-workingpaper-{principal}-{YYYY-MM}.xlsx` — one file per job-work principal,
+  only when `is_job_worker = true`. Omitted silently for non-job-worker tenants.
+  Multiple principals → one file each (loop, not merged). Zero principals with
+  `is_job_worker=true` → omitted, noted in README.
+- `hsn-audit-{YYYY-MM}.xlsx` — last HSN audit result snapshot. Included only when
+  p2_raw_materials or p2_products has rows with `hsn_source IN ('ai_verified',
+  'ai_corrected')`. Never re-runs the audit automatically.
+- `tally-vouchers-{YYYY-MM}.xml` — period-filtered Tally XML (Sales + Purchase vouchers).
+  Same format as E4/Session 13 but scoped to the single month. Unbalanced vouchers
+  skipped with count reported in README.
+- `exceptions-{YYYY-MM}.txt` — Haiku 4.5 exceptions summary (6 counts in, ≤10 bullets
+  out). Does NOT consume daily agent quota. Logged to p2_agent_logs with
+  `intent='filing_exceptions'`. Falls back to a deterministic count-listing on Haiku
+  failure — package still ships.
+- `README.txt` — static template: period, file list, CA instructions, HSN-AI-assessed
+  disclaimer, WhatsApp +91 72489 32468.
+
+Email: via Resend, `from: 'Nexflow <filing@nexflowautomations.in>'` (same verified domain
+as existing send_challan sender). `reply_to`: tenant's `p2_tenant_settings.email`.
+Subject: "Nexflow Filing Package — {company_name} — {Month} {Year}".
+File list in email body is built from what was actually added to the zip — never a
+static template (so an omitted ITC-04 or HSN file never appears as a false promise).
+Recipients resolved from `filing_recipient` column (ca_only/accountant_only/both).
+'both' requires BOTH `ca_email` AND `accountant_email` present — skips silently otherwise.
+
+New table: `p2_filing_packages`
+id, tenant_id FK → p2_tenants(id), period_month text, status CHECK IN
+('pending','generating','uploaded','emailed','failed'), storage_path, signed_url,
+signed_url_expires_at, error_reason, created_at, updated_at.
+RLS: three command-scoped policies (SELECT/INSERT/UPDATE, no DELETE) on
+tenant_id = get_my_tenant_id() — NOT auth.uid() (that pattern is known-broken
+for non-owner staff). RLS explicitly enabled in the migration.
+UNIQUE index on (tenant_id, period_month) — one package per tenant per month.
+Upsert uses `onConflict: 'tenant_id,period_month'`.
+Cron skips a tenant with status='emailed' for the current period.
+Manual "Generate Now" always overwrites and re-sends.
+
+New columns on p2_tenant_settings:
+- `filing_recipient text NOT NULL DEFAULT 'ca_only' CHECK IN ('ca_only','accountant_only','both')`
+- `accountant_email text` (nullable)
+- `filing_package_enabled boolean NOT NULL DEFAULT true`
+
+New Supabase Storage bucket: `filing-packages` (PRIVATE — never public).
+Path: `{tenant_id}/{period_month}/nexflow-filing-{slug}-{YYYY-MM-DD}.zip`
+Signed URL expiry: 7 days. All access via service role or pre-signed URL only.
+
+p2_notifications.type CHECK constraint updated to include `'filing_package_ready'`
+(was: 'challan_dispatched','payment_overdue','low_stock').
+
+Cron: jobid 9, 'filing-package-monthly', schedule '30 2 5 * *' (8:00 AM IST, 5th of
+month). Anon key in Authorization header — same confirmed-live pattern as jobid 2/3/8.
+Body: `{"mode":"monthly_cron"}`. Migration: `20260910_setup_cron_filing_package.sql`.
+
+settings.html: new owner-only "Filing Package" tab. Fields: `filing_package_enabled`
+toggle, `filing_recipient` selector, `accountant_email` field (shown only when
+`filing_recipient != 'ca_only'`), "Generate Now" button (fetches fresh JWT via
+`window.supabase.auth.getSession()` — same pattern as export.html's `runHsnAudit()`),
+last-package status (badge + period + Download link if `signed_url` exists and
+`signed_url_expires_at` is in the future).
+
+Known limitations (not blockers):
+- Exceptions summary uses Haiku, not Opus. The Opus-powered covering note
+  (00-READ-THIS-FIRST.html, raw-row judgment, misclassification detection) is
+  Session 16 scope.
+- GSTR-1 reference workbook uses the informal 5-sheet shape, not the GSTN Offline
+  Tool V2.0 template. CAs use Tally/ClearTax/GSPs anyway — V2.0 format is Session
+  16 scope if needed.
+- GSTR-2B reconciliation sheet deferred to Part 2 (requires p2_gstr2b_uploads table).
+
+Verified Sept 9 2026 (test tenant fe2b94fb-9668-405f-9c62-5f54b32f8c7a):
+Email delivered to inbox, subject correct, download link live, all 6 files in zip.
+status='emailed', error_reason=null, notification status='sent' (Telegram delivered).
+agent_interactions_today unchanged (quota untouched). Signed URL expires 7 days out.
+Haiku exceptions caught 1 missing supplier invoice number correctly.
+Migration applied to test tenant. Pending: apply to all three live tenants before
+the 5th of October.
+
+## Shipped Sept 10, 2026 — Session 16 (E2 Part 2)
+
+### E2 — Monthly AI Filing Package, Part 2: Opus Covering Note
+
+Replaced the static README.txt and narrow Haiku exceptions summary from Session 15
+with a single Opus-written 00-READ-THIS-FIRST.html covering note. This is the one
+deliberate place in the codebase where claude-opus-5 is used (not Haiku) — per
+enterprise-strategy.md §3.2 [DECIDED].
+
+Only one file changed: supabase/functions/filing-package/index.ts.
+No migrations, no new Edge Functions, no settings.html changes.
+
+Removed from Session 15:
+computeExceptionCounts(), callHaikuExceptions(), fallbackExceptionsText(),
+buildReadmeText(), ExceptionCounts interface, README.txt zip entry,
+exceptions-{YYYY-MM}.txt zip entry.
+
+Added:
+`fetchCoveringNoteData(tenantId, monthFrom, monthTo, isJobWorker, tenant)` —
+fetches raw invoice/GRN/dispatch/HSN/payment/job-work data for the period.
+Carries both raw rows (for Opus) and eight canonical count fields (for Haiku
+fallback): missingInvoiceNoCount, missingHsnLineCount, interstateCount,
+overdueInvoiceCount, msmeRiskCount, s143BreachCount, wrongInvoiceOnJobWorkCount,
+neverAuditedMaterialCount. Overdue invoices NOT period-scoped — queries all
+currently overdue invoices regardless of invoice_date (an invoice from 3 months
+ago still unpaid is flagged every month until resolved). s.143 lookback: trailing
+400-day window on transaction_date, filtered to breach_warning/breached before
+reaching Opus — bounded regardless of tenant history length. Uses
+v_p2_invoice_payment_status directly (service-role only view — filing-package
+already uses SB_SECRET_KEY so it can read it). Reuses existing
+fetchJobWorkPrincipals() and computeS143Clock() from Session 15 — not re-ported.
+
+`callOpusCoveringNote(data)` — three-layer fallback chain, never throws:
+Layer 1: claude-opus-5, max_tokens=6000, raw rows as input. System prompt: GST
+filing assistant, CA-grade, specific, actionable, never invent data, plain prose
+no markdown, 200-400 words. User prompt instructs JSON output: {covering_note,
+action_items}. parseCoveringNoteJson() validates: non-null object, covering_note
+is non-empty string, action_items is array. action_items elements filtered to
+typeof string only. stripMarkdown() applied to covering_note. Logs
+intent='filing_covering_note', success=true to p2_agent_logs.
+Layer 2: claude-haiku-4-5, counts-only input (the eight canonical fields +
+companyName + periodLabel + isJobWorker). Same JSON output shape. Logs
+success=false, error_reason='opus_failed: <message>'.
+Layer 3: deterministic pure function, cannot fail. Walks the eight count fields,
+emits plain-text bullets. action_items is one imperative line per non-zero flag.
+Logs success=false, error_reason='opus_and_haiku_failed: <message>'.
+Never calls checkAndIncrementAgentUsage — not a chat interaction.
+
+`buildCoveringNoteHtml(opts)` — pure function, returns self-contained HTML. No
+external CSS, no CDN, no images — renders offline in any browser. Nexflow orange
+#ff5c1a. Sections: header (company/GSTIN/date), file list, covering note (prose
+paragraphs), action items (numbered ol), footer. @media print block included.
+Receives filesForHtml = [...filesIncluded] snapshot — never the live array
+reference — so section (b) cannot include itself regardless of future reordering.
+
+Updated:
+processTenant() — replaces README+exceptions block with: fetchCoveringNoteData →
+callOpusCoveringNote → filesForHtml snapshot → buildCoveringNoteHtml →
+zip.file('00-READ-THIS-FIRST.html', html) → filesIncluded.unshift('00-READ-THIS-
+FIRST.html — covering note...'). unshift (not push) so it reads first in the
+email file list.
+sendFilingEmail() — exceptionsText: string replaced with actionItems: string[].
+Body renders numbered list when non-empty, "No action items for this period."
+when empty.
+
+Dead code removed: stripJsonFence() (was superseded by inline fence-stripping
+inside parseCoveringNoteJson()).
+
+Known issue resolved during build: max_tokens was initially 2000, raised to 6000
+after Opus truncated at 4660 chars ("Unexpected end of JSON input"). The user
+prompt's "300-600 words" instruction was reconciled with the system prompt's
+"200-400 words" ceiling — both now say 200-400 words. Shape validation was
+initially over-strict (rejected valid Opus responses due to a per-element typeof
+check on action_items). Rewritten to exactly four conditions: JSON.parse throws,
+not an object, covering_note missing/empty, action_items not an array.
+
+Verified Sept 10 2026:
+Test tenant (fe2b94fb): success=true, error_reason=null. Covering note correctly
+identified 1 missing GRN invoice number, 1 interstate GRN, 1 overdue invoice, 1
+MSME 43B(h) risk, 1 s.143 breach, 2 wrong-invoice dispatches, 6 unaudited
+materials.
+Datta Prasad (3b68db90): Opus independently caught 78 dispatch challans with
+zero sales invoices (named challan range 1103-1177 + parallel series 978/982/
+984/985 + 4 missing challan numbers 1145/1150/1160/1174), 15 GRN lines at 0%
+rate against identical 18% goods (named all 12 invoice numbers individually), 1
+orphan GRN with no supplier/invoice, 623 unaudited materials, 50 dispatched
+items with no HSN blocking Table 12. Correctly skipped job-work section (Datta
+Prasad is not a job worker).
+Both runs: filing_covering_note logged, quota untouched.
+
+## Session 17 additions and strategy sessions (Sept 11 2026)
+
+Post-Session-17 strategic planning. No code shipped — three design documents written, all
+`status: design complete — not yet built`.
+
+- **Tutorial engine designed:** `_ai/tutorial-engine.md` (1,329 lines). Three-session build
+  plan (T1–T3). Tutorial configs as JS not JSON — the UI is conditional (`#purposeFieldRow`,
+  `#poolFieldRow`, `#ownerFieldGroup`, `#challanLinksSection` are each gated on a live
+  `isJobWorker()` / `isSeparatePoolDeduction()` call, which JSON cannot express).
+  `data-tutorial-target` attributes for targeting, never `#id` or CSS class. New
+  `p2_tutorial_progress` table. Marathi-first design. Dispatch + GRN are the P0 modules.
+- **Automation strategy designed:** `_ai/automation-strategy.md` (2,281 lines). 8 automations
+  (A0–A8), 4 waves. **CRITICAL: A0 + A6 must ship before October 5 2026.**
+  A6 finding: `filing-package/index.ts` processes tenants strictly sequentially inside one
+  invocation (`for (const tenant of tenants)`, line 2060). Somewhere between ~20 and ~60
+  tenants the invocation is killed mid-loop, and the tenants after the cutoff get nothing at
+  all — no `p2_filing_packages` row, no failure status, no `error_reason` — so nothing keyed
+  on `status='failed'` can detect them. Needs a dispatcher + drain queue before the first
+  multi-tenant run.
+  A0 finding: no founder-facing Telegram channel exists. Every Telegram path resolves
+  `telegram_chat_id` from `p2_tenant_settings` — tenant-scoped by construction. Four
+  automations (A2, A3, A6, A8) are silently blocked without it.
+- **Business strategy documented:** `_ai/business-strategy.md` (1,249 lines).
+  Exit target ₹300Cr post-tax in 7–9 years; ₹150Cr minimum acceptable.
+  90% margin threshold: ~65 clients — or ~105 if Supabase Team is bought at the first
+  Enterprise signature rather than on load.
+  Break-even on recurring revenue: ~3 clients, already passed but only narrowly — with
+  SS Engineering free permanently, the three live tenants produce ~₹16,667/month against
+  ~₹16,750/month of cost (§3.6).
+  Claude Max (₹9,000/month) is the largest single cost line at current scale — 54% of total
+  run cost at 3 clients, 7.3% at 1,000.
+  Razorpay deferred — see Known Open Items 10.
+- Challan line editing and staff activity log added to the product roadmap (Known Open
+  Items 8 and 9).
+- **Hindi translation: build only on first client request, never speculatively.** Both the
+  tutorial engine and the automation layer are designed language-agnostic from day one —
+  adding a language is adding keys plus one migration, never engine code.
+
+## Known Open Items / Blocking Issues
+
+### Blocking — Enterprise Build Prerequisites
+(Identified Sept 7 2026, source: `_ai/enterprise-strategy.md` §6)
+
+E1 = Bridge Agent. E2 = Monthly AI Filing Package. Each item below, left unfixed, produces a
+wrong number in a real client's statutory filing or statutory books — these are blockers, not
+backlog.
+
+**1. GRN duplicate-invoice guard — BLOCKS E1 (Bridge Agent)**
+
+No uniqueness check of any kind exists on (tenant_id, supplier_id, normalised invoice_no).
+A duplicated supplier invoice today double-counts stock and double-claims ITC inside Nexflow.
+Worse, gstr2b-reconcile.html groups GRN rows by (supplier_gstin + normalised invoice_no) and
+therefore SUMS the duplicates, reporting an "Amount Mismatch" against GSTR-2B rather than a
+duplicate — so the operator most likely concludes the supplier filed wrong. With the Bridge
+Agent running it becomes two Purchase vouchers in the client's real statutory books.
+
+**Schema correction (verified Sept 7 2026): there are no `p2_grn_items` or `p2_grn_headers`
+tables.** Neither exists anywhere in the repo; `20260825_hard_delete_dispatch.sql:18` states
+it explicitly ("there is no p2_grn_records table and no structured..."). A GRN is N rows in
+`p2_stock_transactions` sharing one `grn_no` (grn.html:805-829): one `get_next_grn_number` RPC
+call per submission, then one row per material, all carrying the same grn_no, supplier_id,
+transaction_date and owned_by — with `invoice_no` set PER ROW.
+
+**Trap — do not implement the constraint as literally specified.** Because invoice_no is
+per-row and one supplier invoice legitimately spans several rows (multi-material delivery), a
+plain UNIQUE (tenant_id, supplier_id, normalised invoice_no) would REJECT every legitimate
+multi-material GRN and break GRN entry for all three live tenants on day one.
+
+Correct shape — two layers:
+- **DB backstop**, partial unique index that includes the material:
+  `UNIQUE (tenant_id, supplier_id, upper(regexp_replace(invoice_no,'[\s\-/]','','g')),
+  raw_material_id) WHERE transaction_type = 'grn' AND invoice_no IS NOT NULL`.
+  Blocks the same material twice under one supplier invoice; permits multi-material.
+- **UI warning (the real guard)**: on GRN confirm, if (supplier_id, normalised invoice_no)
+  already exists under a DIFFERENT grn_no, warn "Invoice INV-123 was already received under
+  GRN-0042 on 12 Aug" with an explicit override. This is the semantically correct rule and the
+  one that catches the real-world case.
+
+Normalisation must be byte-identical to `normaliseInvoiceNo()` in gstr2b-reconcile.html
+(`str.replace(/[\s\-\/]/g,'').toUpperCase()`), or the guard and the 2B reconciliation will
+disagree about what counts as the same invoice.
+
+Schedule: Phase 3, or a standalone fix before E1 starts.
+
+**2. Challan number length — BLOCKS E2 (AI Filing Package)**
+
+**STATUS: FULLY RESOLVED (Session 11 + CA confirmed Sept 9 2026)**
+CH-YYMMDD-NNNN (14 chars) confirmed compliant under Rule 55 by CA Sept 9 2026 —
+alphanumeric + hyphens valid, fits Rule 46(b)/55 16-char cap, E-Way Bill portal compatible.
+RPC fallback already correct on all tenants. chk_challan_number_length NOT VALID constraint
+in place. Rolled out to all live tenants. No longer a blocker. Original diagnosis preserved
+below for reference.
+
+`CHAL-YYYYMMDD-NNNN` is 18 characters, exceeding the Rule 46(b)/55 16-character cap. It also
+breaks `challanSeriesKey()` (export.html:1377), whose `/^(\D*)(\d+)$/` regex cannot parse a
+format with digits in the middle — it returns null and the rows are filtered out, so legacy
+`CHAL-` challans are silently dropped from series and gap logic. The filing package's `docs`
+sheet (GSTR-1 Table 13) is built from exactly that logic, so the document register would be
+quietly wrong for any tenant holding legacy rows.
+
+Generated at `20260901_fix_insufficient_stock_message.sql:82`, reachable only via the fallback
+branch (all three UI paths pass an explicit p_challan_number). `p2_dispatch_orders.challan_number`
+has no length CHECK.
+
+Fix: shorten the fallback format (e.g. `CH-YYMMDD-NNNN`, 14 chars) AND fix the
+`challanSeriesKey()` parser to handle an embedded date segment so historical rows are counted.
+Both, not either. Add `CHECK (length(challan_number) <= 16)`.
+Run first, per live tenant, to size the exposure:
+`SELECT count(*), max(length(challan_number)) FROM p2_dispatch_orders WHERE challan_number LIKE 'CHAL-%';`
+
+Schedule: before E2 build starts.
+
+**3. B2CL threshold — FIXED (Sept 9 2026)**
+
+Confirmed ₹1 lakh per Notification 12/2024 (effective Aug 1 2024) by CA Sept 9 2026.
+B2CL_THRESHOLD in export.html updated from 250000 → 100000. No longer a blocker for E2.
+
+**4. PVT LTD incorporation + code-signing certificate — BLOCKS E1**
+
+Without a signed Windows installer, SmartScreen blocks every Bridge Agent install and E1 cannot
+be deployed in practice. An OV/EV certificate requires a registered legal entity with verifiable
+identity, so incorporation is a technical prerequisite for E1, not only a commercial one for
+contracting with PVT LTD clients.
+
+Schedule: incorporation runs in parallel now, blocks no build phase
+(`_ai/enterprise-strategy.md` §5). Order the certificate the week incorporation completes.
+
+**5. s.143 clock from principal_challan_date — FIXED (Session 8, Sept 8 2026, commit 969cb3a)**
+
+Was: the clock started from `dispatch_date` (KPML's send date), not `principal_challan_date`
+(the vendor's receive date). See "Shipped Sept 8, 2026 — Session 8 (Phase 3)" above —
+`js/s143-clock.js`'s `computeS143Clock()` now does `clockStart = row.principal_challan_date ||
+row.transaction_date`, and both `principal-dashboard.html` and `itc04-workingpaper.html` pass
+`principal_challan_date` through to it. Re-verified Sept 9 2026 (Session 12): all three call
+sites confirmed correct, no code change needed.
+
+**Session 16 follow-up — Datta Prasad data quality**
+
+Opus covering note (Sept 10 2026) surfaced the following in Datta Prasad's August
+data that need owner action before October filing:
+- 78 dispatch challans to KPML marked 'sale' with no corresponding sales invoices.
+  Tax invoices must be raised before GSTR-1 can be filed.
+- 15 GRN lines recorded at 0% GST against identical 18% goods — likely capture
+  errors, ITC reconciliation with GSTR-2B at risk.
+- 1 orphan GRN (27 Aug, 50 units STATOR STACK KS100-4P CL200) with no supplier
+  name and no invoice number.
+- 623 materials with no HSN audit, 50 dispatched items with no HSN code.
+These are workflow/data-entry issues, not Nexflow bugs. Flag to Datta Prasad
+owner before October 5th cron run.
+
+**6. Consolidated invoice double-billing gap — NOT YET FIXED (found Sept 10 2026, invoices.html
+audit, Session 17)**
+
+`confirmConsolidatedInvoice` (agent-query/index.ts)'s cross-mode double-billing guard only checks
+already-billed dispatches against **single**-mode invoices (`.eq('invoice_mode', 'single')`). It
+never checks against other **consolidated** invoices' `dispatch_order_ids`. Two consolidated
+invoices for the same client with overlapping-but-not-identical date ranges (e.g. Jan 1–15, then
+Jan 10–31) each independently sweep confirmed dispatches in their own window — a dispatch
+confirmed Jan 12 lands in both, fully double-billed, no error, no warning. The DB's
+`p2_invoices_consolidated_dedup_idx` unique index only blocks an exact repeat of `(tenant_id,
+client_id, date_from, date_to)`, so it does not catch this. Distinct from the already-fixed F3
+(job-work-purpose leaking into the sweep). Same applies symmetrically to `previewConsolidatedInvoice`
+(no such check there either, so the preview itself won't warn before the owner confirms).
+Fix direction (not yet built): before insert, check `dispatch_order_ids && orderIds` overlap
+against every other non-cancelled invoice_mode='consolidated' row for the same client, not just
+exact date-range matches.
+
+**7. No DB uniqueness constraint on invoice_number — NOT YET FIXED (found Sept 10 2026, same audit)**
+
+`p2_invoices` has unique indexes on `dispatch_order_id` and `invoice_token` only — nothing
+enforces `invoice_number` uniqueness at the DB level, not even per-tenant. Correctness today
+relies entirely on `get_next_invoice_number`'s row-locked `p2_tenant_settings.invoice_sequence`
+counter never being hand-edited backward (a routine direct-SQL-Editor pattern elsewhere in this
+codebase per the RLS-fix history above). If that counter is ever reset/edited, two invoices could
+silently share one `invoice_number` for a tenant with nothing in the schema to catch it. Fix
+direction (not yet built): `CREATE UNIQUE INDEX ON p2_invoices (tenant_id, invoice_number)`.
+
+**8. Challan line-item editing — Product Roadmap**
+
+Requested by Datta Prasad (Sept 10 2026).
+Owners need to add or remove individual line items on a confirmed dispatch challan without
+deleting and recreating the whole challan.
+
+Add a line: dispatch an additional product/material, consume stock from ledger, increment the
+challan line count, reflect in invoice.
+Remove a line: insert a stock reversal transaction (append-only ledger — never delete the
+original consumption row), remove the line from the challan display.
+
+Hard rules:
+- Only allowed on challans with `status='confirmed'` AND no linked invoice (`dispatch_order_ids`
+  not referenced in any `p2_invoices` row). Once invoiced, the challan is locked — editing would
+  mismatch the invoice. Show a clear error if the owner tries to edit a locked challan.
+- Stock check required before adding a line — same fail-closed check as
+  `confirm_dispatch_transaction`. Insufficient stock = hard block.
+- Reversal transaction must reference the original `dispatch_order_id` so the audit trail is
+  complete.
+- Challan number does not change on edit — the document stays the same challan, just with
+  corrected lines.
+
+UI surface: `challan.html` detail view — "Edit Lines" button, visible only when the challan is
+unlocked (no invoice). Opens an inline edit mode with add/remove per line.
+
+Backend: new RPC or new `body.action` handler on `agent-query` — `add_challan_line` /
+`remove_challan_line`. Do not modify `confirm_dispatch_transaction`.
+
+Schedule: post-KPML meeting, own session.
+
+**9. Staff activity log — Product Roadmap**
+
+Requested by PVT LTD owner (Sept 10 2026).
+Owners need visibility into who did what in the software — which staff member confirmed a GRN,
+created a dispatch, generated an invoice.
+
+Infrastructure needed:
+- Add `created_by uuid REFERENCES auth.users(id)` (nullable, no backfill) to:
+  `p2_stock_transactions`, `p2_dispatch_orders`, `p2_invoices`, `p2_dispatch_items`. Migration
+  only — nullable so existing rows are unaffected.
+- Populate `created_by` at action time from `auth.uid()` in the relevant RPC or Edge Function
+  call site. One call site per table.
+- New view or query: `v_p2_activity_log` joining the above tables with `p2_staff` (name, role) on
+  `created_by`, ordered by `created_at desc`. Filterable by staff member, action type, date range.
+
+UI surface: new "Activity" tab in `settings.html` (owner-only). Shows a filterable table:
+Date | Staff Member | Action | Details.
+No new page needed — `settings.html` tab pattern already established.
+
+Schedule: post-KPML meeting, own session. One session.
+
+**10. Razorpay — deferred to 50+ clients [DECIDED Sept 11 2026]**
+
+Payments are manual bank transfers confirmed by the founder via direct SQL
+(`UPDATE p2_tenant_settings SET plan='pro' WHERE tenant_id='...'`). `grep -ril razorpay`
+returns zero matches — there is no webhook, no subscription table, no payment event log and no
+plan-expiry field anywhere in the codebase.
+
+Razorpay integration is deferred until all three are true:
+- PVT LTD incorporation complete — Razorpay KYC binds to the legal entity (PAN, bank account,
+  business proof), all of which change at incorporation
+- Manual payment management takes >3 hours/month
+- ~50+ clients
+
+At current scale manual confirmation takes <5 minutes per payment. Building against the
+proprietorship means doing the integration twice and migrating live subscriptions between two
+merchant accounts. Setup fees are collected manually anyway — one consistent process.
+
+Note on the fee argument: Razorpay's ~2% is 2% of revenue at every scale (₹1,392/month at 10
+clients, ₹9,580/month at 50). As a share of the cost base it *rises* with the book — 6.6% at 10
+clients, 18.2% at 50 — so fee ratio is not a reason to defer. The entity binding is.
+See `_ai/business-strategy.md` §9.3.
+
+Revisit at 50 clients. Source: `_ai/automation-strategy.md` §1 finding 2, §4.5.
+
+**11. New MD files added Sept 11 2026**
+
+- `_ai/tutorial-engine.md` — guided tutorial system design, 1,329 lines, designed not yet
+  built. Read in full before any tutorial session.
+- `_ai/automation-strategy.md` — 8 operational automations (A0–A8), 2,281 lines. Wave 0
+  (A0 + A6) carries a hard October 5 2026 deadline. Read before any automation or ops work.
+- `_ai/business-strategy.md` — costs, margins, exit strategy, revenue projections, competitive
+  moats, distribution and hiring strategy. Read before any pricing, hiring or commercial
+  decision.
+
+Load order for a session touching any of these: `_ai/CLAUDE.md` → the relevant strategy file →
+the target source file. `_ai/enterprise-strategy.md` remains the Enterprise build spec.
+
+**12. Exit tax structure — urgent CA consultation needed**
+
+Current assumption: 20–23% effective LTCG tax on a PVT LTD share sale
+(`_ai/business-strategy.md` §5.3). **This may be wrong** — the unlisted-share LTCG regime
+changed in Budget 2024. On a ₹400Cr exit the difference is ₹60–80Cr.
+
+Additionally: the holding-period clock starts when shares are issued. Every month before
+incorporation is a month of holding period lost.
+
+Action — consult a CA this week on:
+1. The current LTCG rate for unlisted PVT LTD shares
+2. Optimal shareholding structure before the first additional director is added
+3. The exact date incorporation should happen to maximise LTCG treatment at exit
+
+**Do not issue any shares until this is answered.** Interacts directly with
+`_ai/enterprise-strategy.md` §9 Q13 (who is the second director, and what do they hold) — that
+question sits on the SPICe+ Part B form, so it cannot be deferred past incorporation.
+
+## What to build next (priority order)
+
+**CRITICAL CONTEXT (Sept 11 2026):**
+The October 5, 6, and 7 filing package runs are not just an ops task — they are the primary
+distribution event that determines whether the first CA referrals arrive in March 2027 or slip
+to late 2027. A6 (filing package dispatcher + drain queue) is a sales dependency, not an
+infrastructure nicety. If A6 is not built before October 5, the March 2027 first-referral
+target is at risk. Build A0 then A6. Nothing else until both are done.
+
+### IMMEDIATE — before October 5 2026
+
+1. **Session A0 — Founder ops channel** (0.5 session)
+   `p2_ops_alerts` table, `supabase/functions/_shared/ops.ts`, `opsAlert()`,
+   `FOUNDER_TELEGRAM_CHAT_ID` secret, `/ack` branch on `telegram-webhook`.
+   The secret must be set by hand — Claude cannot read Edge Function secret values back
+   (`supabase secrets list` returns digests only), same manual step as `setWebhook`
+   registration. If it is unset, `opsAlert` still writes the row with
+   `error_reason = 'no_founder_chat_id'` so the misconfiguration is visible.
+2. **Session A6 — Filing package dispatcher + drain queue** (1 session)
+   `p2_job_queue` table, `dispatch` mode, drain cron every 2 min on the 5th–7th, replacing the
+   sequential loop. Claim with `FOR UPDATE SKIP LOCKED`.
+   Measure the October 5 run timing and write the real number into
+   `_ai/automation-strategy.md` — §3.3 carries the SQL and the open question (Q1).
+
+### AFTER KPML MEETING — Oct–Nov 2026
+
+3. Session A2 — Compliance monitoring (1.5 sessions)
+4. Session A3 — Daily ops digest (1 session)
+5. Session A4 Phase 1 — Support escalation relay (1.5 sessions)
+6. Session T1 — Tutorial engine + dispatch tutorial (English)
+7. Challan line editing (1 session) — Known Open Items 8
+8. Staff activity log (1 session) — Known Open Items 9
+
+### PRE-KPML VENDOR WAVE — Dec 2026 – Feb 2027
+
+9. Session A1 — Onboarding data ingestion (3–4 sessions). **Must precede the vendor wave** —
+   20 vendors at 3–6 founder-hours each is 60–120 hours that do not exist during a pilot.
+10. Session T2 — Tutorial Marathi + mobile + GRN
+11. Double-billing fix on overlapping consolidated invoices — Known Open Items 6
+
+### POST-INCORPORATION
+
+12. Session A5 — Billing reminder scheduler (manual trigger, no Razorpay)
+13. Session A7 — Provisioning (manual-trigger version)
+14. Session T3 — Tutorial coverage + demo mode
+
+### 40+ CLIENTS
+
+15. Session A4 Phase 2 — KB-backed support agent
+16. Session E1 — Bridge Agent (PVT LTD incorporation + code-signing certificate required)
+17. Session A5 + A7 — Razorpay integration (gate is 50+ clients — Known Open Items 10)
 
 ## GST Scope — PERMANENTLY LOCKED
 Nexflow P2 generates tax invoices for client billing. It does NOT handle GST filing, GSTR
@@ -1941,22 +2888,27 @@ from own stock instead of principal's pool.
 Source for p_owned_by: p2_challan_links → original_dispatch_id →
 p2_dispatch_orders.owned_by. If no link, require user to select principal from dropdown.
 
-### Physical Stock Count Screen
-Most important missing feature for the "replace the accountant" promise.
-Nexflow reports what was typed. A real stock register compares what was typed
-against what's in the racks and shows the variance.
-Flow: last working day of month, operator counts each material on phone, system
-shows "system says 400 — you count?" → accept or adjust. Variance report with
-rupee value. Adjustment posts to correct pool (own or principal).
-Build before ITC-04 working paper.
+### Physical Stock Count (follow-ups)
+Core screen SHIPPED Sept 6, 2026 — see "Shipped Sept 6, 2026 — Session 7 (Phase 1)" above.
+Remaining items, none blocking:
+- Blind count mode (hide system qty to prevent anchoring bias) —
+  build only when a client explicitly requests it.
+- Count history screen (who ran what count, when) — build when asked.
+- Scanner-driven counting (barcode → count field) — natural next step
+  after scanner.html field usage is confirmed.
+- Known limitation: system qty is a point-in-time snapshot from when
+  the overlay opens. A GRN or dispatch posted during a long count
+  session will make system qty appear stale. The posted adjustment
+  corrects for it. Document to clients if they notice.
 
 ### ITC-04 Working Paper Export
 The CA channel unlock. Makes a CA recommend Nexflow to every factory client.
 Format: flat Excel, one row per challan line, paste-ready into GSTN utility.
 Sheet 0: reconciliation summary + ageing (the product — two days of CA work in
 10 minutes). Sheets 1–4: Table 4, 5A, 5B, 5C paste-ready.
-Prerequisites already built: p2_challan_links, principal_challan_no/date, UQC codes.
-Still needed: s.143 clock from principal_challan_date, pre-export validation screen.
+Prerequisites already built: p2_challan_links, principal_challan_no/date, UQC codes,
+s.143 clock from principal_challan_date (Session 8).
+Still needed: pre-export validation screen.
 
 ### Principal Material Passbook
 The KPML demo closer. Per-principal, per-material ledger showing:

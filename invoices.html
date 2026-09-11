@@ -100,6 +100,18 @@
         @media (max-width: 767px) {
             .nx-mobile-detail-row { display: table-row; }
         }
+
+        /* Consolidated invoice preview table — scoped to .cons-preview-table only.
+           Description is left unconstrained so it flexes; narrow columns get a fixed
+           width so they don't crowd it out on the modal's narrower-than-A4 width. */
+        .cons-preview-table th.col-sr,      .cons-preview-table td.col-sr      { width: 34px; }
+        .cons-preview-table th.col-challan, .cons-preview-table td.col-challan { width: 90px; }
+        .cons-preview-table th.col-date,    .cons-preview-table td.col-date    { width: 82px; white-space: nowrap; }
+        .cons-preview-table th.col-qty,     .cons-preview-table td.col-qty     { width: 56px; }
+        .cons-preview-table th.col-unit,    .cons-preview-table td.col-unit    { width: 60px; }
+        .cons-preview-table th.col-sac,     .cons-preview-table td.col-sac     { width: 72px; }
+        .cons-preview-table th.col-rate,    .cons-preview-table td.col-rate    { width: 96px; }
+        .cons-preview-table th.col-amount,  .cons-preview-table td.col-amount  { width: 104px; }
     </style>
 </head>
 <body>
@@ -334,6 +346,13 @@
                 <div id="consInvoiceErrorText"></div>
             </div>
 
+            <!-- Non-blocking, matches #consPreviewHsnWarning's exact pattern below — shown
+                 when the selected client has no GSTIN and GST Type is CGST+SGST/IGST. First
+                 click on Preview Line Items shows this and stops; a second click proceeds. -->
+            <div id="consGstinWarning" style="display:none; font-size:12px; color:var(--yellow); margin-top:-8px; margin-bottom:16px;">
+                ⚠ <span data-en="This client has no GSTIN on file. A B2B invoice requires a valid GSTIN. Update the client's GSTIN in Settings before proceeding, or change the tax type to None for unregistered customers." data-mr="या क्लायंटचा GSTIN नोंदवलेला नाही. B2B इनव्हॉइससाठी वैध GSTIN आवश्यक आहे. पुढे जाण्यापूर्वी Settings मध्ये क्लायंटचा GSTIN अपडेट करा, किंवा नोंदणी नसलेल्या ग्राहकांसाठी टॅक्स प्रकार 'None' करा.">This client has no GSTIN on file. A B2B invoice requires a valid GSTIN. Update the client's GSTIN in Settings before proceeding, or change the tax type to None for unregistered customers.</span>
+            </div>
+
             <div style="display:flex; gap:10px;">
                 <button id="consInvoiceConfirm" class="nx-btn nx-btn-green" style="flex:1;" data-en="Preview Line Items &rarr;" data-mr="वस्तू पूर्वावलोकन &rarr;">Preview Line Items &rarr;</button>
                 <button id="consInvoiceCancel" class="nx-btn nx-btn-ghost" style="flex:1;" data-en="Cancel" data-mr="रद्द करा">Cancel</button>
@@ -343,29 +362,43 @@
 
     <!-- CONSOLIDATED INVOICE PREVIEW MODAL (Step 2) -->
     <div id="consInvoicePreviewModal" class="nx-modal-overlay" style="display:none;">
-        <div class="nx-modal" style="max-width:700px;">
+        <div class="nx-modal" style="max-width:820px;">
             <div class="nx-modal-title" style="color:var(--orange);" data-en="Preview Invoice" data-mr="इनव्हॉइस पूर्वावलोकन">Preview Invoice</div>
-            <div id="consPreviewClientLine" style="font-size:13px; color:var(--mid); margin-bottom:16px;"></div>
+            <div id="consPreviewClientLine" style="font-size:13px; color:var(--mid); margin-bottom:4px;"></div>
+            <div id="consPreviewInvoiceDate" style="font-size:13px; color:var(--mid); margin-bottom:16px;"></div>
 
+            <!-- Columns match invoice.html / js/invoice-pdf.js's consolidated-mode printed
+                 layout exactly (Sr | Challan No | Date | Description | Qty | Unit | SAC Code |
+                 Rate | Amount) — one row per dispatch line item, so the preview never surprises
+                 the owner after Confirm & Generate. -->
             <div class="nx-table-wrap" style="max-height:320px; overflow-y:auto; margin-bottom:16px;">
-                <table class="nx-table" style="font-size:13px;">
+                <table class="nx-table cons-preview-table" style="font-size:13px;">
                     <thead>
                         <tr>
-                            <th data-en="Product Code" data-mr="उत्पादन कोड">Product Code</th>
+                            <th class="col-sr" style="text-align:center;" data-en="SR" data-mr="अ.क्र.">SR</th>
+                            <th class="col-challan" data-en="Challan No" data-mr="चलान क्र.">Challan No</th>
+                            <th class="col-date" data-en="Date" data-mr="तारीख">Date</th>
                             <th data-en="Description" data-mr="वर्णन">Description</th>
-                            <th style="text-align:right;" data-en="Qty" data-mr="प्रमाण">Qty</th>
-                            <th data-en="Unit" data-mr="एकक">Unit</th>
-                            <th style="text-align:right;" data-en="Unit Price (₹)" data-mr="प्रति नग किंमत (₹)">Unit Price (₹)</th>
-                            <th style="text-align:right;" data-en="Line Total (₹)" data-mr="एकूण (₹)">Line Total (₹)</th>
+                            <th class="col-qty" style="text-align:right;" data-en="Qty" data-mr="प्रमाण">Qty</th>
+                            <th class="col-unit" data-en="Unit" data-mr="एकक">Unit</th>
+                            <th class="col-sac" style="text-align:center;" data-en="SAC Code" data-mr="SAC Code">SAC Code</th>
+                            <th class="col-rate" style="text-align:right;" data-en="Rate" data-mr="दर">Rate</th>
+                            <th class="col-amount" style="text-align:right;" data-en="Amount" data-mr="रक्कम">Amount</th>
                         </tr>
                     </thead>
                     <tbody id="consPreviewItems"></tbody>
                 </table>
             </div>
 
+            <div id="consPreviewHsnWarning" style="display:none; font-size:12px; color:var(--yellow); margin-top:-8px; margin-bottom:16px;">
+                ⚠ <span data-en="One or more line items have no HSN/SAC code. Verify before filing." data-mr="काही वस्तूंसाठी HSN/SAC कोड नाही. फाइलिंगपूर्वी तपासा.">One or more line items have no HSN/SAC code. Verify before filing.</span>
+            </div>
+
             <div style="display:flex; flex-direction:column; gap:6px; align-items:flex-end; margin-bottom:16px; font-size:13px;">
                 <div><span data-en="Subtotal" data-mr="उपएकूण">Subtotal</span>: <span id="consPreviewSubtotal">₹0.00</span></div>
-                <div><span data-en="GST" data-mr="जीएसटी">GST</span>: <span id="consPreviewGst">₹0.00</span></div>
+                <!-- Populated by recomputeConsPreviewTotals() — CGST+SGST, IGST, or empty,
+                     mirroring invoice.html's own gstRowsEl branch on gst_type. -->
+                <div id="consPreviewGstRows"></div>
                 <div style="font-weight:700; font-size:15px; color:var(--white);"><span data-en="Grand Total" data-mr="एकूण रक्कम">Grand Total</span>: <span id="consPreviewTotal">₹0.00</span></div>
             </div>
 
@@ -505,6 +538,12 @@
         const expandedInvoiceIds = new Set();
         const expandedMobileRows = new Set();
         let consInvoicePreviewState = { clientId: null, clientName: null, dateFrom: null, dateTo: null, gstType: null, dispatchType: null, items: [] };
+        // Clients fetched by openConsolidatedModal() (with gstin) — read by the
+        // GSTIN-blank warning check in the Preview Line Items click handler below.
+        let consInvoiceClients = [];
+        // `${clientId}|${gstType}` the owner has already been warned about and chosen
+        // to proceed past — reset whenever the modal reopens or the warning no longer applies.
+        let gstinWarningAckKey = null;
         let advSuppliers = [];
         let selectedAdvSupplierId = null;
 
@@ -999,6 +1038,8 @@
         // ── NEW CONSOLIDATED INVOICE MODAL ─────────────────────────────
         window.openConsolidatedModal = async () => {
             document.getElementById('consInvoiceError').style.display = 'none';
+            document.getElementById('consGstinWarning').style.display = 'none';
+            gstinWarningAckKey = null;
             document.getElementById('consInvoiceFrom').value = '';
             document.getElementById('consInvoiceTo').value = '';
             document.getElementById('consInvoiceGstType').value = 'cgst_sgst';
@@ -1011,15 +1052,17 @@
             try {
                 const { data: clients, error } = await window.supabase
                     .from('p2_clients')
-                    .select('id, name, email')
+                    .select('id, name, email, gstin')
                     .eq('tenant_id', tenantId)
                     .order('name', { ascending: true });
                 if (error) throw error;
 
+                consInvoiceClients = clients || [];
                 select.innerHTML = `<option value="">${t('Select client...','क्लायंट निवडा...')}</option>` +
                     (clients || []).map(c => `<option value="${escInvHtml(c.id)}">${escInvHtml(c.name)}</option>`).join('');
             } catch (err) {
                 console.error('openConsolidatedModal clients load:', err);
+                consInvoiceClients = [];
                 select.innerHTML = `<option value="">${t('Could not load clients','क्लायंट लोड करता आले नाहीत')}</option>`;
             }
         };
@@ -1050,6 +1093,25 @@
 
                 if (!clientId) { showConsInvoiceError(t('Please select a client.','कृपया क्लायंट निवडा.')); return; }
                 if (!dateFrom || !dateTo) { showConsInvoiceError(t('Please select both a from and to date.','कृपया पासून आणि पर्यंत दोन्ही तारखा निवडा.')); return; }
+
+                // GSTIN advisory — non-blocking, but a same-click "warn and proceed" would
+                // never actually be seen (openConsPreviewModal() hides this modal the moment
+                // the fetch below succeeds). So: first click on a blank-GSTIN B2B selection
+                // shows the warning and stops here; a second click with the same client/GST
+                // type selected proceeds to the preview call below.
+                const warningEl = document.getElementById('consGstinWarning');
+                const selectedClient = consInvoiceClients.find(c => c.id === clientId);
+                const gstinMissing = !selectedClient?.gstin || !selectedClient.gstin.trim();
+                const needsGstin = gstType === 'cgst_sgst' || gstType === 'igst';
+                const shouldWarnGstin = needsGstin && gstinMissing;
+                const gstinWarnKey = `${clientId}|${gstType}`;
+
+                if (shouldWarnGstin && gstinWarningAckKey !== gstinWarnKey) {
+                    warningEl.style.display = 'block';
+                    gstinWarningAckKey = gstinWarnKey;
+                    return;
+                }
+                warningEl.style.display = 'none';
 
                 const btn = document.getElementById('consInvoiceConfirm');
                 btn.disabled = true;
@@ -1091,19 +1153,26 @@
         }
 
         // ── CONSOLIDATED INVOICE PREVIEW MODAL (Step 2) ─────────────────
+        // Column order matches invoice.html's consolidated-mode printed table exactly:
+        // SR | Challan No | Date | Description | Qty | Unit | SAC Code | Rate | Amount.
         function renderConsPreviewRow(item, idx) {
+            const hsn = item.hsn_sac && String(item.hsn_sac).trim();
+            const hsnCell = hsn ? escInvHtml(item.hsn_sac) : `<span style="color:var(--yellow);">—</span>`;
             return `
                 <tr>
-                    <td>${escInvHtml(item.product_code || '—')}</td>
+                    <td class="col-sr" style="text-align:center; color:var(--mid);">${idx + 1}</td>
+                    <td class="col-challan nx-td-mono">${escInvHtml(item.challan_number || '—')}</td>
+                    <td class="col-date">${fmtDate(item.dispatch_date)}</td>
                     <td class="nx-td-bold">${escInvHtml(item.description)}</td>
-                    <td style="text-align:right; font-family:monospace;">${item.qty}</td>
-                    <td style="color:var(--mid);">${escInvHtml(item.unit)}</td>
-                    <td style="text-align:right;">
+                    <td class="col-qty" style="text-align:right; font-family:monospace;">${item.qty}</td>
+                    <td class="col-unit" style="color:var(--mid);">${escInvHtml(item.unit)}</td>
+                    <td class="col-sac" style="text-align:center;">${hsnCell}</td>
+                    <td class="col-rate" style="text-align:right;">
                         <input type="number" step="0.01" min="0" class="nx-input cons-preview-rate"
                             data-idx="${idx}" value="${item.rate}"
-                            style="width:100px; text-align:right; height:32px; font-size:13px;">
+                            style="width:88px; text-align:right; height:32px; font-size:13px;">
                     </td>
-                    <td style="text-align:right; font-family:monospace;" id="consPreviewLineTotal_${idx}">${fmtMoney(item.qty * item.rate)}</td>
+                    <td class="col-amount" style="text-align:right; font-family:monospace;" id="consPreviewLineTotal_${idx}">${fmtMoney(item.qty * item.rate)}</td>
                 </tr>
             `;
         }
@@ -1121,23 +1190,42 @@
                 if (cell) cell.textContent = fmtMoney(lineTotal);
                 subtotal += lineTotal;
             });
-            // Mirrors buildInvoiceTotals() in agent-query/index.ts exactly —
-            // flat 18% on the subtotal, not per-line HSN rates — so this
-            // preview total matches what confirm_consolidated_invoice will
-            // actually charge.
-            const gst = consInvoicePreviewState.gstType === 'none' ? 0 : subtotal * 0.18;
+            // Mirrors buildInvoiceTotals() in agent-query/index.ts and invoice.html's own
+            // gstRowsEl rendering exactly — flat 18% split by gst_type (CGST+SGST 9%/9%,
+            // IGST 18%, or none), not per-line HSN rates — so this preview always matches
+            // what confirm_consolidated_invoice will charge and what the printed invoice
+            // will show.
+            const gstType = consInvoicePreviewState.gstType;
+            const gst = gstType === 'none' ? 0 : subtotal * 0.18;
+            const gstRowsEl = document.getElementById('consPreviewGstRows');
+            if (gstType === 'cgst_sgst') {
+                const half = gst / 2;
+                gstRowsEl.innerHTML = `
+                    <div>${t('CGST @ 9%', 'CGST @ 9%')}: <span>${fmtMoney(half)}</span></div>
+                    <div>${t('SGST @ 9%', 'SGST @ 9%')}: <span>${fmtMoney(half)}</span></div>
+                `;
+            } else if (gstType === 'igst') {
+                gstRowsEl.innerHTML = `<div>${t('IGST @ 18%', 'IGST @ 18%')}: <span>${fmtMoney(gst)}</span></div>`;
+            } else {
+                gstRowsEl.innerHTML = '';
+            }
+
             const total = subtotal + gst;
             document.getElementById('consPreviewSubtotal').textContent = fmtMoney(subtotal);
-            document.getElementById('consPreviewGst').textContent = fmtMoney(gst);
             document.getElementById('consPreviewTotal').textContent = fmtMoney(total);
         }
 
         function openConsPreviewModal(data) {
             consInvoicePreviewState.items = data.items;
             document.getElementById('consPreviewClientLine').textContent = data.client_name;
+            document.getElementById('consPreviewInvoiceDate').textContent =
+                `${t('Invoice Date', 'इनव्हॉइस तारीख')}: ${t('Today', 'आज')} — ${fmtDate(new Date())}`;
             document.getElementById('consPreviewError').style.display = 'none';
             document.getElementById('consPreviewItems').innerHTML =
                 data.items.map((item, idx) => renderConsPreviewRow(item, idx)).join('');
+
+            const anyMissingHsn = data.items.some(it => !it.hsn_sac || !String(it.hsn_sac).trim());
+            document.getElementById('consPreviewHsnWarning').style.display = anyMissingHsn ? 'block' : 'none';
 
             document.getElementById('consolidatedInvoiceModal').style.display = 'none';
             document.getElementById('consInvoicePreviewModal').style.display = 'flex';

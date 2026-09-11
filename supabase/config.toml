@@ -45,3 +45,6 @@ verify_jwt = false
 
 [functions.telegram-webhook]
 verify_jwt = false
+
+[functions.filing-package]
+verify_jwt = false
