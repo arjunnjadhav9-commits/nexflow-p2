@@ -1216,6 +1216,7 @@
         }
 
         function openConsPreviewModal(data) {
+            data.items.sort((a, b) => parseInt(a.challan_number) - parseInt(b.challan_number));
             consInvoicePreviewState.items = data.items;
             document.getElementById('consPreviewClientLine').textContent = data.client_name;
             document.getElementById('consPreviewInvoiceDate').textContent =
@@ -1253,6 +1254,8 @@
 
             document.getElementById('consPreviewConfirm').addEventListener('click', async () => {
                 document.getElementById('consPreviewError').style.display = 'none';
+
+                consInvoicePreviewState.items.sort((a, b) => parseInt(a.challan_number) - parseInt(b.challan_number));
 
                 const itemRates = consInvoicePreviewState.items.map(item => ({
                     dispatch_item_id: item.dispatch_item_id,

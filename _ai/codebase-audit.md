@@ -1,6 +1,6 @@
 ---
 name: codebase-audit
-description: Full codebase audit — auth, roles, data integrity, Edge Functions, frontend quality, schema, and known issue verification. Read before starting any build session.
+description: "HISTORICAL AUDIT — 4 September 2026. Statuses superseded by CLAUDE.md's Shipped entries. Read for the still-open items list ONLY. Do NOT act on the priority fix list — ~60% of items are already fixed in Sessions 1-17."
 sources: [codebase-analysis]
 last_updated: Sept 2026
 ---

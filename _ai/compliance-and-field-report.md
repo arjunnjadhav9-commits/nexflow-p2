@@ -7,6 +7,41 @@ last_updated: Sept 2026
 
 # Compliance and Field Report — Nexflow P2
 
+## COMPLIANCE VERIFICATION NEEDED (Sept 11 2026)
+
+The following `[INFERRED]` rules are implemented in the product as if `[LAW]`. CA confirmation
+needed before A2 (compliance monitoring) is built, because A2 will scan for rule changes against
+these as the baseline:
+
+- 45-day 43B(h) threshold applied universally (statute says 15 days without written agreement)
+- Interest computed simple, not compounded (MSMED s.16 compounds with monthly rests — understates
+  exposure)
+- RBI bank rate hardcoded at 6.5% — not in A2's proposed constants inventory, and it changes
+- All GRN receipts treated as 365-day s.143 inputs — no capital-goods 3-year band, no tooling
+  exemption on the GRN side
+- `is_exempt_tooling` has no UI — tooling shows 3-year countdown on KPML dashboard
+- ITC-04 frequency driven by the *tenant's* `aato_bracket` — for a vendor generating a working
+  paper for a principal, the relevant turnover is the principal's, not the vendor's
+- s.122(1) (₹10,000 or tax evaded) — carries an explicit `[VERIFY]` in its own source; do not
+  quote to a client
+- Flat 18% invoice split — `[LAW]`-correct for engineering job work post-22 Sep 2025, but a
+  deliberate simplification that will never flag a rate change relevant to a future textile/food
+  (5%) or diamond (1.5%) client
+- s.19 direct supplier → job worker not modelled — the clock should run from the job worker's
+  receipt date; the current `clockStart` expression is accidentally right for this case and wrong
+  in principle
+- s.168A COVID extension reaching s.143 periods — not in the product, `[INFERRED]` from an
+  exclusion list, low priority
+- Commissioner extension process — `s143_extension_until` is a write-only stub with no
+  order-reference field; do not give it a UI without the mandatory reference
+- Rule 56(11) does not apply to job workers — correctly absent from all product copy; flag it so
+  it never enters marketing
+
+Full detail and locations for each item: `_ai/md-audit-report.md` §Compliance Verification
+Needed.
+
+---
+
 ## How to read this file
 
 Every claim below carries one of three markers. Do not build a compliance feature on anything that is not

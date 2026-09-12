@@ -1987,6 +1987,9 @@ reads ~0.1× input, cache writes ~1.25×.
 
 ### 8.1 Infrastructure
 
+§8.1 figures are pre-correction infrastructure only. §8.3 supersedes §8.1. business-strategy.md
+§3.1 [DECIDED] supersedes §8.3. Use business-strategy.md §3.1 for all planning.
+
 | | 10 | 50 | 100 | 500 | 1,000 |
 |---|---|---|---|---|---|
 | Supabase | $25 (Pro) | $135 (Pro + compute) | $599 (Team) | ~$999 | ~$1,400 |

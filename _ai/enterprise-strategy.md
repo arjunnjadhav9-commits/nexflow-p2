@@ -809,6 +809,10 @@ sentence." This is a different task:
 
 #### Trigger
 
+> `[CORRECTION]` **Shipped in `settings.html` → Filing Package tab (owner-only), not
+> `export.html`. All plans by default (`filing_package_enabled=true`). Plan gating undecided —
+> see `md-audit-report.md` C6.**
+
 - **Automatic:** pg_net cron, **08:00 IST on the 5th of each month** for the month just ended
   (after the month closes, well before the 11th GSTR-1 deadline). New Edge Function
   `filing-package`. New cron jobid; the existing pattern from jobids 2/3/8 applies — anon key in
@@ -988,12 +992,12 @@ Table 13 buckets:
 Challans (Job Work)*, *Delivery Challans (Other)*). Rename the labels to the GSTN strings in the
 workbook writer only; do not change the on-screen table.
 
-> **Blocking prerequisite.** Legacy `CHAL-YYYYMMDD-NNNN` challan numbers are **18 characters**
-> (over the 16-character cap) and `challanSeriesKey()` in `export.html:1377` **cannot parse them
-> at all**, so they are silently dropped from series and gap detection
-> (`codebase-audit.md` §6.4). The `docs` sheet is built from exactly that logic. **Fix both
-> before the filing package ships**, or the document register will be quietly wrong for any
-> tenant with legacy rows.
+> **RESOLVED — Session 11.** Legacy `CHAL-YYYYMMDD-NNNN` challan numbers were 18 characters (over
+> the 16-character cap) and `challanSeriesKey()` in `export.html:1377` could not parse them at
+> all, silently dropping them from series and gap detection (`codebase-audit.md` §6.4). Fixed:
+> fallback format shortened to `CH-YYMMDD-NNNN` (14 chars), `chk_challan_number_length` CHECK
+> constraint added, CA-confirmed compliant Sept 9 2026. No longer a blocker for the filing
+> package.
 
 #### 02 — GSTR-2B reconciliation
 
@@ -1018,9 +1022,10 @@ to the server, so a server-generated monthly package has nothing to reconcile ag
 Built in **Phase 3 (Session 8)**, not here. The filing package *includes* it once it exists;
 it does not build it. Tables 4 / 5A / 5B / 5C with challan references, UQC quantities and
 declared losses, per principal, on that principal's filing cycle. Prerequisites already shipped:
-`p2_challan_links`, `principal_challan_no` / `principal_challan_date`, UQC codes. Still open: the
-s.143 clock currently starts from `dispatch_date` rather than `principal_challan_date`, which
-makes ageing slightly wrong (`CLAUDE.md` Known Open Items).
+`p2_challan_links`, `principal_challan_no` / `principal_challan_date`, UQC codes. **RESOLVED
+(Session 8, re-verified Session 12):** the s.143 clock now starts from `principal_challan_date`
+(falling back to `transaction_date`), not `dispatch_date` — all three call sites confirmed
+correct.
 
 #### 06 — Tally vouchers XML
 
@@ -1088,6 +1093,12 @@ prompt and the GSTN rule text, which are identical across every tenant.
 ---
 
 ### 3.3 AI HSN Autofill
+
+> `[CORRECTION]` **Session 14 shipped a different feature — HSN Audit (audit of existing codes
+> with correct/likely_wrong/definitely_wrong verdicts). The autofill-on-blank-field flow in this
+> section was not built.** The shipped `hsn_source` CHECK constraint uses `'manual','imported',
+> 'ai_verified','ai_corrected'` — NOT `'ai_suggested'`/`'ai_accepted'`. A1's onboarding engine
+> must use the shipped values only.
 
 Suggest an HSN/SAC code from a material or product name, at the moment the material is created.
 
@@ -1777,8 +1788,8 @@ September removes the risk entirely.
 |---|---|---|
 | **Phase 0** | Security / role fixes | ✅ Complete (Session 6, 5 Sept 2026) |
 | **Phase 1** | Physical Stock Count | ✅ Complete (Session 7, 6 Sept 2026) |
-| **Phase 2** | KPML Principal Dashboard | October 2026 |
-| **Phase 3** | ITC-04 Working Paper | **Session 8 — next** |
+| **Phase 2** | KPML Principal Dashboard | ✅ Complete (Session 9, 8 Sept 2026) |
+| **Phase 3** | ITC-04 Working Paper | ✅ Complete (Session 8, 8 Sept 2026) |
 | **Phase 4–5** | Defined in `CLAUDE.md` | See note below |
 | **ENTERPRISE BLOCK** | Bridge Agent · AI Filing Package · HSN Autofill · Full Export | **After Phase 2, before KPML pilot signing** |
 | **After all of the above** | Nexflow serves all four segments | — |
@@ -1853,28 +1864,25 @@ job-worker conversions**. Deferring it costs the least.
 These are genuine blockers, not nice-to-haves. Each one, unfixed, produces a wrong number in a
 real client's statutory filing.
 
-1. **`CHAL-YYYYMMDD-NNNN` is 18 characters and invisible to gap detection.**
-   `codebase-audit.md` §6.4. It exceeds the Rule 46(b)/55 16-character cap, **and**
-   `challanSeriesKey()` (`export.html:1377`) cannot parse it, so legacy rows are silently dropped
-   from series and gap logic. The filing package's `docs` sheet is built from exactly that logic.
-   **Blocks E2.**
+**Remaining:**
 
-2. **GRN duplicate-invoice guard.** `codebase-audit.md` finding #13 — there is no uniqueness check
+1. **GRN duplicate-invoice guard.** `codebase-audit.md` finding #13 — there is no uniqueness check
    of any kind on `(tenant_id, supplier_id, normalised invoice_no)`. Today a duplicated supplier
    invoice double-counts stock and double-claims ITC *inside Nexflow*. With the Bridge Agent
    running, it becomes **two Purchase vouchers in the client's real books**, which is a materially
    worse outcome. **Blocks E1.** Schedule it into Phase 3 or as a standalone fix before E1 starts.
 
-3. **B2CL threshold.** The GSTN V2.0 template and `export.html`'s `B2CL_THRESHOLD` both say
-   ₹2.5 lakh; Notification 12/2024 dropped the portal threshold to ₹1 lakh effective 1 Nov 2024.
-   One line of code, one CA question. **Blocks E2.** §9 Q1.
-
-4. **PVT LTD incorporation → code-signing certificate.** Without a signed installer, SmartScreen
+2. **PVT LTD incorporation → code-signing certificate.** Without a signed installer, SmartScreen
    blocks every Bridge Agent install and the feature is undeployable in practice. **Blocks E1.**
 
-5. **s.143 clock starts from `dispatch_date`, not `principal_challan_date`.** `CLAUDE.md` Known
-   Open Items. Makes ITC-04 ageing slightly wrong. **Blocks Phase 3**, and therefore the ITC-04
-   sheet in E2.
+**Resolved:**
+
+- ~~`CHAL-YYYYMMDD-NNNN` is 18 characters and invisible to gap detection.~~ Fixed Session 11 —
+  fallback format shortened to `CH-YYMMDD-NNNN` (14 chars), CA-confirmed compliant Sept 9 2026.
+- ~~B2CL threshold.~~ Fixed Sept 9 2026 — CA-confirmed ₹1 lakh (Notification 12/2024).
+  `export.html`'s `B2CL_THRESHOLD` updated. §9 Q1.
+- ~~s.143 clock starts from `dispatch_date`, not `principal_challan_date`.~~ Fixed Session 8,
+  re-verified Session 12 — all three call sites confirmed correct.
 
 ### When the KPML pilot can be signed
 
@@ -2122,13 +2130,9 @@ discovered mid-build.
 
 ### Blocking E2 — Monthly AI Filing Package
 
-**Q1. B2CL threshold — ₹2.5 lakh or ₹1 lakh?**
-The GSTN V2.0 template and `export.html`'s `B2CL_THRESHOLD` both say ₹2.5 lakh. Notification
-12/2024 dropped the portal threshold to ₹1 lakh effective 1 Nov 2024. `CLAUDE.md` already flags
-this as a deliberate named constant. Almost certainly nil-impact today (all clients are B2B job
-workers) but it must be right before a package is sent to a CA.
-**Recommendation:** ₹1,00,000, confirmed by a CA. Fix `export.html` in the same change.
-**Decide before:** E2 starts.
+**Q1. B2CL threshold — ₹2.5 lakh or ₹1 lakh? `[DECIDED — Sept 9 2026]`**
+₹1,00,000, per Notification 12/2024 (effective 1 Nov 2024), confirmed by CA Sept 9 2026.
+`export.html`'s `B2CL_THRESHOLD` updated from 250000 → 100000. No longer open.
 
 **Q2. Full workbook or section CSVs?**
 The offline tool accepts both a 21-sheet group import and section-by-section CSV. §3.2 specifies
@@ -2143,10 +2147,10 @@ reconciliation sheet. Phase 1 omits it; Phase 2 needs a new `p2_gstr2b_uploads` 
 parsed rows (never the raw portal file), with RLS.
 **Decide before:** E2 design freeze. It is a schema change, not an addition.
 
-**Q4. Does the filing package touch `p2_agent_logs`, and does it count against anything?**
-Recommendation: log it with `intent = 'filing_package'`, never charge it to the tenant's daily
-agent quota.
-**Decide before:** E2 build.
+**Q4. Does the filing package touch `p2_agent_logs`, and does it count against anything?
+`[DECIDED]`**
+Shipped: logged with `intent = 'filing_covering_note'` (not `'filing_package'` as originally
+recommended here), never charged to the tenant's daily agent quota. See Session 16 (E2 Part 2).
 
 ### Blocking E1 — Bridge Agent
 
@@ -2187,19 +2191,20 @@ at install. Both recorded.
 
 ### Sequencing and scope
 
-**Q10. What exactly are Phase 4 and Phase 5?**
-Referenced in the decided sequence but not bound to specific `CLAUDE.md` items. Candidates:
-Principal Material Passbook, Supplier Payables Register, Credit/Debit Notes, Notification
-Centre v2, Coil Winder Sub-contracting.
-**Note:** Credit/Debit Notes is the one with an Enterprise dependency — the Bridge Agent's CDN
-handler and the filing package's `cdnr` sheet are both dead code until it exists.
-**Decide before:** Session 9.
+**Q10. What exactly are Phase 4 and Phase 5? `[DECIDED — Sept 11 2026]`**
+Phase 4 = Sessions 24–26 (compliance complete: Supplier Payables Register, GSTR-2B server-side
+storage, audit trail + partnership polish). Phase 5 = Sessions 27–31 (network features, each
+gated on a named client request: job work agreement record, PO Push, rejection at gate + rework,
+yield variance, dispute register). See `CLAUDE.md` "What to build next" for the full numbered
+sequence.
+**Note:** Credit/Debit Notes (Session 20, pre-KPML-pilot-live) is the one with an Enterprise
+dependency — the Bridge Agent's CDN handler and the filing package's `cdnr` sheet are both dead
+code until it exists.
 
-**Q11. Must the Bridge Agent land before the KPML pilot signature?**
-The decided sequence says the whole Enterprise block precedes signing, which pushes December into
-late January. E1 is the long pole and the item least relevant to a principal-side sale.
-**Options:** (a) keep the sequence as decided; (b) E4/E3/E2 before signing, E1 during the pilot.
-**Decide before:** Phase 2 ships, not after.
+**Q11. Must the Bridge Agent land before the KPML pilot signature? `[DECIDED — Sept 11 2026]`**
+No. The Bridge Agent is **not** required for the KPML pilot signature — the pilot can run on the
+existing web product (the read-only principal dashboard, Phase 2, already live). Bridge Agent
+(Sessions 18–19) targets December 2026 – February 2027, decoupled from the pilot signature.
 
 **Q12. Does KPML itself want Tally sync?**
 They run SAP for POs and Tally for GST. Enterprise may be an additional ₹85,000 Year 1 on the

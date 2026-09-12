@@ -248,6 +248,29 @@ Mobile-first: owners use phones. Must work on mobile browser.
   read_at) WHERE read_at IS NULL (unread badge count). Realtime enabled via ALTER PUBLICATION
   supabase_realtime ADD TABLE p2_notifications — required for the navbar bell's live badge
   update. See "Shipped Aug 31, 2026" below for the full notify/telegram-webhook/bell pipeline.
+- p2_tenants — the FK anchor for the entire schema (see Supabase Config above for full detail).
+  EXISTS and is load-bearing: 10 core tables carry FK constraints to it. RLS SELECT: USING
+  (id = auth.uid() OR id = get_my_tenant_id()) — staff need to read their tenant row for FK
+  validation and plan checks (see RLS Fixes below). DELETE/UPDATE remain owner-only via
+  id = auth.uid() (intentional, not a staff-write gap). The earlier contradiction between
+  CLAUDE.md and kpml-network-plan.md over whether this table exists is resolved in favour of
+  EXISTS — never write code assuming it does not exist.
+- p2_network_links — links a principal tenant to a vendor tenant (Session 9, Sept 8 2026).
+  Columns: principal_tenant_id, vendor_tenant_id (both FK → p2_tenants(id)), status CHECK IN
+  ('active','revoked') — never deleted, history preserved via status flip. UNIQUE
+  (principal_tenant_id, vendor_tenant_id). RLS: tenant can SELECT rows where it is either side.
+  INSERT is manual-only in this phase — no self-serve UI yet. No scope/consent/revocation-
+  timestamp columns — the single enforcement point is get_principal_vendor_material() instead
+  (SECURITY DEFINER, scope boundary written as a comment inside the function), see Session 9
+  below.
+- p2_filing_packages — one row per tenant per month for the automatic filing package (Session
+  15, Sept 9 2026). Columns: id, tenant_id FK → p2_tenants(id), period_month text, status CHECK
+  IN ('pending','generating','uploaded','emailed','failed'), storage_path, signed_url,
+  signed_url_expires_at, error_reason, created_at, updated_at. RLS: three command-scoped
+  policies (SELECT/INSERT/UPDATE, no DELETE) on tenant_id = get_my_tenant_id() — NOT
+  auth.uid(). UNIQUE index on (tenant_id, period_month) — one package per tenant per month,
+  upsert via onConflict: 'tenant_id,period_month'. See "Shipped Sept 9, 2026 — Session 15"
+  below for the full pipeline.
 
 ## RLS Fixes — Sessions 1 and 2 (Sept 3–4 2026)
 
@@ -383,8 +406,11 @@ v_p2_supplier_advance_balance: already fixed Sept 2 2026 (security_invoker = tru
   agent_tier = 'unlimited', plan = 'founder', agent_enabled = true — NEVER reset agent_tier.
 
 ## Language Toggle
-- Static elements: data-en="..." / data-mr="..." attributes, applied once by
-  applyLang() on DOMContentLoaded via shared js/lang.js (initLang() call per page).
+- Static elements: data-en/data-mr attributes, applied by each page's own applyLang() on
+  DOMContentLoaded. js/lang.js EXISTS in the repo but is DEAD — loaded by no page, uses ES
+  export syntax incompatible with classic script tags. [VERIFIED — tutorial-engine.md §4.11 +
+  codebase-audit.md §5.2]. Do not build against it. The nexflow:langchange event specified in
+  tutorial-engine.md §4.11 is the correct hook.
 - Dynamically rendered content (JS-injected rows, cards, etc.) CANNOT rely on
   applyLang() — it only runs once at load. Use the t(en, mr) helper inline in
   every render function instead, reading localStorage.getItem('nexflow_lang')
@@ -423,13 +449,17 @@ v_p2_supplier_advance_balance: already fixed Sept 2 2026 (security_invoker = tru
 ### Principal account — KPML model (client 6+, network principals only)
 - Setup: ₹1,25,000 – ₹1,50,000 (item-code mapping, vendor master,
   opening balances per vendor, agreement records)
-- Platform fee: ₹2,50,000 – ₹3,00,000/year (dashboards, s.143 exposure,
-  ITC-04 working paper, 43B(h) report, reconciliation, dispute register)
-- Vendor overage: ₹5,000 – ₹7,000/vendor/year for every vendor
-  beyond 20 shown in the principal account
-- Pilot offer: 5 vendors, 90 days, ₹75,000 — fully credited against
-  annual fee if they proceed. Deliverable via one-sided mode
-  (no vendor onboarding required)
+
+KPML Principal pricing [DECIDED Sept 11 2026]:
+- Platform fee: ₹2,50,000-3,00,000/year (includes up to 20 vendors)
+- Pilot fee: ₹75,000 one-time (credited against year 1 platform fee)
+- Overage: ₹5,000-6,000/vendor/year for every vendor beyond 20
+- At 30 vendors: ₹2,75,000 platform + 10 × ₹5,500 = ₹3,30,000/year total
+- At 50 vendors: ₹2,75,000 + 30 × ₹5,500 = ₹4,40,000/year total
+- Model: overage-only beyond 20, NOT sponsored seats. kpml-network-plan.md §12's
+  sponsored-seat model is superseded by this decision.
+
+- Deliverable via one-sided mode (no vendor onboarding required)
 - Pricing anchor: one 43B(h) disallowance on ₹40L unpaid vendor bills
   ≈ ₹12L extra tax. One s.143 breach on a ₹10L challan ≈ ₹1.8L GST
   plus 18% interest from dispatch date. One month of manual
@@ -2239,6 +2269,9 @@ Sept 9 2026. agent-query deployed with suggest_hsn as sixth body.action handler.
 Verified on test tenant: verdicts correct, quota untouched, ai_verified write-back confirmed
 in DB, p2_agent_logs has intent='hsn_audit' entries.
 
+NOTE: enterprise-strategy.md §3.3 specifies 'ai_suggested'/'ai_accepted' but the shipped
+constraint uses 'ai_verified'/'ai_corrected'. A1 must use the shipped values only.
+
 ## Shipped Sept 9, 2026 — Session 15 (E2 Part 1)
 
 ### E2 — Monthly AI Filing Package, Part 1
@@ -2637,20 +2670,31 @@ Backend: new RPC or new `body.action` handler on `agent-query` — `add_challan_
 
 Schedule: post-KPML meeting, own session.
 
-**9. Staff activity log — Product Roadmap**
+**9. Staff activity log — created_by columns — Product Roadmap**
 
 Requested by PVT LTD owner (Sept 10 2026).
 Owners need visibility into who did what in the software — which staff member confirmed a GRN,
 created a dispatch, generated an invoice.
 
+`p2_dispatch_orders.created_by` ALREADY EXISTS but holds `tenant_id` not `user_id` (written as
+`tenantId` at `dispatch.html:1047`, `rm-dispatch.html:1043`) — needs a write-path fix, not
+`ADD COLUMN`.
+`p2_stock_transactions`, `p2_invoices`, `p2_dispatch_items` — confirm column existence before
+adding anything.
+Join target is `p2_user_roles`, NOT `p2_staff` (that table does not exist).
+
 Infrastructure needed:
-- Add `created_by uuid REFERENCES auth.users(id)` (nullable, no backfill) to:
-  `p2_stock_transactions`, `p2_dispatch_orders`, `p2_invoices`, `p2_dispatch_items`. Migration
-  only — nullable so existing rows are unaffected.
+- Fix the write path on `p2_dispatch_orders.created_by` so it records `auth.uid()`, not
+  `tenantId`. Decide a backfill policy for existing rows (or leave them NULL — no retroactive
+  attribution is possible for past rows).
+- Confirm whether `created_by uuid REFERENCES auth.users(id)` already exists on
+  `p2_stock_transactions`, `p2_invoices`, `p2_dispatch_items` before writing any migration; add
+  it (nullable, no backfill) only where it is actually missing.
 - Populate `created_by` at action time from `auth.uid()` in the relevant RPC or Edge Function
   call site. One call site per table.
-- New view or query: `v_p2_activity_log` joining the above tables with `p2_staff` (name, role) on
-  `created_by`, ordered by `created_at desc`. Filterable by staff member, action type, date range.
+- New view or query: `v_p2_activity_log` joining the above tables with `p2_user_roles` (email,
+  role) on `created_by`, ordered by `created_at desc`. Filterable by staff member, action type,
+  date range.
 
 UI surface: new "Activity" tab in `settings.html` (owner-only). Shows a filterable table:
 Date | Staff Member | Action | Details.
@@ -2691,6 +2735,18 @@ Revisit at 50 clients. Source: `_ai/automation-strategy.md` §1 finding 2, §4.5
 - `_ai/business-strategy.md` — costs, margins, exit strategy, revenue projections, competitive
   moats, distribution and hiring strategy. Read before any pricing, hiring or commercial
   decision.
+- `_ai/bridge-agent.md` — Bridge Agent (E1) full build spec: Tally XML contract, the canonical
+  REMOTEID scheme, `p2_tally_targets` / `p2_tally_sync_log` / `p2_ca_grants`, security model,
+  failure analysis, installer, code signing, CA profile. ~3,400 lines, designed not yet built.
+  **Read in full before Session 18 or 19.** Load order for a Bridge Agent session:
+  `_ai/CLAUDE.md` → `_ai/bridge-agent.md` → `_ai/enterprise-strategy.md` §3.1 → `js/full-export.js`.
+  Carries five `[CORRECTION]` items in its §0 that supersede text in this file and in
+  `enterprise-strategy.md` — in particular: **EV code-signing certificates no longer bypass
+  SmartScreen** (Microsoft removed that in 2024, so Known Open Items #4 above overstates what the
+  certificate buys, and OV is the right purchase), and **a confirmed dispatch must never produce a
+  Sales voucher** (sync is driven from `p2_invoices` only). §6.5 also replaces the
+  `full-export.js` REMOTEID warning below with a legacy-adoption mechanism, so a client who
+  hand-imported `vouchers-FY….xml` gets zero duplicates.
 
 Load order for a session touching any of these: `_ai/CLAUDE.md` → the relevant strategy file →
 the target source file. `_ai/enterprise-strategy.md` remains the Enterprise build spec.
@@ -2713,6 +2769,88 @@ Action — consult a CA this week on:
 `_ai/enterprise-strategy.md` §9 Q13 (who is the second director, and what do they hold) — that
 question sits on the SPICe+ Part B form, so it cannot be deferred past incorporation.
 
+**13. Blank invoice rate persists as ₹0 — no validation on either side**
+
+`[BUG]` `[COMPLIANCE]`, High. Source: `codebase-audit.md` priority list #7.
+Location: `all-dispatch-history.html:916`; `agent-query/index.ts:2238-2241`, `:2363`.
+A blank rate in the Generate Invoice modal is not blocked client-side or server-side — it
+silently persists as ₹0 on a legally-formatted tax invoice. Needs validation at both the modal
+submit and `confirmGenerateInvoice`/`confirmConsolidatedInvoice`.
+
+**14. `v_p2_supplier_advance_balance.total_drawn` sums every GRN ever, not since the advance**
+
+`[BUG]`, High. Source: `codebase-audit.md` priority list #9.
+Location: `20260902_create_supplier_advances.sql:74-81`.
+A new advance against a supplier with existing GRN history reads as massively overdrawn
+immediately — `total_drawn` is an all-time sum, not scoped to GRNs recorded since the advance.
+
+**15. Failed confirm burns a challan number — `rm-dispatch.html` / `production-issue.html`**
+
+`[COMPLIANCE]` `[BUG]`, High. Source: `codebase-audit.md` priority list #11.
+Location: `rm-dispatch.html:1134`; `production-issue.html:1541`, Cancel path at `:1573-1577`.
+`dispatch.html`'s equivalent bug was fixed (draft mode removed, Session 2) but the same pattern
+survives on the other two dispatch pages.
+
+**16. `get_next_challan_number` may produce duplicates under concurrency `[UNVERIFIED]`**
+
+`[COMPLIANCE]` `[BUG]`, High. Source: `codebase-audit.md` priority list #12.
+Location: live source unavailable — `20260822_challan_next_override.sql:2` documents
+`GREATEST(MAX+1, floor)`; stale copy at `sql/get_next_challan_number.sql`. Needs a `pg_proc`
+inspection in the SQL Editor to confirm the live function is a row-locked counter, not a plain
+MAX+1 read.
+
+**17. `rm-dispatch.html` unchecked `.delete()` duplicates challan line items**
+
+`[BUG]`, High. Source: `codebase-audit.md` priority list #15.
+Location: `rm-dispatch.html:1057-1060`, `:1173-1176`.
+
+**18. No server-side role check on invoice write handlers**
+
+`[SECURITY]`, High. Source: `codebase-audit.md` priority list #19.
+Location: `all-dispatch-history.html:316-328`, `:632`; `agent-query/index.ts:227-251`.
+Operator can generate tax invoices — the gate is plan-only. `verifyCallerTenant` checks tenant
+but not role. The Session 6 P1 role-gate fixes (cancel/amend challans, GST export download,
+etc.) were client-side page gates only and did not cover this handler.
+
+**19. `check-low-stock` is an unauthenticated all-tenant Telegram fan-out**
+
+`[SECURITY]`, High. Source: `codebase-audit.md` priority list #23.
+Location: `supabase/config.toml` (`verify_jwt = false`) + no auth inside
+`check-low-stock/index.ts`. Fix direction: a shared-secret header on cron jobids 2, 3, 8, 9
+(~1 hour).
+
+**20. Notification pipeline: 6 silent-failure points, zero retries**
+
+`[BUG]`, High. Source: `codebase-audit.md` priority list #28.
+Location: `js/notifications.js:25`, `:31`; `notify/index.ts:112-121`, `:125-137`; call sites
+`dispatch.html:1170`, `production-issue.html:1615`, `rm-dispatch.html:1229`. Quiet hours also
+writes `status='failed'` for a notification that was postponed, not failed — the three-value
+CHECK has no room for a correct value.
+
+**21. `get-user-email` returns any user's email to any authenticated caller**
+
+`[SECURITY]`, High. Source: `codebase-audit.md` priority list #29.
+Location: `supabase/functions/get-user-email/index.ts:33-36`. Cross-tenant email disclosure —
+any authenticated user of any tenant can look up any other user's email.
+
+**22. Tall modals clip their submit button off-screen at 390px**
+
+`[UX]` `[BUG]`, High. Source: `codebase-audit.md` priority list #32.
+Location: `.nx-modal` has no `max-height` — `invoices.html:34-40`,
+`all-dispatch-history.html:26-31`, worst on the Generate Invoice modal. Fix direction: move
+`.nx-modal` into `css/nexflow-design.css` with `max-height: 90vh; overflow-y: auto` and delete
+the six per-page copies.
+
+**23. Telegram HTML injection kills the whole morning digest**
+
+`[BUG]`, Medium. Source: `codebase-audit.md` priority list #35.
+Location: `check-low-stock/index.ts:63-70` with raw interpolation at `:449`, `:498`,
+`:518-521`. A material/client name containing HTML-significant characters breaks Telegram's
+parse_mode and the entire digest silently fails to send.
+
+**GRN duplicate DB index** — already tracked as Known Open Items #1 above (partial unique index
+on `p2_stock_transactions`); confirmed present in this document, not duplicated here.
+
 ## What to build next (priority order)
 
 **CRITICAL CONTEXT (Sept 11 2026):**
@@ -2720,10 +2858,18 @@ The October 5, 6, and 7 filing package runs are not just an ops task — they ar
 distribution event that determines whether the first CA referrals arrive in March 2027 or slip
 to late 2027. A6 (filing package dispatcher + drain queue) is a sales dependency, not an
 infrastructure nicety. If A6 is not built before October 5, the March 2027 first-referral
-target is at risk. Build A0 then A6. Nothing else until both are done.
+target is at risk. Build item 0, then A0, then A6. Nothing else until all three are done.
+
+Reconciled Sept 11 2026 (`_ai/md-audit-report.md` C1) — A-series and numbered sessions are one
+single sequence, 32 items, in the order below. The sprint brief's "31 sessions" count excludes
+item 0 (the live-tenant migration), which was missing from every prior list.
 
 ### IMMEDIATE — before October 5 2026
 
+0. **Apply Session 15's filing-package migrations to all 3 live tenants** (SS Engineering,
+   Datta Prasad, Shivprasad) — without `filing_recipient`/`accountant_email`/
+   `filing_package_enabled` and a `p2_filing_packages` row, the October 5 cron either errors or
+   silently returns nothing for them. See Session 15 above and `_ai/md-audit-report.md` C7.
 1. **Session A0 — Founder ops channel** (0.5 session)
    `p2_ops_alerts` table, `supabase/functions/_shared/ops.ts`, `opsAlert()`,
    `FOUNDER_TELEGRAM_CHAT_ID` secret, `/ack` branch on `telegram-webhook`.
@@ -2740,30 +2886,52 @@ target is at risk. Build A0 then A6. Nothing else until both are done.
 ### AFTER KPML MEETING — Oct–Nov 2026
 
 3. Session A2 — Compliance monitoring (1.5 sessions)
-4. Session A3 — Daily ops digest (1 session)
-5. Session A4 Phase 1 — Support escalation relay (1.5 sessions)
-6. Session T1 — Tutorial engine + dispatch tutorial (English)
-7. Challan line editing (1 session) — Known Open Items 8
-8. Staff activity log (1 session) — Known Open Items 9
+4. Session A3 — Daily digest (1 session)
+5. Session A4 Phase 1 — Support relay (1.5 sessions)
+6. Session T1 — Tutorial engine + dispatch (English)
+7. Session P1 — Product polish (`_ai/product-polish-p1.md`)
+8. Challan line editing (1 session) — Known Open Items 8
+9. Staff activity log (1 session) — Known Open Items 9
+10. Double-billing fix on overlapping consolidated invoices — Known Open Items 6
 
 ### PRE-KPML VENDOR WAVE — Dec 2026 – Feb 2027
 
-9. Session A1 — Onboarding data ingestion (3–4 sessions). **Must precede the vendor wave** —
-   20 vendors at 3–6 founder-hours each is 60–120 hours that do not exist during a pilot.
-10. Session T2 — Tutorial Marathi + mobile + GRN
-11. Double-billing fix on overlapping consolidated invoices — Known Open Items 6
+11. Session A1 — Onboarding ingestion (3–4 sessions, `_ai/onboarding-engine.md`).
+    **Must precede the vendor wave** — 20 vendors at 3–6 founder-hours each is 60–120 hours
+    that do not exist during a pilot.
+12. Session T2 — Marathi + mobile + GRN
 
 ### POST-INCORPORATION
 
-12. Session A5 — Billing reminder scheduler (manual trigger, no Razorpay)
-13. Session A7 — Provisioning (manual-trigger version)
-14. Session T3 — Tutorial coverage + demo mode
+13. Session A5 — Billing reminders (manual trigger, no Razorpay)
+14. Session A7 — Provisioning (manual trigger)
+15. Session T3 — Tutorial coverage + demo mode
+16. Session A8 — Codebase health (50+ clients)
+17. Session 18 — E1 Bridge Agent factory profile (`_ai/bridge-agent.md`)
+18. Session 19 — E1 Bridge Agent CA profile (`_ai/bridge-agent.md`)
+19. Session 20 — Credit/Debit Notes (`_ai/credit-debit-notes.md`)
 
-### 40+ CLIENTS
+### KPML PILOT LIVE
 
-15. Session A4 Phase 2 — KB-backed support agent
-16. Session E1 — Bridge Agent (PVT LTD incorporation + code-signing certificate required)
-17. Session A5 + A7 — Razorpay integration (gate is 50+ clients — Known Open Items 10)
+20. Session 21 — KPML cross-tenant upgrade (`_ai/kpml-network-sessions-21-22.md`)
+21. Session 22 — Principal write access (`_ai/kpml-network-sessions-21-22.md`)
+22. Session 23 — Notification Centre v2
+
+### COMPLIANCE COMPLETE
+
+23. Session A4 Phase 2 — KB-backed support agent
+24. Session 24 — Supplier Payables Register (`_ai/supplier-payables-register.md`)
+25. Session 25 — GSTR-2B server-side storage (`_ai/gstr2b-server-storage.md`)
+26. Session 26 — Audit trail + partnership polish
+27. Session A5 + A7 — Razorpay integration (gate is 50+ clients — Known Open Items 10)
+
+### NETWORK FEATURES — named client request only
+
+28. Session 27 — Job work agreement record
+29. Session 28 — PO Push
+30. Session 29 — Rejection at gate + rework
+31. Session 30 — Yield variance
+32. Session 31 — Dispute register
 
 ## GST Scope — PERMANENTLY LOCKED
 Nexflow P2 generates tax invoices for client billing. It does NOT handle GST filing, GSTR
@@ -2835,7 +3003,8 @@ Step 0 decisions locked:
 - s.143(2) obligation is the principal's (KPML), not the job worker's
 - SAC 9988 job charges only on vendor invoices to principal
 - confirm_bom_issue pool-blind fix is Step 2 prerequisite #1
-- Mother-factory pricing: UNDEFINED — settle before Step 5 design begins
+- Mother-factory pricing: [DECIDED Sept 11 2026] — see §Pricing above, "Principal account —
+  KPML model"
 
 Sales strategy:
 - Pitch new clients (job workers) during Step 1 and Step 2

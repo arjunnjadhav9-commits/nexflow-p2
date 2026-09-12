@@ -863,6 +863,11 @@ sufficient, and simpler for a Type A client who will never have a second class.
 
 ## 12. Pricing — The Mother Factory Account
 
+> **[DECIDED Sept 11 2026 — SUPERSEDES THIS SECTION]**
+> Pricing model: platform fee covers up to 20 vendors, ₹5,000-6,000/vendor/year overage beyond 20.
+> See CLAUDE.md §Pricing for the full table.
+> The sponsored-seat model described below was the original proposal and is no longer the plan.
+
 **Still undefined. Must be settled at Step 0.** What follows is a structure to react to, not a decision.
 
 **Price on active principal-side links, never on a tenant-level "mother factory" flag** — roles are
@@ -918,7 +923,7 @@ already run this, here is your s.143 exposure"* is a product sale with reference
 
 ---
 
-## 14. Current Status — August 29, 2026
+## 14. Current Status — August 29, 2026 (updated 11 Sept 2026 — see `md-audit-report.md` I1)
 
 | Item | Status |
 |---|---|
@@ -929,14 +934,14 @@ already run this, here is your s.143 exposure"* is a product sale with reference
 | Auto-GRN via QR (`receive.html`) | Live |
 | GSTR-2B reconciliation | Live (Pro/Founder) |
 | CA export | Live |
-| **P0 — invoice type check on existing clients** | ⚠️ **Not done — do first** |
+| **P0 — invoice type check on existing clients** | ✅ Done — no live client had raised a Nexflow invoice on KPML as of Aug 24 2026. Zero exposure confirmed. |
 | **CA confirmation of compliance rules** | ⚠️ **Not done — this week** |
-| **`confirm_bom_issue` pool-blind fix** | ⚠️ **Not done — blocks ownership** |
-| `p2_tenants` contradiction in CLAUDE.md | ⚠️ Unresolved |
-| GSTR-1 Table 13 register | Not built — Step 1 |
-| GSTR-1 Table 12 summary | Not built — Step 1 |
-| Rule 55 challan compliance | Not built — Step 1 |
-| 43B(h) fields + report | Not built — Step 1 |
+| **`confirm_bom_issue` pool-blind fix** | ✅ Done (Step 2A, v3, Aug 25 2026) |
+| `p2_tenants` contradiction in CLAUDE.md | ✅ Resolved — CLAUDE.md now states in bold that it EXISTS with 10 FK dependents |
+| GSTR-1 Table 13 register | ✅ Built Aug 25 2026 |
+| GSTR-1 Table 12 summary | ✅ Built Aug 25 2026 |
+| Rule 55 challan compliance | Neither built nor open — explicitly dropped from scope, 2 Sept 2026, by request |
+| 43B(h) fields + report | Udyam fields built Aug 25 2026; receivables report built Aug 28 2026; payables report still missing |
 | Ownership columns + retrofit | ✅ COMPLETE (Aug 26 2026) |
 | WIP state | ✅ COMPLETE (Aug 26 2026) |
 | Movement purpose | ✅ COMPLETE (Aug 26 2026) |
@@ -944,14 +949,14 @@ already run this, here is your s.143 exposure"* is a product sale with reference
 | Corrected s.143 timer | ✅ COMPLETE (Aug 26 2026) |
 | Vendor-side one-sided mode | ✅ COMPLETE (Aug 26 2026) |
 | Standalone regression test | ✅ COMPLETE (Aug 26 2026) |
-| Payment ledger (receipts model) | ✅ COMPLETE (Aug 28 2026) — p2_payment_receipts, payment UI on invoices.html, 43B(h) report on export.html, Telegram overdue digest |
-| Supplier advance ledger (Step 3.5) | ⏳ Deferred — after Step 4, Datta Prasad request |
-| Notifications (3 types, Edge Function) | 🔄 Next — starting now |
-| Principal-side one-sided mode | Not built — Step 5 |
-| `p2_network_links` + scoped access path | Not built — Step 6 |
+| Payment ledger (receipts model, Step 3) | ✅ COMPLETE (Aug 28 2026) — p2_payment_receipts, payment UI on invoices.html, 43B(h) report on export.html, Telegram overdue digest |
+| Supplier advance ledger (Step 3.5) | ✅ COMPLETE (2 Sept 2026) |
+| Notifications (3 types, Edge Function) | ✅ COMPLETE (Aug 31 2026, Step 4) |
+| Principal-side one-sided mode (Step 5) | ✅ COMPLETE (Session 9, 8 Sept 2026) — principal-dashboard.html live |
+| `p2_network_links` + scoped access path (Step 6) | ✅ Built 8 Sept 2026 (Session 9) — `get_principal_vendor_material()` is the scoped access path |
 | Everything in Step 7 | Not built, and gated on a named request |
 | `stock-share.html` | ❌ **Cut permanently** |
-| Mother factory pricing | ⚠️ Undefined — Step 0 |
+| Mother factory pricing | ✅ [DECIDED Sept 11 2026] — overage-only beyond 20 vendors, ₹5,000-6,000/vendor/year. See CLAUDE.md §Pricing and §12 above. |
 | KPML direct contact | Not established |
 
 ---
@@ -965,7 +970,7 @@ already run this, here is your s.143 exposure"* is a product sale with reference
    relationships.
 3. **KPML plants:** one location. Multi-plant not a priority.
 4. **KPML's current software:** SAP for the PO, Tally for GST. Nexflow complements, never replaces.
-5. **Mother factory pricing:** undefined — Section 12, settle at Step 0.
+5. **Mother factory pricing:** [DECIDED Sept 11 2026] — see Section 12.
 6. **Payment ledger scope:** all tenants, and pitched via 43B(h) (10.4).
 7. **Notification channel:** Telegram for push, in-app centre for history and detail. No email.
    **Decision final.** Runtime is a Supabase Edge Function, not Vercel.
