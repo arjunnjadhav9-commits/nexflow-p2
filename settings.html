@@ -561,6 +561,25 @@
                 <button type="button" id="save-invoice-sequence-btn" class="nx-btn nx-btn-primary" data-en="Save Invoice Starting Number" data-mr="इनव्हॉइस क्रमांक साठवा">Save Invoice Starting Number</button>
                 <div id="invoice-sequence-status" class="nx-status-msg"></div>
             </div>
+
+            <!-- ── MAX LINES PER INVOICE ── standalone, own save button, same
+                 shape as Invoice Starting Number above. Blank = no limit (single
+                 consolidated invoice always). When set, invoices.html splits a
+                 consolidated invoice sweep exceeding this many line items into
+                 multiple invoices, each with its own invoice number. ──────── -->
+            <div style="background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-top:20px;">
+                <div class="nx-section-head" data-en="Max Lines Per Invoice" data-mr="इनव्हॉइसमधील कमाल ओळी">Max Lines Per Invoice</div>
+                <div class="nx-form-group" style="margin-bottom:10px;">
+                    <input type="number" id="invoice-lines-per-page" class="nx-input" min="1"
+                           placeholder="No limit" data-en="No limit" data-mr="मर्यादा नाही">
+                    <div style="font-size:11px; color:var(--mid); margin-top:6px;"
+                         data-en="If a consolidated invoice has more lines than this, it will automatically split into multiple invoices. Leave blank for no limit."
+                         data-mr="जर एकत्रित इनव्हॉइसमध्ये यापेक्षा जास्त ओळी असतील, तर ते आपोआप अनेक इनव्हॉइसमध्ये विभागले जाईल. मर्यादा नसल्यास रिकामे ठेवा.">
+                        If a consolidated invoice has more lines than this, it will automatically split into multiple invoices. Leave blank for no limit.
+                    </div>
+                </div>
+                <button type="button" id="save-lines-per-page-btn" class="nx-btn nx-btn-primary" data-en="Save" data-mr="जतन करा">Save</button>
+            </div>
         </div>
     </div>
 
@@ -1350,7 +1369,7 @@
 
             const { data, error } = await window.supabase
                 .from('p2_tenant_settings')
-                .select('company_name, address_line1, address_line2, mobile, gstin, bank_name, bank_account, bank_ifsc, sac_code, aato_bracket, challan_sequence, challan_next_override, grn_sequence, invoice_sequence, challan_mode, is_job_work_setup_seen, is_job_worker, is_principal, separate_pool_deduction, telegram_chat_id, quiet_hours_start, quiet_hours_end')
+                .select('company_name, address_line1, address_line2, mobile, gstin, bank_name, bank_account, bank_ifsc, sac_code, aato_bracket, challan_sequence, challan_next_override, grn_sequence, invoice_sequence, invoice_lines_per_page, challan_mode, is_job_work_setup_seen, is_job_worker, is_principal, separate_pool_deduction, telegram_chat_id, quiet_hours_start, quiet_hours_end')
                 .eq('tenant_id', tenantId)
                 .single();
 
@@ -1376,6 +1395,7 @@
                 initTelegramSection(data, tenantId);
                 currentInvoiceSequence = data.invoice_sequence || 0;
                 document.getElementById('invoice-sequence').value  = currentInvoiceSequence + 1;
+                document.getElementById('invoice-lines-per-page').value = data.invoice_lines_per_page ?? '';
                 // Challan mode toggle
                 const savedMode = data.challan_mode || 'split';
                 const modeRadio = document.querySelector(`input[name="challan_mode"][value="${savedMode}"]`);
@@ -1797,6 +1817,38 @@
         } catch (error) {
             console.error('Error saving invoice sequence:', error);
             showStatus('invoice-sequence-status','error','Failed to save invoice starting number','इनव्हॉइस क्रमांक साठवण्यात अयशस्वी');
+        }
+    });
+
+    // ── SAVE MAX LINES PER INVOICE ───────────────────────────────────────────
+    // Blank/null = no limit (single consolidated invoice always) — the column has
+    // no default, so an owner who never touches this field keeps today's behavior
+    // exactly. toast() feedback per spec (unlike this tab's older standalone
+    // fields above, which use showStatus()).
+    document.getElementById('save-lines-per-page-btn').addEventListener('click', async () => {
+        const raw = document.getElementById('invoice-lines-per-page').value.trim();
+        const lang = localStorage.getItem('nexflow_lang') || 'en';
+        let linesPerPage = null;
+        if (raw !== '') {
+            const typed = parseInt(raw, 10);
+            if (!Number.isInteger(typed) || typed < 1) {
+                toast(lang === 'mr' ? 'वैध संख्या (१ किंवा जास्त) प्रविष्ट करा, किंवा मर्यादा नसल्यास रिकामे ठेवा.' : 'Enter a valid number (1 or more), or leave blank for no limit.', 'error');
+                return;
+            }
+            linesPerPage = typed;
+        }
+        try {
+            const { data: { user } } = await window.supabase.auth.getUser();
+            if (!user) { toast('Not authenticated', 'error'); return; }
+            const tenantId = user.user_metadata?.tenant_id || user.id;
+            const { error } = await window.supabase.from('p2_tenant_settings')
+                .update({ invoice_lines_per_page: linesPerPage })
+                .eq('tenant_id', tenantId);
+            if (error) throw error;
+            toast(lang === 'mr' ? 'सेटिंग जतन झाली' : 'Max lines per invoice saved', 'success');
+        } catch (error) {
+            console.error('Error saving invoice_lines_per_page:', error);
+            toast(lang === 'mr' ? 'जतन करण्यात अयशस्वी' : 'Failed to save', 'error');
         }
     });
 

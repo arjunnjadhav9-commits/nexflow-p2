@@ -112,6 +112,7 @@
         .cons-preview-table th.col-sac,     .cons-preview-table td.col-sac     { width: 72px; }
         .cons-preview-table th.col-rate,    .cons-preview-table td.col-rate    { width: 96px; }
         .cons-preview-table th.col-amount,  .cons-preview-table td.col-amount  { width: 104px; }
+        .cons-preview-table th.col-remove,  .cons-preview-table td.col-remove  { width: 40px; }
     </style>
 </head>
 <body>
@@ -366,6 +367,14 @@
             <div class="nx-modal-title" style="color:var(--orange);" data-en="Preview Invoice" data-mr="इनव्हॉइस पूर्वावलोकन">Preview Invoice</div>
             <div id="consPreviewClientLine" style="font-size:13px; color:var(--mid); margin-bottom:4px;"></div>
             <div id="consPreviewInvoiceDate" style="font-size:13px; color:var(--mid); margin-bottom:16px;"></div>
+            <div id="consPreviewInvoiceNo" style="font-size:13px; color:var(--mid); margin-bottom:4px;"></div>
+
+            <!-- Split-preview info — text is fully dynamic (item/limit/batch counts),
+                 built via t() at render time in renderConsPreviewTable(), not
+                 data-en/data-mr (matches this codebase's rule for dynamically
+                 rendered content). Hidden whenever Max Lines Per Invoice doesn't
+                 apply or isn't exceeded. -->
+            <div id="consPreviewSplitInfo" style="display:none; font-size:12px; color:var(--yellow); margin-bottom:12px;"></div>
 
             <!-- Columns match invoice.html / js/invoice-pdf.js's consolidated-mode printed
                  layout exactly (Sr | Challan No | Date | Description | Qty | Unit | SAC Code |
@@ -384,6 +393,7 @@
                             <th class="col-sac" style="text-align:center;" data-en="SAC Code" data-mr="SAC Code">SAC Code</th>
                             <th class="col-rate" style="text-align:right;" data-en="Rate" data-mr="दर">Rate</th>
                             <th class="col-amount" style="text-align:right;" data-en="Amount" data-mr="रक्कम">Amount</th>
+                            <th class="col-remove"></th>
                         </tr>
                     </thead>
                     <tbody id="consPreviewItems"></tbody>
@@ -392,6 +402,10 @@
 
             <div id="consPreviewHsnWarning" style="display:none; font-size:12px; color:var(--yellow); margin-top:-8px; margin-bottom:16px;">
                 ⚠ <span data-en="One or more line items have no HSN/SAC code. Verify before filing." data-mr="काही वस्तूंसाठी HSN/SAC कोड नाही. फाइलिंगपूर्वी तपासा.">One or more line items have no HSN/SAC code. Verify before filing.</span>
+            </div>
+
+            <div id="consPreviewEmptyMsg" style="display:none; font-size:13px; color:var(--red); margin-top:-8px; margin-bottom:16px; text-align:center;">
+                <span data-en="No line items remaining." data-mr="कोणतीही वस्तू शिल्लक नाही.">No line items remaining.</span>
             </div>
 
             <div style="display:flex; flex-direction:column; gap:6px; align-items:flex-end; margin-bottom:16px; font-size:13px;">
@@ -411,6 +425,19 @@
                 <button id="consPreviewBack" class="nx-btn nx-btn-ghost" style="flex:1;" data-en="&larr; Back" data-mr="&larr; मागे">&larr; Back</button>
                 <button id="consPreviewConfirm" class="nx-btn nx-btn-green" style="flex:1;" data-en="Confirm &amp; Generate Invoice" data-mr="पुष्टी करा आणि इनव्हॉइस तयार करा">Confirm &amp; Generate Invoice</button>
             </div>
+        </div>
+    </div>
+
+    <!-- MULTI-INVOICE SUMMARY (shown when Max Lines Per Invoice splits the
+         consolidated sweep into 2+ invoices — see consPreviewConfirm's split
+         branch). Single-invoice generation is unaffected: PDF opens directly,
+         this modal never appears. -->
+    <div id="consMultiInvoiceModal" class="nx-modal-overlay" style="display:none;">
+        <div class="nx-modal" style="max-width:560px; max-height:90vh; overflow-y:auto;">
+            <div class="nx-modal-title" style="color:var(--orange);" data-en="Invoices Generated" data-mr="इनव्हॉइस तयार झाले">Invoices Generated</div>
+            <div id="consMultiInvoiceSummaryLine" style="font-size:13px; color:var(--mid); margin-bottom:16px;"></div>
+            <div id="consMultiInvoiceList" style="margin-bottom:16px;"></div>
+            <button id="consMultiInvoiceClose" class="nx-btn nx-btn-primary nx-btn-full" data-en="Close" data-mr="बंद करा">Close</button>
         </div>
     </div>
 
@@ -535,6 +562,14 @@
         let receiptsByInvoice = new Map();
         let canRecordPayment = false;
         let recordPaymentInvoiceId = null;
+        // Max Lines Per Invoice (settings.html Challan Settings tab) — integer or
+        // null (no limit). Loaded once at init alongside plan, below.
+        let invoiceLinesPerPage = null;
+        // Current invoice_sequence counter, loaded once at init alongside plan —
+        // used only to predict the next invoice number in the preview header
+        // (openConsPreviewModal). Never written to; get_next_invoice_number RPC
+        // remains the sole source of truth for the actual number at confirm time.
+        let currentInvoiceSequence = 0;
         const expandedInvoiceIds = new Set();
         const expandedMobileRows = new Set();
         let consInvoicePreviewState = { clientId: null, clientName: null, dateFrom: null, dateTo: null, gstType: null, dispatchType: null, items: [] };
@@ -642,13 +677,16 @@
                 // Record Payment gate — fresh p2_tenant_settings.plan fetch, never
                 // isPro()/localStorage (plan can change mid-session). Missing settings
                 // row defaults to 'founder', same fallback used elsewhere in this codebase.
+                // invoice_lines_per_page piggybacks on this same query — no new fetch.
                 const { data: settingsData } = await window.supabase
                     .from('p2_tenant_settings')
-                    .select('plan')
+                    .select('plan, invoice_lines_per_page, invoice_sequence')
                     .eq('tenant_id', tenantId)
                     .maybeSingle();
                 const plan = settingsData?.plan || 'founder';
                 canRecordPayment = plan === 'pro' || plan === 'founder';
+                invoiceLinesPerPage = settingsData?.invoice_lines_per_page ?? null;
+                currentInvoiceSequence = settingsData?.invoice_sequence || 0;
 
                 loadingSpinner.style.display = 'none';
 
@@ -659,6 +697,7 @@
                 setupFilterHandlers();
                 setupConsolidatedModalHandlers();
                 setupConsPreviewModalHandlers();
+                setupConsMultiInvoiceModalHandlers();
                 setupRecordPaymentModalHandlers();
                 setupInvoiceDetailModalHandlers();
                 setupAdvancesTabHandlers();
@@ -1173,8 +1212,46 @@
                             style="width:88px; text-align:right; height:32px; font-size:13px;">
                     </td>
                     <td class="col-amount" style="text-align:right; font-family:monospace;" id="consPreviewLineTotal_${idx}">${fmtMoney(item.qty * item.rate)}</td>
+                    <td class="col-remove" style="text-align:center;">
+                        <button type="button" class="nx-btn nx-btn-danger nx-btn-sm cons-preview-remove-btn"
+                            data-idx="${idx}" title="Remove line" aria-label="Remove line">✕</button>
+                    </td>
                 </tr>
             `;
+        }
+
+        // Re-renders the whole preview table from consInvoicePreviewState.items —
+        // called on initial open AND after every row removal, so SR numbering and
+        // each row's data-idx always match the live array (never patch a single row).
+        function renderConsPreviewTable() {
+            document.getElementById('consPreviewItems').innerHTML =
+                consInvoicePreviewState.items.map((item, idx) => renderConsPreviewRow(item, idx)).join('');
+
+            const anyMissingHsn = consInvoicePreviewState.items.some(it => !it.hsn_sac || !String(it.hsn_sac).trim());
+            document.getElementById('consPreviewHsnWarning').style.display = anyMissingHsn ? 'block' : 'none';
+
+            const isEmpty = consInvoicePreviewState.items.length === 0;
+            document.getElementById('consPreviewConfirm').disabled = isEmpty;
+            document.getElementById('consPreviewEmptyMsg').style.display = isEmpty ? 'block' : 'none';
+
+            // Split-preview info — re-evaluated on every render (including after a
+            // row removal), since removing rows can drop the count back to/below
+            // the limit, in which case the single-invoice flow will run instead.
+            const splitInfoEl = document.getElementById('consPreviewSplitInfo');
+            const splitLimit = Number(invoiceLinesPerPage) > 0 ? Number(invoiceLinesPerPage) : null;
+            const itemCount = consInvoicePreviewState.items.length;
+            if (splitLimit && itemCount > splitLimit) {
+                const batchCount = Math.ceil(itemCount / splitLimit);
+                splitInfoEl.textContent = t(
+                    `${itemCount} lines · ${splitLimit} per invoice · ${batchCount} invoices will be generated`,
+                    `${itemCount} ओळी · इनव्हॉइसमागे ${splitLimit} · ${batchCount} इनव्हॉइस तयार होतील`
+                );
+                splitInfoEl.style.display = 'block';
+            } else {
+                splitInfoEl.style.display = 'none';
+            }
+
+            recomputeConsPreviewTotals();
         }
 
         function recomputeConsPreviewTotals() {
@@ -1221,16 +1298,22 @@
             document.getElementById('consPreviewClientLine').textContent = data.client_name;
             document.getElementById('consPreviewInvoiceDate').textContent =
                 `${t('Invoice Date', 'इनव्हॉइस तारीख')}: ${t('Today', 'आज')} — ${fmtDate(new Date())}`;
-            document.getElementById('consPreviewError').style.display = 'none';
-            document.getElementById('consPreviewItems').innerHTML =
-                data.items.map((item, idx) => renderConsPreviewRow(item, idx)).join('');
 
-            const anyMissingHsn = data.items.some(it => !it.hsn_sac || !String(it.hsn_sac).trim());
-            document.getElementById('consPreviewHsnWarning').style.display = anyMissingHsn ? 'block' : 'none';
+            const yyyymm = (() => {
+                const d = new Date();
+                return String(d.getFullYear()) +
+                       String(d.getMonth() + 1).padStart(2, '0');
+            })();
+            const nextSeq = String(currentInvoiceSequence + 1)
+                .padStart(3, '0');
+            document.getElementById('consPreviewInvoiceNo').textContent =
+                `${t('Invoice No','इनव्हॉइस क्र.')}: INV-${yyyymm}-${nextSeq}`;
+
+            document.getElementById('consPreviewError').style.display = 'none';
+            renderConsPreviewTable();
 
             document.getElementById('consolidatedInvoiceModal').style.display = 'none';
             document.getElementById('consInvoicePreviewModal').style.display = 'flex';
-            recomputeConsPreviewTotals();
         }
 
         function showConsPreviewError(msg) {
@@ -1241,6 +1324,16 @@
         function setupConsPreviewModalHandlers() {
             document.getElementById('consPreviewItems').addEventListener('input', e => {
                 if (e.target.classList.contains('cons-preview-rate')) recomputeConsPreviewTotals();
+            });
+
+            // Removing a row is purely a client-side array splice — nothing is
+            // written to the DB. The dispatch stays status='confirmed', uninvoiced,
+            // in p2_dispatch_orders, available for the next consolidated run.
+            document.getElementById('consPreviewItems').addEventListener('click', e => {
+                const btn = e.target.closest('.cons-preview-remove-btn');
+                if (!btn) return;
+                consInvoicePreviewState.items.splice(Number(btn.dataset.idx), 1);
+                renderConsPreviewTable();
             });
 
             document.getElementById('consPreviewBack').addEventListener('click', () => {
@@ -1254,48 +1347,145 @@
 
             document.getElementById('consPreviewConfirm').addEventListener('click', async () => {
                 document.getElementById('consPreviewError').style.display = 'none';
+                if (consInvoicePreviewState.items.length === 0) return; // defensive; button is disabled when empty
 
                 consInvoicePreviewState.items.sort((a, b) => parseInt(a.challan_number) - parseInt(b.challan_number));
 
-                const itemRates = consInvoicePreviewState.items.map(item => ({
-                    dispatch_item_id: item.dispatch_item_id,
-                    rate: Number(item.rate) || 0
-                }));
-
+                const items = consInvoicePreviewState.items;
+                const limit = Number(invoiceLinesPerPage) > 0 ? Number(invoiceLinesPerPage) : null;
                 const btn = document.getElementById('consPreviewConfirm');
                 btn.disabled = true;
-                btn.textContent = t('Generating…','तयार करत आहे…');
 
-                try {
-                    const res = await fetch(`${SUPABASE_URL}/functions/v1/agent-query`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
-                        body: JSON.stringify({
-                            action: 'confirm_consolidated_invoice',
-                            tenant_id: tenantId,
-                            client_id: consInvoicePreviewState.clientId,
-                            client_name: consInvoicePreviewState.clientName,
-                            date_from: consInvoicePreviewState.dateFrom,
-                            date_to: consInvoicePreviewState.dateTo,
-                            gst_type: consInvoicePreviewState.gstType,
-                            dispatch_type: consInvoicePreviewState.dispatchType,
-                            item_rates: itemRates
-                        })
-                    });
-                    const data = await res.json();
-                    if (data.status !== 'ok') throw new Error(data.error || 'Unknown error');
+                if (!limit || items.length <= limit) {
+                    // ── SINGLE-INVOICE FLOW — unchanged from before Max Lines Per Invoice existed ──
+                    const itemRates = items.map(item => ({
+                        dispatch_item_id: item.dispatch_item_id,
+                        rate: Number(item.rate) || 0
+                    }));
 
-                    document.getElementById('consInvoicePreviewModal').style.display = 'none';
-                    window.open(data.invoice_url, '_blank');
-                    if (data.already_exists) alert(t('Invoice already exists — opened.','इनव्हॉइस आधीच अस्तित्वात आहे — उघडले.'));
-                    await loadInvoices();
-                } catch (err) {
-                    console.error('confirm_consolidated_invoice:', err);
-                    showConsPreviewError(err.message || t('Could not generate invoice.','इनव्हॉइस तयार करता आले नाही.'));
-                } finally {
-                    btn.disabled = false;
-                    btn.textContent = t('Confirm & Generate Invoice','पुष्टी करा आणि इनव्हॉइस तयार करा');
+                    btn.textContent = t('Generating…','तयार करत आहे…');
+
+                    try {
+                        const res = await fetch(`${SUPABASE_URL}/functions/v1/agent-query`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+                            body: JSON.stringify({
+                                action: 'confirm_consolidated_invoice',
+                                tenant_id: tenantId,
+                                client_id: consInvoicePreviewState.clientId,
+                                client_name: consInvoicePreviewState.clientName,
+                                date_from: consInvoicePreviewState.dateFrom,
+                                date_to: consInvoicePreviewState.dateTo,
+                                gst_type: consInvoicePreviewState.gstType,
+                                dispatch_type: consInvoicePreviewState.dispatchType,
+                                item_rates: itemRates
+                            })
+                        });
+                        const data = await res.json();
+                        if (data.status !== 'ok') throw new Error(data.error || 'Unknown error');
+
+                        document.getElementById('consInvoicePreviewModal').style.display = 'none';
+                        window.open(data.invoice_url, '_blank');
+                        if (data.already_exists) alert(t('Invoice already exists — opened.','इनव्हॉइस आधीच अस्तित्वात आहे — उघडले.'));
+                        await loadInvoices();
+                    } catch (err) {
+                        console.error('confirm_consolidated_invoice:', err);
+                        showConsPreviewError(err.message || t('Could not generate invoice.','इनव्हॉइस तयार करता आले नाही.'));
+                    } finally {
+                        btn.disabled = false;
+                        btn.textContent = t('Confirm & Generate Invoice','पुष्टी करा आणि इनव्हॉइस तयार करा');
+                    }
+                    return;
                 }
+
+                // ── SPLIT FLOW — items.length exceeds the tenant's Max Lines Per Invoice ──
+                // Batches are contiguous slices of the already-sorted array (last batch
+                // gets the remainder) — never re-sorted per batch. Each call sends only
+                // its own batch's item_rates (the server now treats item_rates as the
+                // authoritative inclusion list, not just a rate override — see
+                // confirmConsolidatedInvoice), so each invoice bills only its own lines.
+                const batches = [];
+                for (let i = 0; i < items.length; i += limit) batches.push(items.slice(i, i + limit));
+
+                const results = [];
+                for (let b = 0; b < batches.length; b++) {
+                    btn.textContent = t(`Generating invoice ${b + 1} of ${batches.length}…`, `इनव्हॉइस ${b + 1}/${batches.length} तयार करत आहे…`);
+                    const batchItemRates = batches[b].map(item => ({
+                        dispatch_item_id: item.dispatch_item_id,
+                        rate: Number(item.rate) || 0
+                    }));
+
+                    try {
+                        const res = await fetch(`${SUPABASE_URL}/functions/v1/agent-query`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+                            body: JSON.stringify({
+                                action: 'confirm_consolidated_invoice',
+                                tenant_id: tenantId,
+                                client_id: consInvoicePreviewState.clientId,
+                                client_name: consInvoicePreviewState.clientName,
+                                date_from: consInvoicePreviewState.dateFrom,
+                                date_to: consInvoicePreviewState.dateTo,
+                                gst_type: consInvoicePreviewState.gstType,
+                                dispatch_type: consInvoicePreviewState.dispatchType,
+                                item_rates: batchItemRates,
+                                consolidated_batch_seq: b + 1
+                            })
+                        });
+                        const data = await res.json();
+                        if (data.status !== 'ok') throw new Error(data.error || 'Unknown error');
+                        results.push({ invoice_number: data.invoice_number, invoice_url: data.invoice_url, line_count: batches[b].length, total: data.total });
+                    } catch (err) {
+                        // Stop — no automatic retry. Batches already succeeded are real,
+                        // saved invoices (visible in the invoice list); the remaining
+                        // dispatches stay uninvoiced and can be picked up in a new run.
+                        console.error('confirm_consolidated_invoice batch', b + 1, err);
+                        toast(t(
+                            `Batch ${b + 1} of ${batches.length} failed: ${err.message || 'Unknown error'}. ${results.length} invoice(s) were already generated and are saved — see the invoice list.`,
+                            `बॅच ${b + 1}/${batches.length} अयशस्वी: ${err.message || 'अज्ञात त्रुटी'}. यापूर्वी ${results.length} इनव्हॉइस तयार झाले असून जतन झाले आहेत — इनव्हॉइस यादी पहा.`
+                        ), 'error', 8000);
+                        document.getElementById('consInvoicePreviewModal').style.display = 'none';
+                        btn.disabled = false;
+                        btn.textContent = t('Confirm & Generate Invoice','पुष्टी करा आणि इनव्हॉइस तयार करा');
+                        await loadInvoices();
+                        return;
+                    }
+                }
+
+                document.getElementById('consInvoicePreviewModal').style.display = 'none';
+                btn.disabled = false;
+                btn.textContent = t('Confirm & Generate Invoice','पुष्टी करा आणि इनव्हॉइस तयार करा');
+                openConsMultiInvoiceSummary(results, consInvoicePreviewState.clientName, consInvoicePreviewState.dateFrom, consInvoicePreviewState.dateTo);
+                // loadInvoices() deferred to the summary modal's Close button
+            });
+        }
+
+        // ── MULTI-INVOICE SUMMARY MODAL (Max Lines Per Invoice split) ───
+        function openConsMultiInvoiceSummary(results, clientName, dateFrom, dateTo) {
+            document.getElementById('consMultiInvoiceSummaryLine').textContent = t(
+                `${results.length} invoices generated for ${clientName} — ${fmtDate(dateFrom)} to ${fmtDate(dateTo)}`,
+                `${clientName} साठी ${results.length} इनव्हॉइस तयार झाले — ${fmtDate(dateFrom)} ते ${fmtDate(dateTo)}`
+            );
+            document.getElementById('consMultiInvoiceList').innerHTML = results.map(r => `
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid var(--border);">
+                    <div>
+                        <div class="nx-td-mono nx-bold">${escInvHtml(r.invoice_number)}</div>
+                        <div style="font-size:12px; color:var(--mid);">${r.line_count} ${t('lines','ओळी')} &middot; ${fmtMoney(r.total)}</div>
+                    </div>
+                    <button type="button" class="nx-btn nx-btn-ghost nx-btn-sm cons-multi-download-btn" data-url="${escInvHtml(r.invoice_url)}">${t('Download PDF','PDF डाउनलोड करा')}</button>
+                </div>
+            `).join('');
+            document.getElementById('consMultiInvoiceModal').style.display = 'flex';
+        }
+
+        function setupConsMultiInvoiceModalHandlers() {
+            document.getElementById('consMultiInvoiceList').addEventListener('click', e => {
+                const btn = e.target.closest('.cons-multi-download-btn');
+                if (btn) window.open(btn.dataset.url, '_blank');
+            });
+            document.getElementById('consMultiInvoiceClose').addEventListener('click', async () => {
+                document.getElementById('consMultiInvoiceModal').style.display = 'none';
+                await loadInvoices();
             });
         }
 

@@ -76,7 +76,20 @@ interface ConfirmConsolidatedInvoiceRequest {
   date_to: string
   gst_type: string
   dispatch_type?: 'product' | 'raw_material' | 'both'
+  // When present and non-empty, this is the AUTHORITATIVE inclusion list, not just a
+  // rate override — only dispatch_item_ids present here are billed; every matching
+  // dispatch in [date_from, date_to] is no longer swept in unconditionally. Lets
+  // invoices.html's preview step both edit rates AND exclude specific removed rows,
+  // and lets it split one date range into several invoices (each call sends only its
+  // batch's item ids). Omitted/empty falls back to the pre-existing include-everything
+  // behavior (no real caller does this today, but kept for safety).
   item_rates?: Array<{ dispatch_item_id: string; rate: number }>
+  // Disambiguates multiple consolidated invoices for the same
+  // (tenant_id, client_id, date_from, date_to) — see p2_invoices_consolidated_dedup_idx.
+  // 0 (default) = normal single/unsplit invoice, byte-identical to pre-split behavior.
+  // 1..N = split batch sequence number when invoices.html divides a large sweep into
+  // multiple invoices (Max Lines Per Invoice setting). Never surfaced in any UI.
+  consolidated_batch_seq?: number
 }
 
 // invoices.html "+ New Consolidated Invoice" modal, Step 1 -> Step 2 —
@@ -2622,17 +2635,22 @@ async function confirmConsolidatedInvoice(
   supabaseClient: ReturnType<typeof createClient>,
   body: Partial<ConfirmConsolidatedInvoiceRequest>
 ): Promise<Response> {
-  const { tenant_id, client_id, date_from, date_to, gst_type, dispatch_type, item_rates } = body
+  const { tenant_id, client_id, date_from, date_to, gst_type, dispatch_type, item_rates, consolidated_batch_seq } = body
 
   if (!tenant_id || !client_id || !date_from || !date_to || !gst_type) {
     return respond({ status: 'error', error: 'tenant_id, client_id, date_from, date_to, and gst_type are required' }, 400)
   }
   const gstType = gst_type === 'igst' || gst_type === 'none' ? gst_type : 'cgst_sgst'
+  // 0 = normal/unsplit invoice (identical to every pre-existing call). 1..N = a split
+  // batch's sequence number, sent by invoices.html when Max Lines Per Invoice is
+  // exceeded — see p2_invoices_consolidated_dedup_idx.
+  const batchSeq = Number.isInteger(consolidated_batch_seq) ? (consolidated_batch_seq as number) : 0
 
-  // item_rates is optional (invoices.html's preview step sends it; a direct
-  // call without it falls back to price-table rates, same as before this
-  // field existed) — same non-negative-number guard confirmGenerateInvoice
-  // applies to its item_rates.
+  // item_rates is optional (invoices.html's preview step always sends it; a direct
+  // call without it falls back to price-table rates, same as before this field
+  // existed) — same non-negative-number guard confirmGenerateInvoice applies to its
+  // item_rates. When present and non-empty it is ALSO the authoritative inclusion
+  // list (see includeIds below) — not just a rate override.
   if (item_rates) {
     const invalidRate = item_rates.find((r) => !Number.isFinite(r.rate) || r.rate < 0)
     if (invalidRate) {
@@ -2640,6 +2658,10 @@ async function confirmConsolidatedInvoice(
     }
   }
   const rateById = new Map((item_rates ?? []).map((r) => [r.dispatch_item_id, r.rate]))
+  // null = no filter (legacy/no item_rates sent — include everything, exactly as
+  // before this change). Non-null = only these dispatch_item_ids are billed; lets the
+  // caller exclude specific removed rows or send just one batch's slice.
+  const includeIds = item_rates && item_rates.length ? new Set(item_rates.map((r) => r.dispatch_item_id)) : null
 
   // Client is resolved server-side from client_id, not trusted from the
   // request's client_name — same "never trust client input for billing"
@@ -2694,12 +2716,14 @@ async function confirmConsolidatedInvoice(
   }
 
   const orderRows = orders as InvoiceOrderRow[]
-  const orderIds = orderRows.map((o) => o.id)
 
-  // Consolidated duplicate check: exact tenant + client + date range match
-  // (not an overlap check) — resend rather than recreate. Checked before the
-  // cross-mode guard below, since a resend doesn't need to re-validate
-  // billing state.
+  // Consolidated duplicate check: exact tenant + client + date range + batch
+  // sequence match (not an overlap check) — resend rather than recreate. Checked
+  // before the cross-mode guard below, since a resend doesn't need to re-validate
+  // billing state. consolidated_batch_seq is part of the match (and of
+  // p2_invoices_consolidated_dedup_idx) so that a retry of ONE split batch is
+  // idempotent while a DIFFERENT batch for the same date range is not mistaken for
+  // a duplicate.
   const { data: existingInvoice, error: existingError } = await supabaseClient
     .from('p2_invoices')
     .select('invoice_number, invoice_token, amount_total')
@@ -2707,6 +2731,7 @@ async function confirmConsolidatedInvoice(
     .eq('client_id', client_id)
     .eq('date_from', date_from)
     .eq('date_to', date_to)
+    .eq('consolidated_batch_seq', batchSeq)
     .maybeSingle()
 
   if (existingError) {
@@ -2723,14 +2748,42 @@ async function confirmConsolidatedInvoice(
     })
   }
 
-  // Cross-mode double-billing guard: block the whole consolidated invoice
-  // (not a silent partial exclusion) if any matched dispatch was already
-  // billed individually via a single-mode invoice.
+  const allItems: InvoiceItem[] = []
+  const includedOrderIds = new Set<string>()
+  for (const order of orderRows) {
+    const itemsResult = await buildInvoiceItemsForOrder(supabaseClient, tenant_id, order)
+    if ('error' in itemsResult) {
+      return respond({ status: 'error', error: itemsResult.error }, 400)
+    }
+    for (const { dispatch_item_id, product_code, ...rest } of itemsResult.items) {
+      // includeIds null = no filter (legacy path, include everything). Non-null =
+      // only bill items the caller actually asked for — lets a removed preview row
+      // or a different split batch's items be genuinely excluded, not just given a
+      // default rate.
+      if (includeIds && !includeIds.has(dispatch_item_id)) continue
+      // Confirmed price from the preview step wins when present; otherwise
+      // keep buildInvoiceItemsForOrder's price-table default.
+      const rate = rateById.has(dispatch_item_id) ? Number(rateById.get(dispatch_item_id)) : rest.rate
+      allItems.push({ ...rest, rate, amount: rest.qty * rate })
+      includedOrderIds.add(order.id)
+    }
+  }
+
+  if (allItems.length === 0) {
+    return respond({ status: 'error', error: 'No line items matched — nothing to bill.' }, 400)
+  }
+
+  // Cross-mode double-billing guard: block this invoice if any dispatch it actually
+  // covers was already billed individually via a single-mode invoice. Scoped to
+  // includedOrderIds (orders that contributed at least one item to THIS call), not
+  // the full date-range sweep — an order excluded here (removed row, or belongs to a
+  // different split batch) must not block an unrelated invoice.
+  const includedOrderIdList = Array.from(includedOrderIds)
   const { data: singleInvoices, error: singleError } = await supabaseClient
     .from('p2_invoices')
     .select('dispatch_order_id')
     .eq('invoice_mode', 'single')
-    .in('dispatch_order_id', orderIds)
+    .in('dispatch_order_id', includedOrderIdList)
 
   if (singleError) {
     return respond({ status: 'error', error: singleError.message }, 500)
@@ -2744,26 +2797,15 @@ async function confirmConsolidatedInvoice(
     }, 400)
   }
 
-  const allItems: InvoiceItem[] = []
-  for (const order of orderRows) {
-    const itemsResult = await buildInvoiceItemsForOrder(supabaseClient, tenant_id, order)
-    if ('error' in itemsResult) {
-      return respond({ status: 'error', error: itemsResult.error }, 400)
-    }
-    for (const { dispatch_item_id, product_code, ...rest } of itemsResult.items) {
-      // Confirmed price from the preview step wins when present; otherwise
-      // keep buildInvoiceItemsForOrder's price-table default.
-      const rate = rateById.has(dispatch_item_id) ? Number(rateById.get(dispatch_item_id)) : rest.rate
-      allItems.push({ ...rest, rate, amount: rest.qty * rate })
-    }
-  }
-
+  const includedOrders = orderRows.filter((o) => includedOrderIds.has(o.id))
   const { subtotal, gst, roundOff, total } = buildInvoiceTotals(allItems, gstType)
   // 'services' only if every covered dispatch is job-work/bom_issue — one
   // plain-sale dispatch in the mix defaults the whole consolidated invoice to
   // 'goods' (the stricter Rule 48(1) triplicate format), matching
-  // deriveDocCategory's own "default to goods if unknown" conservatism.
-  const docCategory = orderRows.every((o) => deriveDocCategory(o.dispatch_type, o.movement_purpose) === 'services')
+  // deriveDocCategory's own "default to goods if unknown" conservatism. Scoped to
+  // includedOrders, not the full sweep — an excluded order's type must not
+  // influence this invoice's classification.
+  const docCategory = includedOrders.every((o) => deriveDocCategory(o.dispatch_type, o.movement_purpose) === 'services')
     ? 'services'
     : 'goods'
   const invoiceDate = todayIST()
@@ -2783,7 +2825,7 @@ async function confirmConsolidatedInvoice(
       invoice_number: invoiceNumber,
       invoice_date: invoiceDate,
       dispatch_order_id: null,
-      dispatch_order_ids: orderIds,
+      dispatch_order_ids: includedOrderIdList,
       client_id: client.id,
       client_name: client.name,
       client_address: client.address,
@@ -2798,6 +2840,7 @@ async function confirmConsolidatedInvoice(
       invoice_mode: 'consolidated',
       date_from,
       date_to,
+      consolidated_batch_seq: batchSeq,
       // status left at its 'draft' default — only flipped to 'sent' after
       // the email actually succeeds below (or skipped entirely if the
       // client has no email on file), same failure-safety as
