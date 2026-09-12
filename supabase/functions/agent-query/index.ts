@@ -1799,14 +1799,14 @@ function deriveDocCategory(dispatchType: string | null, movementPurpose: string 
 
 // p2_tenant_settings.invoice_number_format ('full' | 'short', default 'full').
 // get_next_invoice_number returns both the pre-formatted INV-YYYYMM-NNN string
-// and the raw sequence integer — 'short' rebuilds from the raw integer
-// (INV-<n>), 'full' (or missing/null) keeps the RPC's own formatted string
-// unchanged.
+// and the raw sequence integer — 'short' rebuilds from the raw integer, no
+// prefix (just the number), 'full' (or missing/null) keeps the RPC's own
+// formatted string unchanged.
 function resolveInvoiceNumber(
   format: string | null | undefined,
   seqRow: { invoice_number: string; sequence_number: number }
 ): string {
-  return format === 'short' ? `INV-${seqRow.sequence_number}` : seqRow.invoice_number
+  return format === 'short' ? `${seqRow.sequence_number}` : seqRow.invoice_number
 }
 
 // Orange link button, reply_to only if truthy, pointing at the invoice-view

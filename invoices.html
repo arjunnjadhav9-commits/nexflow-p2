@@ -1312,7 +1312,7 @@
             })();
             const nextSeq = currentInvoiceSequence + 1;
             const predictedInvoiceNo = invoiceNumberFormat === 'short'
-                ? `INV-${nextSeq}`
+                ? `${nextSeq}`
                 : `INV-${yyyymm}-${String(nextSeq).padStart(3, '0')}`;
             document.getElementById('consPreviewInvoiceNo').textContent =
                 `${t('Invoice No','इनव्हॉइस क्र.')}: ${predictedInvoiceNo}`;
