@@ -449,6 +449,16 @@ function fmtDate(iso) {
     return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
+// Line-item dispatch dates in the items table print as DD/MM/YY — distinct from
+// fmtDate() above, which stays "01 Sept 2026" for the invoice header/period.
+function fmtShortDate(dateStr) {
+    const d = new Date(dateStr);
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const yy = String(d.getFullYear()).slice(2);
+    return dd + '/' + mm + '/' + yy;
+}
+
 function showError(message) {
     document.getElementById('loadingState').style.display = 'none';
     document.getElementById('content').style.display = 'none';
@@ -531,7 +541,7 @@ function renderInvoice(data) {
         <tr>
             <td class="print-only-cell">${i + 1}</td>
             <td>${escapeHtml(item.challan_number || '-')}</td>
-            <td>${escapeHtml(item.dispatch_date ? fmtDate(item.dispatch_date) : '-')}</td>
+            <td>${escapeHtml(item.dispatch_date ? fmtShortDate(item.dispatch_date) : '-')}</td>
             <td>${escapeHtml(item.description || '')}</td>
             <td>${escapeHtml(item.qty)}</td>
             <td>${escapeHtml(item.unit)}</td>

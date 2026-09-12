@@ -2797,6 +2797,17 @@ async function confirmConsolidatedInvoice(
     }
   }
 
+  // allItems is assembled order-by-order above, in whatever order orderRows/
+  // p2_dispatch_items came back from the DB — not necessarily challan order.
+  // invoices.html's preview sorts by challan_number before the owner confirms,
+  // so the stored p2_invoices.items jsonb (and the printed invoice) must match
+  // that same order, independent of DB query order.
+  allItems.sort((a, b) => {
+    const aChallan = parseInt(String(a.challan_number || '0'))
+    const bChallan = parseInt(String(b.challan_number || '0'))
+    return aChallan - bChallan
+  })
+
   if (allItems.length === 0) {
     return respond({ status: 'error', error: 'No line items matched — nothing to bill.' }, 400)
   }
