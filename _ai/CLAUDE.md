@@ -2501,6 +2501,57 @@ Post-Session-17 strategic planning. No code shipped — three design documents w
   tutorial engine and the automation layer are designed language-agnostic from day one —
   adding a language is adding keys plus one migration, never engine code.
 
+## Shipped Sept 12, 2026 — Invoice Number Format
+
+Per-tenant invoice number format setting. `p2_tenant_settings.invoice_number_format` (`'full'` |
+`'short'`, `NOT NULL DEFAULT 'full'`, migration `20260912_invoice_number_format.sql`) —
+`'full'` = today's `INV-YYYYMM-NNN` (unchanged, every existing tenant's default), `'short'` =
+`INV-<n>`, no date segment. Historical `invoice_number` values are never rewritten — this only
+changes what gets generated going forward.
+
+**`get_next_invoice_number` signature changed**: `RETURNS text` → `RETURNS TABLE(invoice_number
+text, sequence_number integer)`. The formatted string alone wasn't enough to build the `'short'`
+format safely — `lpad(v_seq::text, 3, '0')` only pads, never truncates, so once
+`invoice_sequence` reaches 1000+ the string's tail is 4+ digits and a naive "parse the last 3
+characters" approach would silently misread it (e.g. sequence 1001 → last-3 `"001"` → collides
+with the real sequence-1 invoice). The RPC now returns the raw integer alongside the formatted
+string instead. Both call sites in `agent-query/index.ts` (`confirmGenerateInvoice`,
+`confirmConsolidatedInvoice`) updated to read `data?.[0]` instead of a bare string, via new
+shared helper `resolveInvoiceNumber(format, seqRow)` (placed next to `deriveDocCategory`).
+**Deployment order matters**: apply the migration before redeploying `agent-query` — old
+code + new function reads the row array as if it were a string; new code + old function reads
+the bare string's first character via `[0]`. Neither fails loudly.
+
+Both invoice-generating handlers now read `p2_tenant_settings.invoice_number_format` before
+calling the RPC — neither one had this settings row available beforehand despite the original
+task assuming it did. `confirmGenerateInvoice` had no `p2_tenant_settings` fetch at all;
+`confirmConsolidatedInvoice` had one, but only *after* the invoice insert and only for the email
+step (`company_name`/`email`), too late to gate the number format. That fetch was relocated
+earlier (before the RPC call) and widened to include `invoice_number_format`, rather than adding
+a second query — the email step below reuses the same relocated row.
+
+`settings.html` (Challan Settings tab): new "Invoice Number Format" dropdown, immediately after
+Invoice Starting Number, standalone save button (`toast()` feedback, no fresh-read guard needed
+— same simple shape as `invoice_lines_per_page`, unlike Invoice Starting Number's backward-
+collision guard). `invoices.html`: `invoiceNumberFormat` piggybacks on the existing
+`plan`/`invoice_lines_per_page`/`invoice_sequence` fetch at init; the consolidated-invoice
+preview's predicted number (`openConsPreviewModal`) branches on it — cosmetic only, the server
+applies the real saved format independently at confirm time.
+
+**Follow-up bug fix, same day**: "Preview Line Items" in the consolidated invoice modal threw
+"JSON object requested, multiple (or no) rows returned" — a pre-existing bug in
+`previewConsolidatedInvoice`'s duplicate-invoice check (`agent-query/index.ts`), not caused by
+the change above. That check queries `p2_invoices` on `(tenant_id, client_id, date_from,
+date_to)` via `.maybeSingle()`, but the Max Lines Per Invoice auto-split feature (prior session,
+`consolidated_batch_seq`) can legitimately leave more than one row on that exact tuple — one per
+split batch — which `.maybeSingle()` rejects as soon as a second batch exists.
+`confirmConsolidatedInvoice`'s equivalent check already scopes to one `consolidated_batch_seq`
+(the batch it's confirming) and was never affected; preview has no batch number yet, so it
+correctly needs to check the whole range across every batch instead. Fixed by fetching the
+duplicate check as a plain array instead of `.maybeSingle()` (`existingInvoices?.length`,
+joining every matching invoice_number in the error message) rather than narrowing the filter —
+narrowing would have silently stopped detecting real duplicates on already-split ranges.
+
 ## Known Open Items / Blocking Issues
 
 ### Blocking — Enterprise Build Prerequisites

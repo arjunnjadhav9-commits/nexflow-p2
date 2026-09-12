@@ -562,6 +562,26 @@
                 <div id="invoice-sequence-status" class="nx-status-msg"></div>
             </div>
 
+            <!-- ── INVOICE NUMBER FORMAT ── standalone, own save button, same
+                 shape as Max Lines Per Invoice below. Changing this only
+                 affects invoices generated from now on — historical
+                 invoice_number values are frozen and never rewritten. ────── -->
+            <div style="background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-top:20px;">
+                <div class="nx-section-head" data-en="Invoice Number Format" data-mr="इनव्हॉइस क्रमांक स्वरूप">Invoice Number Format</div>
+                <div class="nx-form-group" style="margin-bottom:10px;">
+                    <select id="invoice-number-format" class="nx-input">
+                        <option value="full" data-en="Full format — INV-202609-079" data-mr="पूर्ण स्वरूप — INV-202609-079">Full format — INV-202609-079</option>
+                        <option value="short" data-en="Short format — INV-79" data-mr="लहान स्वरूप — INV-79">Short format — INV-79</option>
+                    </select>
+                    <div style="font-size:11px; color:var(--mid); margin-top:6px;"
+                         data-en="Only affects invoices generated after you save. Existing invoice numbers never change."
+                         data-mr="फक्त जतन केल्यानंतर तयार होणाऱ्या इनव्हॉइसवर परिणाम होतो. सध्याचे इनव्हॉइस क्रमांक कधीही बदलत नाहीत.">
+                        Only affects invoices generated after you save. Existing invoice numbers never change.
+                    </div>
+                </div>
+                <button type="button" id="save-invoice-number-format-btn" class="nx-btn nx-btn-primary" data-en="Save" data-mr="जतन करा">Save</button>
+            </div>
+
             <!-- ── MAX LINES PER INVOICE ── standalone, own save button, same
                  shape as Invoice Starting Number above. Blank = no limit (single
                  consolidated invoice always). When set, invoices.html splits a
@@ -1369,7 +1389,7 @@
 
             const { data, error } = await window.supabase
                 .from('p2_tenant_settings')
-                .select('company_name, address_line1, address_line2, mobile, gstin, bank_name, bank_account, bank_ifsc, sac_code, aato_bracket, challan_sequence, challan_next_override, grn_sequence, invoice_sequence, invoice_lines_per_page, challan_mode, is_job_work_setup_seen, is_job_worker, is_principal, separate_pool_deduction, telegram_chat_id, quiet_hours_start, quiet_hours_end')
+                .select('company_name, address_line1, address_line2, mobile, gstin, bank_name, bank_account, bank_ifsc, sac_code, aato_bracket, challan_sequence, challan_next_override, grn_sequence, invoice_sequence, invoice_lines_per_page, invoice_number_format, challan_mode, is_job_work_setup_seen, is_job_worker, is_principal, separate_pool_deduction, telegram_chat_id, quiet_hours_start, quiet_hours_end')
                 .eq('tenant_id', tenantId)
                 .single();
 
@@ -1396,6 +1416,7 @@
                 currentInvoiceSequence = data.invoice_sequence || 0;
                 document.getElementById('invoice-sequence').value  = currentInvoiceSequence + 1;
                 document.getElementById('invoice-lines-per-page').value = data.invoice_lines_per_page ?? '';
+                document.getElementById('invoice-number-format').value = data.invoice_number_format || 'full';
                 // Challan mode toggle
                 const savedMode = data.challan_mode || 'split';
                 const modeRadio = document.querySelector(`input[name="challan_mode"][value="${savedMode}"]`);
@@ -1848,6 +1869,27 @@
             toast(lang === 'mr' ? 'सेटिंग जतन झाली' : 'Max lines per invoice saved', 'success');
         } catch (error) {
             console.error('Error saving invoice_lines_per_page:', error);
+            toast(lang === 'mr' ? 'जतन करण्यात अयशस्वी' : 'Failed to save', 'error');
+        }
+    });
+
+    // ── SAVE INVOICE NUMBER FORMAT ───────────────────────────────────────────
+    // Simple update, no fresh-read guard needed (unlike Invoice Starting
+    // Number above) — a format string has no backward-collision risk.
+    document.getElementById('save-invoice-number-format-btn').addEventListener('click', async () => {
+        const format = document.getElementById('invoice-number-format').value;
+        const lang = localStorage.getItem('nexflow_lang') || 'en';
+        try {
+            const { data: { user } } = await window.supabase.auth.getUser();
+            if (!user) { toast('Not authenticated', 'error'); return; }
+            const tenantId = user.user_metadata?.tenant_id || user.id;
+            const { error } = await window.supabase.from('p2_tenant_settings')
+                .update({ invoice_number_format: format })
+                .eq('tenant_id', tenantId);
+            if (error) throw error;
+            toast(lang === 'mr' ? 'सेटिंग जतन झाली' : 'Invoice number format saved', 'success');
+        } catch (error) {
+            console.error('Error saving invoice_number_format:', error);
             toast(lang === 'mr' ? 'जतन करण्यात अयशस्वी' : 'Failed to save', 'error');
         }
     });

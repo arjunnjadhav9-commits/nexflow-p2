@@ -1797,6 +1797,18 @@ function deriveDocCategory(dispatchType: string | null, movementPurpose: string 
   return 'goods'
 }
 
+// p2_tenant_settings.invoice_number_format ('full' | 'short', default 'full').
+// get_next_invoice_number returns both the pre-formatted INV-YYYYMM-NNN string
+// and the raw sequence integer — 'short' rebuilds from the raw integer
+// (INV-<n>), 'full' (or missing/null) keeps the RPC's own formatted string
+// unchanged.
+function resolveInvoiceNumber(
+  format: string | null | undefined,
+  seqRow: { invoice_number: string; sequence_number: number }
+): string {
+  return format === 'short' ? `INV-${seqRow.sequence_number}` : seqRow.invoice_number
+}
+
 // Orange link button, reply_to only if truthy, pointing at the invoice-view
 // link instead of receive.html.
 async function sendInvoiceEmail(params: {
@@ -2447,13 +2459,21 @@ async function confirmGenerateInvoice(
   const docCategory = deriveDocCategory(order.dispatch_type, order.movement_purpose)
   const invoiceDate = todayIST()
 
-  const { data: invoiceNumber, error: invNoError } = await supabaseClient
+  const { data: tenantSettingsRow } = await supabaseClient
+    .from('p2_tenant_settings')
+    .select('invoice_number_format')
+    .eq('tenant_id', tenant_id)
+    .maybeSingle() as { data: { invoice_number_format: string | null } | null }
+
+  const { data: seqRows, error: invNoError } = await supabaseClient
     .rpc('get_next_invoice_number', { p_tenant_id: tenant_id })
 
-  if (invNoError || !invoiceNumber) {
+  const seqRow = seqRows?.[0]
+  if (invNoError || !seqRow) {
     void logInteraction(supabaseClient, tenant_id, '', 'send_invoice', {}, null, false, invNoError?.message ?? 'no invoice number returned')
     return respond({ status: 'error', error: invNoError?.message ?? 'Could not generate invoice number' }, 500)
   }
+  const invoiceNumber = resolveInvoiceNumber(tenantSettingsRow?.invoice_number_format, seqRow)
 
   const { data: invoiceRow, error: insertError } = await supabaseClient
     .from('p2_invoices')
@@ -2566,23 +2586,31 @@ async function previewConsolidatedInvoice(
 
   // Same duplicate check as confirmConsolidatedInvoice, but blocks here
   // instead of silently resending — no point previewing/editing prices for
-  // an invoice that already exists.
-  const { data: existingInvoice, error: existingError } = await supabaseClient
+  // an invoice that already exists. Unlike confirmConsolidatedInvoice (which
+  // scopes to one consolidated_batch_seq — the specific batch it's
+  // confirming), preview has no batch number yet, so this intentionally
+  // checks the whole (tenant_id, client_id, date_from, date_to) range across
+  // every batch. The Max Lines Per Invoice auto-split feature can legitimately
+  // leave more than one p2_invoices row on that exact range (one per
+  // consolidated_batch_seq), so this must NOT use .maybeSingle() — it throws
+  // "JSON object requested, multiple (or no) rows returned" as soon as a
+  // second batch exists.
+  const { data: existingInvoices, error: existingError } = await supabaseClient
     .from('p2_invoices')
     .select('invoice_number')
     .eq('tenant_id', tenant_id)
     .eq('client_id', client_id)
     .eq('date_from', date_from)
     .eq('date_to', date_to)
-    .maybeSingle()
 
   if (existingError) {
     return respond({ status: 'error', error: existingError.message }, 500)
   }
-  if (existingInvoice) {
+  if (existingInvoices?.length) {
+    const invoiceNumbers = existingInvoices.map((i: { invoice_number: string }) => i.invoice_number).join(', ')
     return respond({
       status: 'error',
-      error: `Ya client ani period sathi invoice already exists — ${existingInvoice.invoice_number}.`,
+      error: `Ya client ani period sathi invoice already exists — ${invoiceNumbers}.`,
     }, 400)
   }
 
@@ -2810,13 +2838,25 @@ async function confirmConsolidatedInvoice(
     : 'goods'
   const invoiceDate = todayIST()
 
-  const { data: invoiceNumber, error: invNoError } = await supabaseClient
+  // Fetched here (before the number is generated) rather than later, so
+  // invoice_number_format is available to resolveInvoiceNumber below.
+  // Reused again after the insert for the email step (company_name/email) —
+  // still one query, not two.
+  const { data: tenantSettingsRow } = await supabaseClient
+    .from('p2_tenant_settings')
+    .select('company_name, email, invoice_number_format')
+    .eq('tenant_id', tenant_id)
+    .maybeSingle() as { data: { company_name: string | null; email: string | null; invoice_number_format: string | null } | null }
+
+  const { data: seqRows, error: invNoError } = await supabaseClient
     .rpc('get_next_invoice_number', { p_tenant_id: tenant_id })
 
-  if (invNoError || !invoiceNumber) {
+  const seqRow = seqRows?.[0]
+  if (invNoError || !seqRow) {
     void logInteraction(supabaseClient, tenant_id, '', 'confirm_consolidated_invoice', {}, null, false, invNoError?.message ?? 'no invoice number returned')
     return respond({ status: 'error', error: invNoError?.message ?? 'Could not generate invoice number' }, 500)
   }
+  const invoiceNumber = resolveInvoiceNumber(tenantSettingsRow?.invoice_number_format, seqRow)
 
   const { data: invoiceRow, error: insertError } = await supabaseClient
     .from('p2_invoices')
@@ -2862,12 +2902,6 @@ async function confirmConsolidatedInvoice(
     void logInteraction(supabaseClient, tenant_id, '', 'confirm_consolidated_invoice', {}, 'matched', true, null)
     return respond({ status: 'ok', invoice_number: invoiceNumber, invoice_token: invoiceRow.invoice_token, invoice_url: invoiceUrl, total, already_exists: false })
   }
-
-  const { data: tenantSettingsRow } = await supabaseClient
-    .from('p2_tenant_settings')
-    .select('company_name, email')
-    .eq('tenant_id', tenant_id)
-    .maybeSingle()
 
   const emailResult = await sendInvoiceEmail({
     toEmail: client.email,

@@ -570,6 +570,11 @@
         // (openConsPreviewModal). Never written to; get_next_invoice_number RPC
         // remains the sole source of truth for the actual number at confirm time.
         let currentInvoiceSequence = 0;
+        // 'full' (INV-YYYYMM-NNN) or 'short' (INV-<n>) — settings.html Challan
+        // Settings tab. Loaded once at init alongside plan, same as above. Only
+        // used to predict the next invoice number in the preview header; the
+        // server applies the tenant's saved format independently at confirm time.
+        let invoiceNumberFormat = 'full';
         const expandedInvoiceIds = new Set();
         const expandedMobileRows = new Set();
         let consInvoicePreviewState = { clientId: null, clientName: null, dateFrom: null, dateTo: null, gstType: null, dispatchType: null, items: [] };
@@ -680,13 +685,14 @@
                 // invoice_lines_per_page piggybacks on this same query — no new fetch.
                 const { data: settingsData } = await window.supabase
                     .from('p2_tenant_settings')
-                    .select('plan, invoice_lines_per_page, invoice_sequence')
+                    .select('plan, invoice_lines_per_page, invoice_sequence, invoice_number_format')
                     .eq('tenant_id', tenantId)
                     .maybeSingle();
                 const plan = settingsData?.plan || 'founder';
                 canRecordPayment = plan === 'pro' || plan === 'founder';
                 invoiceLinesPerPage = settingsData?.invoice_lines_per_page ?? null;
                 currentInvoiceSequence = settingsData?.invoice_sequence || 0;
+                invoiceNumberFormat = settingsData?.invoice_number_format || 'full';
 
                 loadingSpinner.style.display = 'none';
 
@@ -1304,10 +1310,12 @@
                 return String(d.getFullYear()) +
                        String(d.getMonth() + 1).padStart(2, '0');
             })();
-            const nextSeq = String(currentInvoiceSequence + 1)
-                .padStart(3, '0');
+            const nextSeq = currentInvoiceSequence + 1;
+            const predictedInvoiceNo = invoiceNumberFormat === 'short'
+                ? `INV-${nextSeq}`
+                : `INV-${yyyymm}-${String(nextSeq).padStart(3, '0')}`;
             document.getElementById('consPreviewInvoiceNo').textContent =
-                `${t('Invoice No','इनव्हॉइस क्र.')}: INV-${yyyymm}-${nextSeq}`;
+                `${t('Invoice No','इनव्हॉइस क्र.')}: ${predictedInvoiceNo}`;
 
             document.getElementById('consPreviewError').style.display = 'none';
             renderConsPreviewTable();
