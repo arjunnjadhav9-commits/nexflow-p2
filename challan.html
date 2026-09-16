@@ -204,6 +204,9 @@
             <button id="editClientBtn" class="nx-btn nx-btn-secondary" style="display:none;" onclick="openEditClientModal()">
                 👤 Edit Client
             </button>
+            <button id="editDateBtn" class="nx-btn nx-btn-secondary" style="display:none;" onclick="openEditDateModal()">
+                📅 Edit Date
+            </button>
             <button id="printBtn" onclick="handlePrint()" class="nx-btn nx-btn-green"
                     data-en="Print Challan" data-mr="चलान प्रिंट करा">
                 🖨️ Print Challan
@@ -367,6 +370,8 @@
     <script>
         const urlParams       = new URLSearchParams(window.location.search);
         const dispatchOrderId = urlParams.get('id');
+        let tenantId          = null;
+        let hasLinkedInvoice  = false; // resolved once in loadChallan(), owner role only
 
         if (!dispatchOrderId) {
             document.body.innerHTML = `
@@ -386,7 +391,7 @@
             try {
                 const { data: { user } } = await window.supabase.auth.getUser();
                 if (!user) { window.location.href = 'login.html'; return; }
-                const tenantId = user.user_metadata?.tenant_id || user.id;
+                tenantId = user.user_metadata?.tenant_id || user.id;
 
                 const { data: dispatchOrder, error: orderError } = await window.supabase
                     .from('p2_dispatch_orders').select('*, challan_note, challan_footer')
@@ -401,6 +406,12 @@
                 const { data: tenantSettings, error: settingsError } = await window.supabase
                     .from('p2_tenant_settings').select('*').eq('tenant_id', tenantId).single();
                 if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
+
+                // Invoice-link check — only the owner ever sees the Edit Date button, so
+                // skip these two extra queries entirely for every other role.
+                if (getUserRole() === 'owner') {
+                    hasLinkedInvoice = await checkLinkedInvoice(tenantId);
+                }
 
                 populateChallan(dispatchOrder, dispatchItems, tenantSettings);
                 renderQrSections(dispatchOrder, tenantSettings);
@@ -456,6 +467,14 @@
 
             if (order.dispatch_type === 'bom_issue' && !order.client_name && ['owner','supervisor'].includes(getUserRole())) {
                 document.getElementById('editClientBtn').style.display = '';
+            }
+
+            // Edit Date: owner only, confirmed challans only, and only while no invoice
+            // has been raised against this challan (dispatch_date drives the s.143 clock
+            // and GSTR-1 Table 13, so it's frozen once invoiced). hasLinkedInvoice is
+            // resolved in loadChallan() before this runs.
+            if (getUserRole() === 'owner' && order.status === 'confirmed' && !hasLinkedInvoice) {
+                document.getElementById('editDateBtn').style.display = '';
             }
 
             const rawChallan = order.challan_number || (settings?.challan_sequence || 1000);
@@ -730,6 +749,130 @@
                 closeEditClientModal();
 
             } catch (err) {
+                errEl.textContent = 'Failed to save: ' + (err.message || 'Unknown error');
+                errEl.style.display = 'block';
+            } finally {
+                saveBtn.disabled = false;
+                saveBtn.textContent = 'Save';
+            }
+        }
+
+        // ── EDIT DATE ─────────────────────────────────────────────────
+        // Same implementation js/full-export.js and reports.html's stock-count screen
+        // use — never toISOString().split('T')[0] (that's the UTC date, wrong near IST
+        // midnight).
+        function todayIST() {
+            return new Date().toLocaleString('en-CA', { timeZone: 'Asia/Kolkata' }).split(',')[0];
+        }
+
+        // Resolves once per page load (owner role only, see loadChallan()) — true if any
+        // invoice already references this dispatch, single-mode or consolidated. Once
+        // invoiced, the challan date is locked permanently.
+        async function checkLinkedInvoice(tid) {
+            try {
+                const [{ data: singleInvoice }, { data: consolidatedRows }] = await Promise.all([
+                    window.supabase
+                        .from('p2_invoices')
+                        .select('id')
+                        .eq('tenant_id', tid)
+                        .eq('dispatch_order_id', dispatchOrderId)
+                        .eq('invoice_mode', 'single')
+                        .maybeSingle(),
+                    window.supabase
+                        .from('p2_invoices')
+                        .select('id')
+                        .eq('tenant_id', tid)
+                        .contains('dispatch_order_ids', [dispatchOrderId])
+                        .limit(1)
+                ]);
+                return !!singleInvoice || !!(consolidatedRows && consolidatedRows.length > 0);
+            } catch (err) {
+                // Fail closed — if we can't confirm there's no invoice, don't offer the edit.
+                console.error('checkLinkedInvoice:', err);
+                return true;
+            }
+        }
+
+        function openEditDateModal() {
+            if (getUserRole() !== 'owner' || hasLinkedInvoice) return;
+            const dateInput = document.getElementById('ed-date');
+            dateInput.value = window._challanOrder?.dispatch_date || '';
+            dateInput.max   = todayIST();
+            document.getElementById('ed-error').style.display = 'none';
+            document.getElementById('editDateModal').style.display = 'flex';
+            setTimeout(() => dateInput.focus(), 80);
+        }
+
+        function closeEditDateModal() {
+            document.getElementById('editDateModal').style.display = 'none';
+        }
+
+        async function saveDispatchDate() {
+            const errEl   = document.getElementById('ed-error');
+            const saveBtn = document.getElementById('ed-save-btn');
+            const newDate = document.getElementById('ed-date').value;
+            errEl.style.display = 'none';
+
+            const order = window._challanOrder;
+            if (!order) return;
+
+            // Defensive re-check — another tab could have generated an invoice against
+            // this challan, or changed its status, since this page loaded.
+            if (getUserRole() !== 'owner' || hasLinkedInvoice) {
+                errEl.textContent = 'This challan date can no longer be edited.';
+                errEl.style.display = 'block';
+                return;
+            }
+
+            if (!newDate) {
+                errEl.textContent = 'Please select a date.';
+                errEl.style.display = 'block';
+                return;
+            }
+            if (newDate === order.dispatch_date) {
+                errEl.textContent = 'That is already the current dispatch date.';
+                errEl.style.display = 'block';
+                return;
+            }
+            if (newDate > todayIST()) {
+                errEl.textContent = 'The dispatch date cannot be in the future.';
+                errEl.style.display = 'block';
+                return;
+            }
+
+            // Original — the true first-ever date, preserved once set, never the
+            // previous value from an earlier correction.
+            const originalDate = order.original_dispatch_date || order.dispatch_date;
+            const diffDays = Math.abs((new Date(newDate) - new Date(originalDate)) / 86400000);
+            if (diffDays > 7) {
+                errEl.textContent = 'The new date cannot be more than 7 days from the original dispatch date (' + formatDate(originalDate) + ').';
+                errEl.style.display = 'block';
+                return;
+            }
+
+            saveBtn.disabled = true;
+            saveBtn.textContent = 'Saving...';
+
+            try {
+                const { error } = await window.supabase
+                    .from('p2_dispatch_orders')
+                    .update({
+                        dispatch_date:         newDate,
+                        original_dispatch_date: originalDate,
+                        updated_at:            new Date().toISOString()
+                    })
+                    .eq('id', dispatchOrderId);
+
+                if (error) throw error;
+
+                order.dispatch_date          = newDate;
+                order.original_dispatch_date = originalDate;
+                document.getElementById('challan-date').textContent = formatDate(newDate);
+
+                closeEditDateModal();
+                toast('Challan date updated.', 'ok');
+            } catch (err) {
+                console.error('saveDispatchDate:', err);
                 errEl.textContent = 'Failed to save: ' + (err.message || 'Unknown error');
                 errEl.style.display = 'block';
             } finally {
@@ -1037,6 +1180,32 @@
         <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:4px;">
           <button class="nx-btn nx-btn-ghost" onclick="closeEditClientModal()">Cancel</button>
           <button class="nx-btn nx-btn-primary" id="ec-save-btn" onclick="saveClientInfo()">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="editDateModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.65); z-index:200; align-items:center; justify-content:center; padding:20px;">
+      <div style="background:var(--surface); border:1px solid var(--border2); border-radius:var(--radius-lg, 12px); padding:28px; width:100%; max-width:480px; box-shadow:var(--shadow-md);">
+        <div style="font-family:var(--condensed); font-size:16px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; color:var(--white); margin-bottom:10px;">Edit Challan Date</div>
+
+        <div class="nx-alert nx-alert-orange" style="margin-bottom:16px;">
+          <span class="nx-alert-icon">⚠</span>
+          <div>Changing the challan date affects the s.143 clock and GSTR-1 Table 13. Verify with your CA before changing.</div>
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:6px; margin-bottom:14px;">
+          <label style="font-size:11px; font-weight:700; color:var(--mid); text-transform:uppercase; letter-spacing:0.5px;">Dispatch Date</label>
+          <input type="date" id="ed-date"
+                 style="width:100%; padding:10px 13px; background:var(--surface3); border:1px solid var(--border2); border-radius:var(--radius,8px); font-size:14px; font-family:var(--font); color:var(--text);">
+        </div>
+
+        <div style="font-size:12px; color:var(--mid); margin-bottom:14px;">Can be corrected up to 7 days earlier or later than the original dispatch date, and never into the future.</div>
+
+        <div id="ed-error" style="display:none; color:#ef4444; font-size:12px; margin-bottom:10px;"></div>
+
+        <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:4px;">
+          <button class="nx-btn nx-btn-ghost" onclick="closeEditDateModal()">Cancel</button>
+          <button class="nx-btn nx-btn-primary" id="ed-save-btn" onclick="saveDispatchDate()">Save</button>
         </div>
       </div>
     </div>
