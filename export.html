@@ -867,7 +867,7 @@ async function exportTallyTransactions() {
   log('Fetching session...');
   const tenantId = await getTenantId();
 
-  const JOIN_COLUMNS = 'transaction_date, quantity, rate, notes, invoice_no, supplier_id, supplier_name, purchase_type, p2_raw_materials!inner(name, material_code, hsn_sac, gst_rate, unit), p2_suppliers(gstin)';
+  const JOIN_COLUMNS = 'transaction_date, quantity, rate, notes, invoice_no, supplier_id, supplier_name, purchase_type, gst_rate, p2_raw_materials!inner(name, material_code, hsn_sac, gst_rate, unit), p2_suppliers(gstin)';
 
   log(`Fetching GRN, Opening Stock, and Invoices ${from} → ${to}...`);
   const [grnResult, openingResult, invoiceResult, tenantSettingsResult] = await Promise.all([
@@ -983,7 +983,9 @@ async function exportTallyTransactions() {
       const rate = row.rate || 0;
       const qty  = row.quantity;
       const amount = qty * rate;
-      const gstRate = rm.gst_rate || 0;
+      // Per-line override (set only by a GRN correction) wins over the
+      // material master's own gst_rate — see _ai/CLAUDE.md GRN Correction Flow.
+      const gstRate = row.gst_rate != null ? row.gst_rate : (rm.gst_rate || 0);
       const isInterstate = row.purchase_type === 'interstate';
 
       let cgstRate = '', cgstAmount = '', sgstRate = '', sgstAmount = '', igstRate = '', igstAmount = '';
@@ -1344,7 +1346,7 @@ async function exportZohoTransactions() {
     .from('p2_stock_transactions')
     .select(`
       id, transaction_date, invoice_no,
-      quantity, rate, supplier_name, supplier_id, purchase_type,
+      quantity, rate, supplier_name, supplier_id, purchase_type, gst_rate,
       p2_raw_materials!inner(name, material_code, hsn_sac, gst_rate)
     `)
     .eq('tenant_id', tenantId)
@@ -1413,7 +1415,9 @@ async function exportZohoTransactions() {
       }
       billNo = fallbackBillMap[key];
     }
-    const gstRate = t.p2_raw_materials.gst_rate || 0;
+    // Per-line override (set only by a GRN correction) wins over the
+    // material master's own gst_rate — see _ai/CLAUDE.md GRN Correction Flow.
+    const gstRate = t.gst_rate != null ? t.gst_rate : (t.p2_raw_materials.gst_rate || 0);
     const isInterstate = t.purchase_type === 'interstate';
     rows.push([
       t.supplier_name   || '',

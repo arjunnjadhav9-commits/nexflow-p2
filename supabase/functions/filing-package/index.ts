@@ -564,7 +564,7 @@ async function buildGstr1ReferenceWorkbook(
 async function buildPurchaseRegisterWorkbook(
   tenantId: string, monthFrom: string, monthTo: string, tenantGstin: string
 ): Promise<{ workbook: ExcelJS.Workbook; rowCount: number }> {
-  const JOIN_COLUMNS = 'transaction_date, quantity, rate, notes, invoice_no, supplier_id, supplier_name, purchase_type, p2_raw_materials!inner(name, material_code, hsn_sac, gst_rate, unit), p2_suppliers(gstin)'
+  const JOIN_COLUMNS = 'transaction_date, quantity, rate, notes, invoice_no, supplier_id, supplier_name, purchase_type, gst_rate, p2_raw_materials!inner(name, material_code, hsn_sac, gst_rate, unit), p2_suppliers(gstin)'
 
   const [grnResult, openingResult] = await Promise.all([
     supabase.from('p2_stock_transactions').select(JOIN_COLUMNS).eq('tenant_id', tenantId).eq('transaction_type', 'grn').is('owned_by', null).gte('transaction_date', monthFrom).lte('transaction_date', monthTo),
@@ -620,7 +620,9 @@ async function buildPurchaseRegisterWorkbook(
       const rate = row.rate || 0
       const qty = row.quantity
       const amount = qty * rate
-      const gstRate = rm?.gst_rate || 0
+      // Per-line override (set only by a GRN correction) wins over the
+      // material master's own gst_rate — see _ai/CLAUDE.md GRN Correction Flow.
+      const gstRate = row.gst_rate != null ? row.gst_rate : (rm?.gst_rate || 0)
       const isInterstate = row.purchase_type === 'interstate'
 
       let cgstRate: number | string = '', cgstAmount: number | string = '', sgstRate: number | string = '', sgstAmount: number | string = '', igstRate: number | string = '', igstAmount: number | string = ''
@@ -1213,7 +1215,9 @@ function buildPurchaseVouchers(grnRows: Array<Record<string, any>>, suppliersByI
     const byRate = new Map<number, number>()
     for (const row of rows) {
       const material = materialsById.get(row.raw_material_id)
-      const rate = Number(material?.gst_rate) || 0
+      // Per-line override (set only by a GRN correction) wins over the
+      // material master's own gst_rate — see _ai/CLAUDE.md GRN Correction Flow.
+      const rate = Number(row.gst_rate != null ? row.gst_rate : material?.gst_rate) || 0
       const amount = (Number(row.quantity) || 0) * (Number(row.rate) || 0)
       byRate.set(rate, (byRate.get(rate) || 0) + amount)
     }
@@ -1249,7 +1253,7 @@ function buildPurchaseVouchers(grnRows: Array<Record<string, any>>, suppliersByI
 async function buildTallyXml(tenantId: string, companyName: string, monthFrom: string, monthTo: string): Promise<{ xml: string; skippedVouchers: number; voucherCount: number }> {
   const [invoicesResult, grnResult] = await Promise.all([
     supabase.from('p2_invoices').select('id, invoice_number, invoice_date, client_name, client_gstin, gst_type, amount_subtotal, amount_gst, amount_total, round_off, status').eq('tenant_id', tenantId).eq('status', 'sent').gte('invoice_date', monthFrom).lte('invoice_date', monthTo),
-    supabase.from('p2_stock_transactions').select('id, transaction_date, quantity, rate, invoice_no, supplier_id, raw_material_id, purchase_type, owned_by').eq('tenant_id', tenantId).eq('transaction_type', 'grn').is('owned_by', null).gte('transaction_date', monthFrom).lte('transaction_date', monthTo),
+    supabase.from('p2_stock_transactions').select('id, transaction_date, quantity, rate, invoice_no, supplier_id, raw_material_id, purchase_type, owned_by, gst_rate').eq('tenant_id', tenantId).eq('transaction_type', 'grn').is('owned_by', null).gte('transaction_date', monthFrom).lte('transaction_date', monthTo),
   ])
   if (invoicesResult.error) throw new Error(`Tally XML invoices: ${invoicesResult.error.message}`)
   if (grnResult.error) throw new Error(`Tally XML GRN rows: ${grnResult.error.message}`)
@@ -1386,7 +1390,7 @@ async function fetchCoveringNoteData(
   // c. GRN rows this period.
   const { data: grnRowsRaw, error: grnErr } = await supabase
     .from('p2_stock_transactions')
-    .select('supplier_name, invoice_no, transaction_date, quantity, rate, purchase_type, p2_raw_materials(name, gst_rate), p2_suppliers(gstin)')
+    .select('supplier_name, invoice_no, transaction_date, quantity, rate, purchase_type, gst_rate, p2_raw_materials(name, gst_rate), p2_suppliers(gstin)')
     .eq('tenant_id', tenantId).eq('transaction_type', 'grn')
     .gte('transaction_date', monthFrom).lte('transaction_date', monthTo)
   if (grnErr) throw new Error(`Covering note GRN rows: ${grnErr.message}`)
@@ -1397,7 +1401,12 @@ async function fetchCoveringNoteData(
     materialName: r.p2_raw_materials?.name || '(deleted material)',
     quantity: Number(r.quantity), rate: r.rate === null ? null : Number(r.rate),
     purchaseType: r.purchase_type,
-    gstRate: r.p2_raw_materials?.gst_rate === null || r.p2_raw_materials?.gst_rate === undefined ? null : Number(r.p2_raw_materials.gst_rate),
+    // Per-line override (set only by a GRN correction) wins over the
+    // material master's own gst_rate — see _ai/CLAUDE.md GRN Correction Flow.
+    gstRate: (() => {
+      const v = r.gst_rate != null ? r.gst_rate : r.p2_raw_materials?.gst_rate
+      return v === null || v === undefined ? null : Number(v)
+    })(),
   }))
   const missingInvoiceNoCount = grnRows.filter((r) => isBlank(r.invoiceNo)).length
   const interstateCount = grnRows.filter((r) => r.purchaseType === 'interstate').length

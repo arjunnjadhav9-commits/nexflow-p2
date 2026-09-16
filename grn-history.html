@@ -75,6 +75,22 @@
         #historyBody tr { transition: background 0.12s; }
         #historyBody tr:hover { background: var(--surface2); }
 
+        /* Correction modal — line picker */
+        .corr-line-row {
+            display: flex; align-items: center; gap: 10px;
+            padding: 8px 10px; border: 1px solid var(--border2); border-radius: var(--radius-sm);
+            margin-bottom: 6px; font-size: 12px; cursor: pointer;
+        }
+        .corr-line-row:hover { border-color: var(--orange); }
+        .corr-line-row input[type="radio"] { flex-shrink: 0; }
+        .corr-section-label {
+            font-size: 11px; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.5px; color: var(--mid); margin: 16px 0 8px;
+        }
+        .corr-section-label:first-of-type { margin-top: 0; }
+        .corr-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        @media (max-width: 480px) { .corr-grid { grid-template-columns: 1fr; } }
+
         /* Print */
         @media print {
             #navbar-container, .dh-filters, .dh-no-print { display: none !important; }
@@ -204,8 +220,87 @@
                 </table>
             </div>
 
+            <!-- CORRECTIONS — populated on demand when the modal opens, not on
+                 every page load. Empty state: section stays hidden entirely if
+                 this GRN has no corrections. -->
+            <div id="detailCorrectionsSection" style="display:none;">
+                <div class="corr-section-label" data-en="Corrections" data-mr="दुरुस्त्या">Corrections</div>
+                <div id="detailCorrectionsBody" style="max-height:180px; overflow-y:auto; margin-bottom:16px;"></div>
+            </div>
+
             <div style="display:flex; gap:10px;">
                 <button id="detailCloseBtn" class="nx-btn nx-btn-ghost" style="flex:1;" data-en="Close" data-mr="बंद करा">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- CORRECTION MODAL — owner/supervisor only. Batch-level fields (supplier,
+         date) apply to every row sharing this grn_no; line-level fields (qty,
+         rate, invoice no, gst rate) apply to one selected material line only.
+         See _ai/CLAUDE.md GRN Correction Flow. -->
+    <div id="correctionModal" class="nx-modal-overlay" style="display:none;">
+        <div class="nx-modal" style="max-width:560px;">
+            <div class="nx-modal-title" id="correctionModalTitle" data-en="Correct GRN" data-mr="GRN दुरुस्त करा">Correct GRN</div>
+            <div id="correctionModalMeta" style="font-size:13px; color:var(--mid); margin-bottom:16px; line-height:1.7;"></div>
+
+            <div class="nx-alert nx-alert-orange nx-mb-16" style="display:flex;">
+                <span class="nx-alert-icon">⚠</span>
+                <div data-en="Correcting quantity or rate affects your stock balance and ITC claim. Verify with your CA if this period has been filed."
+                     data-mr="परिमाण किंवा दर दुरुस्त केल्यास तुमचा साठा शिल्लक आणि ITC दाव्यावर परिणाम होतो. हा कालावधी दाखल झाला असल्यास तुमच्या CA शी पडताळणी करा.">
+                    Correcting quantity or rate affects your stock balance and ITC claim. Verify with your CA if this period has been filed.
+                </div>
+            </div>
+
+            <div class="corr-section-label" id="corr-batch-label" data-en="Applies to entire GRN" data-mr="संपूर्ण GRN ला लागू">Applies to entire GRN</div>
+            <div class="corr-grid">
+                <div class="nx-form-group">
+                    <label data-en="Supplier" data-mr="पुरवठादार">Supplier</label>
+                    <select id="corr-supplier" class="nx-select"></select>
+                </div>
+                <div class="nx-form-group">
+                    <label data-en="Date" data-mr="तारीख">Date</label>
+                    <input type="date" id="corr-date" class="nx-input">
+                </div>
+            </div>
+
+            <div id="corr-line-picker-wrap" style="display:none;">
+                <div class="corr-section-label" data-en="Which material line?" data-mr="कोणती सामग्री ओळ?">Which material line?</div>
+                <div id="corr-line-picker"></div>
+            </div>
+
+            <div class="corr-section-label" data-en="Applies to selected line only" data-mr="फक्त निवडलेल्या ओळीला लागू">Applies to selected line only</div>
+            <div class="corr-grid">
+                <div class="nx-form-group">
+                    <label data-en="Quantity" data-mr="परिमाण">Quantity</label>
+                    <input type="number" step="any" id="corr-qty" class="nx-input">
+                </div>
+                <div class="nx-form-group">
+                    <label data-en="Rate (Rs)" data-mr="दर (Rs)">Rate (Rs)</label>
+                    <input type="number" step="any" id="corr-rate" class="nx-input">
+                </div>
+                <div class="nx-form-group">
+                    <label data-en="Invoice No" data-mr="बिल क्र">Invoice No</label>
+                    <input type="text" id="corr-invoice" class="nx-input">
+                </div>
+                <div class="nx-form-group">
+                    <label data-en="GST Rate (%)" data-mr="GST दर (%)">GST Rate (%)</label>
+                    <input type="number" step="any" id="corr-gst" class="nx-input">
+                </div>
+            </div>
+
+            <div class="nx-form-group">
+                <label data-en="Reason for correction (required)" data-mr="दुरुस्तीचे कारण (आवश्यक)">Reason for correction (required)</label>
+                <textarea id="corr-reason" class="nx-textarea" rows="2"></textarea>
+            </div>
+
+            <div id="corr-error" class="nx-alert nx-alert-red nx-mb-16" style="display:none;">
+                <span class="nx-alert-icon">⚠</span>
+                <div id="corr-error-text"></div>
+            </div>
+
+            <div style="display:flex; gap:10px;">
+                <button id="corr-submit-btn" class="nx-btn nx-btn-primary" style="flex:1;" disabled data-en="Save Correction" data-mr="दुरुस्ती जतन करा">Save Correction</button>
+                <button id="corr-cancel-btn" class="nx-btn nx-btn-ghost" style="flex:1;" data-en="Cancel" data-mr="रद्द करा">Cancel</button>
             </div>
         </div>
     </div>
@@ -214,9 +309,27 @@
 
     <script>
         // ── STATE ─────────────────────────────────────────────────────────────
-        let tenantId  = null;
+        let tenantId      = null;
+        let currentRole    = null;
+        let currentUserId  = null;
+        let filedThrough   = null; // p2_tenant_settings.gstr2b_filed_through, YYYY-MM-DD or null
         let allGRNs   = [];   // grouped by grn_no: [{grn_no, date, supplier, items:[]}]
         let filtered  = [];   // after search filter applied
+
+        // ── CORRECTION MODAL STATE ───────────────────────────────────────────
+        let correctionTarget      = null;  // the grn group object currently open in the modal
+        let correctionLineIdx     = 0;     // index into correctionTarget.items
+        let correctionSuppliers   = [];    // [{id, name}], loaded once, lazily
+        let correctionSuppliersLoaded = false;
+
+        const CORRECTION_FIELD_LABELS = {
+            invoice_no: 'Invoice No', rate: 'Rate', quantity: 'Quantity',
+            supplier: 'Supplier', gst_rate: 'GST Rate', date: 'Date'
+        };
+
+        function todayIST() {
+            return new Date().toLocaleString('en-CA', { timeZone: 'Asia/Kolkata' }).split(',')[0];
+        }
 
         // ── LANGUAGE ──────────────────────────────────────────────────────────
         function applyLang(lang) {
@@ -249,17 +362,33 @@
                     window.location.href = 'index.html?denied=1';
                     return;
                 }
+                currentRole = role;
 
                 const { data: { user } } = await window.supabase.auth.getUser();
                 tenantId = user.user_metadata?.tenant_id || user.id;
+                currentUserId = user.id;
 
                 // Owner column (Sept 4 2026 fix) — hidden entirely for a
                 // non-job-worker tenant, where every GRN is own-stock anyway.
                 document.getElementById('ownerColHeader').style.display = isJobWorker() ? '' : 'none';
 
+                // Fetched once here alongside the other init-time lookups — the
+                // Correct button gates on this per GRN row (see GRN Correction
+                // Flow, _ai/CLAUDE.md). Only owner/supervisor ever see the
+                // button at all, but the lock applies to any role that can.
+                if (['owner', 'supervisor'].includes(role)) {
+                    const { data: settingsData } = await window.supabase
+                        .from('p2_tenant_settings')
+                        .select('gstr2b_filed_through')
+                        .eq('tenant_id', tenantId)
+                        .maybeSingle();
+                    filedThrough = settingsData?.gstr2b_filed_through || null;
+                }
+
                 setDefaultDates();
                 await loadHistory();
                 setupEventHandlers();
+                setupCorrectionModalHandlers();
 
                 document.getElementById('loadingSpinner').style.display = 'none';
                 document.getElementById('mainContent').style.display    = 'block';
@@ -290,7 +419,7 @@
 
             let query = window.supabase
                 .from('p2_stock_transactions')
-                .select('id, grn_no, transaction_date, quantity, rate, invoice_no, owned_by, p2_suppliers(id, name), p2_raw_materials(name, unit)')
+                .select('id, grn_no, transaction_date, quantity, rate, invoice_no, owned_by, supplier_id, raw_material_id, gst_rate, p2_suppliers(id, name), p2_raw_materials(id, name, unit, gst_rate)')
                 .eq('tenant_id', tenantId)
                 .eq('transaction_type', 'grn')
                 .order('transaction_date', { ascending: false })
@@ -332,6 +461,9 @@
                         grn_no:    row.grn_no || null,
                         date:      row.transaction_date,
                         supplier:  row.p2_suppliers?.name || '—',
+                        // supplier_id from the row itself (not the join) — that's
+                        // the actual FK the correction flow updates.
+                        supplier_id: row.supplier_id || row.p2_suppliers?.id || null,
                         invoice_no: row.invoice_no || null,
                         // Fix 1 (grn.html) writes the same owned_by to every row
                         // in one GRN batch, so the first row's value is correct
@@ -343,11 +475,18 @@
                     grnOrder.push(key);
                 }
                 grnMap[key].items.push({
+                    id:               row.id,
+                    raw_material_id:  row.raw_material_id,
                     material: row.p2_raw_materials?.name || '—',
                     unit:     row.p2_raw_materials?.unit || '',
                     qty:      row.quantity,
                     rate:     row.rate,
-                    invoice:  row.invoice_no
+                    invoice:  row.invoice_no,
+                    // gst_rate = per-line override (null unless a correction set
+                    // one). material_gst_rate = the material master's own rate,
+                    // used as the effective fallback everywhere else in the app.
+                    gst_rate:         row.gst_rate,
+                    material_gst_rate: row.p2_raw_materials?.gst_rate ?? null
                 });
                 // Use earliest invoice_no found for the group header (usually same per GRN)
                 if (!grnMap[key].invoice_no && row.invoice_no) {
@@ -429,6 +568,7 @@
                             title="View detail">
                             ${t('Detail', 'तपशील')}
                         </button>
+                        ${buildCorrectCell(grn, idx)}
                     </td>
                 `;
                 tbody.appendChild(row);
@@ -446,6 +586,28 @@
                 html += `<span class="dh-material-pill" style="color:var(--mid);">+${items.length - MAX_SHOW} ${t('more','अधिक')}</span>`;
             }
             return html;
+        }
+
+        // ── CORRECT BUTTON / LOCKED LABEL ────────────────────────────────────
+        // Gated ['owner','supervisor'].includes — hidden entirely (not just
+        // disabled) for other roles, same inline gate style as the
+        // Cancel/Amend buttons on all-dispatch-history.html.
+        function buildCorrectCell(grn, idx) {
+            if (!['owner', 'supervisor'].includes(currentRole)) return '';
+            const isLocked = filedThrough && grn.date && grn.date <= filedThrough;
+            if (isLocked) {
+                return `<span style="color:var(--mid); font-size:11px; cursor:help; margin-left:6px;"
+                              title="${t('This period has been filed — corrections are no longer allowed.', 'हा कालावधी दाखल झाला आहे — दुरुस्त्या यापुढे परवानगी नाहीत.')}">
+                            🔒 ${t('Locked', 'लॉक केलेले')}
+                        </span>`;
+            }
+            return `<button
+                        class="nx-btn nx-btn-ghost nx-btn-sm correct-btn"
+                        data-grn-idx="${idx}"
+                        style="margin-left:6px;"
+                        title="Correct this GRN">
+                        ${t('Correct', 'दुरुस्त करा')}
+                    </button>`;
         }
 
         // ── DETAIL MODAL ──────────────────────────────────────────────────────
@@ -482,6 +644,54 @@
             }
 
             document.getElementById('detailModal').style.display = 'flex';
+
+            // Populated on demand — only when the modal opens, not on every
+            // page load. Fire-and-forget; failure just leaves the section hidden.
+            loadDetailCorrections(grn).catch(err => console.error('loadDetailCorrections:', err));
+        }
+
+        // ── CORRECTIONS SECTION (inside Detail modal) ────────────────────────
+        async function loadDetailCorrections(grn) {
+            const section = document.getElementById('detailCorrectionsSection');
+            const body    = document.getElementById('detailCorrectionsBody');
+            const ids = grn.items.map(i => i.id).filter(Boolean);
+            if (ids.length === 0) { section.style.display = 'none'; return; }
+
+            const { data, error } = await window.supabase
+                .from('p2_grn_corrections')
+                .select('field_name, old_value, new_value, reason, corrected_by, corrected_at')
+                .in('original_grn_id', ids)
+                .order('corrected_at', { ascending: false });
+
+            if (error) { console.error('loadDetailCorrections:', error); section.style.display = 'none'; return; }
+            if (!data || data.length === 0) { section.style.display = 'none'; return; }
+
+            // Batch-resolve corrected_by uuids to an email via p2_user_roles —
+            // same idiom all-dispatch-history.html uses for confirmed_by.
+            const correctorIds = [...new Set(data.map(c => c.corrected_by).filter(Boolean))];
+            let emailMap = {};
+            if (correctorIds.length > 0) {
+                const { data: roles, error: rolesErr } = await window.supabase
+                    .from('p2_user_roles')
+                    .select('user_id, email')
+                    .eq('tenant_id', tenantId)
+                    .in('user_id', correctorIds);
+                if (rolesErr) console.error('Error loading corrector emails:', rolesErr);
+                (roles || []).forEach(r => { emailMap[r.user_id] = r.email; });
+            }
+
+            body.innerHTML = data.map(c => {
+                const label = CORRECTION_FIELD_LABELS[c.field_name] || c.field_name;
+                const who = c.corrected_by ? (emailMap[c.corrected_by] || (c.corrected_by.slice(0, 8) + '…')) : '—';
+                return `
+                    <div style="padding:8px 0; border-bottom:1px solid var(--border2);">
+                        <div><strong>${escapeHtml(label)}</strong>: ${escapeHtml(c.old_value ?? '—')} → ${escapeHtml(c.new_value ?? '—')}</div>
+                        <div style="color:var(--mid); margin-top:2px;">${escapeHtml(c.reason)}</div>
+                        <div style="color:var(--mid); font-size:11px; margin-top:2px;">${escapeHtml(who)} · ${formatDate(c.corrected_at)}</div>
+                    </div>
+                `;
+            }).join('');
+            section.style.display = 'block';
         }
 
         // Close modal
@@ -492,12 +702,360 @@
             if (e.target.id === 'detailModal') e.target.style.display = 'none';
         });
 
-        // Delegated click — detail button
+        // Delegated click — detail / correct buttons
         document.getElementById('historyBody').addEventListener('click', e => {
-            const btn = e.target.closest('.detail-btn');
-            if (!btn) return;
-            openDetail(parseInt(btn.dataset.grnIdx, 10));
+            const detailBtn = e.target.closest('.detail-btn');
+            if (detailBtn) { openDetail(parseInt(detailBtn.dataset.grnIdx, 10)); return; }
+            const correctBtn = e.target.closest('.correct-btn');
+            if (correctBtn) { openCorrectionModal(parseInt(correctBtn.dataset.grnIdx, 10)); return; }
         });
+
+        // ── CORRECTION MODAL ──────────────────────────────────────────────────
+        async function loadCorrectionSuppliers() {
+            if (correctionSuppliersLoaded) return;
+            const { data, error } = await window.supabase
+                .from('p2_suppliers').select('id, name')
+                .eq('tenant_id', tenantId).eq('is_active', true).order('name');
+            if (error) { console.error('loadCorrectionSuppliers:', error); return; }
+            correctionSuppliers = data || [];
+            correctionSuppliersLoaded = true;
+        }
+
+        function buildSupplierOptions(selectEl, currentId, currentName) {
+            let list = correctionSuppliers;
+            // The GRN's current supplier might be inactive (CSV-imported
+            // suppliers default is_active=false) — still show it so the
+            // dropdown doesn't silently jump to a different supplier.
+            if (currentId && !list.some(s => s.id === currentId)) {
+                list = [{ id: currentId, name: (currentName || 'Unknown') + ' (inactive)' }, ...list];
+            }
+            selectEl.innerHTML = list.map(s =>
+                `<option value="${s.id}">${escapeHtml(s.name)}</option>`
+            ).join('');
+            selectEl.value = currentId || '';
+        }
+
+        function buildLinePicker(grn) {
+            const wrap = document.getElementById('corr-line-picker-wrap');
+            const picker = document.getElementById('corr-line-picker');
+            if (grn.items.length <= 1) {
+                wrap.style.display = 'none';
+                picker.innerHTML = '';
+                return;
+            }
+            wrap.style.display = 'block';
+            picker.innerHTML = grn.items.map((item, i) => `
+                <label class="corr-line-row">
+                    <input type="radio" name="corr-line" value="${i}" ${i === correctionLineIdx ? 'checked' : ''}>
+                    <span style="flex:1;">
+                        <span class="nx-td-bold">${escapeHtml(item.material)}</span>
+                        &nbsp;·&nbsp; ${formatNumber(item.qty)} ${escapeHtml(item.unit)}
+                        &nbsp;·&nbsp; ${item.rate != null ? 'Rs ' + formatNumber(item.rate) : '—'}
+                        &nbsp;·&nbsp; ${escapeHtml(item.invoice || '—')}
+                    </span>
+                </label>
+            `).join('');
+            picker.querySelectorAll('input[name="corr-line"]').forEach(radio => {
+                radio.addEventListener('change', () => {
+                    correctionLineIdx = parseInt(radio.value, 10);
+                    fillLineFields(grn.items[correctionLineIdx]);
+                    updateCorrectionDirtyState();
+                });
+            });
+        }
+
+        function fillLineFields(item) {
+            document.getElementById('corr-qty').value     = item.qty ?? '';
+            document.getElementById('corr-rate').value    = item.rate ?? '';
+            document.getElementById('corr-invoice').value = item.invoice || '';
+            const effectiveGst = item.gst_rate != null ? item.gst_rate : item.material_gst_rate;
+            document.getElementById('corr-gst').value = effectiveGst != null ? effectiveGst : '';
+        }
+
+        async function openCorrectionModal(idx) {
+            const grn = filtered[idx];
+            if (!grn) return;
+            correctionTarget  = grn;
+            correctionLineIdx = 0;
+
+            document.getElementById('correctionModalMeta').innerHTML = `
+                ${grn.grn_no ? '<span class="grn-no-badge">' + escapeHtml(grn.grn_no) + '</span><br>' : ''}
+                <span style="color:var(--white); font-weight:700;">${escapeHtml(grn.supplier)}</span> · ${formatDate(grn.date)}
+            `;
+
+            await loadCorrectionSuppliers();
+            buildSupplierOptions(document.getElementById('corr-supplier'), grn.supplier_id, grn.supplier);
+
+            const dateInput = document.getElementById('corr-date');
+            dateInput.value = grn.date || '';
+            dateInput.max   = todayIST();
+
+            buildLinePicker(grn);
+            fillLineFields(grn.items[correctionLineIdx]);
+
+            document.getElementById('corr-reason').value = '';
+            document.getElementById('corr-error').style.display = 'none';
+            updateCorrectionDirtyState();
+
+            document.getElementById('correctionModal').style.display = 'flex';
+        }
+
+        function closeCorrectionModal() {
+            document.getElementById('correctionModal').style.display = 'none';
+            correctionTarget = null;
+        }
+
+        function showCorrectionError(msg) {
+            document.getElementById('corr-error-text').textContent = msg;
+            document.getElementById('corr-error').style.display = 'flex';
+        }
+
+        // Numeric-safe comparison — avoids false "changed" from string
+        // formatting (e.g. "500" vs "500.0") or null vs ''.
+        function correctionValueChanged(oldVal, newRaw) {
+            const oldIsEmpty = oldVal === null || oldVal === undefined || oldVal === '';
+            const newIsEmpty = newRaw === null || newRaw === undefined || newRaw === '';
+            if (oldIsEmpty && newIsEmpty) return false;
+            if (oldIsEmpty !== newIsEmpty) return true;
+            const oldNum = Number(oldVal), newNum = Number(newRaw);
+            if (!Number.isNaN(oldNum) && !Number.isNaN(newNum)) return oldNum !== newNum;
+            return String(oldVal) !== String(newRaw);
+        }
+
+        // Submit stays disabled until at least one field actually differs
+        // from its current value AND a reason has been typed.
+        function updateCorrectionDirtyState() {
+            const btn = document.getElementById('corr-submit-btn');
+            if (!correctionTarget) { btn.disabled = true; return; }
+            const grn  = correctionTarget;
+            const item = grn.items[correctionLineIdx];
+            const reasonFilled = document.getElementById('corr-reason').value.trim().length > 0;
+
+            const supplierChanged = document.getElementById('corr-supplier').value !== (grn.supplier_id || '');
+            const dateChanged     = document.getElementById('corr-date').value !== (grn.date || '');
+            const qtyChanged      = correctionValueChanged(item.qty, document.getElementById('corr-qty').value);
+            const rateChanged     = correctionValueChanged(item.rate, document.getElementById('corr-rate').value);
+            const invoiceChanged  = (item.invoice || '') !== document.getElementById('corr-invoice').value.trim();
+            const effectiveGst    = item.gst_rate != null ? item.gst_rate : item.material_gst_rate;
+            const gstChanged      = correctionValueChanged(effectiveGst, document.getElementById('corr-gst').value);
+
+            const anyChanged = supplierChanged || dateChanged || qtyChanged || rateChanged || invoiceChanged || gstChanged;
+            btn.disabled = !(anyChanged && reasonFilled);
+        }
+
+        ['corr-supplier', 'corr-date', 'corr-qty', 'corr-rate', 'corr-invoice', 'corr-gst', 'corr-reason'].forEach(id => {
+            document.getElementById(id).addEventListener('input',  updateCorrectionDirtyState);
+            document.getElementById(id).addEventListener('change', updateCorrectionDirtyState);
+        });
+
+        async function getTrueOriginalDate(rowId, currentDate) {
+            const { data, error } = await window.supabase
+                .from('p2_grn_corrections')
+                .select('old_value')
+                .eq('original_grn_id', rowId)
+                .eq('field_name', 'date')
+                .order('corrected_at', { ascending: true })
+                .limit(1)
+                .maybeSingle();
+            if (error) { console.error('getTrueOriginalDate:', error); return currentDate; }
+            return data?.old_value || currentDate;
+        }
+
+        async function submitCorrection() {
+            const grn  = correctionTarget;
+            if (!grn) return;
+            const item = grn.items[correctionLineIdx];
+            const errEl = document.getElementById('corr-error');
+            errEl.style.display = 'none';
+
+            // Defensive re-check — role and lock could both have changed
+            // since this page loaded (another tab, another user).
+            if (!['owner', 'supervisor'].includes(currentRole)) {
+                showCorrectionError('You no longer have permission to correct GRNs.');
+                return;
+            }
+            if (filedThrough && grn.date && grn.date <= filedThrough) {
+                showCorrectionError('This period has been filed — corrections are no longer allowed.');
+                return;
+            }
+
+            const reason = document.getElementById('corr-reason').value.trim();
+            if (!reason) { showCorrectionError('Please enter a reason for this correction.'); return; }
+
+            const newSupplierId = document.getElementById('corr-supplier').value;
+            const newDate        = document.getElementById('corr-date').value;
+            const qtyRaw         = document.getElementById('corr-qty').value;
+            const rateRaw        = document.getElementById('corr-rate').value;
+            const newInvoice     = document.getElementById('corr-invoice').value.trim();
+            const gstRaw         = document.getElementById('corr-gst').value;
+
+            const supplierChanged = newSupplierId !== (grn.supplier_id || '');
+            const dateChanged     = newDate !== (grn.date || '');
+            const qtyChanged      = correctionValueChanged(item.qty, qtyRaw);
+            const rateChanged     = correctionValueChanged(item.rate, rateRaw);
+            const invoiceChanged  = (item.invoice || '') !== newInvoice;
+            const effectiveGst    = item.gst_rate != null ? item.gst_rate : item.material_gst_rate;
+            const gstChanged      = correctionValueChanged(effectiveGst, gstRaw);
+
+            if (!supplierChanged && !dateChanged && !qtyChanged && !rateChanged && !invoiceChanged && !gstChanged) {
+                showCorrectionError('No fields were changed.');
+                return;
+            }
+
+            // Validation
+            if (dateChanged) {
+                if (!newDate) { showCorrectionError('Please select a date.'); return; }
+                if (newDate > todayIST()) { showCorrectionError('The date cannot be in the future.'); return; }
+            }
+            if (qtyChanged) {
+                const q = parseFloat(qtyRaw);
+                if (isNaN(q) || q <= 0) { showCorrectionError('Quantity must be a number greater than zero.'); return; }
+            }
+            if (rateChanged && rateRaw !== '') {
+                const r = parseFloat(rateRaw);
+                if (isNaN(r) || r < 0) { showCorrectionError('Rate must be a number of zero or more.'); return; }
+            }
+            if (gstChanged && gstRaw !== '') {
+                const g = parseFloat(gstRaw);
+                if (isNaN(g) || g < 0 || g > 100) { showCorrectionError('GST rate must be a number between 0 and 100.'); return; }
+            }
+
+            const submitBtn = document.getElementById('corr-submit-btn');
+            submitBtn.disabled = true;
+            submitBtn.textContent = t('Saving...', 'जतन होत आहे...');
+
+            try {
+                // Batch-level fields — every row sharing this grn_no, one
+                // correction record per row, same shared reason.
+                if (dateChanged) {
+                    const originalDate = await getTrueOriginalDate(grn.items[0].id, grn.date);
+                    const diffDays = Math.abs((new Date(newDate) - new Date(originalDate)) / 86400000);
+                    if (diffDays > 7) {
+                        throw new Error('The new date cannot be more than 7 days from the original GRN date (' + formatDate(originalDate) + ').');
+                    }
+                    for (const row of grn.items) {
+                        const { error: insErr } = await window.supabase.from('p2_grn_corrections').insert({
+                            original_grn_id: row.id, tenant_id: tenantId, corrected_by: currentUserId,
+                            field_name: 'date', old_value: grn.date, new_value: newDate, reason
+                        });
+                        if (insErr) throw insErr;
+                        const { error: updErr } = await window.supabase.from('p2_stock_transactions')
+                            .update({ transaction_date: newDate }).eq('id', row.id);
+                        if (updErr) throw updErr;
+                    }
+                    grn.date = newDate;
+                }
+
+                if (supplierChanged) {
+                    const newSupplier = correctionSuppliers.find(s => s.id === newSupplierId)
+                        || { id: newSupplierId, name: document.getElementById('corr-supplier').selectedOptions[0]?.textContent || '' };
+                    for (const row of grn.items) {
+                        const { error: insErr } = await window.supabase.from('p2_grn_corrections').insert({
+                            original_grn_id: row.id, tenant_id: tenantId, corrected_by: currentUserId,
+                            field_name: 'supplier', old_value: grn.supplier, new_value: newSupplier.name, reason
+                        });
+                        if (insErr) throw insErr;
+                        const { error: updErr } = await window.supabase.from('p2_stock_transactions')
+                            .update({ supplier_id: newSupplier.id, supplier_name: newSupplier.name }).eq('id', row.id);
+                        if (updErr) throw updErr;
+                    }
+                    grn.supplier    = newSupplier.name;
+                    grn.supplier_id = newSupplier.id;
+                }
+
+                // Line-level fields — one selected row only. Invoice/rate/gst
+                // before quantity, so the compensating adjustment row (below)
+                // always uses the already-corrected rate, never the stale one.
+                if (invoiceChanged) {
+                    const { error: insErr } = await window.supabase.from('p2_grn_corrections').insert({
+                        original_grn_id: item.id, tenant_id: tenantId, corrected_by: currentUserId,
+                        field_name: 'invoice_no', old_value: item.invoice || null, new_value: newInvoice || null, reason
+                    });
+                    if (insErr) throw insErr;
+                    const { error: updErr } = await window.supabase.from('p2_stock_transactions')
+                        .update({ invoice_no: newInvoice || null }).eq('id', item.id);
+                    if (updErr) throw updErr;
+                    item.invoice = newInvoice || null;
+                }
+
+                if (rateChanged) {
+                    const newRate = rateRaw === '' ? null : parseFloat(rateRaw);
+                    const { error: insErr } = await window.supabase.from('p2_grn_corrections').insert({
+                        original_grn_id: item.id, tenant_id: tenantId, corrected_by: currentUserId,
+                        field_name: 'rate', old_value: item.rate != null ? String(item.rate) : null,
+                        new_value: newRate != null ? String(newRate) : null, reason
+                    });
+                    if (insErr) throw insErr;
+                    const { error: updErr } = await window.supabase.from('p2_stock_transactions')
+                        .update({ rate: newRate }).eq('id', item.id);
+                    if (updErr) throw updErr;
+                    // Mutate in-memory now — the quantity step below reads
+                    // item.rate for the compensating adjustment row's rate.
+                    item.rate = newRate;
+                }
+
+                if (gstChanged) {
+                    const newGst = gstRaw === '' ? null : parseFloat(gstRaw);
+                    const oldEffective = item.gst_rate != null ? item.gst_rate : item.material_gst_rate;
+                    const { error: insErr } = await window.supabase.from('p2_grn_corrections').insert({
+                        original_grn_id: item.id, tenant_id: tenantId, corrected_by: currentUserId,
+                        field_name: 'gst_rate', old_value: oldEffective != null ? String(oldEffective) : null,
+                        new_value: newGst != null ? String(newGst) : null, reason
+                    });
+                    if (insErr) throw insErr;
+                    const { error: updErr } = await window.supabase.from('p2_stock_transactions')
+                        .update({ gst_rate: newGst }).eq('id', item.id);
+                    if (updErr) throw updErr;
+                    item.gst_rate = newGst;
+                }
+
+                if (qtyChanged) {
+                    const newQty = parseFloat(qtyRaw);
+                    const delta  = newQty - item.qty;
+                    const { data: corrRow, error: insErr } = await window.supabase.from('p2_grn_corrections')
+                        .insert({
+                            original_grn_id: item.id, tenant_id: tenantId, corrected_by: currentUserId,
+                            field_name: 'quantity', old_value: String(item.qty), new_value: String(newQty), reason
+                        })
+                        .select().single();
+                    if (insErr) throw insErr;
+
+                    // Append-only — the original row's quantity column is
+                    // never touched. This compensating row carries the whole
+                    // delta so v_p2_stock_balance (SUM across all transaction
+                    // types) stays correct without erasing what was recorded.
+                    const { error: adjErr } = await window.supabase.from('p2_stock_transactions').insert({
+                        tenant_id: tenantId, raw_material_id: item.raw_material_id,
+                        transaction_type: 'adjustment', quantity: delta,
+                        owned_by: grn.owned_by || null, rate: item.rate,
+                        transaction_date: todayIST(),
+                        notes: 'GRN correction — see correction ID: ' + corrRow.id
+                    });
+                    if (adjErr) throw adjErr;
+                    // item.qty intentionally left unchanged — it reflects the
+                    // original row, not the corrected balance.
+                }
+
+                closeCorrectionModal();
+                toast(t('Correction saved.', 'दुरुस्ती जतन झाली.'), 'ok');
+                await loadHistory();
+            } catch (err) {
+                console.error('submitCorrection:', err);
+                showCorrectionError((err.message || 'Unknown error') + ' — any changes already saved above have been kept.');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = t('Save Correction', 'दुरुस्ती जतन करा');
+                updateCorrectionDirtyState();
+            }
+        }
+
+        function setupCorrectionModalHandlers() {
+            document.getElementById('corr-submit-btn').addEventListener('click', submitCorrection);
+            document.getElementById('corr-cancel-btn').addEventListener('click', closeCorrectionModal);
+            document.getElementById('correctionModal').addEventListener('click', e => {
+                if (e.target.id === 'correctionModal') closeCorrectionModal();
+            });
+        }
 
         // ── EVENT HANDLERS ────────────────────────────────────────────────────
         function setupEventHandlers() {

@@ -122,6 +122,28 @@
     <!-- MAIN CONTENT -->
     <div id="mainContent">
 
+        <!-- FILED-THROUGH CONTROL — owner only. Higher-trust action than
+             viewing reconciliation (accountant can also do that), so gated
+             separately from the role gate above. Placed here rather than in
+             settings.html because the owner is naturally on this page at the
+             moment they've just filed. -->
+        <div id="filedThroughCard" class="nx-card nx-mb-16" style="display:none;">
+            <div class="nx-card-header">
+                <div class="nx-card-title">GSTR-2B Filed Through</div>
+            </div>
+            <div id="filedThroughStatus" style="font-size:12px; color:var(--mid); margin-bottom:12px;"></div>
+            <div style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap;">
+                <div class="nx-form-group" style="margin:0;">
+                    <label style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--mid); display:block; margin-bottom:6px;">Filed through date</label>
+                    <input type="date" id="filedThroughInput" class="nx-input" style="height:38px;">
+                </div>
+                <button id="saveFiledThroughBtn" class="nx-btn nx-btn-primary" style="height:38px; white-space:nowrap;">Mark period as filed through this date</button>
+            </div>
+            <div style="font-size:11px; color:var(--mid); margin-top:10px;">
+                GRN corrections in grn-history.html are blocked for any GRN dated on or before this date.
+            </div>
+        </div>
+
         <!-- UPLOAD -->
         <div class="nx-card nx-mb-16">
             <div class="nx-card-header">
@@ -270,6 +292,7 @@ let tenantGstin = '';
 let parsedJson = null;
 let periodInfo = null; // { month, year, monthLabel, firstOfMonth, lastOfMonth }
 let buckets = { matched: [], mismatch: [], blocked: [], unrecorded: [], creditNotes: [] };
+let filedThrough = null; // p2_tenant_settings.gstr2b_filed_through, YYYY-MM-DD or null
 
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
@@ -349,7 +372,7 @@ async function init() {
         // Fresh fetch from DB, not isPro()/localStorage — those can be stale.
         const { data: settingsData } = await window.supabase
             .from('p2_tenant_settings')
-            .select('plan, gstin')
+            .select('plan, gstin, gstr2b_filed_through')
             .eq('tenant_id', tenantId)
             .maybeSingle();
 
@@ -360,6 +383,16 @@ async function init() {
             return;
         }
         tenantGstin = settingsData?.gstin || '';
+        filedThrough = settingsData?.gstr2b_filed_through || null;
+
+        // Owner-only control to mark a period as filed — see GRN Correction
+        // Flow in _ai/CLAUDE.md. Higher-trust action than viewing reconciliation
+        // (accountant can view), so gated to owner only.
+        if (role === 'owner') {
+            document.getElementById('filedThroughCard').style.display = 'block';
+            document.getElementById('filedThroughInput').value = filedThrough || '';
+            renderFiledThroughStatus();
+        }
 
         document.getElementById('loadingSpinner').style.display = 'none';
         document.getElementById('mainContent').style.display = 'block';
@@ -378,6 +411,44 @@ function wireEvents() {
     ['matched','mismatch','blocked','unrecorded'].forEach(tab => {
         document.getElementById('tab-' + tab).addEventListener('click', () => switchToTab(tab));
     });
+    const saveBtn = document.getElementById('saveFiledThroughBtn');
+    if (saveBtn) saveBtn.addEventListener('click', saveFiledThrough);
+}
+
+// ─── FILED-THROUGH CONTROL ─────────────────────────────────────────────────
+function renderFiledThroughStatus() {
+    const el = document.getElementById('filedThroughStatus');
+    if (!el) return;
+    el.textContent = filedThrough
+        ? 'Currently filed through: ' + fmtGrnDate(filedThrough) + '. GRNs on or before this date cannot be corrected.'
+        : 'Not set yet — no periods are locked against correction.';
+}
+
+async function saveFiledThrough() {
+    const btn = document.getElementById('saveFiledThroughBtn');
+    const input = document.getElementById('filedThroughInput');
+    const newDate = input.value;
+    if (!newDate) { toast('Select a date first.', 'error'); return; }
+
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+    try {
+        const { error } = await window.supabase
+            .from('p2_tenant_settings')
+            .update({ gstr2b_filed_through: newDate })
+            .eq('tenant_id', tenantId);
+        if (error) throw error;
+
+        filedThrough = newDate;
+        renderFiledThroughStatus();
+        toast('Period marked as filed through ' + fmtGrnDate(newDate) + '.', 'ok');
+    } catch (err) {
+        console.error('saveFiledThrough:', err);
+        toast('Failed to save: ' + (err.message || 'Unknown error'), 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Mark period as filed through this date';
+    }
 }
 
 // ─── UPLOAD ──────────────────────────────────────────────────────────────────
@@ -444,6 +515,11 @@ function handleJsonUpload(file) {
 
         document.getElementById('periodDisplay').textContent = 'Period detected: ' + periodInfo.monthLabel + ' ' + periodInfo.year;
         document.getElementById('periodDisplay').style.display = 'block';
+
+        // Default the filed-through input to this reconciliation's month —
+        // only if the owner hasn't already typed something themselves.
+        const filedThroughInput = document.getElementById('filedThroughInput');
+        if (filedThroughInput && !filedThroughInput.value) filedThroughInput.value = periodInfo.lastOfMonth;
 
         if (parsed.gstin && tenantGstin && parsed.gstin !== tenantGstin) {
             document.getElementById('gstinWarningText').textContent =
@@ -573,6 +649,9 @@ function handleExcelUpload(file) {
         document.getElementById('periodDisplay').style.display = 'block';
         document.getElementById('excelFormatNote').style.display = 'flex';
 
+        const filedThroughInput = document.getElementById('filedThroughInput');
+        if (filedThroughInput && !filedThroughInput.value) filedThroughInput.value = periodInfo.lastOfMonth;
+
         document.getElementById('runReconcileBtn').disabled = false;
     };
     reader.readAsArrayBuffer(file);
@@ -589,7 +668,7 @@ async function runReconciliation() {
     try {
         const { data: grnRows, error } = await window.supabase
             .from('p2_stock_transactions')
-            .select('transaction_date, invoice_no, quantity, rate, supplier_id, supplier_name, purchase_type, raw_material_id, p2_raw_materials(gst_rate), p2_suppliers(gstin)')
+            .select('transaction_date, invoice_no, quantity, rate, supplier_id, supplier_name, purchase_type, raw_material_id, gst_rate, p2_raw_materials(gst_rate), p2_suppliers(gstin)')
             .eq('tenant_id', tenantId)
             .eq('transaction_type', 'grn')
             .is('owned_by', null)
@@ -637,7 +716,9 @@ async function runReconciliation() {
             const lineAmount = qty * rate;
             group.amount += lineAmount;
 
-            const gstRate = row.p2_raw_materials?.gst_rate;
+            // Per-line override (set only by a GRN correction) wins over the
+            // material master's own gst_rate — see _ai/CLAUDE.md GRN Correction Flow.
+            const gstRate = row.gst_rate != null ? row.gst_rate : row.p2_raw_materials?.gst_rate;
             if (gstRate === null || gstRate === undefined) {
                 group.gstUnknown = true;
             } else {
