@@ -2731,9 +2731,15 @@ async function confirmConsolidatedInvoice(
     // invoice regardless of what dispatch_type the request sends.
     ordersQuery = ordersQuery.eq('dispatch_type', 'product')
   }
+  // includeIds (from item_rates) is the authoritative inclusion list when present — the UI
+  // always sends it. invoices.html's Carryover Challans feature lets the owner pull in
+  // dispatches outside [date_from, date_to] (e.g. a challan skipped from an earlier invoice),
+  // so the date bound only applies to the legacy/no-item_rates fallback path; includeIds does
+  // the real narrowing below (see the `if (includeIds && ...)` filter after buildInvoiceItemsForOrder).
+  if (!includeIds) {
+    ordersQuery = ordersQuery.gte('dispatch_date', date_from).lte('dispatch_date', date_to)
+  }
   const { data: orders, error: ordersError } = await ordersQuery
-    .gte('dispatch_date', date_from)
-    .lte('dispatch_date', date_to)
     .order('dispatch_date', { ascending: true })
 
   if (ordersError) {

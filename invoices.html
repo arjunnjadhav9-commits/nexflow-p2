@@ -342,6 +342,18 @@
                 </select>
             </div>
 
+            <!-- Carryover challans — confirmed, uninvoiced dispatches for this client whose
+                 dispatch_date falls OUTSIDE the selected range (e.g. skipped from an earlier
+                 invoice). Populated client-side by refreshCarryoverChallans() whenever client/
+                 date/dispatch-type change; hidden entirely when there's nothing eligible. -->
+            <div id="consCarryoverSection" style="display:none; margin-bottom:16px;">
+                <label style="display:block; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--mid); margin-bottom:8px;"
+                    data-en="Uninvoiced challans outside this period:" data-mr="या कालावधीबाहेरील न-इनव्हॉइस केलेले चलन:">Uninvoiced challans outside this period:</label>
+                <div id="consCarryoverList" style="display:flex; flex-direction:column; gap:8px; max-height:160px; overflow-y:auto; padding:10px; background:rgba(255,255,255,0.03); border-radius:6px;"></div>
+                <div style="font-size:11px; color:var(--mid); margin-top:6px;"
+                    data-en="Select to include in this invoice." data-mr="या इनव्हॉइसमध्ये समाविष्ट करण्यासाठी निवडा.">Select to include in this invoice.</div>
+            </div>
+
             <div id="consInvoiceError" class="nx-alert nx-alert-red" style="display:none; margin-bottom:16px;">
                 <span class="nx-alert-icon">⚠</span>
                 <div id="consInvoiceErrorText"></div>
@@ -584,6 +596,18 @@
         // `${clientId}|${gstType}` the owner has already been warned about and chosen
         // to proceed past — reset whenever the modal reopens or the warning no longer applies.
         let gstinWarningAckKey = null;
+        // Carryover Challans — confirmed, uninvoiced dispatches for the selected client whose
+        // dispatch_date falls OUTSIDE [consInvoiceFrom, consInvoiceTo]. Rebuilt by
+        // refreshCarryoverChallans() on every client/date/dispatch-type change.
+        // items: [{ orderId, challanNumber, dispatchDate, lineItems, totalAmount, checked }]
+        // lineItems are shaped exactly like preview_consolidated_invoice's response items
+        // (dispatch_item_id, challan_number, dispatch_date, description, qty, unit, rate,
+        // amount, hsn_sac) so checked ones merge straight into consInvoicePreviewState.items
+        // with no special-casing downstream.
+        let consCarryoverState = { items: [], fetchToken: 0 };
+        // Mirrors SALE_INVOICEABLE_PURPOSES in supabase/functions/agent-query/index.ts —
+        // must stay in sync if that set changes.
+        const CARRYOVER_SALE_PURPOSES = ['sale', 'direct_supply_from_jobworker'];
         let advSuppliers = [];
         let selectedAdvSupplierId = null;
 
@@ -1089,6 +1113,9 @@
             document.getElementById('consInvoiceTo').value = '';
             document.getElementById('consInvoiceGstType').value = 'cgst_sgst';
             document.getElementById('consInvoiceDispatchType').value = 'product';
+            consCarryoverState = { items: [], fetchToken: 0 };
+            document.getElementById('consCarryoverSection').style.display = 'none';
+            document.getElementById('consCarryoverList').innerHTML = '';
 
             const select = document.getElementById('consInvoiceClient');
             select.innerHTML = `<option value="">${t('Loading...','लोड होत आहे...')}</option>`;
@@ -1117,12 +1144,262 @@
             document.getElementById('consInvoiceError').style.display = 'flex';
         }
 
+        // ── CARRYOVER CHALLANS ──────────────────────────────────────────
+        // Confirmed, uninvoiced dispatches for the selected client whose dispatch_date falls
+        // OUTSIDE [date_from, date_to] — e.g. a challan skipped from an earlier consolidated
+        // invoice. Eligibility mirrors agent-query/index.ts's SALE_INVOICEABLE_PURPOSES gate
+        // and dispatch_type branch exactly, so a carryover challan is only offered here if it
+        // would also have been eligible for a normal consolidated sweep.
+        function normaliseCarryoverUnit(unit) {
+            const u = (unit || '').toLowerCase().trim();
+            if (u === 'stator' || u === 'stack') return 'NOS';
+            return unit;
+        }
+
+        async function fetchCarryoverOrders(clientName, dateFrom, dateTo, dispatchType) {
+            let query = window.supabase
+                .from('p2_dispatch_orders')
+                .select('id, challan_number, dispatch_date')
+                .eq('tenant_id', tenantId)
+                .eq('client_name', clientName)
+                .eq('status', 'confirmed')
+                .in('movement_purpose', CARRYOVER_SALE_PURPOSES)
+                .or(`dispatch_date.lt.${dateFrom},dispatch_date.gt.${dateTo}`);
+
+            if (dispatchType === 'raw_material') {
+                query = query.eq('dispatch_type', 'raw_material');
+            } else if (dispatchType === 'both') {
+                query = query.in('dispatch_type', ['product', 'raw_material']);
+            } else {
+                query = query.eq('dispatch_type', 'product');
+            }
+
+            const { data, error } = await query.order('dispatch_date', { ascending: true });
+            if (error) throw error;
+            return data || [];
+        }
+
+        // Union of every dispatch_order_id already referenced by a non-cancelled invoice for
+        // this client — both single mode (dispatch_order_id) and consolidated mode
+        // (dispatch_order_ids array). Cancelled invoices are deliberately excluded: cancelling
+        // an invoice must free its challans up to be picked up by a new one.
+        async function fetchInvoicedOrderIdSet(clientId) {
+            const { data, error } = await window.supabase
+                .from('p2_invoices')
+                .select('dispatch_order_id, dispatch_order_ids')
+                .eq('tenant_id', tenantId)
+                .eq('client_id', clientId)
+                .neq('status', 'cancelled');
+            if (error) throw error;
+
+            const ids = new Set();
+            (data || []).forEach(inv => {
+                if (inv.dispatch_order_id) ids.add(inv.dispatch_order_id);
+                (inv.dispatch_order_ids || []).forEach(id => ids.add(id));
+            });
+            return ids;
+        }
+
+        // Client-side port of buildInvoiceItemsForOrder() in agent-query/index.ts:1894 — same
+        // batched product/material/price lookups, same "latest by effective_date" rate idiom,
+        // same zero-fallback-rate posture (no price row -> rate 0, never blocks). Scoped to
+        // display + building the item_rates payload for carryover challans only.
+        // Must stay in sync with buildInvoiceItemsForOrder() in agent-query/index.ts:1894.
+        async function buildCarryoverItemsForOrders(orders) {
+            if (!orders.length) return [];
+
+            const orderIds = orders.map(o => o.id);
+            const { data: items, error: itemsError } = await window.supabase
+                .from('p2_dispatch_items')
+                .select('id, dispatch_order_id, material_name, material_code, qty_dispatched, unit, raw_material_id, product_id')
+                .eq('tenant_id', tenantId)
+                .in('dispatch_order_id', orderIds);
+            if (itemsError) throw itemsError;
+            if (!items?.length) return [];
+
+            const productIds = [...new Set(items.map(it => it.product_id).filter(Boolean))];
+            const productsById = new Map();
+            if (productIds.length) {
+                const { data: products, error } = await window.supabase
+                    .from('p2_products')
+                    .select('id, name, hsn_sac, product_code')
+                    .eq('tenant_id', tenantId)
+                    .in('id', productIds);
+                if (error) throw error;
+                (products || []).forEach(p => productsById.set(p.id, p));
+            }
+
+            const materialIds = [...new Set(items.map(it => it.raw_material_id).filter(Boolean))];
+            const materialPriceById = new Map();
+            const hsnByMaterialId = new Map();
+            if (materialIds.length) {
+                const [{ data: prices, error: pricesError }, { data: materials, error: materialsError }] = await Promise.all([
+                    window.supabase
+                        .from('p2_material_prices')
+                        .select('raw_material_id, price_per_unit, effective_date')
+                        .eq('tenant_id', tenantId)
+                        .in('raw_material_id', materialIds)
+                        .order('effective_date', { ascending: false }),
+                    window.supabase
+                        .from('p2_raw_materials')
+                        .select('id, hsn_sac')
+                        .eq('tenant_id', tenantId)
+                        .in('id', materialIds)
+                ]);
+                if (pricesError) throw pricesError;
+                if (materialsError) throw materialsError;
+                (prices || []).forEach(p => {
+                    if (!materialPriceById.has(p.raw_material_id)) materialPriceById.set(p.raw_material_id, p.price_per_unit);
+                });
+                (materials || []).forEach(m => hsnByMaterialId.set(m.id, m.hsn_sac));
+            }
+
+            const productPriceById = new Map();
+            if (productIds.length) {
+                const { data: prices, error } = await window.supabase
+                    .from('p2_product_prices')
+                    .select('product_id, price, effective_date')
+                    .eq('tenant_id', tenantId)
+                    .in('product_id', productIds)
+                    .order('effective_date', { ascending: false });
+                if (error) throw error;
+                (prices || []).forEach(p => {
+                    if (!productPriceById.has(p.product_id)) productPriceById.set(p.product_id, p.price);
+                });
+            }
+
+            const ordersById = new Map(orders.map(o => [o.id, o]));
+            return items.map(it => {
+                const order = ordersById.get(it.dispatch_order_id);
+                const product = it.product_id ? productsById.get(it.product_id) : undefined;
+                const qty = Number(it.qty_dispatched) || 0;
+                const rate = it.product_id
+                    ? Number(productPriceById.get(it.product_id) ?? 0)
+                    : it.raw_material_id
+                        ? Number(materialPriceById.get(it.raw_material_id) ?? 0)
+                        : 0;
+                const hsnSac = it.product_id
+                    ? (product?.hsn_sac ?? '')
+                    : it.raw_material_id
+                        ? (hsnByMaterialId.get(it.raw_material_id) ?? '')
+                        : '';
+                return {
+                    dispatch_order_id: it.dispatch_order_id,
+                    dispatch_item_id: it.id,
+                    challan_number: order?.challan_number ?? null,
+                    dispatch_date: order?.dispatch_date ?? null,
+                    description: it.material_name ?? product?.name ?? it.material_code ?? 'Unknown Item',
+                    qty,
+                    unit: normaliseCarryoverUnit(it.unit),
+                    rate,
+                    amount: qty * rate,
+                    hsn_sac: hsnSac ?? ''
+                };
+            });
+        }
+
+        function renderCarryoverSection() {
+            const section = document.getElementById('consCarryoverSection');
+            const list = document.getElementById('consCarryoverList');
+
+            if (consCarryoverState.items.length === 0) {
+                section.style.display = 'none';
+                list.innerHTML = '';
+                return;
+            }
+
+            list.innerHTML = consCarryoverState.items.map(c => {
+                const descSummary = c.lineItems.length === 1
+                    ? `${escInvHtml(c.lineItems[0].description)} × ${c.lineItems[0].qty}`
+                    : t(`${c.lineItems.length} items`, `${c.lineItems.length} वस्तू`);
+                return `
+                    <label style="display:flex; gap:8px; align-items:flex-start; font-size:13px; color:var(--white); cursor:pointer;">
+                        <input type="checkbox" class="cons-carryover-checkbox" data-order-id="${escInvHtml(c.orderId)}" ${c.checked ? 'checked' : ''} style="margin-top:2px;">
+                        <span>${t('Challan','चलन')} <span class="nx-td-mono">${escInvHtml(c.challanNumber)}</span> — ${fmtDate(c.dispatchDate)} — ${descSummary} — ${fmtMoney(c.totalAmount)}</span>
+                    </label>
+                `;
+            }).join('');
+
+            section.style.display = 'block';
+        }
+
+        async function refreshCarryoverChallans() {
+            const clientSelect = document.getElementById('consInvoiceClient');
+            const clientId = clientSelect.value;
+            const clientName = clientSelect.options[clientSelect.selectedIndex]?.text || '';
+            const dateFrom = document.getElementById('consInvoiceFrom').value;
+            const dateTo = document.getElementById('consInvoiceTo').value;
+            const dispatchType = document.getElementById('consInvoiceDispatchType').value;
+
+            if (!clientId || !dateFrom || !dateTo) {
+                consCarryoverState.items = [];
+                renderCarryoverSection();
+                return;
+            }
+
+            const myToken = ++consCarryoverState.fetchToken;
+
+            try {
+                const [orders, invoicedIds] = await Promise.all([
+                    fetchCarryoverOrders(clientName, dateFrom, dateTo, dispatchType),
+                    fetchInvoicedOrderIdSet(clientId)
+                ]);
+                const eligibleOrders = orders.filter(o => !invoicedIds.has(o.id));
+                const lineItems = await buildCarryoverItemsForOrders(eligibleOrders);
+
+                // Stale-response guard — a newer field change may have started another
+                // fetch while this one was in flight.
+                if (myToken !== consCarryoverState.fetchToken) return;
+
+                const itemsByOrder = new Map();
+                lineItems.forEach(item => {
+                    if (!itemsByOrder.has(item.dispatch_order_id)) itemsByOrder.set(item.dispatch_order_id, []);
+                    itemsByOrder.get(item.dispatch_order_id).push(item);
+                });
+
+                consCarryoverState.items = eligibleOrders
+                    .filter(o => itemsByOrder.has(o.id))
+                    .map(o => {
+                        const orderItems = itemsByOrder.get(o.id);
+                        return {
+                            orderId: o.id,
+                            challanNumber: o.challan_number,
+                            dispatchDate: o.dispatch_date,
+                            lineItems: orderItems,
+                            totalAmount: orderItems.reduce((sum, it) => sum + it.amount, 0),
+                            checked: false
+                        };
+                    });
+
+                renderCarryoverSection();
+            } catch (err) {
+                console.error('refreshCarryoverChallans:', err);
+                // Non-blocking secondary feature — fail quiet, section just stays hidden.
+                if (myToken === consCarryoverState.fetchToken) {
+                    consCarryoverState.items = [];
+                    renderCarryoverSection();
+                }
+            }
+        }
+
         function setupConsolidatedModalHandlers() {
             document.getElementById('consInvoiceCancel').addEventListener('click', () => {
                 document.getElementById('consolidatedInvoiceModal').style.display = 'none';
             });
             document.getElementById('consolidatedInvoiceModal').addEventListener('click', e => {
                 if (e.target.id === 'consolidatedInvoiceModal') e.target.style.display = 'none';
+            });
+
+            // Carryover challans list depends on client + date range + dispatch type —
+            // refetch whenever any of them changes.
+            ['consInvoiceClient', 'consInvoiceFrom', 'consInvoiceTo', 'consInvoiceDispatchType'].forEach(id => {
+                document.getElementById(id).addEventListener('change', refreshCarryoverChallans);
+            });
+
+            document.getElementById('consCarryoverList').addEventListener('change', e => {
+                if (!e.target.classList.contains('cons-carryover-checkbox')) return;
+                const entry = consCarryoverState.items.find(c => c.orderId === e.target.dataset.orderId);
+                if (entry) entry.checked = e.target.checked;
             });
 
             document.getElementById('consInvoiceConfirm').addEventListener('click', async () => {
@@ -1162,6 +1439,13 @@
                 btn.disabled = true;
                 btn.textContent = t('Loading…','लोड होत आहे…');
 
+                // Checked carryover challans (outside [dateFrom, dateTo]) — built ahead of the
+                // preview fetch so they're available whether or not the date range itself has
+                // any dispatches of its own (see the recoverable-empty-range handling below).
+                const checkedCarryoverItems = consCarryoverState.items
+                    .filter(c => c.checked)
+                    .flatMap(c => c.lineItems);
+
                 try {
                     const res = await fetch(`${SUPABASE_URL}/functions/v1/agent-query`, {
                         method: 'POST',
@@ -1176,8 +1460,21 @@
                             dispatch_type: dispatchType
                         })
                     });
-                    const data = await res.json();
-                    if (data.status !== 'ok') throw new Error(data.error || 'Unknown error');
+                    let data = await res.json();
+                    if (data.status !== 'ok') {
+                        // The date range itself can be legitimately empty when the owner is
+                        // generating an invoice made up entirely of carryover challans — only
+                        // recover from exactly that "nothing in range" case, and only when at
+                        // least one carryover item is checked. Any other error still surfaces.
+                        const isEmptyRange = data.error === 'Ya period madhe koi confirmed dispatch nahi';
+                        if (isEmptyRange && checkedCarryoverItems.length > 0) {
+                            data = { status: 'ok', client_name: clientName, items: [] };
+                        } else {
+                            throw new Error(data.error || 'Unknown error');
+                        }
+                    }
+
+                    data.items = [...data.items, ...checkedCarryoverItems];
 
                     consInvoicePreviewState.clientId = clientId;
                     consInvoicePreviewState.clientName = clientName;

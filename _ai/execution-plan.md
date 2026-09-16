@@ -1,8 +1,8 @@
 ---
 name: execution-plan
 description: Nexflow master execution plan — what the product is becoming, current state, locked pricing, the complete ordered session list from A0 to Session 31 with load orders and gates, Claude Code usage rules, parallel tracks, milestones, and the exit story. Read this file first, every morning, before starting any session.
-sources: [CLAUDE.md, business-strategy.md, automation-strategy.md, nexflow-agent.md, factory-os.md, nexflow-intelligence.md, bridge-agent.md, tutorial-engine.md, nexflow-mcp.md, onboarding-engine.md, product-polish-p1.md, supplier-payables-register.md, kpml-network-sessions-21-22.md, md-audit-report.md]
-last_updated: 14 September 2026
+sources: [CLAUDE.md, business-strategy.md, automation-strategy.md, nexflow-agent.md, factory-os.md, nexflow-intelligence.md, bridge-agent.md, tutorial-engine.md, nexflow-mcp.md, p1-factory.md, onboarding-engine.md, product-polish-p1.md, supplier-payables-register.md, kpml-network-sessions-21-22.md, md-audit-report.md]
+last_updated: 16 September 2026
 status: living document — update in place. This file replaces every build order pasted into a chat.
 ---
 
@@ -34,6 +34,13 @@ factory needs — s.143 clocks, ITC-04 working papers, GSTR-1 Table 12/13, GSTR-
 and eventually written straight into the client's own Tally through the Bridge Agent. The forms
 stay; they become the fallback. That is the difference between a better form-based system and a
 different category of product, and it is the whole thesis.
+
+**P1 and P2 are the two halves of the complete product.** P2 covers everything that touches money,
+stock, GST, and the CA — it is what is built today. P1 covers everything that happens on the
+factory floor — production orders, worker assignment, attendance, payroll, machines, scrap,
+visitors, assets, energy, safety. **P1 Part 1** (`factory-os.md`) is designed and ready to build.
+**P1 Part 2** (`p1-factory.md`) is designed and triggered by validation. **P1 + P2 = Nexflow
+Factory OS.**
 
 ---
 
@@ -152,147 +159,101 @@ And the three live tenants have no `filing_recipient`, `accountant_email` or
 
 ## 3. Pricing — Locked
 
-### Base tiers
+All products live on one platform, one login. Each is complete and excellent on its own.
+Together they form the Nexflow Operating System.
 
-| Tier | Setup (one-time) | Annual | Year 1 total | Who |
-|---|---|---|---|---|
-| **Founder** | ₹20,000 | ₹44,000 | ₹64,000 | **Clients 1–5 only. Closed to new business.** Rate locked 2 years, then standard Pro. Agent 30/day permanently. Agreement: `Nexflow_Founder_Agreement_v5.1.docx` |
-| **Standard Lite** | ₹20,000 | ₹56,000 | ₹76,000 | Client 6+. 250-material cap, single user, no agent. Agreement: `Nexflow_Standard_Agreement_v1.2.docx` |
-| **Standard Pro** | ₹35,000 | ₹1,00,000 *(live rate)* | ₹1,35,000 | Client 6+. Everything in Lite + AI Copilot 50/day, multi-user, unlimited materials, owner visibility, QR scanner |
-| **Enterprise** | ₹60,000 (₹35K Pro + ₹25K Bridge Agent) | ₹1,60,000 | ₹2,20,000 | PVT LTD, Segment 3. Pro + Bridge Agent + filing package |
-| **Principal (KPML)** | ₹1,25,000 – ₹1,50,000 | ₹2,50,000 – ₹3,00,000 | ₹3,75,000 – ₹4,50,000 | Network principals only. Includes up to 20 vendors |
+### Nexflow Inventory (P2)
 
-### Payment schedules
+Entry point. Any MIDC factory.
 
-| Tier | Schedule | Monthly option |
+| Tier | Setup | Annual | Who |
+|---|---|---|---|
+| **Inventory Lite** | ₹20,000 | ₹56,000 – 75,000 | Basic stock + GRN + dispatch + challan. 250-material cap, 1 user |
+| **Inventory Pro** | ₹35,000 | ₹1,25,000 – 1,50,000 | + Filing package + HSN audit + GSTR-2B + multi-user + unlimited materials |
+| **Inventory Enterprise** | ₹60,000 | ₹1,60,000 – 2,00,000 | Pro + Bridge Agent (Tally auto-sync) |
+
+**Sales line:** *"Your GST filing is automatic. Your CA gets a package on the 5th. Never worry
+about compliance again."*
+
+### Nexflow Production (P1)
+
+Requires Inventory Pro minimum. Cannot be bought standalone.
+
+| Tier | Setup | Annual | Who |
+|---|---|---|---|
+| **Production Lite** | ₹25,000 | ₹75,000 – 90,000 | Production orders + worker assignment + progress tracking + quality gates. P1 Part 1 only |
+| **Production Pro** | ₹40,000 | ₹1,40,000 – 1,60,000 | Everything in Lite + attendance + payroll + machines + scrap + visitors + assets + energy + safety. Full P1. **GATE:** CA statutory confirmation required before payroll sessions |
+
+**Sales line:** *"Your factory floor is digital. Every register replaced. Payslips calculated
+correctly every month. Inspection report in 30 seconds."*
+
+### Nexflow Agent
+
+Requires Inventory Pro minimum.
+
+| Setup | Annual | Included | Overage |
+|---|---|---|---|
+| ₹15,000 | ₹75,000 | 900 transactions/month | ₹4/transaction, quarterly, never blocks |
+
+**Sales line:** *"Photograph the delivery challan. Say what to dispatch. One confirmation. Done."*
+
+### Nexflow Intelligence
+
+Requires Inventory Pro minimum.
+
+| Setup | Annual | Included | Overage |
+|---|---|---|---|
+| ₹10,000 | ₹60,000 | 150 queries + 8 reports/month | ₹8/query, ₹40/report |
+
+**Sales line:** *"Ask it a question about your own factory. Get a real answer in 10 seconds.
+Generate an inspection report in 30 seconds."*
+
+### Nexflow Operating System
+
+All four products. One bundle. One price. Inventory Enterprise + Production Pro + Agent +
+Intelligence.
+
+| Setup | Annual | Monthly |
 |---|---|---|
-| Founder | ₹20K day 1 · ₹15K day 30 · ₹15K day 60 · ₹14K day 90 · 9 months free | ₹20K setup + ₹6,500/mo, 3-month minimum |
-| Standard Lite | ₹20K day 1 · ₹20K day 30 · ₹16K day 90 · 9 months free | ₹20K setup + ₹6,500/mo, 3-month minimum |
-| Standard Pro | ₹35K day 1 · ₹35K day 30 · ₹35K day 60 · ₹30K day 90 · 9 months free | ₹35K setup + ₹11,500/mo, 3-month minimum |
+| ₹1,00,000 | ₹4,20,000 – 4,50,000 | ₹35,000 – 37,500 |
 
-### Add-ons
+Discount vs buying separately: individual total ₹4,95,000. **Nexflow OS** saves ₹45,000 –
+75,000/year against buying every product on its own.
 
-| Add-on | Annual | Setup | Included | Overage | Requires |
-|---|---|---|---|---|---|
-| **Nexflow Agent** (write layer) | **₹75,000** | **₹15,000** | 900 agent transactions/month (≈35/working day) | **₹4/transaction**, billed quarterly, **never blocks** | Pro, Founder or Enterprise. Never Lite, never demo |
-| **Factory OS** | **₹1,25,000 – ₹1,45,000** | **₹25,000** | Production orders, workers, assignment, progress, quality, daily report | — | Agent add-on. Never Lite, never demo |
-| **Nexflow Intelligence** | **₹60,000** | **₹10,000** | 150 advisor queries + 8 reports/month | **₹8/query, ₹40/report**, quarterly, **never blocks** | Pro, Founder or Enterprise. Never Lite, never demo |
-| **MCP read tools** | **Free** | — | All nine read tools, every plan **including Lite** | — | Nothing. It is the door |
-| **MCP write tools** | **Included in the Agent add-on** | — | Same meter, same 900/month, same ₹4 overage | — | Agent add-on |
+**Sales line:** *"You are paying ₹98,000/month for people and software to run your factory.
+Nexflow OS: ₹37,500/month. You save ₹60,500/month. That is ₹7,26,000/year back in your pocket."*
 
-**Where the ladder lands a client:**
-
-| | Base | + Agent | + Factory OS | + Intelligence |
-|---|---|---|---|---|
-| **Pro path** | ₹1,25,000–1,50,000 | ₹2,00,000–2,25,000 | ₹3,25,000–3,50,000 | + ₹60,000 |
-| **Enterprise path** | ₹1,60,000–2,00,000 | ₹2,35,000–2,75,000 | ₹3,80,000–4,20,000 | + ₹60,000 |
-
-### KPML — principal pricing `[DECIDED 11 Sept 2026]`
+### KPML Principal — pricing `[DECIDED 11 Sept 2026]`
 
 | | |
 |---|---|
-| **Platform fee** | ₹2,50,000 – 3,00,000/year, **includes up to 20 vendors** |
-| **Pilot fee** | ₹75,000 one-time, **credited against Year 1 platform fee** |
-| **Overage** | ₹5,000 – 6,000/vendor/year, **only beyond the 20th vendor** |
-| **Setup** | ₹1,25,000 – 1,50,000 (item-code mapping, vendor master, opening balances per vendor, agreement records) |
-| **At 30 vendors** | ₹2,75,000 platform + 10 × ₹5,500 = **₹3,30,000/year** |
-| **At 50 vendors** | ₹2,75,000 + 30 × ₹5,500 = **₹4,40,000/year** |
-| **Pilot terms** | 5 vendors, 90 days |
+| **Platform fee** | ₹2,75,000/year, includes 20 vendors |
+| **Pilot fee** | ₹75,000 one-time, credited to Year 1 |
+| **Overage** | ₹5,000 – 6,000/vendor/year beyond 20 |
+| **Vendor requirement** | Each vendor must have Inventory Pro minimum |
+| **At 30 vendors** | ₹3,30,000 platform + 30 × ₹1,25,000 vendor subscriptions = **₹40,80,000/year** total Nexflow revenue from one KPML relationship |
 
-**The sponsored-seat model in `kpml-network-plan.md` §12 (₹12–18K per vendor, all vendors) is
-superseded and dead.** If a file says otherwise, the file is stale. Price on **active
-principal-side links**, never on a tenant-level flag — roles are per-relationship.
+### Free forever, every plan
 
-**The vendor multiplier is where the real money is.** Each KPML vendor is a separate tenant
-paying their own Standard Pro (Pro is mandatory — a serious job worker hits the 250-material Lite
-cap immediately). KPML mandates adoption; you do not sell to each vendor individually. At 70+
-vendors that is ₹70L+/year in vendor subscriptions plus the platform fee plus overages.
+One-click full export · AI HSN audit · MCP read tools · CA Tally (one CA per tenant).
 
-### Setup fees — never discount any of them
-
-| Fee | What it buys |
-|---|---|
-| ₹20,000 / ₹35,000 base | Data load, first-month supervision, on-site session |
-| ₹25,000 Bridge Agent | The parallel-run month that prevents a corrupted set of statutory books |
-| ₹15,000 Agent | HSN audit pass, material-naming review over the top 20 by movement, supplier activation, one supervised week |
-| ₹25,000 Factory OS | Worker master, `standard_output_per_day` over the top 20 products, one on-site session watching a real worker use `work.html` |
-| ₹10,000 Intelligence | HSN pass, material-price population over the top 40 by movement, clearing flagged GRN anomalies, one session where the owner asks their own five real questions |
-| ₹1,25,000–1,50,000 Principal | Item-code mapping, vendor master, per-vendor opening balances |
-
-**None of it is margin. It buys the week that prevents the expensive failure.**
-
-### Free on every plan, permanently — and never an upsell
-
-One-click full export · AI HSN audit · CA Tally integration (one CA per tenant) · MCP read tools.
-
-The export is the answer to the bus-factor objection and is worthless as a paid feature. A wrong
-HSN is a filing error regardless of what the tenant pays.
-
-### Sales conversation, per tier
-
-**Standard Lite.** *"Your challans, your GST export, your invoices — done properly, from one
-place. ₹76,000 for the first year, ₹56,000 after."* One user, 250 materials. The Scanner link
-stays visible in their nav and shows the Pro gate when clicked — that friction is deliberate.
-
-**Standard Pro.** *"Everything Lite has, plus you can ask it questions, put your storekeeper on
-it with their own login, and scan a QR instead of typing a challan."* This is the default sale.
-Signed today at ₹1,00,000–1,25,000; the ₹1,25,000–1,50,000 band is a 2027 event.
-
-**Enterprise.** *"Your Tally fills itself, and your CA gets a zip on the 5th that takes them
-twenty minutes instead of three hours."* ₹2,20,000 Year 1. This is the PVT LTD conversation and
-it requires incorporation before you can sign it. **Cap at 25 clients until support load is
-measured.**
-
-**Principal (KPML).** Anchor on the exposure, not the features: *"One 43B(h) disallowance on ₹40
-lakh of unpaid vendor bills is roughly ₹12 lakh of extra tax. One s.143 breach on a ₹10 lakh
-challan is ₹1.8 lakh of GST plus 18% interest from the dispatch date. One month of manual
-reconciliation across three departments costs you more than the annual fee."* Deliverable in
-one-sided mode — no vendor onboarding required to start.
-
-**Nexflow Agent.** *"Stop paying for a data entry person."* The arithmetic: a data-entry operator
-costs ≈ ₹12.80 per transaction (₹20,000/month ÷ ~1,560). The agent costs ₹0.77 of compute. The
-add-on is ₹75,000/year. **This is the first time in the product's history you can say that
-sentence and prove it.**
-
-**Factory OS.** Do **not** say "replace three people." Say: *"You are paying about ₹80,000 a
-month for three people, and about half of what they do is writing things down and telling each
-other what to do. Nexflow does that half. What you get back is a supervisor who spends their day
-on the floor instead of on the register — and if you want to run leaner after six months of
-watching it work, that will be your call with real numbers in front of you, not mine now."*
-The pitch that promises redundancy destroys the data it depends on.
-
-**Intelligence.** *"Ask it a question about your own factory and watch it answer in ten
-seconds."* One question, their data, in front of them. **This sells to existing clients at
-renewal, not to new ones** — the demo needs months of data that a prospect does not have. Price
-and position it as the reason a Year-2 client pays more.
-
-### Raising the price on an existing client
-
-Three rules, and they bind together:
-
-1. **90 days' written notice.** Never a renewal-date surprise.
-2. **Never more than 20% in one step.**
-3. **Always tied to specific features they already received.** *"You now have the filing package,
-   the Marathi tutorials and the Tally bridge, none of which existed when you signed."* Never
-   "costs have gone up."
-
-> **₹1,00,000 → ₹1,25,000 is +25% and breaks rule 2.** On an existing unlocked client the
-> compliant ladder is ₹1,00,000 → ₹1,20,000 → ₹1,44,000 → ₹1,50,000: **three annual steps.** The
-> new band applies to new business, where the cap does not.
-
-**Two of the three founding clients are locked until ~2030 and the third pays nothing, ever.
-There is zero pricing upside available from the existing book.** All growth comes from clients
-who have not signed yet.
+**Never upsell these. Never gate these.**
 
 ### Never, permanently
 
-- **Never charge the CA.** The moment there is an invoice attached, a recommendation becomes a
-  sales pitch and the channel dies.
-- **Never discount the ₹25,000 Bridge Agent setup fee.**
-- **Never bundle Enterprise into the Principal platform fee.**
-- **Never price on a tenant-level flag.** Always on active principal-side links.
-- **Never accept a bespoke customer-specific build**, however large the cheque. Bespoke revenue
-  is valued as services, at a fraction of the multiple.
+- **Never charge the CA.**
+- **Never discount the ₹25,000 Bridge Agent setup.**
+- **Never bundle Enterprise into the Principal fee.**
+- **Never accept bespoke custom builds.**
+- **Never quote the OS price before Inventory has run cleanly for 60 days on that account.**
+
+### Current clients
+
+| Client | Plan | Terms |
+|---|---|---|
+| **SS Engineering** | Inventory Lite equivalent | Free permanently. Founder plan. Never changes |
+| **Datta Prasad** | Inventory Pro | ₹1,35,000/year, 3-year rate lock. Short invoice format |
+| **Shivprasad** | Inventory Pro (assumed) | ₹1,00,000/year, 3-year rate lock `[UNVERIFIED — confirm and record terms]` |
 
 ---
 
@@ -426,17 +387,23 @@ Sessions 1–17. See §2 "What is built". **Sessions 12–17: ✅ Done.**
 
 ---
 
-### PHASE 5 — Factory OS and Intelligence completion
+### PHASE 5 — P1 PART 1 (Production + Workers + Quality) and Intelligence completion
+
+> **NAMING NOTE.** **"P1" in this document refers to the factory floor management product**
+> (`factory-os.md` + `p1-factory.md`). **"P1 product polish" (item 9 above) is a different thing —
+> a UI polish session.** When instructing Claude Code, always specify which P1. **All new tables
+> use the `p2_` prefix regardless — `CLAUDE.md`'s convention is absolute.** See `p1-factory.md`
+> §0 C9.
 
 | # | Session | What it builds | Why it matters | Days | Status |
 |---|---|---|---|---|---|
-| **33** | **FO1 — Production orders + workers** | Full `factory-os.md` §11 migration, `create_production_order`, `get_next_production_order_number`, `cancel_production_order`, `accept_production_order`, `propose_production_order`, `production.html` list + detail, Settings → Workers tab | **One sentence creates a real production order.** A production order is a planning object — it moves nothing, so it needs no confirm gate | 1 | ❌ |
-| **34** | **FO2 — Assignment + progress + worker page** | `assign_production_work`, `record_production_progress`, `v_p2_production_order_status`, `propose_work_assignment`, `work-view` Edge Function, `work.html` with taps, offline queue, `client_event_id` | **A worker taps +5 on a phone and the owner's order list moves.** The worker confirms nothing and types nothing. 420 taps a month with no model in the path — the highest-volume interaction in the product is free | 1 | ❌ |
-| **35** | **FO3 — Material issue + output dispatch** | `start_production_order` over `confirm_bom_issue` v4, `confirm_production_dispatch` over `confirm_dispatch_transaction` + `close_wip`, `production_order_id` threaded through the dispatch path | **The session that touches stock.** F3 — consumption happens exactly once, at issue; a dispatch carrying a `production_order_id` never re-expands the BOM — is its whole content | 1 | ❌ |
-| **36** | **FO4 — Quality + the gate** | `record_quality_check`, dispatch gate, two deterministic thresholds, quality panel | The gate defaults **off**. A factory that does not record quality today loses nothing by recording it a month later | 1 | ❌ |
-| **37** | **FO5 — Daily owner report + estimates** | `factory-report` with dispatch/drain on `p2_job_queue`, two crons, Haiku with deterministic fallback, `delivery_estimate` / `production_status` / `worker_load` read intents, quiet-hours check | One Telegram message at 7pm that answers *"is Friday going to happen."* **Runs on the job queue from day one — never a loop** | 1 | ❌ |
-| **38** | **FO6 — Marathi, mobile, network** | `work.html` and every card through the read-aloud gate with a real worker, `get_principal_vendor_production()`, principal dashboard panel, the principal's consolidated query | The worker page in English is not a worker page | 1 | ❌ |
-| **39** | **FO-pilot — Factory OS supervised pilot** | One tenant, one production line, 30 days. Datta Prasad | Every production order's progress reconciles against a physical count, or the gap is explained. **Ask specifically: "what did Thursday's report say?"** A report nobody reads is the failure mode this feature is most likely to have | 30 cal | ❌ |
+| **33** | **P1A-1 — Production orders + workers** | Full `factory-os.md` §11 migration, `create_production_order`, `get_next_production_order_number`, `cancel_production_order`, `accept_production_order`, `propose_production_order`, `production.html` list + detail, Settings → Workers tab | **One sentence creates a real production order.** A production order is a planning object — it moves nothing, so it needs no confirm gate | 1 | ❌ |
+| **34** | **P1A-2 — Assignment + progress + worker page** | `assign_production_work`, `record_production_progress`, `v_p2_production_order_status`, `propose_work_assignment`, `work-view` Edge Function, `work.html` with taps, offline queue, `client_event_id` | **A worker taps +5 on a phone and the owner's order list moves.** The worker confirms nothing and types nothing. 420 taps a month with no model in the path — the highest-volume interaction in the product is free | 1 | ❌ |
+| **35** | **P1A-3 — Material issue + output dispatch** | `start_production_order` over `confirm_bom_issue` v4, `confirm_production_dispatch` over `confirm_dispatch_transaction` + `close_wip`, `production_order_id` threaded through the dispatch path | **The session that touches stock.** F3 — consumption happens exactly once, at issue; a dispatch carrying a `production_order_id` never re-expands the BOM — is its whole content | 1 | ❌ |
+| **36** | **P1A-4 — Quality + the gate** | `record_quality_check`, dispatch gate, two deterministic thresholds, quality panel | The gate defaults **off**. A factory that does not record quality today loses nothing by recording it a month later | 1 | ❌ |
+| **37** | **P1A-5 — Daily owner report + estimates** | `factory-report` with dispatch/drain on `p2_job_queue`, two crons, Haiku with deterministic fallback, `delivery_estimate` / `production_status` / `worker_load` read intents, quiet-hours check | One Telegram message at 7pm that answers *"is Friday going to happen."* **Runs on the job queue from day one — never a loop** | 1 | ❌ |
+| **38** | **P1A-6 — Marathi, mobile, network** | `work.html` and every card through the read-aloud gate with a real worker, `get_principal_vendor_production()`, principal dashboard panel, the principal's consolidated query | The worker page in English is not a worker page | 1 | ❌ |
+| **39** | **P1A-pilot — Factory OS supervised pilot** | One tenant, one production line, 30 days. Datta Prasad | Every production order's progress reconciles against a physical count, or the gap is explained. **Ask specifically: "what did Thursday's report say?"** A report nobody reads is the failure mode this feature is most likely to have | 30 cal | ❌ |
 | **40** | **I3 — Bank stock statement + working capital** | Bank stock statement with principal-material exclusion, unvalued-row refusal, stated basis; working capital summary with the payables upper bound and its verbatim caveat | The document a bank asks for, produced in 30 seconds instead of a day | 1 | ❌ |
 | **41** | **I4 — Trend + bottleneck finder** | Changepoint detection (self-referential, never a constant), the nine dated candidate events, three rendering rules, the completeness signal | **Not demonstrable on a live tenant before ~Feb 2027** — no tenant has six complete periods until then. Develop against synthetic history on the test tenant | 1 | ❌ |
 | **42** | **I5 — Proactive alerts** | `p2_intelligence_alerts`, widened notification CHECK, `intelligence-sweep` with dispatch/drain, two crons, eight Wave-1 conditions, five fatigue mechanisms | Alerts are deterministic. The model phrases them and never decides them | 1 | ❌ |
@@ -445,20 +412,68 @@ Sessions 1–17. See §2 "What is built". **Sessions 12–17: ✅ Done.**
 | # | Load order (fresh chat) | Prerequisites | Gate before it ships |
 |---|---|---|---|
 | 33 | `_ai/CLAUDE.md` · `_ai/factory-os.md` (full — read §0's six corrections first) · `_ai/nexflow-agent.md` §3, §4 | **W1–W2 + the write layer running 30 days on one live tenant** (item 18), A6's `p2_job_queue`, A0 | **Read the live `p2_notifications_type_check` and `p2_ops_alerts_source_check` definitions before writing the widening.** See §10 item 3 |
-| 34 | `_ai/factory-os.md` §4, §5, §11.4 | FO1 | Double-tap is idempotent via `client_event_id`. Offline queue drains without duplicating |
-| 35 | `_ai/factory-os.md` §3.4, §3.5, F3 | FO2 | **The consumption invariant is the acceptance test.** Issue 30, dispatch 28, dispatch 2 — stock moves exactly once, at issue |
-| 36 | `_ai/factory-os.md` §6 | FO3 | Gate defaults off. A quality record never blocks a dispatch unless the owner turned the gate on |
-| 37 | `_ai/factory-os.md` §8 · `_ai/automation-strategy.md` §3.3 | A6, FO2 | Dispatch/drain, never a loop. Deterministic fallback if Haiku is unavailable |
+| 34 | `_ai/factory-os.md` §4, §5, §11.4 | P1A-1 | Double-tap is idempotent via `client_event_id`. Offline queue drains without duplicating |
+| 35 | `_ai/factory-os.md` §3.4, §3.5, F3 | P1A-2 | **The consumption invariant is the acceptance test.** Issue 30, dispatch 28, dispatch 2 — stock moves exactly once, at issue |
+| 36 | `_ai/factory-os.md` §6 | P1A-3 | Gate defaults off. A quality record never blocks a dispatch unless the owner turned the gate on |
+| 37 | `_ai/factory-os.md` §8 · `_ai/automation-strategy.md` §3.3 | A6, P1A-2 | Dispatch/drain, never a loop. Deterministic fallback if Haiku is unavailable |
 | 38 | `_ai/factory-os.md` §9 · `_ai/tutorial-engine.md` §8.5 · `_ai/kpml-network-sessions-21-22.md` §2 | **Session 21** (for the network half only) | **No worker identity crosses a tenant boundary.** KPML learns an order is 28 of 30 complete; they never learn who made them |
-| 39 | `_ai/factory-os.md` §12.5, §13 | FO1–FO6 | Progress reconciles against a physical count. The four instrumentation numbers computed |
+| 39 | `_ai/factory-os.md` §12.5, §13 | P1A-1–P1A-6 | Progress reconciles against a physical count. The four instrumentation numbers computed |
 | 40 | `_ai/nexflow-intelligence.md` §6.3, §6.4 | I2 | Three safeguards on the bank statement: principal-material exclusion, unvalued-row refusal, stated basis. **Not `v_p2_supplier_advance_balance`** for payables |
 | 41 | `_ai/nexflow-intelligence.md` §5, §12.8 | I2 | Build §12.8's completeness signal **in this session, not later** — it is the guard on everything this session adds |
 | 42 | `_ai/nexflow-intelligence.md` §8, §9.3, §9.4 · `_ai/automation-strategy.md` §3.3 | A6, I1 | Digest sections append to the existing 8am message — **never a second daily message.** Read the live CHECK first |
 | 43 | `_ai/nexflow-intelligence.md` §6.5, §14.4, §14.5 | I1–I5 | Five answers checked against **what the owner already knows to be true** — not against the database. Unbacked-figure rate must be zero |
 
 > **Intelligence Wave 2** — production efficiency, quality trend, routing `capacity_available` to
-> Factory OS's `delivery_estimate` — is one further session, gated entirely on FO1–FO4.
+> Factory OS's `delivery_estimate` — is one further session, gated entirely on P1A-1–P1A-4.
 
+---
+
+### PHASE 5B — P1 PART 2 (HR + Facility Management)
+
+**Trigger:** P1 Part 1 live and validated on 3+ clients **AND** at least one client has explicitly
+asked for attendance + payroll. Both, not either.
+
+**Design document:** `_ai/p1-factory.md` — complete, 3,000+ lines, 38 table schemas, ready to build
+from when the trigger fires.
+
+> **CRITICAL before building.** Confirm all 11 statutory parameters in `p1-factory.md` §5.9 with a
+> CA **in writing**. Payroll that computes wrong statutory deductions is worse than no payroll.
+> **This CA consultation is a hard gate — no payroll session starts without it.**
+
+**MVP — 8 sessions, build these first:**
+
+| # | Session | What it builds |
+|---|---|---|
+| **P1B-1** | Attendance foundation | `p2_shifts`, `p2_workers` extension, `p2_attendance`, `p2_attendance_exceptions` |
+| **P1B-2** | Shift management + leave types | `p2_leave_types`, `p2_leave_balances`, `p2_leave_requests` |
+| **P1B-3** | Leave approval flow + overtime recording | The approval path, and overtime recorded rather than computed from output |
+| **P1B-4** | Attendance input — supervisor path + geo-QR | Rotating code, accuracy-budget geofence — **not a hard 100m block** |
+| **P1B-5** | Attendance input — ZKTeco device webhook | Fingerprint, RFID and face on one endpoint, same protocol. **Matrix COSEC deferred** |
+| **P1B-6** | Payroll wages structure | `p2_payroll_policies`, `p2_wage_components`, `p2_payroll_periods`, `p2_payroll_lines` |
+| **P1B-7** | Payroll statutory deductions | PF with wage ceiling, ESI with period-lock, PT with February top-up, advance deductions, minimum bonus liability |
+| **P1B-8** | Payslip generation + approval + disbursement | The payslip, its approval, and recording that the money moved |
+
+**After the MVP — 16 more sessions:**
+
+| # | What it builds |
+|---|---|
+| **P1B-9 – P1B-12** | Machine register + maintenance + breakdown log + utilization |
+| **P1B-13 – P1B-14** | Scrap recording + yield variance |
+| **P1B-15 – P1B-16** | Visitor/vehicle log + gate pass |
+| **P1B-17 – P1B-18** | Asset register + depreciation |
+| **P1B-19 – P1B-20** | Energy tracking |
+| **P1B-21 – P1B-22** | Safety records + compliance calendar |
+| **P1B-23 – P1B-24** | P1↔P2 integration + Intelligence extensions + filing package additions |
+
+**Load order for every P1B session, in this order:**
+
+```
+_ai/CLAUDE.md → _ai/factory-os.md → _ai/p1-factory.md (full) → session-specific section
+```
+
+> **NEVER load all MD files.** Load only what that session needs, per the load order above.
+
+**Prerequisites before any P1B session:** §10 item 8.
 ---
 
 ### PHASE 6 — KPML pilot live
@@ -531,7 +546,7 @@ unused code path.
 - **Factory OS could start earlier than Phase 5.** Its hard gates are W1–W2 plus 30 days of write
   layer on a live tenant, `p2_job_queue`, and A0 — all satisfied at the end of Phase 3. It is
   placed after the Bridge Agent because `CLAUDE.md` sequences it there. **If a Tier-3 prospect
-  appears, FO1–FO2 (the MVP) is two sessions and the placement is a convention, not a law** —
+  appears, P1A-1–P1A-2 (the MVP) is two sessions and the placement is a convention, not a law** —
   the same reasoning `bridge-agent.md` §17.6 applies to the 40-client gate on E1.
 - **Every pilot is calendar time that runs in parallel with the next session.** W6, the Factory
   OS pilot and I6's pilot are 30 days each of watching, not 30 days of not building.
@@ -714,14 +729,33 @@ Concrete reasons to add clients now rather than later:
 | **After Tutorial Engine (T1–T3)** | *"No training needed. Your storekeeper opens it in Marathi and records a correct GRN on the first try."* | Removes the largest objection and the largest founder-hour cost. Onboarding stops requiring a site visit |
 | **After Onboarding Engine (A1)** | *"Send me your files in whatever shape they are in. Twenty vendors onboarded in a day."* | The KPML vendor wave becomes possible. 3–6 founder-hours per client → ~30 minutes |
 | **After the Agent pilot (W6)** | *"Stop paying for a data entry person."* — **and prove it** | **The first time in this product's history that sentence is honest.** ₹12.80/transaction human vs ₹0.77 compute, with 30 days of one live tenant's data behind it. Unlocks the ₹75,000 add-on |
-| **After Factory OS (FO1–FO6)** | *"Your factory runs itself — you approve four things per order and the rest is taps."* | The buyer changes from the person who records things to the person who **runs** the factory. Used every hour instead of at month end. Unlocks the ₹1,25,000–1,45,000 add-on and the ₹3,80,000 Tier-3 price |
+| **After Production Lite (P1A-1–P1A-6)** | *"Your factory runs itself — you approve four things per order and the rest is taps."* | The buyer changes from the person who records things to the person who **runs** the factory. Used every hour instead of at month end. Unlocks the ₹1,25,000–1,45,000 add-on and the ₹3,80,000 Tier-3 price |
 | **After Intelligence (I1–I6)** | *"Your factory runs smarter."* Ask a question about your own business, get an answer in ten seconds | Unlocks ₹60,000/year **at renewal**. Also the strongest reason a Year-2 client pays more, and the weakest cold pitch — the demo needs months of data |
 | **After the Bridge Agent (Sessions 18–19)** | *"Your Tally fills itself."* | **Switching becomes impossible.** Leaving is no longer a software decision, it is a bookkeeping migration their CA has to sign off. Also the second CA channel, from ~Aug 2027 |
 | **After KPML Sessions 21–22** | *"Your principal sees exactly what you want them to see, and you can show them what that looks like before you turn it on."* | **The network effect goes live.** Each principal brings 20–50 vendors, each a Pro subscription. Ten principals is 200–500 clients |
 
+**Two further milestones, gated on Phase 5B:**
+
+**After P1 Part 2 MVP (attendance + payroll):** *"Every register in your factory is digital. Your
+muster roll is never written up the morning before an inspection. Your payslips are calculated
+correctly with all statutory deductions. Your CA gets the payroll liability statement
+automatically."*
+
+**After P1 Part 2 Complete (all 8 modules):** *"Nothing in your factory is on paper. Nothing is in
+a spreadsheet. Every non-physical activity — from GST to payroll to safety records to machine
+maintenance — is in one system. The only competition is running a factory manually."*
+
+**P1 + P2 fully integrated = Nexflow Factory OS.** At this point no competitor covers this ground,
+and no MIDC factory that depends on this system will ever willingly switch.
+
 ---
 
 ## 8. What Nexflow Looks Like When Complete
+
+The platform has four products on one login. Inventory handles compliance and stock. Production
+handles the floor. Agent makes both conversational. Intelligence makes both smart. Together:
+**Nexflow Operating System** — one platform for everything in an MIDC factory, nothing on paper,
+nothing in a spreadsheet, nothing in WhatsApp.
 
 ### The full product
 
@@ -741,10 +775,17 @@ monthly AI filing package their CA opens on the 5th.
 per-vendor payment position, and — after Session 22 — the ability to dispatch material and have
 the vendor's GRN appear correctly attributed.
 
-**Three paid add-ons on top:** the Agent (describe or photograph a transaction, confirm once),
-Factory OS (production orders, workers, taps, quality, a 7pm report), and Intelligence (ask your
-own business questions, get bank statements and working capital summaries and a compliance
-inspection report).
+**Four paid add-ons on top:** the Agent (describe or photograph a transaction, confirm once),
+**P1 Part 1** — Factory OS (production orders, workers, taps, quality, a 7pm report) — **P1 Part 2**
+(attendance, leave, payroll with every statutory deduction, machines and maintenance, scrap and
+yield variance, visitors and gate passes, the asset register, energy, and safety records with the
+compliance calendar), and Intelligence (ask your own business questions, get bank statements and
+working capital summaries and a compliance inspection report).
+
+**Stated once, as a whole:** P2 (compliance + inventory) + P1 Part 1 (production + workers +
+quality) + P1 Part 2 (attendance + payroll + machines + scrap + visitors + assets + energy +
+safety) + Intelligence + the Bridge Agent + the MCP server. **That is Nexflow Factory OS** — and
+at that point nothing in the factory that is not physical is on paper or in a spreadsheet.
 
 **In two languages, on a ₹8,000 phone, with a tutorial that teaches each flow in one sentence per
 field.**
@@ -910,7 +951,7 @@ Session 3 precisely so staff names could be resolved.
 **Confirm column existence on `p2_stock_transactions`, `p2_invoices` and `p2_dispatch_items`
 before writing any migration.** Add only where genuinely missing, nullable, no backfill.
 
-### 3. CHECK constraint collision risk — **before FO1 (item 33) and I5 (item 42)**
+### 3. CHECK constraint collision risk — **before P1A-1 (item 33) and I5 (item 42)**
 
 **Two documents widen `p2_notifications.type`, and the second to land will drop the first's values
 unless it includes them.**
@@ -1020,7 +1061,7 @@ Use the `t(en, mr)` helper inline in every render function, reading
 | Blank invoice rate persists as ₹0 | W5 (item 17), any invoice work | Not blocked client-side or server-side; silently lands on a legally-formatted tax invoice. Needs validation at the modal submit **and** in `confirmGenerateInvoice`/`confirmConsolidatedInvoice` |
 | `v_p2_supplier_advance_balance.total_drawn` sums every GRN ever | Session 24 (item 49) | Not scoped to GRNs since the advance, so a new advance against a supplier with history reads as massively overdrawn immediately. Fixed **inside** Session 24 |
 | Failed confirm burns a challan number | Item 10 (challan line editing) | `dispatch.html`'s version was fixed in Session 2; `rm-dispatch.html:1134` and `production-issue.html:1541` still have it |
-| `get_next_challan_number` concurrency `[UNVERIFIED]` | Any high-volume session (W1, W3, FO3) | Needs a `pg_proc` inspection in the SQL Editor to confirm the live function is a row-locked counter, not a plain `MAX+1` read |
+| `get_next_challan_number` concurrency `[UNVERIFIED]` | Any high-volume session (W1, W3, P1A-3) | Needs a `pg_proc` inspection in the SQL Editor to confirm the live function is a row-locked counter, not a plain `MAX+1` read |
 | `rm-dispatch.html` unchecked `.delete()` | Item 9 (P1 polish) sits next to it | `:1057-1060`, `:1173-1176`. A failed delete followed by a successful insert duplicates every line item on the challan. **Correctness work — do not half-fix it inside P1** |
 | No server-side role check on invoice write handlers | W1 (item 13) | Operator can generate tax invoices; the gate is plan-only. `verifyCallerTenant` checks tenant, not role. Four lines. Scheduled in **FIX-1** |
 | `check-low-stock` is an unauthenticated all-tenant fan-out | A3 (item 6) | `verify_jwt = false` with no auth inside. Fix: a shared-secret header on cron jobids 2, 3, 8, 9 (~1 hour) |
@@ -1028,9 +1069,41 @@ Use the `t(en, mr)` helper inline in every render function, reading
 | Filing package plan gating is undecided | A6 (item 2) | `enterprise-strategy.md` §3.2 says "Enterprise only"; `filing_package_enabled` defaults `true` for everyone. **They disagree while the cron runs.** `[RECOMMENDED]` keep it on for everyone at ~₹28/tenant/month — but ratify it before the October run, because it changes the cost table |
 | `js/supabase-client.js:30-38` defaults `plan` to `'founder'` | Item 9 sits next to it | An unchecked settings fetch grants Pro features to a Lite tenant on any network blip. Should default to `'lite'` — least privilege |
 
+### 8. P1 Part 2 prerequisites — **before any P1B session (Phase 5B)**
+
+- **CA confirmation of all 11 statutory parameters in `p1-factory.md` §5.9, in writing.** Hard
+  gate, no exceptions. At least four of the eleven have been revised in the last decade, and a
+  wrong PF ceiling or PT slab is wrong on every payslip, every month, retrospectively.
+- **`factory-os.md` F11 must be narrowed — not deleted — before P1B-6 (the payroll wages
+  session).** F11 heading: add *"from production output"*. F11 body: replace *"no attendance, no
+  payroll"* with *"no piece rate, no per-worker earnings from production rows"*. The exact
+  amendment text, for all five locations, is in `p1-factory.md` §0 C1. **Do not delete F11** — a
+  future session proposing piece rates must still find a `[NEVER]` with a reason attached.
+- **Matrix COSEC attendance integration is deferred** until a client has that hardware. P1B-5
+  covers ZKTeco only — one webhook for fingerprint, RFID and face.
+- **Gratuity (Payment of Gratuity Act): `[NEVER]`** — it requires actuarial valuation and is out
+  of scope.
+
 ---
 
-## 11. Standing Rules
+## 11. The Platform Page
+
+When a client logs into Nexflow, they see a product dashboard showing which modules they have
+active. Each module has its own nav and its own quality standard.
+
+Active modules show: plan, usage this month, quick stats.
+Inactive modules show: what they do, price, upgrade button.
+**"Upgrade to Nexflow OS"** appears for clients with 2+ modules but not all 4.
+
+**This page does not exist yet. Build it in Session P1 — Product Polish (item 9 in Phase 2) as
+the new `index.html` after login, replacing the current dashboard.**
+
+**Design principle:** each module feels like a complete, premium product. Not a tab in a
+cluttered interface. A product.
+
+---
+
+## 12. Standing Rules
 
 These apply to every session and are repeated here so a fresh chat can be pointed at one section.
 
@@ -1060,6 +1133,6 @@ These apply to every session and are repeated here so a fresh chat can be pointe
 
 ---
 
-*Last updated: 14 September 2026. This is a living document — update it in place as sessions
+*Last updated: 16 September 2026. This is a living document — update it in place as sessions
 ship. Flip a status to ✅ the day it lands, correct a day estimate with the measured number, and
 move a resolved item out of §10 rather than leaving it to be re-derived.*
