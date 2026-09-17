@@ -11,6 +11,10 @@ window.supabase = supabaseClient;
 let cachedIsJobWorker = false;
 let cachedIsPrincipal = false;
 let cachedSeparatePoolDeduction = false;
+// Tutorial engine (T1) — same reasoning as the three flags above: re-fetched
+// fresh every checkAuth(), never persisted, so an owner's mid-session Settings
+// change takes effect on next load without a stale-cache trap.
+let cachedTutorialMode = 'auto';
 
 async function checkAuth() {
     const { data: { user } } = await window.supabase.auth.getUser();
@@ -46,7 +50,7 @@ async function checkAuth() {
 
     const { data: settingsData } = await window.supabase
         .from('p2_tenant_settings')
-        .select('plan, is_job_worker, is_principal, separate_pool_deduction')
+        .select('plan, is_job_worker, is_principal, separate_pool_deduction, tutorial_mode')
         .eq('tenant_id', tenantId)
         .single();
 
@@ -57,6 +61,7 @@ async function checkAuth() {
     cachedIsJobWorker = settingsData?.is_job_worker || false;
     cachedIsPrincipal = settingsData?.is_principal || false;
     cachedSeparatePoolDeduction = settingsData?.separate_pool_deduction === true;
+    cachedTutorialMode = settingsData?.tutorial_mode || 'auto';
 
     // Demo-mode flag, read by js/utils.js into window.isDemo (used by agent-chat.js).
     try {
@@ -119,6 +124,11 @@ function isPrincipal() {
 
 function isSeparatePoolDeduction() {
     return cachedSeparatePoolDeduction;
+}
+
+// Tutorial engine (T1) — mirrors isJobWorker()'s call shape exactly.
+function getTutorialMode() {
+    return cachedTutorialMode;
 }
 
 // Call at top of every Pro-gated page after checkAuth()

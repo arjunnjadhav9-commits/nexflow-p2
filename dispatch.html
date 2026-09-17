@@ -17,6 +17,8 @@
     <script src="js/utils.js"></script>
     <script src="js/notifications.js"></script>
     <script src="js/navbar.js"></script>
+    <script src="js/tutorial-engine.js"></script>
+    <script src="tutorials/dispatch.tutorial.js"></script>
 
     <style>
         .nx-modal-overlay {
@@ -116,7 +118,13 @@
                     </div>
                     <div class="nx-page-sub">Create challan, deduct stock, log dispatch</div>
                 </div>
-                <a href="rm-dispatch.html" class="nx-btn nx-btn-ghost">Raw Material Dispatch →</a>
+                <div style="display:flex; gap:10px; align-items:center;">
+                    <!-- UNREVIEWED Marathi, tutorial-engine.md §10.5 — must be read aloud to a
+                         native speaker before this ships to a live tenant with Marathi active. -->
+                    <button type="button" id="tutorialLaunchBtn" class="nx-btn nx-btn-ghost nxt-launch-btn"
+                            data-en="▶ Show me how" data-mr="▶ शिकवा">▶ Show me how</button>
+                    <a href="rm-dispatch.html" class="nx-btn nx-btn-ghost">Raw Material Dispatch →</a>
+                </div>
             </div>
 
             <!-- LOADING -->
@@ -156,6 +164,7 @@
                             <label id="clientNameLabel" data-en="Client Name" data-mr="ग्राहक नाव">Client Name</label>
                             <input type="text" id="clientName" class="nx-input" list="clientNameSuggestions"
                                    data-en="Enter client name" data-mr="ग्राहक नाव प्रविष्ट करा"
+                                   data-tutorial-target="dispatch-client-name"
                                    placeholder="Enter client name" required autocomplete="off">
                             <datalist id="clientNameSuggestions"></datalist>
                         </div>
@@ -164,6 +173,7 @@
                             <label id="clientAddressLabel" data-en="Client Address" data-mr="ग्राहक पत्ता">Client Address</label>
                             <textarea id="clientAddress" rows="3" class="nx-input"
                                       data-en="Enter client address" data-mr="ग्राहक पत्ता प्रविष्ट करा"
+                                      data-tutorial-target="dispatch-client-address"
                                       placeholder="Enter client address" required style="resize:vertical;"></textarea>
                         </div>
 
@@ -172,6 +182,7 @@
                                 <label id="poNumberLabel" data-en="PO Number" data-mr="PO क्रमांक">PO Number</label>
                                 <input type="text" id="poNumber" list="poSuggestions" class="nx-input"
                                        data-en="Enter PO number" data-mr="PO क्रमांक प्रविष्ट करा"
+                                       data-tutorial-target="dispatch-po-number"
                                        placeholder="Enter PO number">
                                 <datalist id="poSuggestions"></datalist>
                             </div>
@@ -186,7 +197,7 @@
                         <div class="nx-form-row">
                             <div class="nx-form-group">
                                 <label id="dispatchDateLabel" data-en="Dispatch Date" data-mr="पाठवण्याची तारीख">Dispatch Date</label>
-                                <input type="date" id="dispatchDate" class="nx-input">
+                                <input type="date" id="dispatchDate" class="nx-input" data-tutorial-target="dispatch-date">
                             </div>
                             <div class="nx-form-group">
                                 <label id="vehicleNumberLabel" data-en="Transport" data-mr="ट्रान्सपोर्ट">Transport</label>
@@ -199,12 +210,12 @@
 
                         <div class="nx-form-group" id="purposeFieldRow" style="display:none;">
                             <label id="purposeLabel" data-en="Purpose" data-mr="उद्देश">Purpose</label>
-                            <select id="movementPurpose" class="nx-input"></select>
+                            <select id="movementPurpose" class="nx-input" data-tutorial-target="dispatch-purpose"></select>
                         </div>
 
                         <div class="nx-form-group" id="poolFieldRow" style="display:none;">
                             <label id="poolLabel" data-en="Deduct stock from" data-mr="स्टॉक कुठून वजा करायचा">Deduct stock from</label>
-                            <select id="poolSelect" class="nx-input"></select>
+                            <select id="poolSelect" class="nx-input" data-tutorial-target="dispatch-pool"></select>
                         </div>
                     </div>
 
@@ -222,17 +233,18 @@
                             <div class="nx-form-group" style="margin:0; width:90px;">
                                 <label id="qtyLabel" data-en="Quantity" data-mr="परिमाण">Qty</label>
                                 <input type="number" id="productQty" min="0.001" step="any" class="nx-input"
-                                       data-en="Qty" data-mr="परिमाण" placeholder="Qty">
+                                       data-en="Qty" data-mr="परिमाण" data-tutorial-target="dispatch-qty" placeholder="Qty">
                             </div>
                         </div>
 
                         <button type="button" id="addProductBtn" data-en="Add Product" data-mr="उत्पादन जोडा"
+                                data-tutorial-target="dispatch-add-product"
                                 class="nx-btn nx-btn-ghost nx-btn-full">
                             + Add Product
                         </button>
 
                         <!-- Products added table -->
-                        <div id="productsTableContainer">
+                        <div id="productsTableContainer" data-tutorial-target="dispatch-items-table">
                             <div class="nx-table-wrap">
                                 <table class="nx-table">
                                     <thead>
@@ -251,6 +263,7 @@
                         <!-- Action buttons -->
                         <div style="display:flex; gap:10px; margin-top:20px;">
                             <button type="button" id="confirmDispatchBtn" data-en="Confirm Dispatch" data-mr="डिस्पॅच निश्चित करा"
+                                    data-tutorial-target="dispatch-confirm"
                                     class="nx-btn nx-btn-green" style="flex:1;">
                                 Confirm Dispatch
                             </button>
@@ -261,7 +274,7 @@
             </form>
 
             <!-- LINK TO ORIGINAL CHALLAN -->
-            <div class="nx-card nx-mt-24" id="challanLinksSection" style="display:none;">
+            <div class="nx-card nx-mt-24" id="challanLinksSection" data-tutorial-target="dispatch-challan-links" style="display:none;">
                 <div class="nx-card-header">
                     <div class="nx-card-title">Link to Original Challan</div>
                 </div>
@@ -299,7 +312,7 @@
 
     <!-- CONFIRM MODAL -->
     <div id="confirmModal" class="nx-modal-overlay" style="display:none;">
-        <div class="nx-modal">
+        <div class="nx-modal" data-tutorial-target="dispatch-confirm-modal">
             <div class="nx-modal-title" data-en="Confirm Dispatch?" data-mr="डिस्पॅच निश्चित करायचं?">Confirm Dispatch?</div>
             <div style="font-size:13px; margin-bottom:20px;">
                 <div style="margin-bottom:10px;">
@@ -320,6 +333,7 @@
             </div>
             <div style="display:flex; gap:10px;">
                 <button id="confirmModalConfirm" data-en="Confirm" data-mr="निश्चित करा"
+                        data-tutorial-target="dispatch-confirm-modal-confirm"
                         class="nx-btn nx-btn-green" style="flex:1;">Confirm</button>
                 <button id="confirmModalCancel"  data-en="Cancel"  data-mr="रद्द करा"
                         class="nx-btn nx-btn-ghost" style="flex:1;">Cancel</button>
@@ -354,7 +368,7 @@
             </div>
 
             <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                <button id="consumptionPrintBtn" class="nx-btn nx-btn-green" style="flex:1;">Print Challan</button>
+                <button id="consumptionPrintBtn" data-tutorial-target="dispatch-consumption-print" class="nx-btn nx-btn-green" style="flex:1;">Print Challan</button>
                 <button id="consumptionAmendBtn" class="nx-btn nx-btn-ghost" style="flex:1;color:#fbbf24;border-color:rgba(251,191,36,0.4);">+ Missing Deduction</button>
                 <button id="consumptionCloseBtn" class="nx-btn nx-btn-ghost" style="flex:1;">Close</button>
             </div>
@@ -437,6 +451,12 @@
             var input = document.createElement('input');
             input.type='text'; input.className='mat-search-input';
             input.placeholder=ph; input.autocomplete='off';
+            if (opts.tutorialTarget) input.dataset.tutorialTarget = opts.tutorialTarget;
+            // Its own results dropdown (.mat-dropdown) renders below the input —
+            // a tutorial bubble placed below would sit on top of the dropdown
+            // instead of the field. Opt-in flag, read by js/tutorial-engine.js's
+            // positionBubble().
+            if (opts.tutorialBubblePrefer) input.dataset.tutorialBubblePrefer = opts.tutorialBubblePrefer;
             var clearBtn = document.createElement('button');
             clearBtn.type='button'; clearBtn.className='mat-clear-btn';
             clearBtn.title='Clear'; clearBtn.textContent='×';
@@ -775,6 +795,8 @@
                 dispatchForm.style.display = 'block';
                 dispatchForm.classList.add('nx-fade-in');
                 setupEventHandlers();
+
+                if (window.NexflowTutorial) NexflowTutorial.pageReady('dispatch');
             } catch (error) {
                 console.error('Error initializing dispatch:', error);
                 loadingSpinner.style.display = 'none';
@@ -799,7 +821,7 @@
 
             const mount = document.getElementById('productSelectMount');
             mount.innerHTML = '';
-            productTypeahead = buildMatTypeahead(products, { placeholder: placeholder });
+            productTypeahead = buildMatTypeahead(products, { placeholder: placeholder, tutorialTarget: 'dispatch-product-search', tutorialBubblePrefer: 'above' });
             mount.appendChild(productTypeahead.element);
         }
 
@@ -985,6 +1007,10 @@
 
         function setupEventHandlers() {
             setupClientAutofill();
+
+            document.getElementById('tutorialLaunchBtn')?.addEventListener('click', () => {
+                if (window.NexflowTutorial) NexflowTutorial.start('dispatch');
+            });
 
             document.getElementById('addChallanLinkBtn').addEventListener('click', addChallanLinkRow);
 
@@ -1322,6 +1348,11 @@
                     { dispatch_order_id: orderId, challan_number: displayChallanNumber, client_name: payload.client_name });
 
                 saveTransportToHistory(document.getElementById('vehicleNumber').value.trim());
+
+                // Must fire before resetWorkspaceForm() below wipes the values a
+                // running tutorial's last step needs (same ordering trap already
+                // fixed once for challan_dispatched notifications, Step 4 Aug 31 2026).
+                if (window.NexflowTutorial) NexflowTutorial.signal('dispatch:confirmed', { challan_number: displayChallanNumber });
 
                 resetWorkspaceForm();
                 await loadRecentDispatches();

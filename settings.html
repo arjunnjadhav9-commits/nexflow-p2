@@ -336,6 +336,26 @@
                                 When on, dispatches deduct stock from the selected principal's pool or own stock separately. When off, all dispatches deduct from total inventory regardless of ownership.
                             </div>
                         </div>
+
+                        <!-- ── TUTORIAL MODE (T1) ── tenant-wide default for the guided
+                             tutorial (js/tutorial-engine.js). Standalone, own save button —
+                             same shape as Invoice Number Format on the Challan Settings tab.
+                             Visible to every tenant (this trigger is generic, unlike the
+                             job-work rows above which stay individually gated). ──────────── -->
+                        <div class="nx-form-group" style="border-top:1px solid var(--border2); padding-top:14px; margin-top:14px;">
+                            <label data-en="Guided Tutorial" data-mr="मार्गदर्शित शिकवणी">Guided Tutorial</label>
+                            <select id="tutorial-mode-select" class="nx-input">
+                                <option value="auto" data-en="Auto — show once per person, per screen" data-mr="ऑटो — प्रत्येक व्यक्तीला, प्रत्येक स्क्रीनवर एकदा दाखवा">Auto — show once per person, per screen</option>
+                                <option value="always" data-en="Always — show every time (training weeks)" data-mr="नेहमी — दर वेळी दाखवा (प्रशिक्षण आठवडे)">Always — show every time (training weeks)</option>
+                                <option value="off" data-en="Off — never start automatically" data-mr="बंद — आपोआप कधीही सुरू होणार नाही">Off — never start automatically</option>
+                            </select>
+                            <div style="font-size:11px; color:var(--mid); margin-top:6px;"
+                                 data-en="The 'Show me how' button on a covered page always stays available, even when this is off."
+                                 data-mr="'हे कसे करायचे' हे बटण नेहमी उपलब्ध राहते, हे बंद असले तरीही.">
+                                The 'Show me how' button on a covered page always stays available, even when this is off.
+                            </div>
+                            <button type="button" id="save-tutorial-mode-btn" class="nx-btn nx-btn-primary" style="margin-top:10px;" data-en="Save" data-mr="जतन करा">Save</button>
+                        </div>
                     </div>
                 </div>
                 <div style="position:relative; display:inline-block; width:100%;">
@@ -1389,7 +1409,7 @@
 
             const { data, error } = await window.supabase
                 .from('p2_tenant_settings')
-                .select('company_name, address_line1, address_line2, mobile, gstin, bank_name, bank_account, bank_ifsc, sac_code, aato_bracket, challan_sequence, challan_next_override, grn_sequence, invoice_sequence, invoice_lines_per_page, invoice_number_format, challan_mode, is_job_work_setup_seen, is_job_worker, is_principal, separate_pool_deduction, telegram_chat_id, quiet_hours_start, quiet_hours_end')
+                .select('company_name, address_line1, address_line2, mobile, gstin, bank_name, bank_account, bank_ifsc, sac_code, aato_bracket, challan_sequence, challan_next_override, grn_sequence, invoice_sequence, invoice_lines_per_page, invoice_number_format, challan_mode, is_job_work_setup_seen, is_job_worker, is_principal, separate_pool_deduction, tutorial_mode, telegram_chat_id, quiet_hours_start, quiet_hours_end')
                 .eq('tenant_id', tenantId)
                 .single();
 
@@ -1406,6 +1426,7 @@
                 document.getElementById('bank-ifsc').value       = data.bank_ifsc || '';
                 document.getElementById('sac-code').value        = data.sac_code || '';
                 document.getElementById('aato-bracket').value     = data.aato_bracket || 'below_5cr';
+                document.getElementById('tutorial-mode-select').value = data.tutorial_mode || 'auto';
                 currentChallanSequence = data.challan_sequence || 0;
                 document.getElementById('challan-sequence').value  = currentChallanSequence + 1;
                 updateChallanSequenceHint(currentChallanSequence + 1);
@@ -1890,6 +1911,28 @@
             toast(lang === 'mr' ? 'सेटिंग जतन झाली' : 'Invoice number format saved', 'success');
         } catch (error) {
             console.error('Error saving invoice_number_format:', error);
+            toast(lang === 'mr' ? 'जतन करण्यात अयशस्वी' : 'Failed to save', 'error');
+        }
+    });
+
+    // ── SAVE TUTORIAL MODE (T1) ──────────────────────────────────────────────
+    // Simple update, same shape as invoice_number_format above — no fresh-read
+    // guard needed. Takes effect on this tenant's next page load (cached fresh
+    // by checkAuth() on every load, never persisted — see js/supabase-client.js).
+    document.getElementById('save-tutorial-mode-btn').addEventListener('click', async () => {
+        const mode = document.getElementById('tutorial-mode-select').value;
+        const lang = localStorage.getItem('nexflow_lang') || 'en';
+        try {
+            const { data: { user } } = await window.supabase.auth.getUser();
+            if (!user) { toast('Not authenticated', 'error'); return; }
+            const tenantId = user.user_metadata?.tenant_id || user.id;
+            const { error } = await window.supabase.from('p2_tenant_settings')
+                .update({ tutorial_mode: mode })
+                .eq('tenant_id', tenantId);
+            if (error) throw error;
+            toast(lang === 'mr' ? 'सेटिंग जतन झाली' : 'Tutorial mode saved', 'success');
+        } catch (error) {
+            console.error('Error saving tutorial_mode:', error);
             toast(lang === 'mr' ? 'जतन करण्यात अयशस्वी' : 'Failed to save', 'error');
         }
     });
