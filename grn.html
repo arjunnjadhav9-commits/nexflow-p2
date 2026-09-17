@@ -866,7 +866,16 @@
                 // Map raw Postgres errors to something a factory-floor user
                 // can actually act on, instead of dumping SQLSTATE text at them.
                 let friendly = error.message || 'Unknown error';
-                if (error.code === '23505') {
+                // FIX-1 (Sept 2026): the new p2_stock_transactions_grn_dupe_idx
+                // partial unique index (same material, same supplier, same
+                // normalised invoice number) fires the same 23505 code as a
+                // GRN-number collision below — check the constraint name first
+                // so the two never share a message that only makes sense for one.
+                if (error.code === '23505' && /p2_stock_transactions_grn_dupe_idx/.test(friendly)) {
+                    const dupeInvoiceNos = [...new Set(validRows.map(r => r.invoice_no).filter(Boolean))];
+                    friendly = 'This material has already been received under invoice ' +
+                        (dupeInvoiceNos.join(', ') || '—') + ' from this supplier. Check GRN history.';
+                } else if (error.code === '23505') {
                     friendly = 'That GRN number was just used by another entry. Please choose a different one.';
                 } else if (error.code === '42703' || /column .* does not exist/i.test(friendly)) {
                     friendly = 'GRN number field is not set up in the database yet. Run the grn_no migration first.';
