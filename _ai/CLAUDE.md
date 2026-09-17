@@ -272,6 +272,31 @@ Mobile-first: owners use phones. Must work on mobile browser.
   upsert via onConflict: 'tenant_id,period_month'. See "Shipped Sept 9, 2026 — Session 15"
   below for the full pipeline.
 
+- p2_support_threads — one row per support conversation (A4 Phase 1, Sept 17 2026). Columns:
+  id, tenant_id FK → p2_tenants(id), channel text CHECK IN ('in_app') DEFAULT 'in_app'
+  (WhatsApp deferred, blocked on P3 — column exists now so widening the CHECK later is the
+  only change needed), kind text CHECK IN ('question','bug') DEFAULT 'question', status text
+  CHECK IN ('awaiting_founder','awaiting_client','closed') DEFAULT 'awaiting_founder',
+  lang text CHECK IN ('en','mr') DEFAULT 'en' (captured client-side from
+  localStorage.getItem('nexflow_lang') at submit time — no dependency on a durable
+  preferred_lang column, which does not exist server-side, see Known Open Items #24),
+  github_issue_url text, created_at, updated_at. RLS: SELECT only, tenant_id =
+  get_my_tenant_id() — no page reads this yet (Phase 2 scope), but every new table gets RLS
+  from creation per this project's own post-incident discipline. All writes are service-role
+  (agent-query, telegram-webhook), bypassing RLS.
+- p2_support_messages — append-only, one row per turn (A4 Phase 1). Columns: id, tenant_id
+  (denormalised for a direct RLS filter, same reasoning as p2_dispatch_items), thread_id FK →
+  p2_support_threads(id), role text CHECK IN ('client','founder'), body, created_at. RLS:
+  SELECT tenant_id = get_my_tenant_id().
+- p2_support_kb — draft knowledge-base rows accreted from every founder /reply (A4 Phase 1).
+  Phase 1 only writes; nothing reads this table yet — Phase 2 builds the retrieval query
+  (support_query action) and the review surface (settings.html) against it. Columns: id,
+  thread_id FK → p2_support_threads(id) nullable, question, answer, lang text CHECK IN
+  ('en','mr'), status text CHECK IN ('unreviewed','approved','rejected') DEFAULT 'unreviewed',
+  created_at. RLS enabled, no policy, REVOKE FROM anon, authenticated — service-role only,
+  same shape as p2_ops_alerts/p2_compliance_watch (a client's own answered question is
+  founder-internal material, never readable by that tenant or any other).
+
 ## RLS Fixes — Sessions 1 and 2 (Sept 3–4 2026)
 
 ### set_tenant_id() trigger — CRITICAL FIX
@@ -818,6 +843,9 @@ deliberate simplification for that reason.
 - Direct, zero sugarcoating, brutal verdict on design/scope/pricing decisions.
 - PowerShell: never use &&, separate git commands on their own lines.
 - Never test writes against the live S.S. Engineering tenant — test tenant only.
+- A session that hardcodes a statutory value adds a row to `_ai/compliance-constants.json` in
+  the same commit (A2, Sept 2026). Same enforcement shape as `tutorial-engine.md` §10.1's
+  same-commit rule for tutorial configs.
 - Badminton questions → answer as a professional coach.
 
 ## Shipped July 24, 2026
@@ -2552,6 +2580,135 @@ duplicate check as a plain array instead of `.maybeSingle()` (`existingInvoices?
 joining every matching invoice_number in the error message) rather than narrowing the filter —
 narrowing would have silently stopped detecting real duplicates on already-split ranges.
 
+## Shipped Sept 17, 2026 — Phase 1 (A0, A6, A8-drift)
+
+### A0 — Founder ops channel
+- `p2_ops_alerts` table: no tenant_id, RLS enabled, no policy, REVOKE from anon/authenticated,
+  service-role only. source CHECK has all 11 values pre-loaded (compliance, digest, filing,
+  health, onboarding, support, billing, bridge, agent, factory, intelligence) to prevent future
+  constraint collisions (execution-plan.md §10 item 3).
+- `supabase/functions/_shared/ops.ts`: exports `opsAlert()` — never throws, dedupes on
+  (source, dedupe_key) pre-insert, 22:00–06:00 IST quiet hours (critical bypasses),
+  writes error_reason='no_founder_chat_id' if secret unset. Secret: FOUNDER_TELEGRAM_CHAT_ID.
+- `telegram-webhook/index.ts`: new /ack <prefix> branch, founder-chat-only, idempotent.
+  Known gotcha: .filter('id::text','ilike',...) throws on uuid columns in PostgREST —
+  /ack fetches 500 most recent rows and prefix-matches client-side instead.
+
+### A6 — Filing dispatcher + drain queue
+- `p2_job_queue` table: RLS enabled, REVOKE from anon/authenticated, service-role only.
+  job_type CHECK includes both 'filing_package' and 'onboarding_parse' (A1 reuses this table).
+  UNIQUE (job_type, dedupe_key) makes dispatch idempotent.
+- `claim_job_queue(p_job_type, p_limit)` RPC: SECURITY DEFINER, FOR UPDATE SKIP LOCKED,
+  service_role only. Generic on job_type — A1 uses it unchanged.
+- `filing-package/index.ts`: added dispatch/drain/monitor modes. monthly_cron and
+  action:'generate' untouched. Cron jobid 9 (filing-package-monthly) unscheduled —
+  replaced by filing-package-dispatch (5th 02:30 UTC) + filing-package-drain (*/2 5-7th) +
+  filing-package-monitor-1 (5th 04:30 UTC) + filing-package-monitor-2 (5th 08:30 UTC).
+- processTenant() skip classification: 'skipped' now returns distinct reasons —
+  already_generated → status='done'/error_reason='already_generated' (not a failure);
+  no_recipient → status='dead'/error_reason='no_recipient_configured'.
+- `p2_tenant_settings`: added ca_email_invalid, accountant_email_invalid boolean columns.
+  settings.html clears bounce flags on CA email save.
+- `p2_notifications_type_check`: widened to add 'email_bounced'.
+- `supabase/functions/resend-webhook`: new, verify_jwt=false, raw HMAC-SHA256 Svix
+  verification (Web Crypto only, no esm.sh dependency). Secret: RESEND_WEBHOOK_SECRET.
+- Known open item (added as CLAUDE.md item 24): preferred_lang column missing from
+  p2_tenant_settings — required by automation-strategy.md §3.2 for client-facing automations,
+  deferred from A6, must be added before A1/A4.
+
+### A8-drift — Schema drift guard
+- `get_tables_with_rls_disabled()` RPC: SECURITY DEFINER, queries pg_tables for p2_* tables
+  with rowsecurity=false, service_role only. Required because pg_catalog is not in PostgREST's
+  exposed schemas.
+- `supabase/functions/schema-drift`: calls RPC, fires opsAlert(source='health',
+  severity='critical') if any rows returned, silent on zero rows. Cron: schema-drift-weekly
+  (Sundays 02:30 UTC / 08:00 IST).
+- Note for full A8 (Phase 4): add dedupeKey='rls-disabled' when cadence moves to daily,
+  or a persistently misconfigured table will spam the channel.
+
+## Shipped Sept 17, 2026 — A4 Phase 1 (Support Relay)
+
+Pure plumbing per automation-strategy.md §4.4: no knowledge-base retrieval, no model call, no
+cost. Escalation + capture only — the KB starts accreting from real founder replies, which
+Phase 2 (KB-backed agent, gated on ~40 clients) will read from.
+
+- **Schema**: `p2_support_threads` / `p2_support_messages` / `p2_support_kb` — see Database
+  Tables above for full column detail. Migration `20260917_support_relay.sql`. Also widens
+  `p2_notifications_type_check` to add `'support_reply'` — live definition read in the SQL
+  Editor before writing the `DROP`+`ADD` (per the standing rule), confirmed as
+  `challan_dispatched, payment_overdue, low_stock, filing_package_ready, email_bounced` before
+  this change.
+- **agent-query/index.ts** — two new body.action handlers, same `verifyCallerTenant` +
+  no-quota-consumed shape as `suggest_hsn`: **not named in automation-strategy.md §4.4's
+  Phase 1 "New objects" list**, but required — `opsAlert()` is a Deno-only shared module
+  (`_shared/ops.ts`), so a browser widget needs *some* existing Edge Function's body.action to
+  reach it, and this is that precedent. §4.4 should be corrected to include this file; noted
+  here so it isn't rediscovered as a surprise in the Phase 2 session.
+  - `submit_support_message` — creates or continues a thread, inserts a `client`-role message.
+    Calls `opsAlert(source:'support', severity:'important')` **only when the thread's previous
+    status was not already `'awaiting_founder'`** — a brand-new thread or a message arriving
+    after the founder already replied alerts; a second message while the founder still hasn't
+    answered the first does not. Deliberately carries **no `dedupeKey`** — `opsAlert`'s own
+    dedupe is a blind (source, dedupe_key)-within-a-time-window check with no notion of thread
+    status, and reusing it here would silently swallow a second *legitimate* escalation on the
+    same thread within the window. The status-gate is the real anti-spam mechanism;
+    double-submit protection is a client-side button guard instead, same as every other write
+    form in this codebase.
+  - `submit_bug_report` — always opens a new thread (`kind='bug'`), formats one structured
+    message (page/action/expected/actual/role/plan/browser — role and plan resolved
+    server-side via the same owner-shortcut + `p2_user_roles` lookup
+    `confirm_generate_invoice` already uses, never trusted from the client), and creates a
+    GitHub issue under label `support/bug` via a `createSupportGithubIssue()` duplicated from
+    `compliance-scan/index.ts`'s `createGithubIssue()` (same repo, same `GITHUB_TOKEN` secret,
+    different label) — duplicated rather than extracted into `_shared/`, matching this
+    codebase's convention of small per-function duplication over cross-function coupling.
+    Falls back to folding the full report into the `opsAlert` body when the token is missing
+    or the GitHub API call fails, same fallback compliance-scan already uses.
+  - **`GITHUB_TOKEN` was not set** (found via `supabase secrets list` while building this) —
+    fixed same day, see Known Open Items #25. First token set 401'd ("Bad credentials");
+    corrected and verified creating a real issue end to end.
+- **telegram-webhook/index.ts** — new `/reply <thread_id_prefix> <text>` branch, founder-only
+  (same `FOUNDER_TELEGRAM_CHAT_ID` check as `/ack`), checked after `/ack` and before `/start`
+  so neither existing branch is disturbed. Same 500-row-fetch-and-prefix-match approach as
+  `/ack` (PostgREST `ilike` on a `uuid` column throws). On a match: inserts the founder's
+  message, flips thread `status` to `'awaiting_client'`, sends an in-app notification to the
+  client via the existing `notify` path (insert `p2_notifications` row `type='support_reply'`,
+  fire-and-forget POST to `notify` — same server-to-server pattern
+  `check-low-stock`'s `payment_overdue_notify` mode already uses), and drafts a `p2_support_kb`
+  row: `question` = the thread's **first** `role='client'` message (`ORDER BY created_at ASC`,
+  not `DESC` — the most recent client message on a multi-message thread is a follow-up, not
+  the actual question), `answer` = the reply just given.
+- **js/agent-chat.js** — the pre-existing Copilot FAB gate (Pro/Founder plan + `agent`-role
+  `canAccess`) used to be a set of early `return`s that aborted the *entire* file if either
+  check failed, so a Lite tenant got no FAB and, before this session, no way to reach support
+  from inside the app at all. Restructured: the gate is now a `showCopilot` boolean that only
+  guards the Copilot's own DOM construction (moved into `buildCopilotWidget()`, internals
+  unchanged — a pure move, not a rewrite); a second, independent `buildSupportWidget()` — a
+  small FAB, bottom-left, "Ask a question" / "Report a bug" tabs — renders for any logged-in,
+  non-demo user regardless of plan or role. One noted, deliberate behaviour change: the
+  original gate's `if (window.supabase && ...)` meant a page where `window.supabase` never
+  loaded fell through to show the Copilot FAB ungated (an artifact of the `if` short-circuit,
+  not a designed feature — no real page is known to exercise this path). The restructured
+  `if (!user) return` closes that gap: no session now means neither widget renders.
+  Continuation thread id persisted client-side in `localStorage` per tenant
+  (`nexflow_support_thread_${tenantId}`) so a follow-up question in the same browser session
+  lands in the same thread — there is no thread-list UI (Phase 2 scope), so this is the only
+  continuity mechanism Phase 1 has.
+
+**Verified Sept 17 2026, test tenant only** (`fe2b94fb-9668-405f-9c62-5f54b32f8c7a`): scripted
+E2E via the Admin API (`auth.admin.generateLink` + `verifyOtp` to get a real session, no
+password needed) — new thread + alert delivered; a second client message on the same
+still-`awaiting_founder` thread correctly produced **zero** additional alerts; bug report
+created its thread and correctly fired the GitHub-missing fallback before the secret was fixed
+(see Known Open Items #25), then, after the secret was corrected, created a **real GitHub
+issue** (`.../issues/1`), populated `github_issue_url` on the thread, and the `opsAlert` body
+switched from the fallback text to `Issue: <url>`. Founder replied for real via Telegram
+(`/reply 44d7d39a Test answer from founder`): message saved, thread flipped to
+`awaiting_client`, `p2_notifications` row `type='support_reply'`/`status='sent'`, and the
+`p2_support_kb` row correctly paired the **first** client message (the actual question, not
+the follow-up) with the reply. Regression snapshot diff against the prior snapshot: `PASS: no
+differences found`. Test tenant `agent_tier` confirmed still `'unlimited'`.
+
 ## Known Open Items / Blocking Issues
 
 ### Blocking — Enterprise Build Prerequisites
@@ -2913,10 +3070,15 @@ is nothing server-side to branch on.
 
 **Deferred from A6, deliberately** — A6's bounce notification uses the existing hardcoded-
 Hinglish style rather than inventing a column for one caller. **Must be added before A1
-(onboarding ingestion) or A4 (support relay)** — both are named in `automation-strategy.md` as
-client-facing automations that need this, and both are far more exposed to it than a one-line
-bounce alert: A1's onboarding flow and A4's support relay are exactly the surfaces where getting
-the owner's language wrong first matters.
+(onboarding ingestion)** — a cron-triggered flow with no browser present at trigger time
+genuinely has no other way to know the owner's language.
+
+**Correction (A4 Phase 1, Sept 17 2026): this did not end up blocking A4.** Every Phase 1
+support message originates from a live browser session that already reads
+`localStorage.getItem('nexflow_lang')` — `p2_support_threads.lang` is captured directly from
+that at submit time, no durable per-tenant column needed. A1 is different: onboarding parsing
+runs from a cron/ingestion path with no browser present, so it still needs this column before
+it can honour a language preference. Leave this item open for A1 only.
 
 Shape when it's built: a real column on `p2_tenant_settings` (e.g. `preferred_lang text NOT
 NULL DEFAULT 'en' CHECK IN ('en','mr')`), written once from the frontend's own
@@ -2927,6 +3089,23 @@ per-function language guess.
 
 **GRN duplicate DB index** — already tracked as Known Open Items #1 above (partial unique index
 on `p2_stock_transactions`); confirmed present in this document, not duplicated here.
+
+**25. `GITHUB_TOKEN` secret — RESOLVED Sept 17 2026**
+
+Found missing while building A4 Phase 1's bug-capture path (`supabase secrets list` showed no
+entry) — `compliance-scan/index.ts` (A2) and A4's `submit_bug_report` both had working
+`createGithubIssue()` code against a secret that was never actually set, so neither had ever
+created a real GitHub issue in production (both have a correct fallback, so nothing was lost —
+see the A4 Phase 1 changelog entry above).
+
+Fixed same day: secret set, first attempt 401'd ("Bad credentials" — the token string itself
+was rejected, not a scope/permission issue), token regenerated/corrected, then verified working
+end to end via `submit_bug_report` on the test tenant — real issue created at
+`github.com/arjunnjadhav9-commits/nexflow-p2/issues/1`, `p2_support_threads.github_issue_url`
+populated, `opsAlert` body correctly switched from the fallback text to `Issue: <url>`.
+`compliance-scan` was not independently re-tested this session but shares the identical
+`createGithubIssue()` shape and secret, so it should now create real issues too on its next
+CRITICAL/IMPORTANT finding — worth confirming the next time A2 fires.
 
 ## What to build next (priority order)
 
@@ -2964,7 +3143,7 @@ item 0 (the live-tenant migration), which was missing from every prior list.
 
 3. Session A2 — Compliance monitoring (1.5 sessions)
 4. Session A3 — Daily digest (1 session)
-5. Session A4 Phase 1 — Support relay (1.5 sessions)
+5. ✅ Session A4 Phase 1 — Support relay — done Sept 17 2026
 6. Session T1 — Tutorial engine + dispatch (English)
 7. Session P1 — Product polish (`_ai/product-polish-p1.md`)
 8. Challan line editing (1 session) — Known Open Items 8
