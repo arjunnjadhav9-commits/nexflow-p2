@@ -14,6 +14,11 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import Anthropic from 'https://esm.sh/@anthropic-ai/sdk@0.32.0'
+// Not yet called anywhere in this file — W3 (GRN write path) is the first
+// caller. Imported now so the GRN duplicate-invoice check it will need
+// shares the one canonical implementation instead of a fresh copy.
+import { normaliseInvoiceNo } from '../_shared/compliance.ts'
+import { opsAlert } from '../_shared/ops.ts'
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -127,6 +132,34 @@ interface HsnAuditVerdict {
   verdict: 'correct' | 'likely_wrong' | 'definitely_wrong'
   reason: string
   suggested_hsn: string | null
+}
+
+// A4 Phase 1 — support relay entry points. Both are pure plumbing: create or
+// continue a p2_support_threads row and page the founder via opsAlert()
+// (_shared/ops.ts) — no knowledge base, no model call, no cost. Neither
+// consumes the daily agent quota, same reasoning as suggest_hsn: this isn't
+// the chat copilot's quota, and plan='lite' maps to a limit of 0, which
+// would lock out exactly the clients most likely to need support.
+interface SubmitSupportMessageRequest {
+  action: 'submit_support_message'
+  tenant_id: string
+  thread_id?: string | null
+  message: string
+  lang: 'en' | 'mr'
+}
+
+// js/agent-chat.js's "Report a bug" mode. page/browser are auto-filled
+// client-side (location.pathname / navigator.userAgent); role and plan are
+// never trusted from the client — resolved server-side below, same as every
+// other handler in this file.
+interface SubmitBugReportRequest {
+  action: 'submit_bug_report'
+  tenant_id: string
+  page: string
+  action_taken: string
+  expected: string
+  actual: string
+  browser?: string
 }
 
 // Frozen line-item snapshot stored in p2_invoices.items — challan_number/
@@ -268,7 +301,7 @@ async function verifyCallerTenant(
   supabaseClient: ReturnType<typeof createClient>,
   req: Request,
   claimedTenantId: string | undefined
-): Promise<{ ok: true } | { ok: false; response: Response }> {
+): Promise<{ ok: true; userId: string } | { ok: false; response: Response }> {
   if (!claimedTenantId) {
     return { ok: false, response: respond({ status: 'error', error: 'tenant_id is required' }, 400) }
   }
@@ -287,7 +320,7 @@ async function verifyCallerTenant(
     return { ok: false, response: respond({ status: 'error', error: 'Unauthorized' }, 401) }
   }
 
-  return { ok: true }
+  return { ok: true, userId: user.id }
 }
 
 // Fetches all tenant-scoped data the model needs to answer stock/product
@@ -939,10 +972,10 @@ async function executeQuery(
       .select('amount_total')
       .eq('tenant_id', tenantId)
       .eq('client_id', client.id)
-      .neq('status', 'cancelled')
+      .eq('status', 'sent')
 
-    if (validFrom) invoiceTotalQuery = invoiceTotalQuery.gte('created_at', validFrom + 'T00:00:00+05:30')
-    if (validTo) invoiceTotalQuery = invoiceTotalQuery.lte('created_at', validTo + 'T23:59:59+05:30')
+    if (validFrom) invoiceTotalQuery = invoiceTotalQuery.gte('invoice_date', validFrom)
+    if (validTo) invoiceTotalQuery = invoiceTotalQuery.lte('invoice_date', validTo)
 
     const { data, error } = await invoiceTotalQuery
     if (error) return 'Could not fetch invoice totals.'
@@ -3158,6 +3191,241 @@ async function suggestHsn(
   return respond({ status: 'ok', results: audit.results })
 }
 
+async function submitSupportMessage(
+  supabaseClient: ReturnType<typeof createClient>,
+  body: Partial<SubmitSupportMessageRequest>
+): Promise<Response> {
+  const { tenant_id, thread_id, message, lang } = body
+
+  if (!tenant_id) {
+    return respond({ status: 'error', error: 'tenant_id is required' }, 400)
+  }
+  if (typeof message !== 'string' || !message.trim()) {
+    return respond({ status: 'error', error: 'message is required' }, 400)
+  }
+  const resolvedLang: 'en' | 'mr' = lang === 'mr' ? 'mr' : 'en'
+
+  let threadId = thread_id ?? null
+  let previousStatus: string | null = null
+
+  if (threadId) {
+    const { data: existingThread, error: threadError } = await supabaseClient
+      .from('p2_support_threads')
+      .select('id, tenant_id, status')
+      .eq('id', threadId)
+      .maybeSingle()
+
+    if (threadError) {
+      return respond({ status: 'error', error: 'Failed to load thread' }, 500)
+    }
+    const existing = existingThread as { id: string; tenant_id: string; status: string } | null
+    if (!existing || existing.tenant_id !== tenant_id) {
+      return respond({ status: 'error', error: 'Thread not found' }, 400)
+    }
+
+    previousStatus = existing.status
+    const { error: updateError } = await supabaseClient
+      .from('p2_support_threads')
+      .update({ status: 'awaiting_founder', updated_at: new Date().toISOString() })
+      .eq('id', threadId)
+
+    if (updateError) {
+      return respond({ status: 'error', error: 'Failed to update thread' }, 500)
+    }
+  } else {
+    const { data: newThread, error: insertError } = await supabaseClient
+      .from('p2_support_threads')
+      .insert({ tenant_id, kind: 'question', status: 'awaiting_founder', lang: resolvedLang })
+      .select('id')
+      .single()
+
+    if (insertError || !newThread) {
+      return respond({ status: 'error', error: 'Failed to create thread' }, 500)
+    }
+    threadId = (newThread as { id: string }).id
+  }
+
+  const { error: messageError } = await supabaseClient
+    .from('p2_support_messages')
+    .insert({ tenant_id, thread_id: threadId, role: 'client', body: message })
+
+  if (messageError) {
+    return respond({ status: 'error', error: 'Failed to save message' }, 500)
+  }
+
+  void logInteraction(supabaseClient, tenant_id, message, 'support_message', { thread_id: threadId }, null, true, null)
+
+  // Alert only on a genuine transition into "founder needs to look at this"
+  // — a brand-new thread (previousStatus === null) or a message arriving
+  // after the founder already replied (previousStatus was 'awaiting_client'
+  // or 'closed'). A follow-up sent while the founder still hasn't answered
+  // the last one does not re-alert: the status-gate here is the anti-spam
+  // mechanism, deliberately not opsAlert's own (source, dedupeKey) window —
+  // that dedupe is a dumb time-window check with no notion of thread status,
+  // and reusing it here would silently swallow a second legitimate
+  // escalation on the same thread within the window. Protection against a
+  // literal double-click belongs client-side (a double-submit guard on the
+  // Send button), same as every other write form in this codebase.
+  if (previousStatus !== 'awaiting_founder') {
+    const { data: settingsRow } = await supabaseClient
+      .from('p2_tenant_settings')
+      .select('company_name')
+      .eq('tenant_id', tenant_id)
+      .maybeSingle()
+    const companyName = (settingsRow as { company_name?: string } | null)?.company_name || 'A client'
+
+    await opsAlert({
+      source: 'support',
+      severity: 'important',
+      title: `Support — ${companyName}`,
+      body: message,
+      meta: { thread_id: threadId, tenant_id },
+    })
+  }
+
+  return respond({ status: 'ok', thread_id: threadId })
+}
+
+const SUPPORT_GITHUB_REPO_OWNER = 'arjunnjadhav9-commits'
+const SUPPORT_GITHUB_REPO_NAME = 'nexflow-p2'
+
+// Duplicated from compliance-scan/index.ts's createGithubIssue rather than
+// extracted into _shared/ — this is a 20-line GitHub POST, not the large,
+// identically-shared dedupe/quiet-hours logic _shared/ops.ts exists for.
+// Same repo, same GITHUB_TOKEN secret, different label so support bugs never
+// mix with compliance/critical or compliance/important in the issue list.
+async function createSupportGithubIssue(
+  title: string,
+  body: string
+): Promise<{ issueUrl: string | null; tokenMissing: boolean; apiError: string | null }> {
+  const token = Deno.env.get('GITHUB_TOKEN')
+  if (!token) {
+    return { issueUrl: null, tokenMissing: true, apiError: null }
+  }
+
+  try {
+    const res = await fetch(`https://api.github.com/repos/${SUPPORT_GITHUB_REPO_OWNER}/${SUPPORT_GITHUB_REPO_NAME}/issues`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/vnd.github+json',
+        'Content-Type': 'application/json',
+        'User-Agent': 'nexflow-agent-query-support',
+      },
+      body: JSON.stringify({ title, body, labels: ['support/bug'] }),
+    })
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      return { issueUrl: null, tokenMissing: false, apiError: `GitHub API ${res.status}: ${text.slice(0, 300)}` }
+    }
+    const json = await res.json()
+    return { issueUrl: json.html_url ?? null, tokenMissing: false, apiError: null }
+  } catch (err) {
+    return { issueUrl: null, tokenMissing: false, apiError: err instanceof Error ? err.message : 'GitHub request failed' }
+  }
+}
+
+async function submitBugReport(
+  supabaseClient: ReturnType<typeof createClient>,
+  callerUserId: string,
+  body: Partial<SubmitBugReportRequest>
+): Promise<Response> {
+  const { tenant_id, page, action_taken, expected, actual, browser } = body
+
+  if (!tenant_id) {
+    return respond({ status: 'error', error: 'tenant_id is required' }, 400)
+  }
+  const fields: Record<string, unknown> = { page, action_taken, expected, actual }
+  const missing = Object.entries(fields).find(([, v]) => typeof v !== 'string' || !(v as string).trim())
+  if (missing) {
+    return respond({ status: 'error', error: `${missing[0]} is required` }, 400)
+  }
+
+  // Role/plan resolved server-side, never trusted from the client — same
+  // owner-shortcut pattern confirm_generate_invoice already uses (owner is
+  // userId === tenantId and is never queried against p2_user_roles, which
+  // has no row for owners).
+  const role = callerUserId === tenant_id
+    ? 'owner'
+    : ((await supabaseClient.from('p2_user_roles').select('role').eq('user_id', callerUserId).eq('tenant_id', tenant_id).maybeSingle()).data as { role?: string } | null)?.role ?? 'unknown'
+
+  const { data: settingsRow } = await supabaseClient
+    .from('p2_tenant_settings')
+    .select('company_name, plan')
+    .eq('tenant_id', tenant_id)
+    .maybeSingle()
+  const settings = settingsRow as { company_name?: string; plan?: string } | null
+  const companyName = settings?.company_name || 'A client'
+  const plan = settings?.plan || 'unknown'
+
+  const { data: newThread, error: threadError } = await supabaseClient
+    .from('p2_support_threads')
+    .insert({ tenant_id, kind: 'bug', status: 'awaiting_founder' })
+    .select('id')
+    .single()
+
+  if (threadError || !newThread) {
+    return respond({ status: 'error', error: 'Failed to create thread' }, 500)
+  }
+  const threadId = (newThread as { id: string }).id
+
+  const reportText = [
+    'Bug report',
+    `Page: ${page}`,
+    `Action: ${action_taken}`,
+    `Expected: ${expected}`,
+    `Actual: ${actual}`,
+    `Role: ${role} · Plan: ${plan} · Browser: ${browser || 'not reported'}`,
+  ].join('\n')
+
+  const { error: messageError } = await supabaseClient
+    .from('p2_support_messages')
+    .insert({ tenant_id, thread_id: threadId, role: 'client', body: reportText })
+
+  if (messageError) {
+    return respond({ status: 'error', error: 'Failed to save report' }, 500)
+  }
+
+  const issueResult = await createSupportGithubIssue(
+    `Bug report — ${companyName}: ${page}`,
+    `${reportText}\n\nThread: ${threadId}`
+  )
+
+  if (issueResult.issueUrl) {
+    await supabaseClient.from('p2_support_threads').update({ github_issue_url: issueResult.issueUrl }).eq('id', threadId)
+  }
+
+  void logInteraction(
+    supabaseClient,
+    tenant_id,
+    reportText,
+    'bug_report',
+    { thread_id: threadId, github_issue_url: issueResult.issueUrl },
+    null,
+    !issueResult.apiError,
+    issueResult.apiError
+  )
+
+  // Never lose the report if GitHub is unavailable or the token is unset —
+  // same fallback compliance-scan already uses: fold the full text into the
+  // opsAlert body instead of failing silently.
+  const alertBody = issueResult.issueUrl
+    ? `${reportText}\n\nIssue: ${issueResult.issueUrl}`
+    : issueResult.tokenMissing
+      ? `[GITHUB_TOKEN not set]\n${reportText}`
+      : `${reportText}\n\n[GitHub issue creation failed: ${issueResult.apiError}]`
+
+  await opsAlert({
+    source: 'support',
+    severity: 'important',
+    title: `Bug report — ${companyName}`,
+    body: alertBody,
+    meta: { thread_id: threadId, tenant_id },
+  })
+
+  return respond({ status: 'ok', thread_id: threadId, github_issue_url: issueResult.issueUrl })
+}
+
 Deno.serve(async (req) => {
   // CORS preflight
   if (req.method === 'OPTIONS') {
@@ -3179,7 +3447,9 @@ Deno.serve(async (req) => {
       Partial<Omit<ConfirmConsolidatedInvoiceRequest, 'action'>> &
       Partial<Omit<PreviewConsolidatedInvoiceRequest, 'action'>> &
       Partial<Omit<SuggestHsnRequest, 'action'>> &
-      { action?: 'confirm_receive_grn' | 'confirm_generate_invoice' | 'resend_invoice' | 'confirm_consolidated_invoice' | 'preview_consolidated_invoice' | 'suggest_hsn' } = await req.json()
+      Partial<Omit<SubmitSupportMessageRequest, 'action'>> &
+      Partial<Omit<SubmitBugReportRequest, 'action'>> &
+      { action?: 'confirm_receive_grn' | 'confirm_generate_invoice' | 'resend_invoice' | 'confirm_consolidated_invoice' | 'preview_consolidated_invoice' | 'suggest_hsn' | 'submit_support_message' | 'submit_bug_report' } = await req.json()
 
     // Cross-tenant auth guard: every action below (and the plain-message path
     // further down) takes tenant_id from this same body — verify it against
@@ -3187,9 +3457,32 @@ Deno.serve(async (req) => {
     // confirm_receive_grn is exempt: it already runs its own equivalent check
     // against recipient_tenant_id below, since receive.html's caller is
     // deliberately a DIFFERENT tenant than the dispatch's own sender.
+    // callerUserId is captured here (not just used inline) because
+    // submit_bug_report needs it below, after this block closes, to resolve
+    // role server-side.
+    let callerUserId: string | null = null
     if (body.action !== 'confirm_receive_grn') {
       const authCheck = await verifyCallerTenant(supabase, req, (body as { tenant_id?: string }).tenant_id)
       if (!authCheck.ok) return authCheck.response
+      callerUserId = authCheck.userId
+
+      // D11 / Known Open Items #18: operator/storekeeper can reach these two
+      // actions with a valid tenant but no business generating a tax invoice.
+      // owner is identified by userId === tenantId and is never queried
+      // against p2_user_roles — that table has no row for owners
+      // (invite-staff only ever inserts supervisor/storekeeper/operator/
+      // accountant), matching js/auth.js's fetchUserRole() short-circuit.
+      // Querying the table first and treating "no row" as "no access" would
+      // lock every owner out.
+      if (body.action === 'confirm_generate_invoice' || body.action === 'confirm_consolidated_invoice') {
+        const tenantId = (body as { tenant_id?: string }).tenant_id as string
+        const role = authCheck.userId === tenantId
+          ? 'owner'
+          : (await supabase.from('p2_user_roles').select('role').eq('user_id', authCheck.userId).eq('tenant_id', tenantId).maybeSingle()).data?.role
+        if (!['owner', 'supervisor', 'accountant'].includes(role ?? '')) {
+          return respond({ error: 'INSUFFICIENT_ROLE' }, 403)
+        }
+      }
     }
 
     if (body.action === 'confirm_generate_invoice') {
@@ -3210,6 +3503,17 @@ Deno.serve(async (req) => {
 
     if (body.action === 'suggest_hsn') {
       return await suggestHsn(supabase, anthropic, body as Partial<SuggestHsnRequest>)
+    }
+
+    if (body.action === 'submit_support_message') {
+      return await submitSupportMessage(supabase, body as Partial<SubmitSupportMessageRequest>)
+    }
+
+    if (body.action === 'submit_bug_report') {
+      // callerUserId is always set here — every action other than
+      // confirm_receive_grn runs verifyCallerTenant above, and this one is
+      // not that exemption.
+      return await submitBugReport(supabase, callerUserId as string, body as Partial<SubmitBugReportRequest>)
     }
 
     if (body.action === 'confirm_receive_grn') {

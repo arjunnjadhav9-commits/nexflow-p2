@@ -1259,7 +1259,11 @@ with client count — this is the automation whose value scales hardest.
 #### New objects
 
 Phase 1: tables `p2_support_threads`, `p2_support_messages`, `p2_support_kb` · changes to
-`telegram-webhook` (a `/reply` branch) · a support entry point in `js/agent-chat.js`.
+`telegram-webhook` (a `/reply` branch) · a support entry point in `js/agent-chat.js` ·
+**`submit_support_message`/`submit_bug_report` actions on `agent-query`** — not obvious from
+this list alone, but required: `opsAlert()` is a Deno-only shared module, so the browser widget
+needs an existing Edge Function's body.action to reach it, same precedent as Phase 2's own
+`support_query` below. Corrected in place Sept 17 2026 after Phase 1 shipped and needed it.
 Phase 2: `support_query` action on `agent-query` · KB retrieval · cron `support-sla-check` · a KB
 review surface in `settings.html` (owner-only).
 
