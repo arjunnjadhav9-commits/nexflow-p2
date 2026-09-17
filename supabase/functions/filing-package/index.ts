@@ -5,9 +5,12 @@
 // reference sheet, purchase register, ITC-04 working paper for job workers,
 // last HSN audit snapshot, Tally XML, an Opus-written covering note), uploads
 // it to Storage, emails a 7-day signed link to the CA/accountant, and
-// notifies the owner in-app/Telegram. No shared Deno module system exists in
-// this codebase, so every helper below is duplicated from its browser source
-// rather than imported — see the file/line citations in each section.
+// notifies the owner in-app/Telegram. No shared module system crosses the
+// browser<->Deno boundary in this codebase, so most helpers below are
+// duplicated from their browser source rather than imported — see the
+// file/line citations in each section. The s.143 clock is the one
+// exception: it has no browser-page consumer of its own logic here, only a
+// Deno-to-Deno import from _shared/s143.ts (FIX-1, Sept 2026) — see below.
 //
 // Part 2 (Session 16) replaced Part 1 (Session 15)'s static README.txt and
 // narrow Haiku count-summary (exceptions-*.txt) with a single
@@ -73,6 +76,13 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import Anthropic from 'https://esm.sh/@anthropic-ai/sdk@0.32.0'
 import { opsAlert } from '../_shared/ops.ts'
+import { recordHeartbeat } from '../_shared/heartbeat.ts'
+// FIX-1 (Sept 2026): computeS143Clock/s143AddDays/s143DaysBetween used to be
+// a "verbatim" duplicate of js/s143-clock.js kept here because no shared
+// Deno module existed yet. _shared/s143.ts is now that module — every other
+// helper below this import still follows the old "duplicated, not shared"
+// convention the file header describes; this one no longer does.
+import { computeS143Clock, s143AddDays, s143DaysBetween } from '../_shared/s143.ts'
 // esm.sh's generated .d.ts for these two packages omits a default export even
 // though the runtime module has one (confirmed via a deployed smoke test —
 // ExcelJS.Workbook/JSZip both work) — @ts-ignore suppresses the type-only
@@ -220,37 +230,6 @@ function normaliseInvoiceNo(str: string | null | undefined): string {
 }
 function slugify(str: string | null | undefined): string {
   return (String(str || 'export').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')) || 'export'
-}
-
-// ─── s.143 clock (js/s143-clock.js, verbatim) ───────────────────────────────
-const S143_CLOCK_DAYS = 365
-const S143_GREEN_MAX_DAYS = 270
-const S143_WARNING_MAX_DAYS = 330
-
-function s143AddDays(isoDateStr: string, days: number): string {
-  const d = new Date(isoDateStr + 'T00:00:00Z')
-  d.setUTCDate(d.getUTCDate() + days)
-  return d.toISOString().split('T')[0]
-}
-function s143DaysBetween(isoDateStrA: string, isoDateStrB: string): number {
-  const a = new Date(isoDateStrA + 'T00:00:00Z')
-  const b = new Date(isoDateStrB + 'T00:00:00Z')
-  return Math.round((b.getTime() - a.getTime()) / 86400000)
-}
-function computeS143Clock(
-  row: { principal_challan_date: string | null; transaction_date: string },
-  todayIsoDate: string
-): { clockStart: string; deadlineDate: string; daysElapsed: number; status: string } | null {
-  const clockStart = row.principal_challan_date || row.transaction_date
-  if (!clockStart) return null
-  const deadlineDate = s143AddDays(clockStart, S143_CLOCK_DAYS)
-  const daysElapsed = s143DaysBetween(clockStart, todayIsoDate)
-  let status: string
-  if (daysElapsed <= S143_GREEN_MAX_DAYS) status = 'within_limit'
-  else if (daysElapsed <= S143_WARNING_MAX_DAYS) status = 'warning'
-  else if (daysElapsed <= S143_CLOCK_DAYS) status = 'breach_warning'
-  else status = 'breached'
-  return { clockStart, deadlineDate, daysElapsed, status }
 }
 
 // ─── GSTR-1 reference sheet (export.html downloadGstr1Workbook, 2299-2522, +
@@ -1335,8 +1314,9 @@ function isBlank(v: unknown): boolean {
 
 // Two movement purposes where a client tax invoice is the legally correct
 // document — agent-query/index.ts:1772. Duplicated here for the same
-// no-shared-module reason as every other agent-query constant already
-// replicated in this file (computeS143Clock, JOIN_COLUMNS, etc.).
+// no-shared-module reason as every other agent-query constant replicated in
+// this file (JOIN_COLUMNS, etc.) — computeS143Clock is no longer one of
+// these, see the _shared/s143.ts import above.
 const SALE_INVOICEABLE_PURPOSES = new Set(['sale', 'direct_supply_from_jobworker'])
 
 interface CoveringNoteInvoiceLine {
@@ -2375,18 +2355,26 @@ Deno.serve(async (req) => {
 
   // A6 — cron 'filing-package-dispatch', 5th 02:30 UTC.
   if (body.mode === 'dispatch') {
-    return await runDispatch()
+    const res = await runDispatch()
+    // A3 — heartbeat covers this function as a whole (job_name='filing-package'),
+    // not which mode last ran. dispatch/drain/monitor all count.
+    await recordHeartbeat('filing-package', 'ok')
+    return res
   }
 
   // A6 — cron 'filing-package-drain', every 2 min, 5th-7th.
   if (body.mode === 'drain') {
-    return await runDrain()
+    const res = await runDrain()
+    await recordHeartbeat('filing-package', 'ok')
+    return res
   }
 
   // A6 — crons 'filing-package-monitor-1' (04:30 UTC) and '-2' (08:30 UTC,
   // summary:true).
   if (body.mode === 'monitor') {
-    return await runMonitor(body.summary === true)
+    const res = await runMonitor(body.summary === true)
+    await recordHeartbeat('filing-package', 'ok')
+    return res
   }
 
   // Manual path — settings.html "Generate Now" button, owner-only via the

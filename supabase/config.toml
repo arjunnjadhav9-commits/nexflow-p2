@@ -57,3 +57,6 @@ verify_jwt = false
 
 [functions.compliance-scan]
 verify_jwt = false
+
+[functions.ops-digest]
+verify_jwt = false

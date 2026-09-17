@@ -3,6 +3,7 @@
 // yesterday's GRNs, and pending (unconfirmed) dispatches — via Telegram.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { recordHeartbeat } from '../_shared/heartbeat.ts'
 
 const TELEGRAM_BOT_TOKEN = Deno.env.get('TELEGRAM_BOT_TOKEN')
 
@@ -568,6 +569,13 @@ Deno.serve(async (req) => {
         digestSent
       })
     }
+
+    // A3 — heartbeat only on the default (no-mode) daily digest path, since
+    // that's the one running once a day and therefore the one whose
+    // staleness is detectable on a useful cadence. The other modes
+    // (gstr2b_nudge, payment_overdue_digest, payment_overdue_notify) return
+    // earlier above and are not covered by this heartbeat.
+    await recordHeartbeat('check-low-stock', 'ok')
 
     return new Response(
       JSON.stringify({
