@@ -54,3 +54,6 @@ verify_jwt = false
 
 [functions.schema-drift]
 verify_jwt = false
+
+[functions.compliance-scan]
+verify_jwt = false

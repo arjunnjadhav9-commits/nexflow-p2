@@ -1,0 +1,141 @@
+[
+  {
+    "area": "b2cl_threshold",
+    "const": "B2CL_THRESHOLD",
+    "locations": ["export.html:633", "supabase/functions/filing-package/index.ts:215"],
+    "current": 100000,
+    "authority": "Notification 12/2024-Central Tax, effective 2024-11-01",
+    "confirmed_by_ca": "2026-09-09",
+    "severity": "critical",
+    "note": "Was 250000 for 22 months. The reason A2 exists. Byte-identical duplicate confirmed across both locations 2026-09-17 — any future edit must touch both or they silently diverge."
+  },
+  {
+    "area": "challan_number_length",
+    "const": "chk_challan_number_length",
+    "locations": [
+      "p2_dispatch_orders CHECK constraint chk_challan_number_length (SQL Editor, no migration file)",
+      "export.html:1474 challanSeriesKey()",
+      "supabase/functions/filing-package/index.ts:317 challanSeriesKey()"
+    ],
+    "current": 16,
+    "authority": "CGST Rule 46(b) / Rule 55(1)",
+    "confirmed_by_ca": "2026-09-09",
+    "severity": "critical",
+    "note": "Confirmed 2026-09-17: challanSeriesKey() is a third, independent copy in filing-package/index.ts, not a shared import — the design docs (automation-strategy.md §4.2, compliance-monitoring.md §3.2) both list only 2 locations for this area. All three copies include the same legacy CHAL-YYYYMMDD-NNNN fallback branch; verify all three stay in sync on any future edit."
+  },
+  {
+    "area": "s143_input_period_readside",
+    "const": "S143_CLOCK_DAYS / S143_INPUT_CLOCK_DAYS",
+    "locations": [
+      "js/s143-clock.js:30 (browser copy, source for every HTML page)",
+      "supabase/functions/_shared/s143.ts:30 (FIX-1 Deno shared module, filing-package + future Edge Function consumers)",
+      "supabase/functions/_shared/compliance.ts:37 S143_INPUT_CLOCK_DAYS (re-export)"
+    ],
+    "current": 365,
+    "authority": "CGST s.143(1)(a)",
+    "confirmed_by_ca": null,
+    "severity": "critical",
+    "note": "READ-SIDE ONLY. No capital-goods band and no tooling exemption exist here — all GRN receipts are treated as 365-day inputs (CLAUDE.md, Session 8). See CA confirmation register item 4. _shared/s143.ts and _shared/compliance.ts did not exist when automation-strategy.md §4.2 and compliance-monitoring.md were written (11 Sept 2026) — added as locations 2026-09-17 after confirming both are FIX-1's real, currently-uncommitted extraction of this constant, not a fork of it."
+  },
+  {
+    "area": "s143_periods_writeside",
+    "const": "S143_CAPITAL_GOODS_CLOCK_DAYS (+1yr inputs / +3yr capital goods)",
+    "locations": [
+      "set_s143_clock() trigger — supabase/migrations/20260825_s143_clock_population.sql",
+      "supabase/functions/_shared/compliance.ts:38 S143_CAPITAL_GOODS_CLOCK_DAYS"
+    ],
+    "current": [365, 1095],
+    "authority": "CGST s.143(1)(a)",
+    "confirmed_by_ca": null,
+    "severity": "critical",
+    "note": "Trigger fires only when THIS tenant is the principal issuing material out. is_exempt_tooling nulls the deadline but has no UI — see CA confirmation register item 5. The 1095 constant is NOT read by the trigger itself (the trigger uses a raw INTERVAL '3 years' literal); _shared/compliance.ts's S143_CAPITAL_GOODS_CLOCK_DAYS is a documented mirror for a future GRN-side capital-goods clock, added 2026-09-17 note by the file's own author — nothing currently reads it. Kept as a separate area from s143_input_period_readside per compliance-monitoring.md correction X1: these are different directions (inbound GRN clock vs outbound dispatch clock) and must never be merged into one entry — automation-strategy.md §4.2's original sample sample did exactly that and was wrong."
+  },
+  {
+    "area": "msme_payment_days",
+    "const": "43B(h) 45-day threshold",
+    "locations": [
+      "export.html:2191, 2043 (TABLE43BH_DISCLAIMER) 43B(h) card",
+      "supabase/migrations/20260901_payment_status_invoice_date.sql (v_p2_invoice_payment_status overdue predicate)"
+    ],
+    "current": 45,
+    "authority": "MSMED s.15 / IT s.43B(h)",
+    "confirmed_by_ca": null,
+    "severity": "critical",
+    "note": "Applied universally. Statute is 45 days WITH a written agreement, 15 WITHOUT. Nexflow has no agreement record. See CA confirmation register item 1."
+  },
+  {
+    "area": "msme_interest_rate",
+    "const": "3x RBI bank rate, simple",
+    "locations": ["export.html:2181 RBI_BANK_RATE, 2043 TABLE43BH_DISCLAIMER"],
+    "current": { "rbi_bank_rate": 0.065, "multiplier": 3, "compounding": "none" },
+    "authority": "MSMED s.16",
+    "confirmed_by_ca": null,
+    "severity": "important",
+    "note": "s.16 compounds with MONTHLY RESTS. Nexflow computes simple interest. The RBI bank rate itself changes and is labelled 'Aug 2026' in the disclaimer string — see CA confirmation register items 2 and 3."
+  },
+  {
+    "area": "uqc_codes",
+    "const": "GSTN UQC list",
+    "locations": [
+      "settings.html:806-814 (Raw Materials tab UQC dropdown)",
+      "products.html:169-177 and ~357-365 (add form + edit modal UQC dropdowns)",
+      "supabase/functions/filing-package/index.ts:237-240 UOM_MAP (partial — see note)"
+    ],
+    "current": ["NOS", "KGS", "MTR", "LTR", "PCS", "SQM", "CBM", "OTH"],
+    "authority": "GSTN UQC master",
+    "confirmed_by_ca": null,
+    "severity": "important",
+    "note": "GSTR-1 workbook needs the full CODE-NAME string. Divergence found 2026-09-17: filing-package/index.ts's own UOM_MAP (a free-text-unit-to-UQC mapper, not the dropdown list itself) only handles KG/L/M/PC/NOS/PCS/Stack/Stator — it has NO entry for SQM or CBM. A material stored in either unit falls through this map silently when the GSTR-1 reference workbook is built. Not yet confirmed whether this causes a visible blank cell or a wrong UQC on output — flag for the build session, not yet root-caused."
+  },
+  {
+    "area": "gst_state_codes",
+    "const": "GST_STATE_CODES",
+    "locations": ["export.html:607-619", "supabase/functions/filing-package/index.ts:192-204"],
+    "current": 39,
+    "authority": "GSTN state code master",
+    "confirmed_by_ca": null,
+    "severity": "important",
+    "note": "RESOLVED 2026-09-17 (was UNVERIFIED in compliance-monitoring.md correction X2, which recorded three conflicting counts across documents — 37, 38, and 'a 38-value list'). Actual count confirmed by direct read: 39 map entries — numeric codes 01 through 38 inclusive (38 codes are the states/UTs, of which 38='Ladakh' is the highest-numbered), plus '97'='Other Territory'. Confirmed byte-identical between both locations."
+  },
+  {
+    "area": "gst_rate_flat",
+    "const": "flat 18% invoice split",
+    "locations": ["supabase/functions/agent-query/index.ts:1749 buildInvoiceTotals"],
+    "current": 18,
+    "authority": "GST Scope lock — deliberate simplification",
+    "confirmed_by_ca": null,
+    "severity": "monitor",
+    "note": "Correct for engineering job work (SAC 9988) since 22 Sep 2025. WILL BREAK for a textile (5%) or diamond (1.5%) job worker. Deliberate; see kpml-network-plan.md §10.3. A2 must NOT alarm on a rate change that does not affect current clients — severity stays 'monitor', which is a hard ceiling Opus cannot override (rule R1a). export.html's deriveInvoiceRate() (export.html:1802) deliberately does NOT hardcode 18% — it derives the effective rate from each invoice's own stored totals, so it is not a second location for this constant."
+  },
+  {
+    "area": "eway_bill_thresholds",
+    "const": "intra-state MH / inter-state job work",
+    "locations": ["NOT IMPLEMENTED — no e-way bill surface exists"],
+    "current": { "intra_state_mh": 100000, "inter_state_jobwork": 0 },
+    "authority": "MH Notification 15E/2018-State Tax; second proviso to CGST Rule 138(1)",
+    "confirmed_by_ca": null,
+    "severity": "monitor",
+    "note": "Tracked ahead of the feature so the constant is right when it is built. compliance-and-field-report.md §6.3."
+  },
+  {
+    "area": "itc04_frequency_threshold",
+    "const": "half-yearly above / annual up to",
+    "locations": ["itc04-workingpaper.html period selector (UI presets only — see note)"],
+    "current": 50000000,
+    "authority": "Notification 35/2021-Central Tax, effective 2021-10-01",
+    "confirmed_by_ca": null,
+    "severity": "important",
+    "note": "CORRECTED 2026-09-17: grepped itc04-workingpaper.html and found the ₹5cr/50000000 figure is NOT implemented as a numeric comparison anywhere in the file — the period selector offers 'This Half-Year (Apr–Sep)' / 'This Half-Year (Oct–Mar)' as plain UI preset buttons (data-preset=\"h1\"/\"h2\") alongside an implicit annual option, with no turnover gate deciding which applies. The authority citation is real; the 'locations' entry in compliance-monitoring.md §3.2 overstated what is actually encoded in code. Driven by the TENANT's own aato_bracket today has no basis in code either — nothing reads aato_bracket on this page. See CA confirmation register item 6: for a vendor generating KPML's paper, the relevant turnover is KPML's, not the vendor's."
+  },
+  {
+    "area": "einvoice_threshold",
+    "const": "AATO banner brackets",
+    "locations": ["settings.html aato_bracket dropdown", "all-dispatch-history.html invoice modal banner"],
+    "current": ["below_5cr", "5cr_to_10cr", "above_10cr"],
+    "authority": "e-invoicing mandate, currently ₹5 crore",
+    "confirmed_by_ca": null,
+    "severity": "critical",
+    "status": "URGENT — CA confirmation required before cron goes live",
+    "note": "kpml-network-critique.md research finding 9 records that sources CONFLICT on whether the threshold dropped to ₹2 crore from 1 Oct 2025. Unresolved. If a client crosses it, an invoice without an IRN is not a valid tax invoice and the buyer's ITC is at risk. Highest-value open question in this inventory — CA confirmation register item 8. The weekly compliance digest must surface this row's count prominently (e.g. as its own line, not folded into a generic 'N critical constants never CA-confirmed' count) until confirmed_by_ca is set."
+  }
+]

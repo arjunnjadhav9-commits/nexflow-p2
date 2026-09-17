@@ -336,31 +336,50 @@ simplification) from waking the founder at 3 a.m.
 
 ---
 
-## 5. The feed `[UNVERIFIED — resolve in step 2]`
+## 5. The feed — `[RESOLVED — 2026-09-17]` (CBIC both series; GSTN still dropped)
 
-This is the part `automation-strategy.md` §4.2 leaves open, and it is the only genuinely unknown
-piece of A2.
+**Two independent CBIC sources, confirmed by hand, both static HTML, both at their `/hindi/`
+paths** — the non-`/hindi/` variant of the Rate URL returned HTTP 404 from this build
+environment on every attempt; the `/hindi/` paths were confirmed reachable and are what the code
+actually fetches. Table **content** (notification number, date, subject, both PDF links) is
+identical between the Hindi- and English-language pages — only the page's own UI chrome differs
+— so the Subject cell used as Haiku's SUMMARISE input is genuine English text, not translated,
+and fetching the `/hindi/` path costs nothing in classification quality.
 
-**Candidates, in preference order:**
+| Source slug | URL | Series | Carries |
+|---|---|---|---|
+| `cbic_rate` | `https://cbic-gst.gov.in/hindi/central-tax-rate.html` | Central Tax (Rate) | GST rate/exemption changes on specific goods and services |
+| `cbic_central` | `https://cbic-gst.gov.in/hindi/central-tax-notifications.html` | Central Tax (plain) | **B2CL thresholds, e-invoicing thresholds, CGST Rules amendments — the series that actually carries the constants this inventory tracks** |
 
-1. **CBIC's own notification listing** — `https://www.cbic.gov.in/entities/cbic-content-mst/...`
-   GST notifications are published as dated PDF links on a paginated HTML page. No API, no RSS
-   advertised. Scrape the listing, not the PDFs: **title + notification number + date + URL is
-   enough** for Haiku to classify, and the PDF is linked in the issue for the founder to read.
-2. **GSTN updates page** — `https://www.gst.gov.in/newsandupdates` — carries portal and utility
-   changes (offline tool versions, IMS behaviour, workbook template revisions) that CBIC does not.
-   This is where the GSTR-1 V2.0 template change would appear.
-3. **A commercial GST-update API.** Not recommended: adds a vendor, a key and a bill for something
-   two scrapes cover.
+Both: one `<table>`, no JS hydration. Columns: **Notification No. & Date | English (PDF link) |
+Hindi (PDF link) | Subject**. English PDF links follow
+`https://cbic-gst.gov.in/pdf/[series]/[filename].pdf`. PDF text extraction is out of scope for
+v1 — the Subject cell is the entire `body_text` fed to SUMMARISE.
 
-**Resolution procedure, step 2 of the build:**
+Implemented in `supabase/functions/compliance-scan/index.ts` as one shared `fetchCbicTable(url,
+source, docIdPrefix)`, called once per source — "same table structure, same regex parser"
+confirmed by hand, so one parametrized extractor serves both rather than two near-duplicate
+functions. Regex-based row/cell extraction, deliberately not a DOM-parsing library — this
+project has already hit real CPU-budget problems in Edge Functions from heavy `esm.sh`
+dependencies (see "Architecture decisions (locked)" in `CLAUDE.md`, server-side jsPDF abandoned
+for the same reason), so a WASM DOM parser was avoided for two static, structurally simple,
+known tables.
 
-- Fetch each candidate URL once by hand. Record the actual HTML shape, whether the listing is
-  server-rendered or JS-hydrated, and whether an RSS/Atom endpoint exists that is not advertised.
-- If a page is JS-hydrated, it cannot be scraped from a Deno Edge Function without a headless
-  browser — **do not add one**. Fall back to the printable or paginated variant, or drop that source
-  and record why.
-- Write the working selector and the exact URL into this section.
+**Resolved, previously flagged as a gap:** the original build used `cbic_rate` alone as `'cbic'`,
+which would never have caught the notification this feature is named after (12/2024-**Central
+Tax**, a plain-series notification). `cbic_central` closes that. The dead second candidate URL
+from the first attempt (`gst-goods-services-rates.html` — a redirect stub, no table) is
+superseded by `cbic_central` and is not used.
+
+`p2_compliance_watch.source` CHECK: `('cbic_rate','cbic_central','gstn')`. `last_seen_at` and
+the 40-item cap apply **per source independently** — `cbic_rate` and `cbic_central` each track
+their own `MAX(published_at)` high-water mark and their own 40-item bound per run.
+
+**GSTN — still dropped.** `https://www.gst.gov.in/newsandupdates` confirmed JS-hydrated (the
+fetched HTML is a bare "Loading..." placeholder, real content populated client-side). Per this
+section's own rule below, no headless browser gets added for it. No replacement source found.
+GSTN-sourced notifications (offline tool versions, IMS behaviour, workbook template revisions —
+things CBIC does not carry) are not covered until a static alternative is found.
 
 **Hard bounds regardless of source:**
 
