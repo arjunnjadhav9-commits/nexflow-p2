@@ -894,7 +894,10 @@
             renderBubble(step);
             scrollToTarget(el);
             queueReposition(); // best-effort immediate pass — overlay visually tracks the scroll via its own CSS transition
-            waitForScrollSettle(function () { queueReposition(); }); // guaranteed accurate pass once the scroll has actually finished
+            waitForScrollSettle(function () {
+                console.log('[tutorial] scrolled to ' + step.target);
+                queueReposition();
+            }); // guaranteed accurate pass once the scroll has actually finished
             armAdvanceWatchers(step, el);
             writeLocalPosition(step.id);
         });

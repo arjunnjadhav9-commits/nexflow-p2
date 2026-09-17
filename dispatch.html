@@ -203,6 +203,7 @@
                                 <label id="vehicleNumberLabel" data-en="Transport" data-mr="ट्रान्सपोर्ट">Transport</label>
                                 <input type="text" id="vehicleNumber" class="nx-input" list="transportSuggestions" autocomplete="off"
                                        data-en="Enter vehicle number" data-mr="वाहन क्रमांक प्रविष्ट करा"
+                                       data-tutorial-target="dispatch-transport"
                                        placeholder="Enter vehicle number">
                                 <datalist id="transportSuggestions"></datalist>
                             </div>
@@ -368,7 +369,7 @@
             </div>
 
             <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                <button id="consumptionPrintBtn" data-tutorial-target="dispatch-consumption-print" class="nx-btn nx-btn-green" style="flex:1;">Print Challan</button>
+                <button id="consumptionPrintBtn" data-tutorial-target="dispatch-consumption-print" data-tutorial-bubble-prefer="above" class="nx-btn nx-btn-green" style="flex:1;">Print Challan</button>
                 <button id="consumptionAmendBtn" class="nx-btn nx-btn-ghost" style="flex:1;color:#fbbf24;border-color:rgba(251,191,36,0.4);">+ Missing Deduction</button>
                 <button id="consumptionCloseBtn" class="nx-btn nx-btn-ghost" style="flex:1;">Close</button>
             </div>
@@ -466,6 +467,11 @@
             wrap.appendChild(inner); wrap.appendChild(dd);
 
             var selId='', selUnit='', kbdIdx=-1;
+            // Set true only for the duration of the synthetic 'input' dispatch
+            // in sel() below, so this typeahead's own 'input' listener (which
+            // clears a selection on real typing) doesn't treat that synthetic
+            // event as the user typing over their just-made selection.
+            var suppressOwnInputHandler = false;
 
             function getId(m){ return m.raw_material_id || m.id || ''; }
             function esc(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
@@ -506,6 +512,19 @@
                 clearBtn.classList.add('visible');
                 dd.classList.remove('open');
                 onSelect(id,name,unit);
+                // Setting .value programmatically does not fire a native
+                // 'input' event — the tutorial engine's advanceOn:{type:'input'}
+                // listener on this field (dispatch-product-search) never sees
+                // a selection made by clicking a dropdown row, only actual
+                // typing, so its Next button stayed disabled. Dispatch one
+                // manually so the engine sees the change the same way real
+                // typing would. suppressOwnInputHandler stops this synthetic
+                // event from also re-triggering the 'input' listener below,
+                // which would otherwise treat it as the user typing over their
+                // own just-made selection and immediately clear it again.
+                suppressOwnInputHandler = true;
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                suppressOwnInputHandler = false;
             }
 
             function reset(){
@@ -519,6 +538,7 @@
 
             input.addEventListener('focus',function(){ renderDd(input.value); dd.classList.add('open'); });
             input.addEventListener('input',function(){
+                if (suppressOwnInputHandler) return;
                 if(selId){ selId=''; selUnit=''; input.classList.remove('mat-selected'); onSelect('','',''); }
                 clearBtn.classList.toggle('visible', input.value.length>0);
                 renderDd(input.value); dd.classList.add('open');

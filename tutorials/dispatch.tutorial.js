@@ -72,6 +72,15 @@
                 advanceOn: { type: 'manual' }
             },
             {
+                id: 'transport',
+                target: 'dispatch-transport',
+                optional: true,
+                title: { en: 'Transport' },
+                text: { en: 'Enter the vehicle or transport number if you have it. You can leave it blank.' },
+                why: { en: 'This goes on the challan and helps trace which truck carried the goods.' },
+                advanceOn: { type: 'manual' }
+            },
+            {
                 id: 'purpose',
                 target: 'dispatch-purpose',
                 title: { en: 'Purpose' },
