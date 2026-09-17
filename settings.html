@@ -2554,9 +2554,14 @@
         try {
             const { data: { user } } = await window.supabase.auth.getUser();
             if (!user) { toast('Not authenticated','error'); return; }
+            const update = { ca_email: email || null };
+            // Clear the A6 bounce flag whenever the owner re-saves this field
+            // — otherwise a fixed address stays flagged invalid forever with
+            // no way to clear it (resend-webhook only ever sets it to true).
+            if (email) update.ca_email_invalid = false;
             const { error } = await window.supabase
                 .from('p2_tenant_settings')
-                .update({ ca_email: email || null })
+                .update(update)
                 .eq('tenant_id', user.id);
             if (error) throw error;
             toast(lang==='mr' ? 'CA ईमेल जतन झाला' : 'CA email saved', 'success');
@@ -2574,7 +2579,7 @@
             const tenantId = user.user_metadata?.tenant_id || user.id;
             const [{ data: settings, error: settingsErr }, { data: lastPackage }] = await Promise.all([
                 window.supabase.from('p2_tenant_settings')
-                    .select('filing_package_enabled, filing_recipient, accountant_email, ca_email')
+                    .select('filing_package_enabled, filing_recipient, accountant_email, ca_email, ca_email_invalid, accountant_email_invalid')
                     .eq('tenant_id', tenantId).maybeSingle(),
                 window.supabase.from('p2_filing_packages')
                     .select('period_month, status, signed_url, signed_url_expires_at, error_reason')
@@ -2596,8 +2601,25 @@
         document.getElementById('filing-accountant-email').value = settings.accountant_email || '';
         toggleFilingAccountantEmailField();
 
-        const noCaEmail = !settings.ca_email;
-        document.getElementById('filing-ca-warning').style.display = noCaEmail ? 'block' : 'none';
+        const noCaEmail = !settings.ca_email || !!settings.ca_email_invalid;
+        const caWarningDiv = document.getElementById('filing-ca-warning');
+        caWarningDiv.style.display = noCaEmail ? 'block' : 'none';
+        // A6: the "bounced" message is dynamic (set by resend-webhook), so it
+        // can't live in the static data-en/data-mr pair — CLAUDE.md's
+        // Language Toggle rule: dynamic content uses t() at render time, not
+        // applyLang(). The "not set at all" case still shows the original
+        // static copy.
+        if (settings.ca_email_invalid) {
+            caWarningDiv.textContent = t(
+                'Your CA email bounced and filing packages are not being sent. Fix the address in the Agent tab.',
+                'तुमचा CA ईमेल बाऊन्स झाला आहे आणि फायलिंग पॅकेजेस पाठवली जात नाहीत. Agent टॅबमध्ये ईमेल दुरुस्त करा.'
+            );
+        } else if (!settings.ca_email) {
+            caWarningDiv.textContent = t(
+                'Set a CA email in the Agent tab before enabling — the package has nowhere to send.',
+                'सक्षम करण्यापूर्वी Agent टॅबमध्ये CA ईमेल सेट करा — पॅकेज पाठवण्यासाठी जागा नाही.'
+            );
+        }
 
         const genBtn = document.getElementById('filing-generate-now-btn');
         genBtn.disabled = !settings.filing_package_enabled || noCaEmail;
@@ -2637,11 +2659,14 @@
             const { data: { user } } = await window.supabase.auth.getUser();
             if (!user) { toast('Not authenticated', 'error'); return; }
             const tenantId = user.user_metadata?.tenant_id || user.id;
-            const { error } = await window.supabase.from('p2_tenant_settings').update({
+            const update = {
                 filing_package_enabled: enabled,
                 filing_recipient: recipient,
                 accountant_email: accountantEmail || null
-            }).eq('tenant_id', tenantId);
+            };
+            // Same A6 bounce-flag-clear as saveCaEmail() above.
+            if (accountantEmail) update.accountant_email_invalid = false;
+            const { error } = await window.supabase.from('p2_tenant_settings').update(update).eq('tenant_id', tenantId);
             if (error) throw error;
             toast(lang==='mr' ? 'सेटिंग्ज जतन झाल्या' : 'Filing settings saved', 'success');
             loadFilingTab();

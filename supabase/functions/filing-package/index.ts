@@ -26,17 +26,53 @@
 // §3.2 verifies. Framed explicitly as reference/cross-check data, not a
 // direct-import file — see the covering note and email copy.
 //
-// Triggered two ways:
-//   { mode: 'monthly_cron' }              — pg_net cron, 5th of month, 8am IST
+// Triggered these ways:
+//   { mode: 'monthly_cron' }              — no scheduled cron calls this any
+//                                            more (see A6 below); the code
+//                                            path stays for direct/manual
+//                                            invocation only.
 //   { action: 'generate', tenant_id }     — settings.html "Generate Now" button
-// Always returns HTTP 200 for the cron path — per-tenant failures are caught
-// and recorded on the row, never thrown up to the response (cron retries on
-// non-200, and this function must never trigger that). Tenants are processed
-// strictly sequentially, never in parallel — same conservative pattern as
-// check-low-stock.
+//   { mode: 'dispatch' }                  — A6, cron 'filing-package-dispatch',
+//                                            5th 02:30 UTC. Enqueues one
+//                                            p2_job_queue row per eligible
+//                                            tenant. Writes no workbooks —
+//                                            O(1) per tenant, cannot time out.
+//   { mode: 'drain' }                     — A6, cron 'filing-package-drain',
+//                                            every 2 min, 5th-7th. Claims up
+//                                            to 3 queued jobs with
+//                                            FOR UPDATE SKIP LOCKED and runs
+//                                            processTenant on each — the same
+//                                            function the old sequential loop
+//                                            used, just bounded to 3 per
+//                                            invocation instead of the whole
+//                                            book.
+//   { mode: 'monitor', summary }          — A6, cron 'filing-package-monitor-1'
+//                                            (04:30 UTC) and '-2' (08:30 UTC,
+//                                            summary:true). Asserts every
+//                                            eligible tenant got a queue row,
+//                                            reclaims stuck jobs, and alerts
+//                                            on anything dead.
+// Always returns HTTP 200 for every cron-triggered path — per-tenant/per-job
+// failures are caught and recorded on their own row, never thrown up to the
+// response (cron retries on non-200, and this function must never trigger
+// that).
+//
+// A6 (filing package dispatcher + drain queue, Sept 2026) replaced the old
+// single scheduled trigger — mode:'monthly_cron' processing every enabled
+// tenant strictly sequentially inside one invocation — with dispatch+drain+
+// monitor. That loop is why: an Edge Function invocation has a finite
+// execution ceiling, and somewhere between ~20 and ~60 tenants the invocation
+// was killed mid-loop with the tenants after the cutoff getting nothing at
+// all — no row, no 'failed' status, no error_reason, because processTenant()
+// catches per-tenant failures and never throws. Nothing keyed on
+// status='failed' could ever find a tenant that never got a row. See
+// automation-strategy.md §3.3 for the full finding. processTenant() itself
+// (below) is completely unchanged by A6 — dispatch/drain/monitor only change
+// how and how often it gets called.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import Anthropic from 'https://esm.sh/@anthropic-ai/sdk@0.32.0'
+import { opsAlert } from '../_shared/ops.ts'
 // esm.sh's generated .d.ts for these two packages omits a default export even
 // though the runtime module has one (confirmed via a deployed smoke test —
 // ExcelJS.Workbook/JSZip both work) — @ts-ignore suppresses the type-only
@@ -1908,20 +1944,30 @@ async function logAgentInteraction(tenantId: string, intent: string, extracted: 
   }
 }
 
-async function processTenant(tenant: TenantRow, periodMonth: string, opts: { isManual: boolean }): Promise<{ status: 'skipped' | 'emailed' | 'failed'; error?: string }> {
+// 'skipped' has three distinct causes that A6's drain mode must not conflate:
+// 'disabled' and 'already_generated' are not failures (nothing to retry,
+// nothing wrong); 'no_recipient' is the one that should land a job 'dead' and
+// alert. See runDrain()'s classification below.
+type SkipReason = 'disabled' | 'no_recipient' | 'already_generated'
+type ProcessTenantResult =
+  | { status: 'skipped'; reason: SkipReason }
+  | { status: 'emailed' }
+  | { status: 'failed'; error: string }
+
+async function processTenant(tenant: TenantRow, periodMonth: string, opts: { isManual: boolean }): Promise<ProcessTenantResult> {
   const companyName = tenant.company_name || 'Nexflow Export'
 
   // a. Eligibility — skip silently, no row, no log.
-  if (!tenant.filing_package_enabled) return { status: 'skipped' }
+  if (!tenant.filing_package_enabled) return { status: 'skipped', reason: 'disabled' }
   const recipients = resolveRecipients(tenant)
-  if (!recipients.length) return { status: 'skipped' }
+  if (!recipients.length) return { status: 'skipped', reason: 'no_recipient' }
 
   try {
     // b. Upsert row. Cron skips a tenant already 'emailed' this month; manual
     // "Generate Now" always proceeds and overwrites the existing row.
     const { data: existing } = await supabase
       .from('p2_filing_packages').select('id, status').eq('tenant_id', tenant.tenant_id).eq('period_month', periodMonth).maybeSingle()
-    if (existing?.status === 'emailed' && !opts.isManual) return { status: 'skipped' }
+    if (existing?.status === 'emailed' && !opts.isManual) return { status: 'skipped', reason: 'already_generated' }
 
     const { data: upserted, error: upsertErr } = await supabase
       .from('p2_filing_packages')
@@ -2035,9 +2081,263 @@ async function processTenant(tenant: TenantRow, periodMonth: string, opts: { isM
   }
 }
 
-// ─── Deno.serve ──────────────────────────────────────────────────────────────
 const TENANT_SELECT = 'tenant_id, company_name, ca_email, accountant_email, filing_recipient, filing_package_enabled, is_job_worker, email, gstin'
 
+// ─── A6: dispatcher + drain + monitor (automation-strategy.md §3.3, §4.6) ───
+interface JobRow {
+  id: string
+  job_type: string
+  tenant_id: string | null
+  payload: Record<string, unknown>
+  status: string
+  attempts: number
+  max_attempts: number
+  error_reason: string | null
+}
+
+const STALE_RUNNING_MINUTES = 30
+
+// Shared by drain (silent, routine — a serverless timeout mid-processing is
+// expected reality, not an anomaly) and monitor (same query, but alerts —
+// reaching the monitor pass still stuck means drain itself may not be
+// running, since drain calls this every 2 minutes).
+async function reclaimStaleJobs(): Promise<number> {
+  const staleBefore = new Date(Date.now() - STALE_RUNNING_MINUTES * 60 * 1000).toISOString()
+  const { data, error } = await supabase
+    .from('p2_job_queue')
+    .update({ status: 'queued', claimed_at: null, updated_at: new Date().toISOString() })
+    .eq('job_type', 'filing_package')
+    .eq('status', 'running')
+    .lt('claimed_at', staleBefore)
+    .select('id')
+  if (error) {
+    console.error('reclaimStaleJobs failed', error)
+    return 0
+  }
+  return (data || []).length
+}
+
+async function runDispatch(): Promise<Response> {
+  const periodMonth = previousPeriodMonth()
+  const { data: tenants, error: tenantsErr } = await supabase
+    .from('p2_tenant_settings').select('tenant_id').eq('filing_package_enabled', true)
+  if (tenantsErr) {
+    return respond({ status: 'ok', message: `Failed to fetch tenants: ${tenantsErr.message}` }, 200)
+  }
+
+  const rows = ((tenants || []) as Array<{ tenant_id: string }>).map((t) => ({
+    job_type: 'filing_package',
+    tenant_id: t.tenant_id,
+    payload: { period_month: periodMonth },
+    dedupe_key: `${t.tenant_id}:${periodMonth}`,
+  }))
+
+  let enqueued = 0
+  if (rows.length) {
+    // ignoreDuplicates -> ON CONFLICT DO NOTHING, which never returns
+    // conflicted rows in RETURNING — so .select() here returns exactly the
+    // set of newly-enqueued jobs. Running dispatch twice enqueues zero more.
+    const { data: inserted, error: insertErr } = await supabase
+      .from('p2_job_queue')
+      .upsert(rows, { onConflict: 'job_type,dedupe_key', ignoreDuplicates: true })
+      .select('id')
+    if (insertErr) {
+      return respond({ status: 'ok', message: `Dispatch insert failed: ${insertErr.message}` }, 200)
+    }
+    enqueued = (inserted || []).length
+  }
+
+  await opsAlert({
+    source: 'filing', severity: 'monitor', title: 'Filing dispatch complete',
+    body: `${enqueued} jobs enqueued for ${periodMonth}`,
+  })
+
+  return respond({ status: 'ok', period_month: periodMonth, enqueued, eligible_tenants: rows.length }, 200)
+}
+
+async function runDrain(): Promise<Response> {
+  const reclaimed = await reclaimStaleJobs()
+
+  const { data: claimed, error: claimErr } = await supabase.rpc('claim_job_queue', {
+    p_job_type: 'filing_package', p_limit: 3,
+  })
+  if (claimErr) {
+    return respond({ status: 'ok', message: `Claim failed: ${claimErr.message}`, reclaimed }, 200)
+  }
+
+  const results: Array<{ tenant_id: string | null; job_id: string; outcome: string }> = []
+
+  for (const job of (claimed || []) as JobRow[]) {
+    if (!job.tenant_id) {
+      // filing_package jobs always carry a tenant_id (dispatch always sets
+      // one) — a null here means the row was written some other way. Not
+      // retryable.
+      await supabase.from('p2_job_queue').update({
+        status: 'dead', error_reason: 'job has no tenant_id', updated_at: new Date().toISOString(),
+      }).eq('id', job.id)
+      results.push({ tenant_id: null, job_id: job.id, outcome: 'dead' })
+      continue
+    }
+
+    const { data: tenant, error: tenantErr } = await supabase
+      .from('p2_tenant_settings').select(TENANT_SELECT).eq('tenant_id', job.tenant_id).maybeSingle()
+    if (tenantErr || !tenant) {
+      const reason = tenantErr?.message || 'tenant not found'
+      await supabase.from('p2_job_queue').update({
+        status: 'dead', error_reason: reason, updated_at: new Date().toISOString(),
+      }).eq('id', job.id)
+      await opsAlert({
+        source: 'filing', severity: 'critical', title: 'Filing job dead — tenant not found',
+        body: `tenant_id ${job.tenant_id}: ${reason}`, dedupeKey: `dead:${job.id}`,
+      })
+      results.push({ tenant_id: job.tenant_id, job_id: job.id, outcome: 'dead' })
+      continue
+    }
+
+    const periodMonth = (job.payload?.period_month as string) || previousPeriodMonth()
+    const result = await processTenant(tenant as TenantRow, periodMonth, { isManual: false })
+
+    if (result.status === 'emailed') {
+      await supabase.from('p2_job_queue').update({ status: 'done', updated_at: new Date().toISOString() }).eq('id', job.id)
+      results.push({ tenant_id: job.tenant_id, job_id: job.id, outcome: 'done' })
+    } else if (result.status === 'skipped' && result.reason === 'no_recipient') {
+      // The common live case right now: filing_package_enabled=true with
+      // zero resolvable recipients — resolveRecipients() returned []. Not
+      // retryable: nothing changes between attempts without owner action.
+      // Landing this straight at 'dead' reuses monitor assertion 4 ("no job
+      // dead") instead of needing a bespoke fifth assertion.
+      await supabase.from('p2_job_queue').update({
+        status: 'dead', error_reason: 'no_recipient_configured', updated_at: new Date().toISOString(),
+      }).eq('id', job.id)
+      results.push({ tenant_id: job.tenant_id, job_id: job.id, outcome: 'dead' })
+    } else if (result.status === 'skipped') {
+      // reason is 'already_generated' (a second drain claimed a job for a
+      // tenant already 'emailed' this period — harmless, dedupe_key mostly
+      // prevents this but doesn't cover a manual "Generate Now" having run
+      // in between) or 'disabled' (owner flipped filing_package_enabled off
+      // between dispatch and this claim). Neither is a failure — nothing to
+      // retry, nothing wrong. Do not mark 'dead': that reuses monitor
+      // assertion 4 for a condition that isn't actually broken.
+      await supabase.from('p2_job_queue').update({
+        status: 'done', error_reason: result.reason, updated_at: new Date().toISOString(),
+      }).eq('id', job.id)
+      results.push({ tenant_id: job.tenant_id, job_id: job.id, outcome: `done_${result.reason}` })
+    } else {
+      // 'failed' — attempts was already incremented at claim time.
+      if (job.attempts < job.max_attempts) {
+        await supabase.from('p2_job_queue').update({
+          status: 'queued', error_reason: result.error || null, updated_at: new Date().toISOString(),
+        }).eq('id', job.id)
+        results.push({ tenant_id: job.tenant_id, job_id: job.id, outcome: 'queued_for_retry' })
+      } else {
+        await supabase.from('p2_job_queue').update({
+          status: 'dead', error_reason: result.error || 'unknown error', updated_at: new Date().toISOString(),
+        }).eq('id', job.id)
+        // Alerted immediately here rather than waiting for the next monitor
+        // pass — a dead job is worth knowing within 2 minutes, not up to
+        // 2.5 hours later.
+        await opsAlert({
+          source: 'filing', severity: 'critical', title: 'Filing job dead — exhausted retries',
+          body: `${tenant.company_name || job.tenant_id}: ${result.error || 'unknown error'}`,
+          dedupeKey: `dead:${job.id}`,
+        })
+        results.push({ tenant_id: job.tenant_id, job_id: job.id, outcome: 'dead' })
+      }
+    }
+  }
+
+  return respond({ status: 'ok', reclaimed, claimed: (claimed || []).length, results }, 200)
+}
+
+async function runMonitor(summary: boolean): Promise<Response> {
+  const periodMonth = previousPeriodMonth()
+  const findings: string[] = []
+
+  // Assertion 1 — every filing_package_enabled tenant has a queue row for
+  // this period.
+  const { data: eligible } = await supabase
+    .from('p2_tenant_settings').select('tenant_id, company_name').eq('filing_package_enabled', true)
+  const { data: queued } = await supabase
+    .from('p2_job_queue').select('tenant_id')
+    .eq('job_type', 'filing_package')
+    .contains('payload', { period_month: periodMonth })
+  const queuedIds = new Set(((queued || []) as Array<{ tenant_id: string | null }>).map((r) => r.tenant_id))
+  const missing = ((eligible || []) as Array<{ tenant_id: string; company_name: string | null }>)
+    .filter((t) => !queuedIds.has(t.tenant_id))
+  if (missing.length) {
+    const names = missing.map((t) => t.company_name || t.tenant_id).join(', ')
+    findings.push(`${missing.length} tenant(s) missing a queue row for ${periodMonth}: ${names}`)
+    await opsAlert({
+      source: 'filing', severity: 'critical', title: 'Filing dispatch gap — missing tenants',
+      body: `${periodMonth}: ${names}`,
+    })
+  }
+
+  // Assertion 2 — no job running >30 min.
+  const reclaimed = await reclaimStaleJobs()
+  if (reclaimed > 0) {
+    findings.push(`${reclaimed} job(s) reclaimed from a stuck 'running' state`)
+    await opsAlert({
+      source: 'filing', severity: 'important', title: 'Filing jobs reclaimed — drain may not be running',
+      body: `${reclaimed} job(s) were stuck in 'running' for over ${STALE_RUNNING_MINUTES} minutes and were reclaimed.`,
+    })
+  }
+
+  // Assertion 3 — no job resting at 'failed'. drain's own failure branch
+  // resolves straight to queued/dead and never leaves a row here — this is a
+  // backstop for a crash mid-transition, not an expected path.
+  const { data: stuckFailed } = await supabase
+    .from('p2_job_queue').select('id, attempts, max_attempts')
+    .eq('job_type', 'filing_package').eq('status', 'failed')
+  for (const job of (stuckFailed || []) as Array<{ id: string; attempts: number; max_attempts: number }>) {
+    const nextStatus = job.attempts < job.max_attempts ? 'queued' : 'dead'
+    await supabase.from('p2_job_queue').update({ status: nextStatus, updated_at: new Date().toISOString() }).eq('id', job.id)
+  }
+  if ((stuckFailed || []).length) findings.push(`${(stuckFailed || []).length} job(s) found resting at 'failed' — resolved to queued/dead`)
+
+  // Assertion 4 — no job dead.
+  const { data: deadJobs } = await supabase
+    .from('p2_job_queue').select('id, tenant_id, error_reason')
+    .eq('job_type', 'filing_package').eq('status', 'dead')
+  for (const job of (deadJobs || []) as Array<{ id: string; tenant_id: string | null; error_reason: string | null }>) {
+    let tenantName = job.tenant_id || 'unknown tenant'
+    if (job.tenant_id) {
+      const { data: t } = await supabase.from('p2_tenant_settings').select('company_name').eq('tenant_id', job.tenant_id).maybeSingle()
+      if (t?.company_name) tenantName = t.company_name
+    }
+    // No dedupeKey — if still dead at the second (08:30) pass, the founder
+    // should hear about it again, not have it suppressed by the default
+    // 24h dedupe window.
+    await opsAlert({
+      source: 'filing', severity: 'critical', title: 'Filing job dead',
+      body: `${tenantName}: ${job.error_reason || 'unknown error'}`,
+    })
+  }
+  if ((deadJobs || []).length) findings.push(`${(deadJobs || []).length} dead job(s)`)
+
+  if (summary) {
+    const monthStart = `${periodMonth}-01T00:00:00.000Z`
+    const { data: doneJobs } = await supabase
+      .from('p2_job_queue').select('id').eq('job_type', 'filing_package').eq('status', 'done')
+      .contains('payload', { period_month: periodMonth })
+    const { data: opusLogs } = await supabase
+      .from('p2_agent_logs').select('id')
+      .eq('intent', 'filing_covering_note').eq('success', true).gte('created_at', monthStart)
+    const opusCount = (opusLogs || []).length
+    // ~₹28/tenant blended estimate (enterprise-strategy.md §3.2: ~₹22
+    // typical / ₹63 busy) — a stated planning figure, not a metered spend;
+    // this does not call Anthropic's billing API.
+    const estimatedSpend = opusCount * 28
+    await opsAlert({
+      source: 'filing', severity: 'monitor', title: `Filing package monthly summary — ${periodMonth}`,
+      body: `${(doneJobs || []).length} emailed, ${(deadJobs || []).length} dead, ${opusCount} covering notes generated (~₹${estimatedSpend} estimated Opus spend this month).`,
+    })
+  }
+
+  return respond({ status: 'ok', period_month: periodMonth, findings }, 200)
+}
+
+// ─── Deno.serve ──────────────────────────────────────────────────────────────
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: CORS_HEADERS })
@@ -2073,6 +2373,22 @@ Deno.serve(async (req) => {
     return respond({ status: 'ok', period_month: periodMonth, results }, 200)
   }
 
+  // A6 — cron 'filing-package-dispatch', 5th 02:30 UTC.
+  if (body.mode === 'dispatch') {
+    return await runDispatch()
+  }
+
+  // A6 — cron 'filing-package-drain', every 2 min, 5th-7th.
+  if (body.mode === 'drain') {
+    return await runDrain()
+  }
+
+  // A6 — crons 'filing-package-monitor-1' (04:30 UTC) and '-2' (08:30 UTC,
+  // summary:true).
+  if (body.mode === 'monitor') {
+    return await runMonitor(body.summary === true)
+  }
+
   // Manual path — settings.html "Generate Now" button, owner-only via the
   // page's own gate; server-side this only verifies the caller belongs to
   // the claimed tenant (same as every other body.action handler in
@@ -2092,7 +2408,13 @@ Deno.serve(async (req) => {
     const result = await processTenant(tenant as TenantRow, periodMonth, { isManual: true })
 
     if (result.status === 'skipped') {
-      return respond({ status: 'error', error: 'Filing package is disabled, or no recipient email is configured for the selected recipient setting.' }, 400)
+      // 'already_generated' can't reach here — that skip path is itself
+      // guarded by `!opts.isManual`, and this call always passes
+      // isManual: true.
+      const skipMessage = result.reason === 'disabled'
+        ? 'Filing package is disabled for this tenant.'
+        : 'No recipient email is configured for the selected recipient setting.'
+      return respond({ status: 'error', error: skipMessage }, 400)
     }
     if (result.status === 'failed') {
       return respond({ status: 'error', error: result.error || 'Filing package generation failed' }, 500)
@@ -2100,5 +2422,5 @@ Deno.serve(async (req) => {
     return respond({ status: 'ok', period_month: periodMonth, result: result.status }, 200)
   }
 
-  return respond({ status: 'error', error: 'Unknown request — expected {mode:"monthly_cron"} or {action:"generate", tenant_id}' }, 400)
+  return respond({ status: 'error', error: 'Unknown request — expected {mode:"monthly_cron"|"dispatch"|"drain"|"monitor"} or {action:"generate", tenant_id}' }, 400)
 })

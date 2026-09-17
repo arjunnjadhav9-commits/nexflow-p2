@@ -2899,6 +2899,32 @@ Location: `check-low-stock/index.ts:63-70` with raw interpolation at `:449`, `:4
 `:518-521`. A material/client name containing HTML-significant characters breaks Telegram's
 parse_mode and the entire digest silently fails to send.
 
+**24. No `preferred_lang` (or any language-preference) column anywhere server-side**
+
+`[GAP]`, Medium. Found during A6 (Session A6, Sept 17 2026) while building `resend-webhook`'s
+owner-facing bounce notification — `automation-strategy.md` §3.2 assumes every client-facing
+automation can notify the owner "in their preferred_lang." **No such concept exists on the
+server.** Confirmed via `information_schema.columns`: zero `%lang%` columns on
+`p2_tenant_settings`. Language today is entirely a frontend `localStorage` key
+(`nexflow_lang`), read fresh at render time by each page's own `t(en, mr)` helper — see
+"Language Toggle" above. Every Edge-Function-originated message (`check-low-stock`, `notify`,
+`filing-package`, now `resend-webhook`) is single hardcoded Hinglish, by design, because there
+is nothing server-side to branch on.
+
+**Deferred from A6, deliberately** — A6's bounce notification uses the existing hardcoded-
+Hinglish style rather than inventing a column for one caller. **Must be added before A1
+(onboarding ingestion) or A4 (support relay)** — both are named in `automation-strategy.md` as
+client-facing automations that need this, and both are far more exposed to it than a one-line
+bounce alert: A1's onboarding flow and A4's support relay are exactly the surfaces where getting
+the owner's language wrong first matters.
+
+Shape when it's built: a real column on `p2_tenant_settings` (e.g. `preferred_lang text NOT
+NULL DEFAULT 'en' CHECK IN ('en','mr')`), written once from the frontend's own
+`localStorage.getItem('nexflow_lang')` at a natural save point (Settings load, or onboarding),
+so server-side code has something durable to read. Until then, any new Edge Function needing
+owner-facing copy should follow the same hardcoded-Hinglish precedent, not invent its own
+per-function language guess.
+
 **GRN duplicate DB index** — already tracked as Known Open Items #1 above (partial unique index
 on `p2_stock_transactions`); confirmed present in this document, not duplicated here.
 
