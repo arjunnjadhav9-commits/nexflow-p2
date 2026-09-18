@@ -691,6 +691,7 @@
       // never forces retyping — just review and confirm.
       let challanNoInput = null;
       let challanDateInput = null;
+      console.log('[nf-agent] challan-input check', { ownerInfo, ownedBy: ownerInfo && ownerInfo.ownedBy });
       if (ownerInfo && ownerInfo.ownedBy) {
         const challanWrap = document.createElement('div');
         challanWrap.className = 'nf-grn-card-challan';
@@ -718,6 +719,11 @@
         challanNoInput.addEventListener('input', updateConfirmEnabled);
         challanDateInput.addEventListener('input', updateConfirmEnabled);
       }
+      console.log('[nf-agent] challan-input result', {
+        rendered: !!challanNoInput,
+        cardChildCount: card.children.length,
+        cardIsConnected: card.isConnected,
+      });
 
       const actions = document.createElement('div');
       actions.className = 'nf-grn-card-actions';
