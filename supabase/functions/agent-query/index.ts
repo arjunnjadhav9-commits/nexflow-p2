@@ -3542,6 +3542,13 @@ interface ConfirmProposalRequest {
   action: 'confirm_proposal'
   tenant_id: string
   proposal_id: string
+  // The ONE exception to "confirm reads from the stored plan only" (§18.1
+  // #3) — these two are genuinely unknown server-side at propose time when
+  // a photo doesn't show the principal's own paper challan. Only used (and
+  // only trusted) when the stored plan doesn't already have them; see
+  // confirmProposalAction.
+  principal_challan_no?: string
+  principal_challan_date?: string
 }
 
 interface CancelProposalRequest {
@@ -4140,11 +4147,15 @@ async function resolveGrnPlan(
       ownerName = ownerMatch.client.name
     }
   }
-  let principalChallanNo = typeof toolInput.principal_challan_no === 'string' ? toolInput.principal_challan_no.trim() : ''
-  let principalChallanDate = typeof toolInput.principal_challan_date === 'string' ? toolInput.principal_challan_date.trim() : ''
-  if (ownedBy && (!principalChallanNo || !principalChallanDate)) {
-    questions.push({ field: 'principal_challan', question: `This is a principal delivery from ${ownerName} — what is the principal's challan number and date?` })
-  }
+  // principal_challan_no/date are NEVER a blocking clarification (§0 note
+  // in confirmProposalAction) — a photo frequently doesn't show the
+  // principal's own paper challan number/date at all, and there's no reason
+  // to stall the whole proposal over it. The confirmation card's inline
+  // Principal Challan No./Date inputs (js/agent-chat.js's addConfirmCard)
+  // collect them at confirm time instead; confirm_proposal patches the plan
+  // with whatever's typed there before executing.
+  const principalChallanNo = typeof toolInput.principal_challan_no === 'string' ? toolInput.principal_challan_no.trim() : ''
+  const principalChallanDate = typeof toolInput.principal_challan_date === 'string' ? toolInput.principal_challan_date.trim() : ''
 
   const planItems: GrnPlanItem[] = []
   let duplicateWarning: { grn_no: string; transaction_date: string; invoice_no: string } | null = null
@@ -4267,8 +4278,8 @@ async function resolveGrnPlan(
     grn_date: grnDate,
     owned_by: ownedBy,
     owner_name: ownerName,
-    principal_challan_no: ownedBy ? principalChallanNo : null,
-    principal_challan_date: ownedBy ? principalChallanDate : null,
+    principal_challan_no: ownedBy && principalChallanNo ? principalChallanNo : null,
+    principal_challan_date: ownedBy && principalChallanDate ? principalChallanDate : null,
     items: planItems,
     duplicate_warning: duplicateWarning,
   }
@@ -4289,6 +4300,15 @@ function renderGrnConfirmText(plan: GrnPlan, warnings: string[]): string {
   const purchaseLabel = plan.items[0]?.purchase_type === 'interstate' ? 'Interstate (IGST)' : 'Intrastate (CGST+SGST)'
   const ownerLabel = plan.owner_name ? plan.owner_name : 'Own stock'
   lines.push(`${purchaseLabel} · ${ownerLabel}`)
+  // Shown so the person confirming can actually see what's in the plan
+  // before approving it — free text, never validated against any Nexflow
+  // record. Absent until the confirmation card's inline Principal Challan
+  // No./Date inputs (js/agent-chat.js's addConfirmCard) fill them in;
+  // confirm_proposal patches these onto the plan before executing (the one
+  // deliberate exception to "confirm reads from the stored plan only").
+  if (plan.owned_by && plan.principal_challan_no && plan.principal_challan_date) {
+    lines.push(`Principal challan ${plan.principal_challan_no}, ${plan.principal_challan_date}`)
+  }
   if (warnings.length) lines.push('', ...warnings.map((w) => `⚠ ${w}`))
   lines.push('', 'GRN number is issued when you confirm.')
   return lines.join('\n')
@@ -4603,6 +4623,7 @@ async function proposeAction(
     }
 
     const priorPlan = liveProposal.plan
+    const amendedWarnings = liveProposal.warnings ?? []
     // Keep the existing principal challan info only if it's still for the
     // SAME principal — switching away from, or to a different, principal
     // means that challan number/date no longer applies.
@@ -4615,24 +4636,12 @@ async function proposeAction(
       principal_challan_date: samePrincipalAsBefore ? priorPlan.principal_challan_date : null,
     }
 
-    // Switching to a principal this proposal didn't already have challan
-    // info for needs one more answer — same rule resolveGrnPlan applies on
-    // a fresh photo (§5.2). Supersede and ask, exactly like any other
-    // clarification; the frontend already greys out a superseded card via
-    // superseded_proposal_id.
-    if (newOwnedBy && (!amendedPlan.principal_challan_no || !amendedPlan.principal_challan_date)) {
-      await supabaseClient.from('p2_agent_proposals').update({ status: 'superseded', updated_at: new Date().toISOString() }).eq('id', liveProposal.id)
-      const question = `This is a principal delivery from ${newOwnerName} — what is the principal's challan number and date?`
-      void logInteraction(supabaseClient, tenant_id, trimmedMessage, 'propose_grn', { owner_amendment: body.owner_amendment }, null, true, null)
-      return respond({
-        status: 'ok',
-        intent: 'request_clarification',
-        confirm: { status: 'question', confirm_text: question, questions: [{ field: 'principal_challan', question }] },
-        superseded_proposal_id: liveProposal.id,
-      })
-    }
-
-    const amendedWarnings = liveProposal.warnings ?? []
+    // Principal challan number/date are never required to finalize an
+    // owner amendment — if this proposal doesn't already have them (e.g.
+    // switching to a principal the document didn't have that info for, or
+    // switching away from one), the confirmation card's inline Principal
+    // Challan No./Date inputs (js/agent-chat.js's addConfirmCard) collect
+    // them at confirm time instead. No chat clarification turn at all.
     const amendedConfirmText = renderGrnConfirmText(amendedPlan, amendedWarnings)
     await supabaseClient.from('p2_agent_proposals').update({ status: 'superseded', updated_at: new Date().toISOString() }).eq('id', liveProposal.id)
 
@@ -4669,6 +4678,8 @@ async function proposeAction(
       principals: amendPrincipals.map((p) => ({ id: p.id, name: p.name })),
       owned_by: amendedPlan.owned_by,
       owner_name: amendedPlan.owner_name,
+      principal_challan_no: amendedPlan.principal_challan_no,
+      principal_challan_date: amendedPlan.principal_challan_date,
     })
   }
 
@@ -4925,6 +4936,11 @@ async function proposeAction(
     principals: principals.map((p) => ({ id: p.id, name: p.name })),
     owned_by: resolution.plan.owned_by,
     owner_name: resolution.plan.owner_name,
+    // Pre-fills the card's inline Principal Challan No./Date inputs when
+    // the document already had them legibly — null otherwise, leaving
+    // those inputs blank (and Confirm disabled) until typed in.
+    principal_challan_no: resolution.plan.principal_challan_no,
+    principal_challan_date: resolution.plan.principal_challan_date,
   })
 }
 
@@ -4951,7 +4967,7 @@ async function confirmProposalAction(
 
   type ProposalRow = {
     id: string; user_id: string; status: string; plan: GrnPlan; expires_at: string
-    confirm_text: string
+    confirm_text: string; warnings: string[]
   }
   const proposal = proposalRow as ProposalRow
 
@@ -4987,12 +5003,35 @@ async function confirmProposalAction(
     return respond({ status: 'ok', confirm: { status: 'refused', confirm_text: 'Only the owner, a supervisor or a storekeeper can record a GRN.' } })
   }
 
+  // The ONE exception to "confirm reads from the stored plan only" (§18.1
+  // #3): principal_challan_no/date are genuinely unknown server-side at
+  // propose time when the photo doesn't show the principal's own paper
+  // challan, and are only ever collected here — via the confirmation
+  // card's inline Principal Challan No./Date inputs (js/agent-chat.js's
+  // addConfirmCard) — never through chat. If the stored plan already has
+  // them (the document had them, or an amendment carried them over), the
+  // request body's copies are ignored entirely; if it doesn't, both are
+  // required here or confirmation is refused outright.
+  let plan = proposal.plan
+  if (plan.owned_by && (!plan.principal_challan_no || !plan.principal_challan_date)) {
+    const suppliedNo = typeof body.principal_challan_no === 'string' ? body.principal_challan_no.trim() : ''
+    const suppliedDate = typeof body.principal_challan_date === 'string' ? body.principal_challan_date.trim() : ''
+    if (!suppliedNo || !suppliedDate) {
+      return respond({ status: 'ok', confirm: { status: 'refused', confirm_text: "This is a principal delivery — the challan number and date are required before this can be recorded." } })
+    }
+    plan = { ...plan, principal_challan_no: suppliedNo, principal_challan_date: suppliedDate }
+  }
+  const finalConfirmText = renderGrnConfirmText(plan, proposal.warnings ?? [])
+
   // §4.5 rule 7 — idempotency. Conditional UPDATE; zero rows means a
   // concurrent confirm already won (§18.1 #6 — two simultaneous confirms
-  // produce one write).
+  // produce one write). Also persists the patched plan/confirm_text above
+  // (a no-op when nothing was patched) so the stored audit record — "what
+  // exactly did my supervisor approve" — reflects what was actually sent to
+  // confirm_agent_grn_v3, not a stale pre-challan-info snapshot.
   const { data: claimedRows, error: claimError } = await supabaseClient
     .from('p2_agent_proposals')
-    .update({ status: 'executing', updated_at: new Date().toISOString() })
+    .update({ status: 'executing', updated_at: new Date().toISOString(), plan, confirm_text: finalConfirmText })
     .eq('id', proposal_id)
     .eq('status', 'awaiting_confirmation')
     .select('id')
@@ -5008,16 +5047,17 @@ async function confirmProposalAction(
   // §4.5 rule 6 — re-validate every referenced row is still active. The RPC
   // re-checks this too (locked, inside the transaction) — this produces a
   // better message before paying for the RPC call.
-  const plan = proposal.plan
   const { data: supplierCheck } = await supabaseClient.from('p2_suppliers').select('is_active').eq('id', plan.supplier_id).maybeSingle()
   if (!(supplierCheck as { is_active?: boolean } | null)?.is_active) {
     await supabaseClient.from('p2_agent_proposals').update({ status: 'failed', error_reason: 'supplier_inactive', updated_at: new Date().toISOString() }).eq('id', proposal_id)
     return respond({ status: 'ok', confirm: { status: 'refused', confirm_text: `${plan.supplier_name} looks inactive now — check Settings, or say it again if that's wrong.` } })
   }
 
-  // Step 8 — call confirm_agent_grn_v3 with the STORED plan. The request
-  // body's proposal_id is the only thing read from the request (§18.1 #3 —
-  // any extra fields sent alongside it are simply never referenced).
+  // Step 8 — call confirm_agent_grn_v3 with the STORED (now possibly
+  // challan-patched) plan. proposal_id plus, only when the plan needed
+  // them, principal_challan_no/date are the only things read from the
+  // request (§18.1 #3's rule holds for every other field — quantities,
+  // rates, supplier, items are never re-read from the client here).
   const itemsPayload = plan.items.map((it) => ({
     material_id: it.raw_material_id,
     quantity: it.quantity,
@@ -5058,7 +5098,7 @@ async function confirmProposalAction(
   const resultObj = rpcResult as { grn_no?: string } | null
   return respond({
     status: 'ok',
-    confirm: { status: 'ready', confirm_text: `Recorded — ${resultObj?.grn_no ?? 'GRN'} saved.\n\n${proposal.confirm_text}` },
+    confirm: { status: 'ready', confirm_text: `Recorded — ${resultObj?.grn_no ?? 'GRN'} saved.\n\n${finalConfirmText}` },
     result: rpcResult,
   })
 }

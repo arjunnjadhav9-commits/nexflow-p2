@@ -267,6 +267,19 @@
         border-radius: var(--radius-sm); padding: 6px 8px; font-size: 13px; font-family: var(--font);
       }
       .nf-grn-card-owner select:disabled { opacity: 0.5; }
+      .nf-grn-card-challan {
+        padding: 8px 14px; border-top: 1px solid var(--border);
+        display: flex; flex-direction: column; gap: 8px;
+      }
+      .nf-grn-card-challan label {
+        display: block; font-size: 11px; color: var(--mid); margin-bottom: 3px;
+        text-transform: uppercase; letter-spacing: 0.4px;
+      }
+      .nf-grn-card-challan input {
+        width: 100%; box-sizing: border-box; background: var(--surface); border: 1px solid var(--border2);
+        color: var(--text); border-radius: var(--radius-sm); padding: 7px 9px; font-size: 13px; font-family: var(--font);
+      }
+      .nf-grn-card-challan input:disabled { opacity: 0.5; }
       .nf-grn-card-actions { display: flex; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--border); }
       .nf-grn-btn {
         flex: 1; border: none; border-radius: var(--radius-sm); padding: 8px 10px;
@@ -277,7 +290,8 @@
       .nf-grn-btn:disabled { opacity: 0.5; cursor: not-allowed; }
       .nf-grn-card.nf-grn-superseded { opacity: 0.45; }
       .nf-grn-card.nf-grn-superseded .nf-grn-card-actions,
-      .nf-grn-card.nf-grn-superseded .nf-grn-card-owner { display: none; }
+      .nf-grn-card.nf-grn-superseded .nf-grn-card-owner,
+      .nf-grn-card.nf-grn-superseded .nf-grn-card-challan { display: none; }
       .nf-grn-card-status { padding: 6px 14px 10px; font-size: 12px; color: var(--mid); }
     `;
     document.head.appendChild(style);
@@ -666,6 +680,45 @@
         });
       }
 
+      // Principal challan number/date — inline required inputs, shown
+      // whenever the currently resolved owner is a principal. Replaces the
+      // old "what is the principal's challan number and date?" chat
+      // clarification entirely (§0 note in confirmProposalAction): these two
+      // fields are genuinely unknown at propose time when the photo doesn't
+      // show them, so the person confirming fills them in right here rather
+      // than a separate chat round-trip. Pre-filled with whatever the plan
+      // already has (e.g. read off the document) so a correct extraction
+      // never forces retyping — just review and confirm.
+      let challanNoInput = null;
+      let challanDateInput = null;
+      if (ownerInfo && ownerInfo.ownedBy) {
+        const challanWrap = document.createElement('div');
+        challanWrap.className = 'nf-grn-card-challan';
+
+        const noLabel = document.createElement('label');
+        noLabel.textContent = t('Principal Challan No.', 'प्रिन्सिपल चलन क्र.');
+        challanNoInput = document.createElement('input');
+        challanNoInput.type = 'text';
+        challanNoInput.required = true;
+        challanNoInput.value = ownerInfo.principalChallanNo || '';
+
+        const dateLabel = document.createElement('label');
+        dateLabel.textContent = t('Principal Challan Date', 'प्रिन्सिपल चलन तारीख');
+        challanDateInput = document.createElement('input');
+        challanDateInput.type = 'date';
+        challanDateInput.required = true;
+        challanDateInput.value = ownerInfo.principalChallanDate || '';
+
+        challanWrap.appendChild(noLabel);
+        challanWrap.appendChild(challanNoInput);
+        challanWrap.appendChild(dateLabel);
+        challanWrap.appendChild(challanDateInput);
+        card.appendChild(challanWrap);
+
+        challanNoInput.addEventListener('input', updateConfirmEnabled);
+        challanDateInput.addEventListener('input', updateConfirmEnabled);
+      }
+
       const actions = document.createElement('div');
       actions.className = 'nf-grn-card-actions';
       const confirmBtn = document.createElement('button');
@@ -677,6 +730,15 @@
       actions.appendChild(confirmBtn);
       actions.appendChild(cancelBtn);
       card.appendChild(actions);
+
+      // Always assigns explicitly (rather than only when the inputs exist)
+      // so a retry after a failed confirm on a non-principal card correctly
+      // re-enables, not just cards that have challan inputs at all.
+      function updateConfirmEnabled() {
+        confirmBtn.disabled = !!(challanNoInput && challanDateInput) &&
+          (!challanNoInput.value.trim() || !challanDateInput.value);
+      }
+      updateConfirmEnabled();
 
       messagesEl.appendChild(card);
       messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -700,16 +762,25 @@
         confirmBtn.disabled = true;
         cancelBtn.disabled = true;
         try {
+          const payload = { action, tenant_id: tenantId, proposal_id: proposalId };
+          // Exception to "confirm reads from the stored plan only" (§18.1
+          // #3) — these two are genuinely unknown server-side at propose
+          // time when the photo doesn't show them, so confirm_proposal
+          // accepts them here and patches the plan before executing.
+          if (action === 'confirm_proposal' && challanNoInput && challanDateInput) {
+            payload.principal_challan_no = challanNoInput.value.trim();
+            payload.principal_challan_date = challanDateInput.value;
+          }
           const res = await fetch(EDGE_FUNCTION_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: await getAuthHeader() },
-            body: JSON.stringify({ action, tenant_id: tenantId, proposal_id: proposalId }),
+            body: JSON.stringify(payload),
           });
           const data = await res.json().catch(() => ({}));
           const text = data?.confirm?.confirm_text || t('Something went wrong.', 'काहीतरी चूक झाली.');
           finalizeCard(cardHandle, text);
         } catch (err) {
-          confirmBtn.disabled = false;
+          updateConfirmEnabled();
           cancelBtn.disabled = false;
           addMessage(t('Something went wrong — check your connection and try again.', 'काहीतरी चूक झाली — कनेक्शन तपासा आणि पुन्हा प्रयत्न करा.'), 'nf-msg-error');
         }
@@ -776,6 +847,8 @@
             principals: data.principals || [],
             ownedBy: data.owned_by || null,
             ownerName: data.owner_name || null,
+            principalChallanNo: data.principal_challan_no || null,
+            principalChallanDate: data.principal_challan_date || null,
           });
         } else {
           // A clarification triggered by amending a live proposal (e.g. the
