@@ -2835,7 +2835,8 @@ flagged `true`**; Datta Prasad's row stays blocked/unflagged, left for its owner
 correct. Also surfaced, not yet acted on: one of S.S. Engineering's five groups was two unrelated
 GRNs that both used the literal text `"adjustment"` as `invoice_no` (no real supplier invoice) —
 normalises to the same string, so any tenant using a placeholder instead of leaving `invoice_no`
-blank will get false-positive blocks from this trigger regardless of the flag.
+blank will get false-positive blocks from this trigger regardless of the flag. Tracked as its own
+item — see Known Open Items #27, not yet fixed.
 
 **2. Challan number length — BLOCKS E2 (AI Filing Package)**
 
@@ -3218,6 +3219,25 @@ CRITICAL/IMPORTANT finding — worth confirming the next time A2 fires.
 
 The bubble covers the button despite `data-tutorial-bubble-prefer="above"`. Root cause
 unresolved. T2 must fix before the mobile tutorial is considered verified.
+
+**27. `trg_grn_dupe_invoice_check` false-positives on placeholder `invoice_no` text — NOT YET FIXED**
+
+Found Sept 18 2026 while building the GRN duplicate-invoice flag (Known Open Items #1
+resolution, migration `20260918_grn_dupe_invoice_flag.sql`). The trigger keys a duplicate on
+`(tenant_id, supplier_id, normalised invoice_no, raw_material_id)` for any `transaction_type =
+'grn'` row with `invoice_no IS NOT NULL` — it has no concept of "this isn't a real invoice
+number." Live data already has an instance: two unrelated S.S. Engineering GRNs both used the
+literal text `"adjustment"` as `invoice_no` (apparently typed to satisfy the "mandatory" field
+on `grn.html` when there was no supplier invoice to record), which normalises to the same string
+and reads as a duplicate. Harmless today only because S.S. Engineering is flagged
+`allow_duplicate_grn_invoice = true` for an unrelated reason (their coil-by-coil workflow) — any
+other tenant that adopts the same "adjustment"/placeholder habit instead of leaving `invoice_no`
+blank will get a false-positive `DUPLICATE_GRN_INVOICE` block on the second such entry, with no
+recourse except the same opt-in flag (which would also incorrectly exempt them from real
+duplicate protection). Not scheduled. A real fix likely needs either a UI change (don't accept a
+non-invoice placeholder in that field — leave it `NULL` instead, which the trigger already skips
+via `invoice_no IS NOT NULL`) or a denylist of known placeholder strings excluded from the
+trigger's check.
 
 ## What to build next (priority order)
 
