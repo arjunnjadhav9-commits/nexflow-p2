@@ -702,6 +702,7 @@ body {
   font-size: 13px;
   font-weight: 500;
   color: var(--text);
+  white-space: pre-line;
   box-shadow: var(--shadow-md);
   animation: nx-toast-in 0.25s ease;
   min-width: 240px;
@@ -713,6 +714,28 @@ body {
 @keyframes nx-toast-in {
   from { opacity: 0; transform: translateX(12px); }
   to   { opacity: 1; transform: translateX(0); }
+}
+
+/* ── MODAL ── */
+/* Shared shell for every .nx-modal-overlay > .nx-modal in the app.
+   max-height/overflow-y is the fix: without it, a modal taller than the
+   viewport is centred with both ends clipped and no scroll (P1 §1). */
+.nx-modal {
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-lg);
+  padding: 28px;
+  width: 100%;
+  max-width: 520px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: var(--shadow-md);
+}
+/* Larger variant (settings.html QR modal) — its own sticky .nx-modal-header
+   supplies padding instead of the base rule's, so padding is reset to 0. */
+.nx-modal-lg {
+  max-width: 860px;
+  padding: 0;
 }
 
 /* ── MODAL ENTRANCE ── */
@@ -734,6 +757,33 @@ body {
   from { opacity: 0; transform: scale(0.96) translateY(8px); }
   to   { opacity: 1; transform: scale(1) translateY(0); }
 }
+
+/* ── EMPTY STATE ── */
+/* .nx-empty-state was already in use, unstyled (bare div, no CSS anywhere in
+   the codebase), across 8 pages — this is that class, finally given a shared
+   definition instead of staying an accidental per-page convention. Icon +
+   one line + optional button. Used for a genuinely empty list (0 rows, fetch
+   succeeded) — never for a failed fetch, which must show .nx-retry-state
+   instead (P1 §5.1: showing "No X yet" after a network error is a lie the
+   user will act on). */
+.nx-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 48px 24px;
+  color: var(--mid);
+}
+.nx-empty-icon { font-size: 32px; margin-bottom: 12px; opacity: 0.6; line-height: 1; }
+.nx-empty-text { font-size: 13px; line-height: 1.6; max-width: 340px; margin-bottom: 16px; }
+.nx-empty-text:last-child { margin-bottom: 0; }
+
+/* Retry state — a failed fetch, styled distinctly (red icon) from
+   .nx-empty-state so the two are never visually confusable. */
+.nx-retry-state { border-color: rgba(239,68,68,0.25) !important; }
+.nx-retry-state .nx-empty-icon { opacity: 1; }
+.nx-retry-state .nx-empty-text { color: var(--red); }
 
 /* ── DIVIDER WITH LABEL ── */
 .nx-divider {
@@ -859,7 +909,7 @@ body {
 
   /* Tables — allow scroll, tighter cells */
   .nx-table { min-width: 420px; font-size: 12px; }
-  .nx-table th { font-size: 9px; padding: 8px 10px; }
+  .nx-table th { font-size: 11px; padding: 8px 10px; }
   .nx-table td { padding: 9px 10px; }
 
   /* Buttons — full width by default on mobile makes sense for primary actions */

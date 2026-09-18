@@ -31,15 +31,7 @@
             justify-content: center;
             padding: 20px;
         }
-        .nx-modal {
-            background: var(--surface);
-            border: 1px solid var(--border2);
-            border-radius: var(--radius-lg);
-            padding: 28px;
-            width: 100%;
-            max-width: 420px;
-            box-shadow: var(--shadow-md);
-        }
+        .nx-modal { max-width: 420px; }
         .nx-modal-title {
             font-family: var(--condensed);
             font-weight: 800;
@@ -61,10 +53,10 @@
             <div class="nx-page-header">
                 <div>
                     <div class="nx-eyebrow" id="companyEyebrow">Live</div>
-                    <div class="nx-page-title">Stock <span>Dashboard</span></div>
+                    <div class="nx-page-title" id="dashboardPageTitle">Stock <span>Dashboard</span></div>
                     <div class="nx-page-sub" id="dashboardSub">Loading...</div>
                 </div>
-                <div style="display:flex; gap:10px;">
+                <div style="display:flex; gap:10px; flex-wrap:wrap;">
                     <a href="all-dispatch-history.html" class="nx-btn nx-btn-ghost"
                        data-en="📋 All Dispatches" data-mr="📋 सर्व डिस्पॅच">📋 All Dispatches</a>
                     <button id="exportMaterialsBtn" class="nx-btn nx-btn-secondary" onclick="exportRawMaterialsCSV()"
@@ -104,7 +96,7 @@
                  via export.html. -->
             <div id="principalDashboardBanner"
                  class="nx-alert nx-mb-24"
-                 style="display:none; background:linear-gradient(135deg,#1a1200,#2a1f00); border:1px solid var(--orange);">
+                 style="display:none; flex-wrap:wrap; background:linear-gradient(135deg,#1a1200,#2a1f00); border:1px solid var(--orange);">
                 <span class="nx-alert-icon">🌐</span>
                 <div style="flex:1;">
                     <div class="nx-bold">Your material across your vendors</div>
@@ -118,9 +110,9 @@
             </div>
 
             <!-- UPGRADE BANNER (Lite users at 120+ materials) -->
-            <div id="upgradeBanner" style="display:none;"
+            <div id="upgradeBanner"
                  class="nx-alert nx-mb-24"
-                 style="background:linear-gradient(135deg,#1a1200,#2a1f00); border:1px solid var(--orange);">
+                 style="display:none; flex-wrap:wrap; background:linear-gradient(135deg,#1a1200,#2a1f00); border:1px solid var(--orange);">
                 <span class="nx-alert-icon">🚀</span>
                 <div style="flex:1;">
                     <div class="nx-bold" id="upgradeBannerTitle">You're approaching your material limit</div>
@@ -155,6 +147,40 @@
                     <div data-en="Check your connection and refresh the page." data-mr="तुमचे कनेक्शन तपासा आणि पृष्ठ रीफ्रेश करा.">
                         Check your connection and refresh the page.
                     </div>
+                </div>
+            </div>
+
+            <!-- TODAY'S ACTIVITY — one line, three numbers, shown to every role that
+                 lands here. Counts only (no row-level data), so no extra role gate
+                 needed beyond the page's existing access control. -->
+            <div id="todayActivityRow" class="nx-card nx-mb-24" style="display:none; padding:14px 22px;">
+                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:13px; color:var(--light);">
+                    <span class="nx-text-mid" data-en="Today:" data-mr="आज:">Today:</span>
+                    <span><b id="taGrnCount">0</b> <span data-en="GRNs received" data-mr="GRN प्राप्त">GRNs received</span></span>
+                    <span class="nx-text-mid">·</span>
+                    <span><b id="taDispatchCount">0</b> <span data-en="dispatches confirmed" data-mr="डिस्पॅच निश्चित">dispatches confirmed</span></span>
+                    <span class="nx-text-mid" id="taInvoiceSep">·</span>
+                    <span id="taInvoiceItem"><b id="taInvoiceCount">0</b> <span data-en="invoices raised" data-mr="इनव्हॉइस तयार">invoices raised</span></span>
+                </div>
+            </div>
+
+            <!-- ACCOUNTANT STAT CARDS — replaces the stock KPI row for the accountant
+                 role (P1 §5.2): pending invoices / overdue payments, not stock levels. -->
+            <div id="accountantStatsRow" style="display:none;">
+                <div class="nx-stat-grid nx-mb-24">
+                    <div class="nx-stat">
+                        <div class="nx-stat-label" data-en="Pending Invoices" data-mr="प्रलंबित इनव्हॉइस">Pending Invoices</div>
+                        <div class="nx-stat-value" id="statPendingInvoices">—</div>
+                        <div class="nx-stat-unit" data-en="awaiting payment" data-mr="पेमेंटची वाट पाहत आहे">awaiting payment</div>
+                    </div>
+                    <div class="nx-stat nx-stat-red">
+                        <div class="nx-stat-label" data-en="Overdue Payments" data-mr="मुदत उलटलेले पेमेंट">Overdue Payments</div>
+                        <div class="nx-stat-value nx-text-red" id="statOverdueInvoices">—</div>
+                        <div class="nx-stat-unit" data-en="45+ days unpaid" data-mr="45+ दिवस न भरलेले">45+ days unpaid</div>
+                    </div>
+                </div>
+                <div style="text-align:center; margin:-8px 0 24px;">
+                    <a href="invoices.html" class="nx-btn nx-btn-ghost nx-btn-sm" data-en="Go to Invoices →" data-mr="इनव्हॉइसवर जा →">Go to Invoices →</a>
                 </div>
             </div>
 
@@ -202,9 +228,9 @@
                                 data-en="OK" data-mr="ठीक">OK</button>
                     </div>
                     <!-- SEARCH -->
-                    <div style="position:relative; width:220px;">
+                    <div style="position:relative; width:100%; max-width:220px; flex:1;">
                         <input type="text" id="materialSearch" class="nx-input"
-                               style="padding-right:32px; font-size:13px;"
+                               style="width:100%; padding-right:32px; font-size:13px;"
                                data-en="Search materials..." data-mr="साहित्य शोधा..."
                                placeholder="Search materials...">
                         <button id="clearSearch" style="display:none; position:absolute; right:10px; top:50%; transform:translateY(-50%);
@@ -1161,7 +1187,127 @@
             }
 
             await checkFirstLogin();
-            await fetchStockLevels();
+
+            // Role-appropriate landing (P1 §5.2): accountant gets pending
+            // invoices / overdue payments instead of stock levels, since stock
+            // is not what they need this page for. Every other role keeps the
+            // stock dashboard unchanged.
+            if (role === 'accountant') {
+                document.getElementById('loadingSpinner').style.display = 'none';
+                document.getElementById('dashboardPageTitle').innerHTML = 'Billing <span>Dashboard</span>';
+                document.getElementById('exportMaterialsBtn')?.style.setProperty('display', 'none');
+                document.getElementById('grnEntryBtn')?.style.setProperty('display', 'none');
+                await fetchAccountantDashboard();
+            } else {
+                await fetchStockLevels();
+            }
+            renderTodayActivity(role);
+        }
+
+        // IST-aware "today" (see CLAUDE.md: toISOString() reads the UTC calendar
+        // date, which is wrong near IST midnight — same class of bug as the
+        // agent-query todayIST() fix).
+        function dashboardTodayIST() {
+            return new Date().toLocaleString('en-CA', { timeZone: 'Asia/Kolkata' }).split(',')[0];
+        }
+
+        // Counts only, shown to every role that lands on this page — no
+        // row-level data, so no extra role gate beyond the page's own access
+        // control. Explicit .eq('tenant_id', ...) on every query, never RLS alone.
+        // The invoices count is the one exception: gated on canAccess(role,'invoices')
+        // so a storekeeper (no invoice access at all) doesn't see a number for a
+        // document type they can't open — same permission check the rest of the
+        // app uses, not a hardcoded role list.
+        async function renderTodayActivity(role) {
+            const showInvoices = canAccess(role, 'invoices');
+            try {
+                const { data: { user } } = await window.supabase.auth.getUser();
+                if (!user) return;
+                const tenantId = user.user_metadata?.tenant_id || user.id;
+                const today = dashboardTodayIST();
+
+                const queries = [
+                    window.supabase.from('p2_stock_transactions').select('id', { count: 'exact', head: true })
+                        .eq('tenant_id', tenantId).eq('transaction_type', 'grn').eq('transaction_date', today),
+                    window.supabase.from('p2_dispatch_orders').select('id', { count: 'exact', head: true })
+                        .eq('tenant_id', tenantId).eq('status', 'confirmed').eq('dispatch_date', today)
+                ];
+                if (showInvoices) {
+                    queries.push(
+                        window.supabase.from('p2_invoices').select('id', { count: 'exact', head: true })
+                            .eq('tenant_id', tenantId).eq('invoice_date', today)
+                    );
+                }
+                const [grnRes, dispatchRes, invoiceRes] = await Promise.all(queries);
+
+                document.getElementById('taGrnCount').textContent      = grnRes.count ?? 0;
+                document.getElementById('taDispatchCount').textContent = dispatchRes.count ?? 0;
+
+                document.getElementById('taInvoiceSep').style.display  = showInvoices ? '' : 'none';
+                document.getElementById('taInvoiceItem').style.display = showInvoices ? '' : 'none';
+                if (showInvoices) document.getElementById('taInvoiceCount').textContent = invoiceRes.count ?? 0;
+
+                document.getElementById('todayActivityRow').style.display = 'block';
+            } catch (err) {
+                console.error('renderTodayActivity:', err);
+                // Silently skip — this is a supplementary line, not core dashboard content.
+            }
+        }
+
+        // Accountant landing: pending invoices + overdue payments, computed
+        // client-side with the exact same algorithm invoices.html uses for its
+        // own payment-status badges (45-day overdue threshold). Never queries
+        // v_p2_invoice_payment_status from the browser — that view is
+        // server-side only (see CLAUDE.md's p2_payment_receipts section).
+        async function fetchAccountantDashboard() {
+            const errorState = document.getElementById('errorState');
+            errorState.style.display = 'none';
+            try {
+                const { data: { user } } = await window.supabase.auth.getUser();
+                if (!user) throw new Error('User not authenticated');
+                const tenantId = user.user_metadata?.tenant_id || user.id;
+
+                const { data: invoices, error: invErr } = await window.supabase
+                    .from('p2_invoices')
+                    .select('id, amount_total, invoice_date, status')
+                    .eq('tenant_id', tenantId)
+                    .eq('status', 'sent');
+                if (invErr) throw invErr;
+
+                const invoiceIds = (invoices || []).map(i => i.id);
+                let receiptsByInvoice = new Map();
+                if (invoiceIds.length > 0) {
+                    const { data: receipts, error: recErr } = await window.supabase
+                        .from('p2_payment_receipts')
+                        .select('invoice_id, net_amount')
+                        .eq('tenant_id', tenantId)
+                        .in('invoice_id', invoiceIds);
+                    if (recErr) throw recErr;
+                    (receipts || []).forEach(r => {
+                        if (!receiptsByInvoice.has(r.invoice_id)) receiptsByInvoice.set(r.invoice_id, 0);
+                        receiptsByInvoice.set(r.invoice_id, receiptsByInvoice.get(r.invoice_id) + (Number(r.net_amount) || 0));
+                    });
+                }
+
+                const cutoffMs = Date.now() - 45 * 24 * 60 * 60 * 1000;
+                let pending = 0, overdue = 0;
+                (invoices || []).forEach(inv => {
+                    const totalReceived = receiptsByInvoice.get(inv.id) || 0;
+                    const amountTotal = Number(inv.amount_total) || 0;
+                    if (totalReceived >= amountTotal) return; // paid
+                    if (totalReceived > 0) { pending++; return; } // partial counts as pending here
+                    if (new Date(inv.invoice_date).getTime() < cutoffMs) overdue++;
+                    else pending++;
+                });
+
+                document.getElementById('statPendingInvoices').textContent = pending;
+                document.getElementById('statOverdueInvoices').textContent = overdue;
+                document.getElementById('accountantStatsRow').style.display = 'block';
+                document.getElementById('dashboardSub').textContent = `${invoices.length} invoices sent · ${overdue} overdue`;
+            } catch (error) {
+                console.error('fetchAccountantDashboard:', error);
+                errorState.style.display = 'flex';
+            }
         }
 
         window.onload = initPage;
@@ -1171,6 +1317,7 @@
         // otherwise silently discard the in-progress edit and its unsaved
         // value with no warning).
         setInterval(() => {
+            if (getUserRole() === 'accountant') { fetchAccountantDashboard(); return; }
             if (document.querySelector('#stockLevelsBody input')) return;
             fetchStockLevels();
         }, 5 * 60 * 1000);

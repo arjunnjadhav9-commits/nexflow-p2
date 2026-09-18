@@ -95,6 +95,29 @@
 .nx-notif-unread-dot{flex-shrink:0;width:6px;height:6px;border-radius:50%;background:var(--orange);margin-top:5px}
 .nx-notif-empty{padding:28px 14px;text-align:center;font-size:12px;color:var(--mid)}
 
+/* Global search — icon expands into an inline input in the navbar itself
+   (not a dropdown flyout), so the feature reads as a search box, not a
+   mystery icon. Collapses back to icon-only on blur while empty. */
+.nx-search{position:relative;display:flex;align-items:center;flex-shrink:0}
+.nx-search-input{
+  width:0;min-width:0;opacity:0;padding:0;margin-left:0;border:1px solid transparent;
+  background:var(--surface2);color:var(--text);font-family:var(--font);font-size:13px;
+  height:34px;box-sizing:border-box;border-radius:var(--radius-sm);outline:none;
+  transition:width .22s ease,opacity .15s ease,padding .22s ease,margin-left .22s ease;
+}
+.nx-search.open .nx-search-input{width:210px;opacity:1;padding:0 12px;margin-left:8px;border-color:var(--border2)}
+.nx-search.open .nx-search-input:focus{border-color:var(--orange)}
+.nx-search-results{position:absolute;top:calc(100% + 8px);right:0;width:280px;max-height:320px;overflow-y:auto;-webkit-overflow-scrolling:touch;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 12px 32px rgba(0,0,0,0.4);z-index:401}
+.nx-search-row{display:block;padding:10px 14px;font-size:12px;color:var(--text);text-decoration:none;border-bottom:1px solid var(--border)}
+.nx-search-row:last-child{border-bottom:none}
+.nx-search-row:hover{background:var(--surface2)}
+.nx-search-row .nx-search-sub{display:block;font-size:10.5px;color:var(--mid);margin-top:2px}
+.nx-search-empty{padding:16px 14px;text-align:center;font-size:12px;color:var(--mid)}
+@media(max-width:480px){
+  .nx-search.open .nx-search-input{width:150px}
+  .nx-search-results{position:fixed;top:52px;left:8px;right:8px;width:auto}
+}
+
 /* Language toggle */
 .nx-lang{font-family:var(--condensed);font-size:11px;font-weight:800;letter-spacing:0.8px;text-transform:uppercase;color:var(--mid);background:transparent;border:1px solid var(--border2);padding:5px 11px;border-radius:var(--radius-sm);cursor:pointer;transition:all .15s;white-space:nowrap}
 .nx-lang:hover{color:var(--orange);border-color:rgba(255,92,26,0.4)}
@@ -177,6 +200,13 @@ body{padding-top:56px}
     <div class="nx-links">${linksHTML}</div>
     <div class="nx-right">
       <button id="nx-lang-btn" class="nx-lang" aria-label="Toggle language">मराठी</button>
+      <div class="nx-search" id="nx-search">
+        <button class="nx-notif-bell" id="nx-search-btn" aria-label="Search">🔎</button>
+        <input type="text" class="nx-search-input" id="nx-search-input"
+               data-en="Search invoice, challan, GRN…" data-mr="इनव्हॉइस, चलान, GRN शोधा…"
+               placeholder="Search invoice, challan, GRN…" autocomplete="off">
+        <div class="nx-search-results" id="nx-search-results" style="display:none"></div>
+      </div>
       <div class="nx-notif" id="nx-notif">
         <button class="nx-notif-bell" id="nx-notif-bell" aria-label="Notifications">
           🔔
@@ -461,6 +491,117 @@ body{padding-top:56px}
         });
     }
 
+    // ── GLOBAL SEARCH (P1 §5.3) ──────────────────────────────────────────
+    // Resolves one document number or name to its page — not a fuzzy/full-text
+    // search (that's explicitly out of scope). Every query below is
+    // tenant-scoped by RLS AND an explicit .eq('tenant_id', tenantId) — this
+    // resolver must never be able to surface a row belonging to another
+    // tenant, even if RLS were ever misconfigured on one of these tables.
+    // Role-gated per ROLE_PERMISSIONS: a role that can't open the destination
+    // page gets "not found", never a redirect toward a page it can't use.
+    async function resolveSearch(rawQuery, role, tenantId) {
+        const q = rawQuery.trim();
+        if (!q) return null;
+        const canAccessFn = typeof canAccess === 'function' ? canAccess : () => true;
+
+        if (/^INV-\d{6}-\d+$/i.test(q)) {
+            if (!canAccessFn(role, 'invoices')) return { found: false };
+            const { data } = await window.supabase.from('p2_invoices')
+                .select('invoice_token, invoice_number')
+                .eq('tenant_id', tenantId).eq('invoice_number', q.toUpperCase()).maybeSingle();
+            if (!data) return { found: false };
+            return { found: true, label: data.invoice_number, sub: 'Invoice', url: `invoice.html?token=${data.invoice_token}` };
+        }
+
+        if (/^GRN-/i.test(q)) {
+            if (!canAccessFn(role, 'grn')) return { found: false };
+            return { found: true, label: q, sub: 'GRN', url: `grn-history.html?q=${encodeURIComponent(q)}` };
+        }
+
+        // CH-YYMMDD-NNNN, RM-NNNN, or a bare number — every shape
+        // getNextChallanNumber() can produce (see CLAUDE.md challan_number notes).
+        if (/^CH-\d{6}-\d+$/i.test(q) || /^RM-\d+$/i.test(q) || /^\d+$/.test(q)) {
+            if (!canAccessFn(role, 'dispatch_history')) return { found: false };
+            const { data } = await window.supabase.from('p2_dispatch_orders')
+                .select('id, challan_number')
+                .eq('tenant_id', tenantId).eq('challan_number', q.toUpperCase()).maybeSingle();
+            if (!data) return { found: false };
+            return { found: true, label: data.challan_number, sub: 'Challan', url: `challan.html?id=${data.id}` };
+        }
+
+        // Otherwise: a supplier or client name.
+        if (!canAccessFn(role, 'settings')) return { found: false };
+        const [supplierRes, clientRes] = await Promise.all([
+            window.supabase.from('p2_suppliers').select('id, name')
+                .eq('tenant_id', tenantId).eq('is_active', true).ilike('name', `%${q}%`).limit(1).maybeSingle(),
+            window.supabase.from('p2_clients').select('id, name')
+                .eq('tenant_id', tenantId).ilike('name', `%${q}%`).limit(1).maybeSingle()
+        ]);
+        if (supplierRes.data) return { found: true, label: supplierRes.data.name, sub: 'Supplier', url: `settings.html?tab=suppliers&highlight_id=${supplierRes.data.id}` };
+        if (clientRes.data)   return { found: true, label: clientRes.data.name,   sub: 'Client',   url: `settings.html?tab=clients&highlight_id=${clientRes.data.id}` };
+        return { found: false };
+    }
+
+    // Collapses the inline input back to icon-only — only when it's actually
+    // empty, per the expand/collapse contract below.
+    function collapseSearchIfEmpty() {
+        const wrap  = document.getElementById('nx-search');
+        const input = document.getElementById('nx-search-input');
+        const results = document.getElementById('nx-search-results');
+        if (!wrap || !input) return;
+        if (input.value.trim()) return; // has text — stays open
+        wrap.classList.remove('open');
+        results.style.display = 'none';
+        results.innerHTML = '';
+    }
+
+    function expandSearch() {
+        document.getElementById('nx-search')?.classList.add('open');
+        document.getElementById('nx-search-input')?.focus();
+    }
+
+    function initSearch(role, tenantId) {
+        if (!tenantId) return;
+        const input   = document.getElementById('nx-search-input');
+        const results = document.getElementById('nx-search-results');
+
+        document.getElementById('nx-search-btn')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            expandSearch(); // open (or refocus if already open) — closing is blur-driven only
+        });
+
+        // Icon-only ↔ inline input, not a click-outside-to-close flyout — the
+        // input's own blur is the close signal. Delayed so a click on a
+        // .nx-search-row result link finishes navigating before the results
+        // (and the input itself, if it was empty) disappear out from under it.
+        input?.addEventListener('blur', () => setTimeout(collapseSearchIfEmpty, 150));
+
+        input?.addEventListener('keydown', async (e) => {
+            if (e.key === 'Escape') { input.value = ''; input.blur(); return; }
+            if (e.key !== 'Enter') return;
+            const query = input.value;
+            if (!query.trim()) return;
+
+            const lang = localStorage.getItem('nexflow_lang') || 'en';
+            results.style.display = 'block';
+            results.innerHTML = `<div class="nx-search-empty">${lang === 'mr' ? 'शोधत आहे…' : 'Searching…'}</div>`;
+
+            let match;
+            try {
+                match = await resolveSearch(query, role, tenantId);
+            } catch (err) {
+                console.error('Global search error:', err);
+                match = null;
+            }
+
+            if (match && match.found) {
+                results.innerHTML = `<a class="nx-search-row" href="${match.url}">${match.label}<span class="nx-search-sub">${match.sub}</span></a>`;
+            } else {
+                results.innerHTML = `<div class="nx-search-empty">${lang === 'mr' ? 'काहीही सापडले नाही.' : 'Not found.'}</div>`;
+            }
+        });
+    }
+
     function toggleNotifPanel(force) {
         const panel = document.getElementById('nx-notif-panel');
         if (!panel) return;
@@ -517,12 +658,13 @@ body{padding-top:56px}
         }
 
         let role = 'owner';
+        let searchTenantId = null;
         try {
             if (window.supabase && typeof fetchUserRole === 'function') {
                 const { data: { user } } = await window.supabase.auth.getUser();
                 if (user) {
-                    const tenantId = user.user_metadata?.tenant_id || user.id;
-                    role = await fetchUserRole(user.id, tenantId);
+                    searchTenantId = user.user_metadata?.tenant_id || user.id;
+                    role = await fetchUserRole(user.id, searchTenantId);
                 }
             }
         } catch (_) {}
@@ -530,6 +672,7 @@ body{padding-top:56px}
         c.innerHTML = buildNavbar(role);
         initLang();
         initBurger();
+        initSearch(role, searchTenantId);
         await initUserInfo();
         await initNotifications();
     }

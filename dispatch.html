@@ -36,13 +36,7 @@
             display: flex; align-items: center; justify-content: center;
             padding: 20px;
         }
-        .nx-modal {
-            background: var(--surface);
-            border: 1px solid var(--border2);
-            border-radius: var(--radius-lg);
-            padding: 28px; width: 100%; max-width: 460px;
-            box-shadow: var(--shadow-md);
-        }
+        .nx-modal { max-width: 460px; }
         .nx-modal-title {
             font-family: var(--condensed); font-weight: 800; font-size: 16px;
             color: var(--white); text-transform: uppercase; letter-spacing: 0.5px;
@@ -277,13 +271,13 @@
             <!-- LINK TO ORIGINAL CHALLAN -->
             <div class="nx-card nx-mt-24" id="challanLinksSection" data-tutorial-target="dispatch-challan-links" style="display:none;">
                 <div class="nx-card-header">
-                    <div class="nx-card-title">Link to Original Challan</div>
+                    <div class="nx-card-title" data-en="Link to Original Challan" data-mr="मूळ चलानाशी लिंक करा">Link to Original Challan</div>
                 </div>
-                <div style="font-size:13px; color:var(--mid); margin-bottom:14px;">
+                <div style="font-size:13px; color:var(--mid); margin-bottom:14px;" data-en="ITC-04 needs the original outward challan number and date for every return. Link this return against the challan(s) it settles — a return can settle more than one." data-mr="प्रत्येक परताव्यासाठी ITC-04 ला मूळ आउटवर्ड चलान क्रमांक आणि तारीख आवश्यक आहे. हा परतावा तो निकाली काढत असलेल्या चलान(चलानां)शी लिंक करा — एक परतावा एकापेक्षा जास्त चलानांचा निपटारा करू शकतो.">
                     ITC-04 needs the original outward challan number and date for every return. Link this return against the challan(s) it settles — a return can settle more than one.
                 </div>
                 <div id="challanLinksRows"></div>
-                <button type="button" id="addChallanLinkBtn" class="nx-btn nx-btn-ghost nx-btn-full" style="margin-top:8px;">+ Add Link</button>
+                <button type="button" id="addChallanLinkBtn" class="nx-btn nx-btn-ghost nx-btn-full" style="margin-top:8px;" data-en="+ Add Link" data-mr="+ लिंक जोडा">+ Add Link</button>
             </div>
 
             <!-- PAST DISPATCHES -->
@@ -369,9 +363,9 @@
             </div>
 
             <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                <button id="consumptionPrintBtn" data-tutorial-target="dispatch-consumption-print" data-tutorial-bubble-prefer="above" class="nx-btn nx-btn-green" style="flex:1;">Print Challan</button>
-                <button id="consumptionAmendBtn" class="nx-btn nx-btn-ghost" style="flex:1;color:#fbbf24;border-color:rgba(251,191,36,0.4);">+ Missing Deduction</button>
-                <button id="consumptionCloseBtn" class="nx-btn nx-btn-ghost" style="flex:1;">Close</button>
+                <button id="consumptionPrintBtn" data-tutorial-target="dispatch-consumption-print" data-tutorial-bubble-prefer="above" class="nx-btn nx-btn-green" style="flex:1;" data-en="Print Challan" data-mr="चालन प्रिंट करा">Print Challan</button>
+                <button id="consumptionAmendBtn" class="nx-btn nx-btn-ghost" style="flex:1;color:#fbbf24;border-color:rgba(251,191,36,0.4);" data-en="+ Missing Deduction" data-mr="+ न झालेली कपात">+ Missing Deduction</button>
+                <button id="consumptionCloseBtn" class="nx-btn nx-btn-ghost" style="flex:1;" data-en="Close" data-mr="बंद करा">Close</button>
             </div>
         </div>
     </div>
@@ -379,30 +373,30 @@
     <!-- AMENDMENT MODAL -->
     <div id="amendModal" class="nx-modal-overlay" style="display:none;z-index:9999;">
         <div class="nx-modal" style="max-width:440px;">
-            <div class="nx-modal-title" style="color:#fbbf24;">&#9888; Add Missing Deduction</div>
+            <div class="nx-modal-title" style="color:#fbbf24;" data-en="&#9888; Add Missing Deduction" data-mr="&#9888; न झालेली कपात जोडा">&#9888; Add Missing Deduction</div>
             <div id="amendChallanRef" style="font-size:12px; color:var(--mid); margin-bottom:16px;"></div>
             <div class="nx-form-group">
-                <label style="font-size:12px;">Raw Material</label>
+                <label style="font-size:12px;" data-en="Raw Material" data-mr="कच्चा माल">Raw Material</label>
                 <div id="amendMatMount"></div>
             </div>
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
                 <div class="nx-form-group">
-                    <label style="font-size:12px;">Quantity</label>
+                    <label style="font-size:12px;" data-en="Quantity" data-mr="प्रमाण">Quantity</label>
                     <input type="number" id="amendQty" class="nx-input" placeholder="0" min="0" step="any">
                 </div>
                 <div class="nx-form-group">
-                    <label style="font-size:12px;">Unit</label>
-                    <input type="text" id="amendUnit" class="nx-input" readonly placeholder="auto">
+                    <label style="font-size:12px;" data-en="Unit" data-mr="एकक">Unit</label>
+                    <input type="text" id="amendUnit" class="nx-input" readonly data-en="auto" data-mr="स्वयं" placeholder="auto">
                 </div>
             </div>
             <div class="nx-form-group">
-                <label style="font-size:12px;">Reason <span style="color:var(--mid);">(optional)</span></label>
-                <input type="text" id="amendReason" class="nx-input" placeholder="e.g. missed in original dispatch">
+                <label style="font-size:12px;"><span data-en="Reason" data-mr="कारण">Reason</span> <span style="color:var(--mid);" data-en="(optional)" data-mr="(ऐच्छिक)">(optional)</span></label>
+                <input type="text" id="amendReason" class="nx-input" data-en="e.g. missed in original dispatch" data-mr="उदा. मूळ डिस्पॅचमध्ये चुकले" placeholder="e.g. missed in original dispatch">
             </div>
             <div id="amendError" style="display:none; color:#ef4444; font-size:12px; margin-bottom:10px;"></div>
             <div style="display:flex; gap:10px;">
-                <button id="amendConfirmBtn" class="nx-btn nx-btn-primary" style="flex:1;">Confirm Deduction</button>
-                <button id="amendCancelBtn"  class="nx-btn nx-btn-ghost"   style="flex:1;">Cancel</button>
+                <button id="amendConfirmBtn" class="nx-btn nx-btn-primary" style="flex:1;" data-en="Confirm Deduction" data-mr="कपात पुष्टी करा">Confirm Deduction</button>
+                <button id="amendCancelBtn"  class="nx-btn nx-btn-ghost"   style="flex:1;" data-en="Cancel" data-mr="रद्द करा">Cancel</button>
             </div>
         </div>
     </div>
@@ -410,17 +404,37 @@
     <!-- HARD DELETE MODAL -->
     <div id="hardDeleteModal" class="nx-modal-overlay" style="display:none;z-index:9999;">
         <div class="nx-modal" style="max-width:460px;">
-            <div class="nx-modal-title" style="color:#ef4444;">Delete Challan Permanently</div>
+            <div class="nx-modal-title" style="color:#ef4444;" data-en="Delete Challan Permanently" data-mr="चलान कायमचे हटवा">Delete Challan Permanently</div>
             <div id="hardDeleteMeta" style="font-size:13px; color:var(--mid); margin-bottom:16px;"></div>
             <div id="hardDeleteMessage" style="margin-bottom:16px;"></div>
             <div style="display:flex; gap:10px;">
-                <button id="hardDeleteConfirmBtn" class="nx-btn nx-btn-danger" style="flex:1;" disabled>Delete Permanently</button>
-                <button id="hardDeleteCancelBtn" class="nx-btn nx-btn-ghost"   style="flex:1;">Cancel</button>
+                <button id="hardDeleteConfirmBtn" class="nx-btn nx-btn-danger" style="flex:1;" disabled data-en="Delete Permanently" data-mr="कायमचे हटवा">Delete Permanently</button>
+                <button id="hardDeleteCancelBtn" class="nx-btn nx-btn-ghost"   style="flex:1;" data-en="Cancel" data-mr="रद्द करा">Cancel</button>
             </div>
         </div>
     </div>
 
     <script>
+        // ── LANGUAGE HELPER ──────────────────────────────────────────────
+        // t() used inline in every render function (reads localStorage fresh at
+        // render time, per CLAUDE.md's rule for dynamically rendered content).
+        // applyLang() sweeps static data-en/data-mr elements; window.applyLang
+        // is what js/navbar.js calls on load and from the मराठी toggle.
+        const t = (en, mr) => localStorage.getItem('nexflow_lang') === 'mr' ? mr : en;
+
+        function applyLang(lang) {
+            document.querySelectorAll('[data-en]').forEach(el => {
+                const text = lang === 'mr' ? (el.dataset.mr || el.dataset.en) : el.dataset.en;
+                if (['INPUT', 'SELECT', 'TEXTAREA'].includes(el.tagName)) el.placeholder = text;
+                else el.textContent = text;
+            });
+            // Re-render already-populated dynamic content — both are pure
+            // (in-memory only, no network call), safe to call any time.
+            initMovementPurposeField();
+            if (dispatchItems.length > 0) renderProductsTable();
+        }
+        window.applyLang = applyLang;
+
         let products = [];
         let dispatchItems = [];
         let currentDispatchId = null;
@@ -489,7 +503,7 @@
                 var res=filter(term);
                 dd.innerHTML=''; kbdIdx=-1;
                 if(res.length===0){
-                    dd.innerHTML='<div class="mat-dropdown-empty">No materials found</div>';
+                    dd.innerHTML='<div class="mat-dropdown-empty">' + t('No materials found', 'साहित्य सापडले नाही') + '</div>';
                     return;
                 }
                 res.forEach(function(m){
@@ -576,10 +590,9 @@
         document.addEventListener('DOMContentLoaded', init);
 
         function initMovementPurposeField() {
-            const lang = localStorage.getItem('nexflow_lang') || 'en';
             const select = document.getElementById('movementPurpose');
             select.innerHTML = MOVEMENT_PURPOSES.map(p =>
-                `<option value="${p.value}">${lang === 'mr' ? p.label_mr : p.label_en}</option>`
+                `<option value="${p.value}">${t(p.label_en, p.label_mr)}</option>`
             ).join('');
             document.getElementById('purposeFieldRow').style.display =
                 (isJobWorker() || isPrincipal()) ? '' : 'none';
@@ -680,7 +693,7 @@
         }
 
         function challanLinkOptionsHtml() {
-            return '<option value="">Select challan...</option>' + openChallansForClient.map(o => {
+            return `<option value="">${t('Select challan...', 'चलान निवडा...')}</option>` + openChallansForClient.map(o => {
                 const displayNo = (o.challan_number || '').replace(/^CHAL-\d{8}-/, '');
                 const dateStr = o.dispatch_date ? new Date(o.dispatch_date).toLocaleDateString() : '';
                 return `<option value="${o.id}" data-qty="${o.totalQty || 0}">${displayNo} — ${dateStr}</option>`;
@@ -702,12 +715,12 @@
             row.style.cssText = 'display:flex; align-items:end; gap:10px; margin-bottom:10px;';
             row.innerHTML = `
                 <div class="nx-form-group" style="margin:0; flex:2;">
-                    <label style="font-size:11px;">Original Challan</label>
+                    <label style="font-size:11px;">${t('Original Challan', 'मूळ चलान')}</label>
                     <select class="nx-input link-original-select"></select>
                 </div>
                 <div class="nx-form-group" style="margin:0; width:120px;">
-                    <label style="font-size:11px;">Qty Settled</label>
-                    <input type="number" class="nx-input link-qty-input" min="0.001" step="any" placeholder="Qty">
+                    <label style="font-size:11px;">${t('Qty Settled', 'निपटारा प्रमाण')}</label>
+                    <input type="number" class="nx-input link-qty-input" min="0.001" step="any" placeholder="${t('Qty', 'प्रमाण')}">
                 </div>
                 <button type="button" class="nx-btn nx-btn-ghost nx-btn-sm remove-link-row" style="color:#ef4444;">✕</button>
             `;
@@ -814,6 +827,7 @@
                 loadingSpinner.style.display = 'none';
                 dispatchForm.style.display = 'block';
                 dispatchForm.classList.add('nx-fade-in');
+                applyLang(localStorage.getItem('nexflow_lang') || 'en');
                 setupEventHandlers();
 
                 if (window.NexflowTutorial) NexflowTutorial.pageReady('dispatch');
@@ -836,8 +850,7 @@
 
             products = data || [];
 
-            const lang = localStorage.getItem('nexflow_lang') || 'en';
-            const placeholder = lang === 'mr' ? 'उत्पादन शोधा...' : 'Search product...';
+            const placeholder = t('Search product...', 'उत्पादन शोधा...');
 
             const mount = document.getElementById('productSelectMount');
             mount.innerHTML = '';
@@ -866,7 +879,7 @@
             tbody.innerHTML = '';
 
             if (!data || data.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="5" style="padding:20px; text-align:center; color:var(--mid);">No past dispatches found.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="5" style="padding:20px; text-align:center; color:var(--mid);">${t('No past dispatches found.', 'यापूर्वीचे कोणतेही डिस्पॅच सापडले नाहीत.')}</td></tr>`;
                 return;
             }
 
@@ -877,19 +890,19 @@
                     : new Date(dispatch.created_at).toLocaleDateString();
                 const isCancelled = dispatch.status === 'cancelled';
 
-                let badge = `<span class="nx-badge nx-badge-green">Confirmed</span>`;
-                if (isCancelled) badge = `<span class="nx-badge" style="background:rgba(239,68,68,0.15);color:#ef4444;border:1px solid rgba(239,68,68,0.3);">Cancelled</span>`;
-                if (dispatch.is_exempt_tooling) badge += ` <span class="nx-badge nx-badge-orange">EXEMPT — No Time Limit</span>`;
+                let badge = `<span class="nx-badge nx-badge-green">${t('Confirmed', 'निश्चित')}</span>`;
+                if (isCancelled) badge = `<span class="nx-badge" style="background:rgba(239,68,68,0.15);color:#ef4444;border:1px solid rgba(239,68,68,0.3);">${t('Cancelled', 'रद्द')}</span>`;
+                if (dispatch.is_exempt_tooling) badge += ` <span class="nx-badge nx-badge-orange">${t('EXEMPT — No Time Limit', 'सूट — वेळ मर्यादा नाही')}</span>`;
 
                 let actionCell = `
-                    <button onclick="viewChallan('${dispatch.id}')" class="nx-btn nx-btn-ghost nx-btn-sm">View</button>
-                    <button onclick="cancelChallan('${dispatch.id}', '${(dispatch.challan_number||'').replace(/'/g,"")}')" class="nx-btn nx-btn-ghost nx-btn-sm" style="color:#ef4444;">Cancel</button>
+                    <button onclick="viewChallan('${dispatch.id}')" class="nx-btn nx-btn-ghost nx-btn-sm">${t('View', 'पहा')}</button>
+                    <button onclick="cancelChallan('${dispatch.id}', '${(dispatch.challan_number||'').replace(/'/g,"")}')" class="nx-btn nx-btn-ghost nx-btn-sm" style="color:#ef4444;">${t('Cancel', 'रद्द करा')}</button>
                 `;
                 if (isCancelled) {
-                    actionCell = `<span style="color:var(--mid); font-size:12px;">Reversed</span>`;
+                    actionCell = `<span style="color:var(--mid); font-size:12px;">${t('Reversed', 'उलट केले')}</span>`;
                     if (getUserRole() === 'owner') {
                         actionCell += `
-                            <button onclick="openHardDeleteModal('${dispatch.id}', '${(dispatch.challan_number||'').replace(/'/g,"")}')" class="nx-btn nx-btn-danger nx-btn-sm" style="margin-left:6px;">Delete Permanently</button>
+                            <button onclick="openHardDeleteModal('${dispatch.id}', '${(dispatch.challan_number||'').replace(/'/g,"")}')" class="nx-btn nx-btn-danger nx-btn-sm" style="margin-left:6px;">${t('Delete Permanently', 'कायमचे हटवा')}</button>
                         `;
                     }
                 }
@@ -932,13 +945,13 @@
         let hardDeleteTarget = null;
 
         function hardDeleteReasonText(reasons) {
-            if (!reasons || !reasons.length) return 'This challan cannot be permanently deleted.';
-            if (reasons.includes('OWNER_ONLY')) return 'Only the owner can permanently delete a challan.';
-            if (reasons.includes('NOT_FOUND')) return 'This challan could not be found.';
-            if (reasons.includes('STATUS')) return 'Only draft or cancelled challans can be permanently deleted.';
-            if (reasons.includes('INVOICE_SINGLE') || reasons.includes('INVOICE_CONSOLIDATED')) return 'An invoice has already been generated for this challan — it cannot be permanently deleted.';
-            if (reasons.includes('GRN_LINKED')) return 'A GRN has already been recorded against this challan by the recipient — it cannot be permanently deleted.';
-            return 'This challan cannot be permanently deleted.';
+            if (!reasons || !reasons.length) return t('This challan cannot be permanently deleted.','हे चालन कायमचे हटवता येणार नाही.');
+            if (reasons.includes('OWNER_ONLY')) return t('Only the owner can permanently delete a challan.','फक्त मालकच चालन कायमचे हटवू शकतो.');
+            if (reasons.includes('NOT_FOUND')) return t('This challan could not be found.','हे चालन सापडले नाही.');
+            if (reasons.includes('STATUS')) return t('Only draft or cancelled challans can be permanently deleted.','फक्त मसुदा किंवा रद्द केलेली चालने कायमची हटवता येतात.');
+            if (reasons.includes('INVOICE_SINGLE') || reasons.includes('INVOICE_CONSOLIDATED')) return t('An invoice has already been generated for this challan — it cannot be permanently deleted.','या चालनासाठी आधीच इनव्हॉइस तयार झाले आहे — ते कायमचे हटवता येणार नाही.');
+            if (reasons.includes('GRN_LINKED')) return t('A GRN has already been recorded against this challan by the recipient — it cannot be permanently deleted.','प्राप्तकर्त्याने या चालनासाठी आधीच GRN नोंदवले आहे — ते कायमचे हटवता येणार नाही.');
+            return t('This challan cannot be permanently deleted.','हे चालन कायमचे हटवता येणार नाही.');
         }
 
         window.openHardDeleteModal = async (orderId, challanNumber) => {
@@ -947,8 +960,8 @@
             const msg = document.getElementById('hardDeleteMessage');
             const confirmBtn = document.getElementById('hardDeleteConfirmBtn');
 
-            document.getElementById('hardDeleteMeta').textContent = `Challan ${challanNumber || '—'}`;
-            msg.innerHTML = `<div style="font-size:13px; color:var(--mid);">Checking eligibility…</div>`;
+            document.getElementById('hardDeleteMeta').textContent = `${t('Challan','चलान')} ${challanNumber || '—'}`;
+            msg.innerHTML = `<div style="font-size:13px; color:var(--mid);">${t('Checking eligibility…','पात्रता तपासत आहे…')}</div>`;
             confirmBtn.disabled = true;
             modal.style.display = 'flex';
 
@@ -963,7 +976,7 @@
                     msg.innerHTML = `
                         <div class="nx-alert nx-alert-yellow" style="margin-bottom:0;">
                             <span class="nx-alert-icon">⚠</span>
-                            <span>This will permanently delete challan #${challanNumber || ''} and cannot be undone. The challan number will be available for reuse.</span>
+                            <span>${t(`This will permanently delete challan #${challanNumber || ''} and cannot be undone. The challan number will be available for reuse.`, `यामुळे चालन #${challanNumber || ''} कायमचे हटवले जाईल आणि हे पूर्ववत करता येणार नाही. चालन क्रमांक पुन्हा वापरण्यासाठी उपलब्ध होईल.`)}</span>
                         </div>`;
                     confirmBtn.disabled = false;
                 } else {
@@ -979,7 +992,7 @@
                 msg.innerHTML = `
                     <div class="nx-alert nx-alert-red" style="margin-bottom:0;">
                         <span class="nx-alert-icon">⚠</span>
-                        <span>Could not check eligibility: ${err.message || ''}</span>
+                        <span>${t('Could not check eligibility: ','पात्रता तपासता आली नाही: ')}${err.message || ''}</span>
                     </div>`;
                 confirmBtn.disabled = true;
             }
@@ -1103,7 +1116,7 @@
                     <td style="text-align:right;">${item.quantity} ${item.unit}</td>
                     <td>
                         <input type="text" class="nx-input" style="width:110px;font-size:12px;"
-                               value="${item.po_number || ''}" placeholder="PO No."
+                               value="${item.po_number || ''}" placeholder="${t('PO No.', 'PO क्र.')}"
                                oninput="updateItemPO(${idx}, this.value)">
                     </td>
                     <td style="text-align:center;">
@@ -1226,14 +1239,11 @@
                 }
 
                 if (insufficientItems.length > 0) {
-                    const lang = localStorage.getItem('nexflow_lang') || 'en';
                     const errorLines = insufficientItems.map(i =>
-                        `• ${i.name}: Need ${i.required.toFixed(3)}, Available ${i.available.toFixed(3)}`
+                        `• ${i.name}: ${t('Need', 'गरज')} ${i.required.toFixed(3)}, ${t('Available', 'उपलब्ध')} ${i.available.toFixed(3)}`
                     ).join('\n');
-                    const msg = lang === 'mr'
-                        ? `साठा अपुरा आहे:\n${errorLines}`
-                        : `Stock not sufficient:\n${errorLines}`;
-                    alert(msg);
+                    const msg = `${t('Stock not sufficient:', 'साठा अपुरा आहे:')}\n${errorLines}`;
+                    toast(msg, 'error', 6000);
                     return;
                 }
 
@@ -1241,9 +1251,13 @@
                 // retry after a failed confirm below) instead of drawing a new
                 // one and leaving a gap in the sequence.
                 const rawChallan = currentDispatchChallanNumber || await getNextChallanNumber(window.supabase, tenantId, 'product');
+                // Item 11 (Staff Activity Log): created_by records who performed the
+                // action, not the tenant — must be the acting user's own auth.uid(),
+                // never the tenantId fallback tenant_id above uses.
+                const { data: { user: activityUser } } = await window.supabase.auth.getUser();
                 const payload = {
                     tenant_id: tenantId || localStorage.getItem('supabase_tenant_id') || '00000000-0000-0000-0000-000000000000',
-                    created_by: tenantId || localStorage.getItem('supabase_tenant_id') || '00000000-0000-0000-0000-000000000000',
+                    created_by: activityUser?.id || null,
                     client_name: document.getElementById('clientName')?.value || '',
                     client_address: document.getElementById('clientAddress')?.value || '',
                     po_number: document.getElementById('poNumber')?.value || '',
@@ -1668,7 +1682,7 @@
             var wrap=document.createElement('div'); wrap.style.cssText='position:relative;width:100%;';
             var inner=document.createElement('div'); inner.style.cssText='position:relative;display:flex;align-items:center;';
             var icon=document.createElement('i'); icon.style.cssText='position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--mid);pointer-events:none;font-size:14px;font-style:normal;'; icon.textContent='⌕';
-            var input=document.createElement('input'); input.type='text'; input.autocomplete='off'; input.className='nx-input'; input.style.cssText='padding-left:30px;padding-right:28px;'; input.placeholder='Search material or code...';
+            var input=document.createElement('input'); input.type='text'; input.autocomplete='off'; input.className='nx-input'; input.style.cssText='padding-left:30px;padding-right:28px;'; input.placeholder=t('Search material or code...', 'साहित्य किंवा कोड शोधा...');
             var clr=document.createElement('button'); clr.type='button'; clr.textContent='×'; clr.style.cssText='position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--mid);cursor:pointer;font-size:16px;padding:0;display:none;';
             inner.appendChild(icon); inner.appendChild(input); inner.appendChild(clr);
             var dd=document.createElement('div'); dd.style.cssText='position:fixed;background:var(--surface);border:1px solid var(--border2);border-radius:6px;z-index:10000;max-height:200px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,0.5);display:none;';
@@ -1679,7 +1693,7 @@
             function filterM(t){var q=(t||'').toLowerCase().trim(); return q===''?mats.slice(0,50):mats.filter(function(m){return m.name.toLowerCase().includes(q)||(m.material_code&&m.material_code.toLowerCase().includes(q));});}
             function renderDD(term){
                 var res=filterM(term); dd.innerHTML=''; kbdIdx=-1;
-                if(res.length===0){dd.innerHTML='<div style="padding:10px;font-size:12px;color:var(--mid);text-align:center;">No materials found</div>';return;}
+                if(res.length===0){dd.innerHTML='<div style="padding:10px;font-size:12px;color:var(--mid);text-align:center;">' + t('No materials found', 'साहित्य सापडले नाही') + '</div>';return;}
                 res.forEach(function(m){
                     var d=document.createElement('div');
                     d.style.cssText='padding:8px 10px;font-size:13px;color:var(--text);cursor:pointer;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:6px;';

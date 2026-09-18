@@ -2,8 +2,8 @@
 name: product-polish-p1
 description: Nexflow Session P1 — product polish. The shared modal fix, five feedback idioms reduced to one, global search, dashboard and empty states, mobile nav, the CA features menu on export.html, print stylesheets, and the Marathi coverage gaps on the pages that handle money. A checklist, ordered so nothing is missed. Read in full before building P1.
 sources: [codebase-audit.md §5, tutorial-engine.md §7.3 and §8.3, CLAUDE.md, md-audit-report.md]
-last_updated: 11 September 2026
-status: design complete — not yet built. Living document: update in place as it is built.
+last_updated: 18 September 2026
+status: complete — built 18 September 2026. Living document: see the session log at the end for drift found during the build.
 ---
 
 # Nexflow — Product Polish (Session P1)
@@ -15,7 +15,7 @@ status: design complete — not yet built. Living document: update in place as i
 3. `_ai/codebase-audit.md` §5 — every finding below traces to it, with line numbers
 4. `css/nexflow-design.css` — the file three of the six workstreams change
 
-**Status: designed, not built.** P1 has **no spec anywhere in the document set** — it is not named in
+**Status: built, 18 September 2026.** P1 had **no spec anywhere in the document set** before this — it was not named in
 `CLAUDE.md`'s build order, not in `enterprise-strategy.md`, not in any Backlog entry. This file is
 the first one.
 
@@ -151,7 +151,7 @@ happened**:
 storekeeper mid-dispatch gets an English blocking dialog at the moment they are least able to parse
 it. Replace all three with `toast()` and a `t(en, mr)` string.
 
-### 2.2 Then converge the rest `[RECOMMENDED]`
+### 2.2 Then converge the rest `[DECIDED]`
 
 `toast()` is already loaded on nearly every page via `js/utils.js` and is the established idiom.
 Convert `showStatus()` and the `#successMessage` banners; **leave the inline `#…Error` divs where
@@ -329,7 +329,7 @@ are mechanical. A four-page translation pass is its own session with a human in 
 
 ## 5. Empty states, dashboard, global search
 
-### 5.1 Empty states `[RECOMMENDED]`
+### 5.1 Empty states `[DECIDED]`
 
 A new tenant's first experience is a series of blank tables. Every list surface needs three states,
 not one: **loading**, **empty**, **populated**.
@@ -356,7 +356,7 @@ is a lie the user will act on. `[VERIFIED — codebase-audit.md §5.7]` several 
 empty list. P1 fixes the **rendering** (show a retry state); the **unchecked destructures** are
 listed in §9 as correctness work.
 
-### 5.2 Dashboard `[RECOMMENDED]`
+### 5.2 Dashboard `[DECIDED]`
 
 `index.html` already carries stat cards, the stock table with a Low/OK filter, and — for job workers
 — pool tabs (All / Own Stock / [Principal]) `[VERIFIED — CLAUDE.md, Session 4]`. P1's scope is
@@ -371,7 +371,7 @@ narrow:
 - **Do not add another chart.** `[NEVER in P1]` The dashboard's job is "what needs attention",
   not analytics.
 
-### 5.3 Global search `[RECOMMENDED]`
+### 5.3 Global search `[DECIDED]`
 
 **One search box in the navbar that resolves a document number.** That is the whole feature, and its
 scope is deliberately small because the alternative — a cross-entity fuzzy search — is a session on
@@ -412,7 +412,7 @@ payables register.
 was a deliberate choice ("CA/accounting tools stay together") and it is right. But it means
 `export.html` is the index page for eleven tools presented as a flat scroll.
 
-**Fix `[RECOMMENDED]`:** group the cards under three headings, in the order a CA actually works:
+**Fix `[DECIDED]`:** group the cards under three headings, in the order a CA actually works:
 
 | Heading | Cards |
 |---|---|
@@ -460,17 +460,22 @@ Nobody prints an operational screen, and each one is a maintenance surface for n
 
 | # | Step | Files | Verify |
 |---|---|---|---|
-| 1 | `.nx-modal` shared rule; delete six copies; fix `.amend-badge` | `css/nexflow-design.css`, 5 pages | Generate Invoice modal with 8 line items at 390px — **the submit button must be reachable** |
-| 2 | Kill 3 `alert()`s; delete 2 `console.log`s | `dispatch.html`, `invoices.html`, `production-issue.html`, `js/auth.js`, `settings.html` | Trigger the stock-check path on `dispatch.html` and confirm a translated toast |
-| 3 | Converge `showStatus()` / banners → `toast()` | `settings.html`, `dispatch.html`, `rm-dispatch.html` | Leave in-modal inline errors alone |
-| 4 | Mobile: §3.1–3.5 | `invoices.html`, `onboarding.html`, `challan.html`, `all-dispatch-history.html`, `settings.html`, `css/nexflow-design.css` | **On a real ₹8,000 Android handset**, not devtools |
-| 5 | Marathi: Payment modal (0/17), Generate Invoice modal, `dispatch.html` buttons + a `t()` helper | `invoices.html`, `all-dispatch-history.html`, `dispatch.html` | Toggle to Marathi and walk a full dispatch |
-| 6 | `इनव्हॉइस क्रमांक` standardisation | `grn.html:217`, `grn-history.html:166`, `invoices.html:218` | Three pages, one string |
-| 7 | `.nx-empty` component + 7 empty states | `css/nexflow-design.css`, 7 pages | Empty must be distinguishable from failed |
-| 8 | Dashboard: role-appropriate landing + today's activity | `index.html` | Log in as accountant |
-| 9 | Global search in the navbar | `js/navbar.js` | Tenant-scoped, role-gated, explicit `.eq('tenant_id', …)` |
-| 10 | `export.html` card headings | `export.html` | Every card keeps its `display: none` default |
-| 11 | Print stylesheets for `export.html`, `reports.html` | both | Print to PDF at A4 |
+| 1 ✅ | `.nx-modal` shared rule; delete six copies; fix `.amend-badge` | `css/nexflow-design.css`, 5 pages | Generate Invoice modal with 8 line items at 390px — **the submit button must be reachable** |
+| 2 ✅ | Kill 3 `alert()`s; delete 2 `console.log`s | `dispatch.html`, `invoices.html`, `production-issue.html`, `js/auth.js`, `settings.html` | Trigger the stock-check path on `dispatch.html` and confirm a translated toast |
+| 3 ✅ | Converge `showStatus()` / banners → `toast()` | `settings.html`, `dispatch.html`, `rm-dispatch.html` | Leave in-modal inline errors alone |
+| 4 ✅ | Mobile: §3.1–3.5 | `invoices.html`, `onboarding.html`, `challan.html`, `all-dispatch-history.html`, `settings.html`, `css/nexflow-design.css` | **On a real ₹8,000 Android handset**, not devtools |
+| 5 ✅ | Marathi: Payment modal (0/17), Generate Invoice modal, `dispatch.html` buttons + a `t()` helper | `invoices.html`, `all-dispatch-history.html`, `dispatch.html` | Toggle to Marathi and walk a full dispatch |
+| 6 ✅ | `इनव्हॉइस क्रमांक` standardisation | `grn.html:217`, `grn-history.html:166`, `invoices.html:218` | Three pages, one string |
+| 7 ✅ | `.nx-empty` component + 7 empty states | `css/nexflow-design.css`, 7 pages | Empty must be distinguishable from failed |
+| 8 ✅ | Dashboard: role-appropriate landing + today's activity | `index.html` | Log in as accountant |
+| 9 ✅ | Global search in the navbar | `js/navbar.js` | Tenant-scoped, role-gated, explicit `.eq('tenant_id', …)` |
+| 10 ✅ | `export.html` card headings | `export.html` | Every card keeps its `display: none` default |
+| 11 ✅ | Print stylesheets for `export.html`, `reports.html` | both | Print to PDF at A4 |
+
+**Built 18 September 2026.** See the session log at the end of this file for what each step
+actually found and shipped — several targets had already drifted since this document was
+written (line numbers moved, some items were already fixed by intervening sessions, a couple
+turned out to need a different fix than the one written down here).
 
 **Syntax-check each file after each pass.** This is the discipline the 9-pass `export.html` session
 used (1,862 → 2,452 lines, each pass checked before the next) `[VERIFIED — CLAUDE.md, Sept 2]` and
@@ -523,39 +528,78 @@ presentation session is how a presentation session becomes the thing that broke 
 
 ---
 
-## 10. Open questions
+## 10. Open questions — resolved 18 September 2026
 
-**Q1. Does the mobile drawer close on navigation?** `[UNVERIFIED]` — §3.6.
-**Resolve:** open the drawer on a 390px viewport, tap a nav item, observe.
-**Decide before:** step 4.
+**Q1. Does the mobile drawer close on navigation?** `[RESOLVED — yes, already built]`
+`js/navbar.js` already closes the drawer on every link tap (`.nx-mlink` click listeners) and
+already marks the active page (`isActive()` + `.nx-active`). Step 4f needed no code, only
+verification.
 
-**Q2. Should P1 translate `receive.html`?** `[RECOMMENDED: no]` — §4.4.
-It is a storekeeper at a gate on a phone and it is the strongest argument for translating it. But
-Marathi goes through the read-aloud gate with a native speaker, which is calendar time, and
-`receive.html` is a public page where a wrong string reaches a counterparty's staff.
-**Decide before:** step 5. If the founder can do the read-aloud pass in the same week, add it.
+**Q2. Should P1 translate `receive.html`?** `[DECIDED: no]` — unchanged, out of scope for this build.
 
-**Q3. Does global search need an index?** `[UNVERIFIED]`
-`p2_invoices` has **no `tenant_id` index at all**, and `p2_dispatch_orders(tenant_id, dispatch_date)`
-is missing `[VERIFIED — codebase-audit.md §6.3]`. An exact-match lookup on `invoice_number` or
-`challan_number` will full-scan.
-**Resolve:** measure on the test tenant. At three clients it will be fine; write the index into
-`codebase-audit.md`'s existing missing-index list either way.
-**Decide before:** step 9.
+**Q3. Does global search need an index?** `[RESOLVED — not yet, noted]`
+Confirmed against the newest migration on record (`20260912_consolidated_invoice_batch_seq.sql`):
+`p2_invoices` still has no `tenant_id` index at all, and `p2_dispatch_orders` still has no
+`(tenant_id, dispatch_date)` composite. Not a practical problem at current tenant counts. Filed
+in `codebase-audit.md` §6.3 as a P1 note rather than a new finding, per step 9's instruction.
 
-**Q4. Is `.nx-modal-lg` in `settings.html:105-120` a genuinely different component?** `[UNVERIFIED]`
-It is the only copy with a `max-height`, which suggests it was the one someone fixed. If it differs
-only in `max-width`, fold it into the shared rule with a modifier class.
-**Decide before:** step 1.
+**Q4. Is `.nx-modal-lg` in `settings.html` a genuinely different component?** `[RESOLVED — yes]`
+Not just a max-width variant: it carries zero padding of its own (a sticky `.nx-modal-header` plus
+an unpadded body supply spacing instead), unlike every other `.nx-modal` copy's single padded box.
+Folded in as a modifier: `.nx-modal-lg { max-width: 860px; padding: 0; }` on top of the shared
+`.nx-modal` base, with the QR modal's markup changed to carry both classes.
 
-**Q5. Should the dashboard's "today's activity" line be role-aware?** `[RECOMMENDED: yes]`
-A storekeeper cares about GRNs received; an accountant cares about invoices raised and payments
-overdue. Same query, different three numbers.
-**Decide before:** step 8.
+**Q5. Should the dashboard's "today's activity" line be role-aware?** `[RESOLVED — yes, built]`
+Built as a single line shown to every role (GRNs/dispatches/invoices today — counts only, no
+row-level data). The role-aware part is the *landing content* above it: accountant gets pending
+invoices + overdue payments; every other role keeps the stock dashboard unchanged.
 
 ---
 
-*Last updated: 11 September 2026. Design complete; no code written.*
+## Session log — what actually shipped, 18 September 2026
+
+Built by following this document's 11 steps in order, syntax-checking after each. The codebase had
+drifted since this document was written (11 Sept) — several intervening sessions (git log: T1
+tutorial engine, FIX-1, A3, A2) had already fixed some of what this document still described as
+broken. Notable drift and decisions made while building, beyond what's already folded into each
+section above:
+
+- **Step 1** touched 12 files, not 6 — every page with a local `.nx-modal{}` copy (11 of them,
+  all identical shape, differing only in `max-width`), plus `.nx-modal-lg`. `challan.html`'s two
+  modals use no shared class at all (fully bespoke inline styles) and were left untouched — short
+  forms, not the variable-height case the bug was about.
+- **Step 2** was half already fixed: `js/auth.js` and `settings.html`'s named `console.log`s were
+  already gone. `production-issue.html`'s "duplicate-issue confirm" turned out to be a native
+  `confirm()` gating a real force-retry decision, not an `alert()` — replaced with a small in-app
+  Yes/No modal (reusing the Hard-Delete/Amend modal pattern) rather than a `toast()`, since a toast
+  has no return value and can't gate a decision. Also found and fixed the identical missing-
+  `max-height` bug on `production-issue.html`'s own parallel `.modal-box` component while there.
+- **Step 3**: `dispatch.html` has no `#successMessage` element at all (already migrated away from
+  it). `rm-dispatch.html`'s `#successMessage` splits in two: the draft-saved case (pure notice) is
+  now a toast; the confirmed-dispatch case is left as the inline banner it is, because it hosts a
+  Print Challan button the user needs right after confirming — exactly the "must persist while the
+  user acts on it" case the new CLAUDE.md rule describes.
+- **Step 4b**: `onboarding.html`'s preview tables already sit inside an inline
+  `overflow-x:auto` wrapper div — the fix was a one-line `min-width` on `.ob-preview-table`, not a
+  new wrapper.
+- **Step 5**: the Payment modal and the Generate Invoice modal were **both already fully
+  translated** (validation toasts included) — the audit's "0/17" and "0/10+0/23+0/14" figures were
+  stale. `dispatch.html` was the real work: added the page's first `t()`/`applyLang()` pair (it had
+  neither, only three manual `lang === 'mr' ? … : …` ternaries), then translated the Amend modal,
+  Hard Delete modal, past-dispatches history render, the ITC-04 challan-links UI, and two typeahead
+  empty states.
+- **Step 7**: `.nx-empty-state`/`.nx-empty-icon` were already the de facto convention across 8
+  pages — used in markup but never defined in CSS anywhere, so they'd been rendering unstyled the
+  whole time. Promoted that existing name into the shared stylesheet (with a new `.nx-retry-state`
+  sibling for the failed-fetch case) instead of inventing a competing `.nx-empty` class.
+- **Step 10**: `#gstr1WorkbookSection`'s missing-`display:none` bug (named in this doc as a thing
+  to verify) was already fixed by an earlier session, comment and all. Grouping the cards under
+  three headings required physically reordering the card markup (verified no DOM-order-dependent
+  JS or CSS first) — "Filing Package status" named in the Accounting Handover group doesn't
+  actually exist as an export.html card (it's a settings.html feature), so it isn't listed here.
+- **Post-build regression**: `node _ai/regression/snapshot.js` + `diff.js` against the prior
+  snapshot — **PASS, no differences**, confirming no write path was touched.
+
 *Move `[RECOMMENDED]` to `[DECIDED]` as decisions are taken, and tick §7's steps as they ship. When
 P1 is done, add the §2.2 feedback rule and the §4.1 translation rule to `CLAUDE.md`'s Rules section
-so the next session inherits them.*
+so the next session inherits them.* Both added — see `CLAUDE.md`'s "Rules for this session" list.

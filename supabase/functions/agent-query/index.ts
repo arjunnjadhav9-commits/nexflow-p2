@@ -14,7 +14,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import Anthropic from 'https://esm.sh/@anthropic-ai/sdk@0.32.0'
-// Not yet called anywhere in this file — W3 (GRN write path) is the first
+// Not yet called anywhere in this file — W2 (GRN write path) is the first
 // caller. Imported now so the GRN duplicate-invoice check it will need
 // shares the one canonical implementation instead of a fresh copy.
 import { normaliseInvoiceNo } from '../_shared/compliance.ts'
@@ -828,6 +828,50 @@ function getISTDateRange(days: number): { since: string; until?: string } {
 function todayIST(): string {
   const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000
   return new Date(Date.now() + IST_OFFSET_MS).toISOString().split('T')[0]
+}
+
+// 'YYYY-MM-DD' -> 'DD/MM/YYYY', for the overlap error message only (Item 12).
+// Server-side only — invoices.html has its own independent copy for client-side
+// rendering, since this Edge Function and the browser share no code.
+function fmtDdMmYyyy(iso: string): string {
+  const [y, m, d] = iso.split('-')
+  return `${d}/${m}/${y}`
+}
+
+// Item 12 (Known Open Item #6) — two consolidated invoices for the same client with
+// overlapping-but-not-identical date ranges must not both sweep the same dispatches.
+// Excludes cancelled invoices (a cancelled invoice doesn't hold its dates — same
+// .neq('status', 'cancelled') filter as invoices.html's fetchInvoicedOrderIdSet()) and
+// excludes exact-same-range rows: an exact (date_from, date_to) repeat is a sibling batch
+// of the SAME sweep (invoices.html's Max Lines Per Invoice split calls confirm multiple
+// times with the identical range, disambiguated only by consolidated_batch_seq — see
+// migration 20260912_consolidated_invoice_batch_seq.sql) or a legitimate retry — both
+// already governed by p2_invoices_consolidated_dedup_idx / the exact-duplicate checks in
+// previewConsolidatedInvoice/confirmConsolidatedInvoice, not this check. The
+// .or('date_from.neq.X,date_to.neq.Y') is the same De Morgan date-exclusion pattern
+// invoices.html already uses for carryover challans (dispatch_date outside a range).
+async function findOverlappingConsolidatedInvoice(
+  supabaseClient: ReturnType<typeof createClient>,
+  tenantId: string,
+  clientId: string,
+  dateFrom: string,
+  dateTo: string
+): Promise<{ invoice_number: string; date_from: string; date_to: string } | null> {
+  const { data, error } = await supabaseClient
+    .from('p2_invoices')
+    .select('invoice_number, date_from, date_to')
+    .eq('tenant_id', tenantId)
+    .eq('client_id', clientId)
+    .eq('invoice_mode', 'consolidated')
+    .neq('status', 'cancelled')
+    .lte('date_from', dateTo)
+    .gte('date_to', dateFrom)
+    .or(`date_from.neq.${dateFrom},date_to.neq.${dateTo}`)
+    .limit(1)
+    .maybeSingle()
+
+  if (error) throw error
+  return data as { invoice_number: string; date_from: string; date_to: string } | null
 }
 
 // Handles every intent — all read-only. Each returns a plain-text answer
@@ -2297,6 +2341,11 @@ async function confirmReceiveGrn(
       rate: m.rate,
       invoice_no: invoiceNo,
       reference_id: null,
+      // Item 11 (Staff Activity Log): user.id is already the verified caller
+      // (extracted above via supabaseClient.auth.getUser(token) to check
+      // callerTenantId === recipient_tenant_id) — reuse it rather than
+      // re-deriving identity.
+      created_by: user.id,
     })))
 
   if (insertError) {
@@ -2324,7 +2373,8 @@ async function confirmReceiveGrn(
 // flows that have no per-line rate review step).
 async function confirmGenerateInvoice(
   supabaseClient: ReturnType<typeof createClient>,
-  body: Partial<ConfirmGenerateInvoiceRequest>
+  body: Partial<ConfirmGenerateInvoiceRequest>,
+  callerUserId: string | null
 ): Promise<Response> {
   const { tenant_id, dispatch_order_id, item_rates, gst_type } = body
 
@@ -2528,6 +2578,9 @@ async function confirmGenerateInvoice(
       gst_type: gstType,
       invoice_mode: 'single',
       dispatch_order_ids: [dispatch_order_id],
+      // Item 11 (Staff Activity Log): the caller's identity, already verified
+      // by verifyCallerTenant() in the dispatcher above this function.
+      created_by: callerUserId,
       // status left at its 'draft' default. This UI path never emails the
       // invoice — the owner reviews the link and shares it manually, or
       // sends it later via invoices.html's "Resend".
@@ -2577,6 +2630,22 @@ async function previewConsolidatedInvoice(
   }
   if (!client) {
     return respond({ status: 'error', error: 'Client not found' }, 404)
+  }
+
+  // Item 12 (Known Open Item #6) — warn before the owner even sees line items if this
+  // range overlaps another live consolidated invoice for the same client. Checked before
+  // the orders query: cheapest possible early-out, and the whole point is to warn before
+  // Confirm is reachable.
+  const overlap = await findOverlappingConsolidatedInvoice(supabaseClient, tenant_id, client_id, date_from, date_to)
+  if (overlap) {
+    return respond({
+      status: 'error',
+      error: 'overlap',
+      conflicting_invoice: overlap.invoice_number,
+      conflicting_from: overlap.date_from,
+      conflicting_to: overlap.date_to,
+      message: `Date range overlaps with existing invoice ${overlap.invoice_number} (${fmtDdMmYyyy(overlap.date_from)} – ${fmtDdMmYyyy(overlap.date_to)})`,
+    }, 400)
   }
 
   let ordersQuery = supabaseClient
@@ -2694,7 +2763,8 @@ async function previewConsolidatedInvoice(
 // (never blocks on a missing price).
 async function confirmConsolidatedInvoice(
   supabaseClient: ReturnType<typeof createClient>,
-  body: Partial<ConfirmConsolidatedInvoiceRequest>
+  body: Partial<ConfirmConsolidatedInvoiceRequest>,
+  callerUserId: string | null
 ): Promise<Response> {
   const { tenant_id, client_id, date_from, date_to, gst_type, dispatch_type, item_rates, consolidated_batch_seq } = body
 
@@ -2739,6 +2809,24 @@ async function confirmConsolidatedInvoice(
   }
   if (!client) {
     return respond({ status: 'error', error: 'Client not found' }, 404)
+  }
+
+  // Item 12 (Known Open Item #6) — hard block, no override. Checked before the orders
+  // query and before the exact-duplicate/cross-mode guards below, so an overlapping
+  // range never reaches the insert regardless of how it got here (preview bypass, direct
+  // API call, etc.). Excludes exact-same-range rows (sibling Max Lines Per Invoice split
+  // batches, or an idempotent retry) — see findOverlappingConsolidatedInvoice's own
+  // comment for why that exclusion is safe and necessary.
+  const overlap = await findOverlappingConsolidatedInvoice(supabaseClient, tenant_id, client_id, date_from, date_to)
+  if (overlap) {
+    return respond({
+      status: 'error',
+      error: 'overlap',
+      conflicting_invoice: overlap.invoice_number,
+      conflicting_from: overlap.date_from,
+      conflicting_to: overlap.date_to,
+      message: `Date range overlaps with existing invoice ${overlap.invoice_number} (${fmtDdMmYyyy(overlap.date_from)} – ${fmtDdMmYyyy(overlap.date_to)})`,
+    }, 400)
   }
 
   let ordersQuery = supabaseClient
@@ -2931,6 +3019,9 @@ async function confirmConsolidatedInvoice(
       date_from,
       date_to,
       consolidated_batch_seq: batchSeq,
+      // Item 11 (Staff Activity Log): the caller's identity, already verified
+      // by verifyCallerTenant() in the dispatcher above this function.
+      created_by: callerUserId,
       // status left at its 'draft' default — only flipped to 'sent' after
       // the email actually succeeds below (or skipped entirely if the
       // client has no email on file), same failure-safety as
@@ -3426,6 +3517,1627 @@ async function submitBugReport(
   return respond({ status: 'ok', thread_id: threadId, github_issue_url: issueResult.issueUrl })
 }
 
+// ============================================================================
+// W2 — Agent write layer: GRN photo path. The only write intent the agent has.
+// §references below are to _ai/nexflow-agent.md. Three new body.action values:
+// 'propose', 'confirm_proposal', 'cancel_proposal'. No new Edge Function (D1) —
+// this extends agent-query exactly like suggest_hsn/submit_support_message did.
+// ============================================================================
+
+interface ProposeRequest {
+  action: 'propose'
+  tenant_id: string
+  message?: string
+  image?: string             // base64, no "data:" prefix
+  image_media_type?: 'image/jpeg' | 'image/png' | 'image/webp'
+  // Owner-selector amendment (js/agent-chat.js's addConfirmCard dropdown) —
+  // the new owner is already known exactly, so this patches the live
+  // proposal's plan directly instead of round-tripping through Haiku (see
+  // the handling in proposeAction for why the free-text version of this
+  // was unreliable). owned_by: null means "Own Stock".
+  owner_amendment?: { owned_by: string | null }
+}
+
+interface ConfirmProposalRequest {
+  action: 'confirm_proposal'
+  tenant_id: string
+  proposal_id: string
+}
+
+interface CancelProposalRequest {
+  action: 'cancel_proposal'
+  tenant_id: string
+  proposal_id: string
+}
+
+type GrnBand = 'green' | 'amber'
+
+interface GrnPlanItem {
+  raw_material_id: string
+  material_name: string
+  material_code: string | null
+  quantity: number
+  unit: string
+  rate: number | null
+  invoice_no: string
+  purchase_type: 'intrastate' | 'interstate'
+  band: GrnBand
+  band_reasons: string[]
+}
+
+interface GrnPlan {
+  kind: 'grn'
+  supplier_id: string
+  supplier_name: string
+  grn_date: string                  // YYYY-MM-DD, IST
+  owned_by: string | null
+  owner_name: string | null
+  principal_challan_no: string | null
+  principal_challan_date: string | null
+  items: GrnPlanItem[]
+  duplicate_warning: { grn_no: string; transaction_date: string; invoice_no: string } | null
+}
+
+// §4.2, verbatim. Evaluated BEFORE any model call. Marathi entries are
+// // UNREVIEWED until tutorial-engine.md §8.5's read-aloud gate clears them
+// with a real storekeeper (§17 Q1) — do not expand or "clean up" this list.
+const GRN_AFFIRM = new Set([
+  'yes', 'y', 'ok', 'okay', 'yep', 'yeah', 'yes please', 'go', 'go ahead', 'confirm', 'do it', 'done',
+  'ho', 'hoy', 'होय', 'हो', 'haan', // UNREVIEWED
+  'हा', // UNREVIEWED — Marathi affirmation / Hinglish filler hazard, §4.2 rule 6
+  'ha', // UNREVIEWED
+  'barobar', 'बरोबर', // UNREVIEWED
+  'theek', 'ठीक', 'ठीक आहे', // UNREVIEWED
+  'karo', 'करा', // UNREVIEWED
+])
+const GRN_DECLINE = new Set([
+  'no', 'n', 'nope', 'cancel', 'stop', 'dont', 'don\'t',
+  'nahi', 'नाही', // UNREVIEWED
+  'nako', 'नको', 'naka', 'नका', // UNREVIEWED
+  'rahu de', 'राहू दे', // UNREVIEWED
+])
+
+// §4.2 rule 1: normalise, then match the WHOLE message. Never substring.
+function normaliseConfirmationText(s: string): string {
+  return s.toLowerCase().trim().replace(/\s+/g, ' ').replace(/[.!।]+$/, '')
+}
+
+function classifyConfirmation(message: string): 'affirm' | 'decline' | null {
+  const norm = normaliseConfirmationText(message)
+  if (!norm) return null
+  if (GRN_AFFIRM.has(norm)) return 'affirm'
+  if (GRN_DECLINE.has(norm)) return 'decline'
+  return null
+}
+
+// D11 role gate — direct p2_user_roles query via the service-role client
+// (bypasses RLS entirely, no recursion risk), owner-shortcut. Matches the
+// established, working pattern already live in confirmGenerateInvoice/
+// confirmConsolidatedInvoice/submitBugReport — NOT get_my_role(), which reads
+// auth.uid() internally and returns nothing from a service-role caller (see
+// 20260803_get_my_role_rpc.sql; verified against the live function).
+async function resolveCallerRole(
+  supabaseClient: ReturnType<typeof createClient>,
+  tenantId: string,
+  callerUserId: string
+): Promise<string> {
+  if (callerUserId === tenantId) return 'owner'
+  const { data } = await supabaseClient
+    .from('p2_user_roles')
+    .select('role')
+    .eq('user_id', callerUserId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+  return (data as { role?: string } | null)?.role ?? 'unknown'
+}
+
+const GRN_ALLOWED_ROLES = new Set(['owner', 'supervisor', 'storekeeper'])
+
+// §7.3, verbatim. Two tools only, both strict: true. propose_dispatch/
+// propose_production_issue/propose_invoice/propose_stock_adjustment are
+// dropped along with the flows they served — never add them back (§16 items
+// 16-19).
+const PROPOSE_TOOLS = [
+  {
+    name: 'propose_grn',
+    description: "Material arriving from a supplier, from a photograph of a delivery challan or invoice, or a QR-scanned delivery. Use for goods received into stock. Do NOT use for goods leaving the factory, material consumed in production, billing a client, or correcting a stock count — none of those are things you do; say so and name the page instead.",
+    strict: true,
+    input_schema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['supplier_name', 'invoice_no', 'items'],
+      properties: {
+        supplier_name: { type: 'string', description: 'Exactly as read or said. Do not expand abbreviations.' },
+        invoice_no: { type: 'string', description: 'Mandatory — the GSTR-2B matching key. Never omit or default; ask if unreadable.' },
+        items: {
+          type: 'array', minItems: 1,
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['material_name', 'quantity', 'unit'],
+            properties: {
+              material_name: { type: 'string', description: 'Name or code, as said or read.' },
+              item_code: { type: 'string' },
+              quantity: { type: 'number', description: 'Omit the whole item rather than guessing.' },
+              unit: { type: 'string' },
+              rate: { type: 'number', description: 'Omit if not stated or not legible.' },
+            },
+          },
+        },
+        grn_date: { type: 'string', description: 'YYYY-MM-DD. Only if stated or printed. Omit for today.' },
+        challan_no: { type: 'string', description: "The supplier's own delivery-challan number, if separate from invoice_no." },
+        purchase_type: { enum: ['intrastate', 'interstate'], description: 'Only if derivable from a known GSTIN state code. Never guess — ask if either GSTIN is missing.' },
+        material_owner: { type: 'string', description: "The principal's name, if this delivery is job-work material for a known principal. Omit for own stock." },
+        principal_challan_no: { type: 'string' },
+        principal_challan_date: { type: 'string' },
+      },
+    },
+  },
+  {
+    name: 'request_clarification',
+    description: 'You are missing something you must not guess, or the message could mean two different things. Ask about everything you need in ONE call.',
+    strict: true,
+    input_schema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['questions'],
+      properties: {
+        likely_intent: { enum: ['grn', 'unknown'] },
+        // §7.3 specifies maxItems: 3 on this array — live-tested against the
+        // Messages API on 18 Sept 2026 and rejected: "tools.1.custom: For
+        // 'array' type, property 'maxItems' is not supported" (minItems is
+        // fine; maxItems is not, at least under strict:true). The "at most
+        // 3 questions" constraint is enforced code-side instead (see the
+        // slice(0, 3) in proposeAction) plus the prompt's "ONE call"
+        // instruction — not schema-enforced, since the schema can't express it.
+        questions: {
+          type: 'array', minItems: 1,
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['field', 'question'],
+            properties: {
+              field: { type: 'string', description: "Which field is missing, e.g. 'quantity'." },
+              question: { type: 'string', description: 'One sentence, in the user\'s language.' },
+              options: { type: 'array', items: { type: 'string' }, description: 'Renders as buttons. Use whenever the answer is a short closed set.' },
+            },
+          },
+        },
+      },
+    },
+  },
+]
+
+// §6.4, verbatim.
+const EXTRACT_DELIVERY_DOCUMENT_TOOL = {
+  name: 'extract_delivery_document',
+  strict: true,
+  input_schema: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['document_type', 'legibility', 'items'],
+    properties: {
+      document_type: { enum: ['delivery_challan', 'tax_invoice', 'both', 'unclear'] },
+      legibility: { enum: ['clear', 'partial', 'poor'] },
+      handwritten: { type: 'boolean' },
+      // Not in `required` deliberately — a genuinely supplier-less document
+      // should still omit this rather than guess — but live-tested 18 Sept
+      // 2026: leaving this field bare (no description) produced repeated
+      // omissions even on a document where the name was clearly legible and
+      // separately confirmed readable via a plain-text query against the
+      // same image. The description below, plus the prompt's explicit
+      // "look for these four things" list above, are the fix.
+      supplier_name: { type: 'string', description: "The issuing company's name, normally the largest text in the header/letterhead at the top of the page. Almost every real document has one — read it even if the rest of the page is hard to read." },
+      supplier_gstin: { type: 'string' },
+      invoice_no: { type: 'string' },
+      challan_no: { type: 'string' },
+      document_date: { type: 'string' },
+      vehicle_number: { type: 'string' },
+      items: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['description', 'quantity'],
+          properties: {
+            description: { type: 'string' },
+            item_code: { type: 'string' },
+            quantity: { type: 'number' },
+            unit: { type: 'string' },
+            rate: { type: 'number' },
+            amount: { type: 'number' },
+            hsn: { type: 'string' },
+            // quantity/rate confidence is inherently per-line (§6.6 needs to
+            // escalate individual shaky lines, not the whole document) — a
+            // single line-level confidence covering both, rather than a
+            // separate quantity_confidence/rate_confidence pair, since in
+            // practice a line worth escalating is escalated as a whole.
+            confidence: { enum: ['high', 'medium', 'low'] },
+          },
+        },
+      },
+      // §6.4's own schema literally wrote a free-form `{"...": {}}` map here
+      // to mean "confidence per top-level field name" — live-tested and
+      // rejected: "Empty schema ({}) that accepts any JSON value is not
+      // supported. Please specify a concrete type." A JSON Schema object
+      // can't express a truly dynamic key set under strict validation
+      // anyway, so this enumerates the actual top-level fields that can
+      // carry it (excludes items — see the per-line `confidence` above, and
+      // excludes document_type/legibility/handwritten, which aren't
+      // transcription reads with a plausible-alternative failure mode).
+      field_confidence: {
+        type: 'object',
+        additionalProperties: false,
+        description: 'Confidence for each field actually present; omit a field to mean high.',
+        properties: {
+          supplier_name: { enum: ['high', 'medium', 'low'] },
+          supplier_gstin: { enum: ['high', 'medium', 'low'] },
+          invoice_no: { enum: ['high', 'medium', 'low'] },
+          challan_no: { enum: ['high', 'medium', 'low'] },
+          document_date: { enum: ['high', 'medium', 'low'] },
+          vehicle_number: { enum: ['high', 'medium', 'low'] },
+        },
+      },
+    },
+  },
+}
+
+const EXTRACTION_PROMPT = `You are reading a photograph of a supplier delivery challan or purchase invoice from an
+Indian manufacturing supplier. Transcribe what is printed or written. Do not interpret,
+do not convert units, do not calculate, do not correct what looks like a mistake.
+
+Return your answer by calling extract_delivery_document exactly once.
+
+Before you call the tool, look for these four things specifically — real delivery
+challans and invoices almost always have all four, so a response missing one of them
+is very likely an incomplete read, not a genuinely blank document:
+1. The issuing company's name — normally the largest text at the top of the page, in a
+   letterhead or header. This is supplier_name. Read it even if nothing else on the page
+   is legible.
+2. An invoice or challan number.
+3. A date.
+4. At least one line item, with a description and quantity.
+Only omit one of these four if you have actually looked for it and it is genuinely not
+printed anywhere on the document — never because the rest of the document was harder to
+read, and never to keep your answer short.
+
+Rules:
+- Transcribe every value EXACTLY as it appears, including leading zeros, slashes and
+  hyphens in document numbers. "BE/4521-A" is not "BE4521A".
+- Numbers: digits only, decimal point, no thousands separators, no currency symbol.
+- Dates: DD-MM-YYYY as printed. If the year is two digits, expand to 20YY. If the date
+  is ambiguous between DD-MM and MM-DD, set date_confidence to "low" and transcribe what
+  is printed.
+- If a value is not present on the document, omit the field. Do not infer it from
+  another field and do not guess a typical value.
+- If a value is present but you cannot read it with confidence, include it with your
+  best reading and set that field's confidence to "low".
+- Do not translate Devanagari material names into English. Transcribe them as written.
+- The document may have a supplier's challan number AND a separate invoice number.
+  These are different. If only one number is present, put it in invoice_no and set
+  invoice_no_confidence to "low".
+- Ignore stamps, signatures, terms and conditions, and any printed footer.
+
+Per-field confidence:
+  "high"   — clearly printed or clearly written, no plausible alternative reading
+  "medium" — legible but with a plausible alternative (5/6, 1/7, 0/8, a smudge)
+  "low"    — you are guessing, or the field is partly obscured
+Use "low" freely. A field marked low is shown to a human. A field wrongly marked high
+is not.`
+
+// §7.2, verbatim, with placeholders substituted. Products and Clients are
+// dropped from context (§7.2) — GRN and QR interception use only Materials,
+// Suppliers and the principal list.
+function buildWriteSystemPrompt(opts: {
+  todayIST: string
+  companyName: string
+  isJobWorker: boolean
+  isPrincipal: boolean
+  separatePool: boolean
+  role: string
+  materials: RawMaterial[]
+  suppliers: Supplier[]
+  principals: { id: string; name: string }[]
+}): string {
+  const materialsBlock = opts.materials.map((m) => `${m.name}${m.material_code ? ` — ${m.material_code}` : ''}`).join(', ')
+  const suppliersBlock = opts.suppliers.map((s) => s.name).join(', ')
+  const principalsBlock = opts.principals.map((p) => p.name).join(', ') || 'none'
+
+  return `You are the Nexflow agent. You run a factory's inventory for them.
+
+The person talking to you is a factory owner, supervisor, storekeeper or operator in an
+MIDC engineering factory in Maharashtra. They are describing something that happened on
+the floor, or something they want to happen. Your job is to turn that into exactly one
+proposed transaction, or into exactly one question.
+
+You never perform a transaction. You propose one. A human confirms it. That is the whole
+contract and you must never imply otherwise — never say "done", "recorded", "I've
+updated" or "saved" about something that has not been confirmed yet.
+
+## How to respond
+
+Call exactly one tool per message:
+  propose_grn                 material arriving from a supplier
+  request_clarification       you are missing something, or it could mean two things
+
+If none of these fits — the user asked a question, or wants something you cannot do —
+do not call a tool. Answer in plain text.
+
+## Rules
+
+1. ASK, DO NOT GUESS. If a quantity, a client, a supplier, a material or an invoice
+   number is missing or could mean two things, call request_clarification. A wrong
+   proposal that gets confirmed is a wrong number in a GST filing. A question costs
+   five seconds. There is no situation in which guessing is the better trade.
+
+2. USE NAMES, NOT IDS. Pass material, product, client and supplier names and codes
+   exactly as the user said them. Never invent an identifier. The system matches names
+   to real records itself and will tell the user if there is no match.
+
+3. NEVER INVENT A NUMBER. If the user did not say a quantity, a rate or a date, leave
+   the field out. Do not default a quantity to 1. Do not assume today's date if they
+   described something that happened earlier. Do not carry a rate over from a previous
+   message unless the user said to.
+
+4. ONE TRANSACTION PER PROPOSAL. "Bharat Electricals sent copper wire and Kirloskar sent
+   bearings" is two GRNs from two suppliers. Propose the first and say you will do the
+   second next.
+
+5. AMENDMENTS ARE COMPLETE. If the user changes something about a proposal you just
+   made, call the same tool again with EVERY argument filled in, not only what changed.
+
+6. YOU CANNOT CREATE MASTER DATA. You cannot add a material, product, client or
+   supplier. If one is missing, say so plainly and tell them it is added in Settings.
+   Do not propose a transaction that depends on something that does not exist.
+
+7. NEVER CONFIRM ON THE USER'S BEHALF. You have no tool that executes anything. If the
+   user seems to be agreeing to something, propose it again rather than assuming.
+
+8. THINGS YOU DO NOT DO. You do not record a dispatch, generate an invoice, issue
+   material for production, or adjust stock — those stay on their own pages. You do not
+   cancel invoices, delete anything, create or edit master data, change settings, file
+   GST returns, email anyone, or touch any month that has already been filed. If asked,
+   say so in one sentence and name the page that does it.
+
+## Language
+
+Reply in the language the user wrote in. Most users write Marathi, Hinglish, or a mix of
+Marathi and English — "Bharat Electricals kadun 50 kg copper wire ala" and "50 kg copper
+wire receive zala Bharat Electricals kadun" both mean the same delivery. Understand them
+all.
+
+Keep these in Latin script even in Marathi: GST, GSTIN, HSN, SAC, ITC, CGST, SGST, IGST,
+GRN, ITC-04, all document numbers, all material and product codes, and all digits. A
+factory keyboard produces Latin digits and every printed invoice shows them.
+
+Write the way a foreman talks to a colleague. Short sentences. No English business
+register in a Marathi sentence, no Marathi literary register anywhere.
+
+## Style
+
+Never more than four lines before a tool call. The user is standing on a factory floor.
+
+Do not explain what you are about to do before doing it. Do not restate the user's
+message back to them. Do not apologise. Do not thank them. Do not offer a summary of
+your capabilities unless asked.
+
+When you refuse something, say what you cannot do and what does it instead, in one
+sentence, and stop.
+
+## Today
+
+Today's date (IST): ${opts.todayIST}
+This tenant: ${opts.companyName}
+Job worker: ${opts.isJobWorker}   Principal: ${opts.isPrincipal}
+Separate pool deduction: ${opts.separatePool}
+The person talking to you has the role: ${opts.role}
+
+Materials (name — code):        ${materialsBlock}
+Suppliers:                      ${suppliersBlock}
+Job work principals:            ${principalsBlock}`
+}
+
+// Fetches the job-work principal client list for GRN's material-owner
+// resolution. The equivalent helper (getJobWorkPrincipals, Step 2M) no longer
+// exists in this file — it was removed with confirmProductDispatch in the
+// Aug 31 2026 redesign. Small fresh duplicate, per this codebase's own
+// "small per-function duplication over cross-function coupling" convention
+// (see createSupportGithubIssue's comment above).
+async function resolvePrincipalClients(
+  supabaseClient: ReturnType<typeof createClient>,
+  tenantId: string
+): Promise<{ id: string; name: string }[]> {
+  const { data: settings } = await supabaseClient
+    .from('p2_tenant_settings')
+    .select('is_job_worker')
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+  if (!(settings as { is_job_worker?: boolean } | null)?.is_job_worker) return []
+
+  const { data: clients } = await supabaseClient
+    .from('p2_clients')
+    .select('id, name')
+    .eq('tenant_id', tenantId)
+    .eq('is_job_work_principal', true)
+  return (clients ?? []) as { id: string; name: string }[]
+}
+
+// §6.5 candidate generation, routes 1/2/4 (exact material_code, exact
+// normalised-name, matchMaterialName()'s existing fuzzy pass — reused so the
+// agent and read layer never disagree about what a material name means).
+// Route 3 (token-subset + numeric-token match) is not implemented as a
+// separate route in this session — matchMaterialName()'s substring match
+// covers the common case in the interim; a dedicated token-subset matcher is
+// a follow-up once §17 Q2's real-challan bench exists to validate it against.
+function normaliseForExactMatch(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]/g, '')
+}
+
+interface MaterialCandidateResult {
+  candidates: RawMaterial[]
+  exactRoute: boolean   // true if the candidate(s) came from route 1 or 2
+}
+
+function findMaterialCandidates(
+  materialName: string,
+  itemCode: string | undefined,
+  materials: RawMaterial[]
+): MaterialCandidateResult {
+  const normName = normaliseForExactMatch(materialName)
+  const normCode = itemCode ? normaliseForExactMatch(itemCode) : null
+
+  // Route 1: exact material_code match, either from the extracted item_code
+  // field or from material_name itself (a spoken/read code with no separate
+  // name, e.g. "KS4").
+  const codeMatches = materials.filter((m) => {
+    if (!m.material_code) return false
+    const mc = normaliseForExactMatch(m.material_code)
+    return (normCode && mc === normCode) || mc === normName
+  })
+  if (codeMatches.length === 1) return { candidates: codeMatches, exactRoute: true }
+
+  // Route 2: normalised-name exact match.
+  const nameMatches = materials.filter((m) => normaliseForExactMatch(m.name) === normName)
+  if (nameMatches.length === 1) return { candidates: nameMatches, exactRoute: true }
+  if (codeMatches.length > 1) return { candidates: codeMatches, exactRoute: false }
+  if (nameMatches.length > 1) return { candidates: nameMatches, exactRoute: false }
+
+  // Route 4: existing fuzzy pass, reused unchanged.
+  const fuzzy = findMatches(materialName, materials)
+  return { candidates: fuzzy, exactRoute: false }
+}
+
+// GSTIN state code is the first two characters. Returns null (never a
+// default) if either GSTIN is missing or malformed — §5.2 step 5: "if either
+// GSTIN is missing, ask — do not default."
+function derivePurchaseType(tenantGstin: string | null, supplierGstin: string | null): 'intrastate' | 'interstate' | null {
+  if (!tenantGstin || tenantGstin.length < 2 || !supplierGstin || supplierGstin.length < 2) return null
+  return tenantGstin.slice(0, 2) === supplierGstin.slice(0, 2) ? 'intrastate' : 'interstate'
+}
+
+// §5.2 step 4 — advisory duplicate-invoice check, reusing normaliseInvoiceNo
+// byte-identically with grn.html/gstr2b-reconcile.html. Deliberately NOT
+// backed by a DB constraint (see the W2 build session's Known Open Items #1
+// reconciliation note in CLAUDE.md — the raw_material_id-inclusive unique
+// index would break S.S. Engineering's legitimate coil-by-coil GRN entry,
+// confirmed against live production data). Fails open on a query error —
+// advisory only, never blocks.
+async function checkDuplicateInvoiceForAgent(
+  supabaseClient: ReturnType<typeof createClient>,
+  tenantId: string,
+  supplierId: string,
+  invoiceNo: string
+): Promise<{ grn_no: string; transaction_date: string; invoice_no: string } | null> {
+  const target = normaliseInvoiceNo(invoiceNo)
+  if (!target) return null
+
+  const { data, error } = await supabaseClient
+    .from('p2_stock_transactions')
+    .select('grn_no, invoice_no, transaction_date')
+    .eq('tenant_id', tenantId)
+    .eq('supplier_id', supplierId)
+    .eq('transaction_type', 'grn')
+    .not('invoice_no', 'is', null)
+
+  if (error) return null
+  const match = (data ?? []).find((row: { invoice_no: string | null }) => normaliseInvoiceNo(row.invoice_no) === target)
+  return match as { grn_no: string; transaction_date: string; invoice_no: string } | undefined ?? null
+}
+
+type GrnResolutionResult =
+  | { kind: 'plan'; plan: GrnPlan; confirmText: string; warnings: string[] }
+  | { kind: 'clarification'; questions: { field: string; question: string; options?: string[] }[] }
+  | { kind: 'refusal'; text: string }
+
+// The code-side resolution §5.2 describes: matchSupplierName()/candidate
+// generation (never the model), invoice_no mandatory, duplicate-invoice
+// advisory, purchase_type derivation, material-owner resolution, and the
+// §6.5 deterministic demotions that can only ever move green -> amber (R1a):
+// unit mismatch, qty > 20x median of the material's last 20 GRNs, rate
+// outside 3x/(1/3) of latest p2_material_prices, qty*rate != amount within
+// ₹2, duplicate invoice_no.
+async function resolveGrnPlan(
+  supabaseClient: ReturnType<typeof createClient>,
+  tenantId: string,
+  toolInput: Record<string, unknown>,
+  context: AgentContext,
+  principals: { id: string; name: string }[],
+  tenantGstin: string | null,
+  grnDateOverride: string | null   // photo path: extracted document_date once confirmed; null = today
+): Promise<GrnResolutionResult> {
+  const questions: { field: string; question: string; options?: string[] }[] = []
+  const warnings: string[] = []
+
+  const supplierName = typeof toolInput.supplier_name === 'string' ? toolInput.supplier_name : ''
+  const invoiceNo = typeof toolInput.invoice_no === 'string' ? toolInput.invoice_no.trim() : ''
+  const items = Array.isArray(toolInput.items) ? toolInput.items as Record<string, unknown>[] : []
+
+  if (!supplierName.trim()) {
+    // Kept permanently (small, fire-and-forget): confirms an empty name
+    // arrived here from the caller (extraction/escalation) rather than from
+    // a matching failure below — the two look identical from confirm_text
+    // alone. Query p2_agent_logs WHERE intent='propose_grn_diag' to inspect.
+    void logInteraction(supabaseClient, tenantId, '', 'propose_grn_diag', { stage: 'resolve_supplier', result: 'empty_name' }, null, true, null)
+    return { kind: 'refusal', text: "I don't have a supplier name for this delivery." }
+  }
+  const supplierMatches = findMatches(supplierName, context.suppliers)
+  if (supplierMatches.length === 0) {
+    // Kept permanently: normalised forms on both sides, so a mismatch that
+    // looks identical to the eye (trailing space, smart quote, Ltd./Limited)
+    // is visible rather than guessed at.
+    void logInteraction(supabaseClient, tenantId, '', 'propose_grn_diag', {
+      stage: 'resolve_supplier',
+      result: 'zero_matches',
+      extracted_name: supplierName,
+      extracted_name_normalised: supplierName.toLowerCase().trim(),
+      known_suppliers_normalised: context.suppliers.map((s) => s.name.toLowerCase().trim()),
+    }, null, true, null)
+    return {
+      kind: 'refusal',
+      text: `I don't have a supplier called ${supplierName}. Add them in Settings → Suppliers with their GSTIN, then I can record this GRN.`,
+    }
+  }
+  if (supplierMatches.length > 1) {
+    return { kind: 'refusal', text: `"${supplierName}" is ambiguous — did you mean ${supplierMatches.map((s) => s.name).join(', ')}?` }
+  }
+  const supplier = supplierMatches[0]
+
+  if (!invoiceNo) {
+    questions.push({ field: 'invoice_no', question: 'What is the supplier invoice number?' })
+  }
+  if (items.length === 0) {
+    return { kind: 'refusal', text: "I don't have any materials for this delivery." }
+  }
+
+  // Supplier GSTIN, tenant GSTIN, latest prices, last-20-GRN medians — fetched
+  // once up front rather than per item.
+  const { data: supplierRow } = await supabaseClient
+    .from('p2_suppliers')
+    .select('gstin')
+    .eq('id', supplier.id)
+    .maybeSingle()
+  const supplierGstin = (supplierRow as { gstin?: string } | null)?.gstin ?? null
+
+  let purchaseType = toolInput.purchase_type === 'interstate' ? 'interstate' as const
+    : toolInput.purchase_type === 'intrastate' ? 'intrastate' as const
+    : derivePurchaseType(tenantGstin, supplierGstin)
+  if (!purchaseType) {
+    questions.push({ field: 'purchase_type', question: `I can't tell if ${supplier.name} is intrastate or interstate — is their GSTIN missing in Settings?` })
+    purchaseType = 'intrastate'   // placeholder only if there are no other blocking questions; see gating below
+  }
+
+  // Material owner (principal pool) — only asked when the tenant is a job
+  // worker with at least one principal.
+  let ownedBy: string | null = null
+  let ownerName: string | null = null
+  const materialOwnerName = typeof toolInput.material_owner === 'string' ? toolInput.material_owner.trim() : ''
+  if (materialOwnerName) {
+    const ownerMatch = matchClientName(materialOwnerName, principals)
+    if ('error' in ownerMatch) {
+      questions.push({ field: 'material_owner', question: `Which principal is "${materialOwnerName}"? Options: ${principals.map((p) => p.name).join(', ') || 'none configured'}` })
+    } else {
+      ownedBy = ownerMatch.client.id
+      ownerName = ownerMatch.client.name
+    }
+  }
+  let principalChallanNo = typeof toolInput.principal_challan_no === 'string' ? toolInput.principal_challan_no.trim() : ''
+  let principalChallanDate = typeof toolInput.principal_challan_date === 'string' ? toolInput.principal_challan_date.trim() : ''
+  if (ownedBy && (!principalChallanNo || !principalChallanDate)) {
+    questions.push({ field: 'principal_challan', question: `This is a principal delivery from ${ownerName} — what is the principal's challan number and date?` })
+  }
+
+  const planItems: GrnPlanItem[] = []
+  let duplicateWarning: { grn_no: string; transaction_date: string; invoice_no: string } | null = null
+
+  for (const rawItem of items) {
+    const materialName = typeof rawItem.material_name === 'string' ? rawItem.material_name : ''
+    const itemCode = typeof rawItem.item_code === 'string' ? rawItem.item_code : undefined
+    const quantity = typeof rawItem.quantity === 'number' ? rawItem.quantity : NaN
+    const unit = typeof rawItem.unit === 'string' ? rawItem.unit : ''
+    const rate = typeof rawItem.rate === 'number' ? rawItem.rate : null
+
+    if (!materialName.trim()) {
+      questions.push({ field: 'material_name', question: 'One line is missing a material name — which material is it?' })
+      continue
+    }
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      questions.push({ field: 'quantity', question: `How much ${materialName} arrived?` })
+      continue
+    }
+
+    const { candidates, exactRoute } = findMaterialCandidates(materialName, itemCode, context.materials)
+    if (candidates.length === 0) {
+      return {
+        kind: 'refusal',
+        text: `I don't have a material called "${materialName}". Add it in Settings → Raw Materials first, or check the spelling.`,
+      }
+    }
+    if (candidates.length > 1) {
+      questions.push({ field: 'material_name', question: `"${materialName}" is ambiguous — did you mean ${candidates.map((c) => c.name).join(', ')}?` })
+      continue
+    }
+    const material = candidates[0]
+    const bandReasons: string[] = []
+    let band: GrnBand = exactRoute ? 'green' : 'amber'
+    if (!exactRoute) bandReasons.push('fuzzy material match')
+
+    // Deterministic demotions (R1a — can only ever move green -> amber).
+    const resolvedUnit = unit || material.unit
+    if (unit && unit.toLowerCase().trim() !== material.unit.toLowerCase().trim()) {
+      band = 'amber'
+      bandReasons.push(`unit mismatch: read "${unit}", tracked in ${material.unit}`)
+    }
+
+    const { data: recentGrns } = await supabaseClient
+      .from('p2_stock_transactions')
+      .select('quantity')
+      .eq('tenant_id', tenantId)
+      .eq('raw_material_id', material.id)
+      .eq('transaction_type', 'grn')
+      .order('transaction_date', { ascending: false })
+      .limit(20)
+    const recentQtys = ((recentGrns ?? []) as { quantity: number }[]).map((r) => Math.abs(r.quantity)).sort((a, b) => a - b)
+    if (recentQtys.length >= 3) {
+      const median = recentQtys[Math.floor(recentQtys.length / 2)]
+      if (median > 0 && quantity > median * 20) {
+        band = 'amber'
+        bandReasons.push(`quantity ${quantity} is more than 20× this material's recent median (${median})`)
+      }
+    }
+
+    if (rate !== null) {
+      const { data: priceRows } = await supabaseClient
+        .from('p2_material_prices')
+        .select('price_per_unit, effective_date')
+        .eq('tenant_id', tenantId)
+        .eq('raw_material_id', material.id)
+        .order('effective_date', { ascending: false })
+        .limit(1)
+      const latestPrice = (priceRows ?? [])[0] as { price_per_unit: number } | undefined
+      if (latestPrice && latestPrice.price_per_unit > 0) {
+        if (rate > latestPrice.price_per_unit * 3 || rate < latestPrice.price_per_unit / 3) {
+          band = 'amber'
+          bandReasons.push(`rate ₹${rate} is far from the last recorded rate of ₹${latestPrice.price_per_unit}`)
+        }
+      }
+    }
+
+    const amount = typeof rawItem.amount === 'number' ? rawItem.amount : null
+    if (amount !== null && rate !== null && Math.abs(quantity * rate - amount) > 2) {
+      band = 'amber'
+      bandReasons.push(`quantity × rate (₹${(quantity * rate).toFixed(2)}) does not match the printed amount (₹${amount.toFixed(2)})`)
+    }
+
+    planItems.push({
+      raw_material_id: material.id,
+      material_name: material.name,
+      material_code: material.material_code,
+      quantity,
+      unit: resolvedUnit,
+      rate,
+      invoice_no: invoiceNo,
+      purchase_type: purchaseType,
+      band,
+      band_reasons: bandReasons,
+    })
+  }
+
+  if (invoiceNo && planItems.length > 0) {
+    duplicateWarning = await checkDuplicateInvoiceForAgent(supabaseClient, tenantId, supplier.id, invoiceNo)
+    if (duplicateWarning) {
+      warnings.push(`Invoice ${invoiceNo} was already received under ${duplicateWarning.grn_no} on ${duplicateWarning.transaction_date}.`)
+    }
+  }
+
+  // Any blocking question (missing invoice_no, ambiguous/unresolved material
+  // owner, missing principal challan fields, unresolved purchase_type,
+  // per-line missing name/quantity/ambiguity) stops a proposal from being
+  // built at all — never a proposal with a guessed value in it.
+  if (questions.length > 0 || planItems.length === 0) {
+    return { kind: 'clarification', questions: questions.length > 0 ? questions : [{ field: 'items', question: 'Which materials arrived?' }] }
+  }
+
+  for (const item of planItems) if (item.band_reasons.length) warnings.push(`${item.material_name}: ${item.band_reasons.join('; ')}`)
+
+  const grnDate = grnDateOverride ?? todayIST()
+  const plan: GrnPlan = {
+    kind: 'grn',
+    supplier_id: supplier.id,
+    supplier_name: supplier.name,
+    grn_date: grnDate,
+    owned_by: ownedBy,
+    owner_name: ownerName,
+    principal_challan_no: ownedBy ? principalChallanNo : null,
+    principal_challan_date: ownedBy ? principalChallanDate : null,
+    items: planItems,
+    duplicate_warning: duplicateWarning,
+  }
+
+  const confirmText = renderGrnConfirmText(plan, warnings)
+  return { kind: 'plan', plan, confirmText, warnings }
+}
+
+function renderGrnConfirmText(plan: GrnPlan, warnings: string[]): string {
+  const lines: string[] = []
+  lines.push(`GRN from ${plan.supplier_name}, invoice ${plan.items[0]?.invoice_no ?? '—'}, ${plan.grn_date}:`)
+  for (const item of plan.items) {
+    const amount = item.rate !== null ? ` = ₹${(item.quantity * item.rate).toFixed(2)}` : ''
+    const rateText = item.rate !== null ? ` @ ₹${item.rate.toFixed(2)}${amount}` : ''
+    const marker = item.band === 'amber' ? ' ⚠' : ''
+    lines.push(`• ${item.material_name}${item.material_code ? ` [${item.material_code}]` : ''}   ${item.quantity} ${item.unit}${rateText}${marker}`)
+  }
+  const purchaseLabel = plan.items[0]?.purchase_type === 'interstate' ? 'Interstate (IGST)' : 'Intrastate (CGST+SGST)'
+  const ownerLabel = plan.owner_name ? plan.owner_name : 'Own stock'
+  lines.push(`${purchaseLabel} · ${ownerLabel}`)
+  if (warnings.length) lines.push('', ...warnings.map((w) => `⚠ ${w}`))
+  lines.push('', 'GRN number is issued when you confirm.')
+  return lines.join('\n')
+}
+
+// Text-turn tool-use call. Separate from callHaiku() — that one classifies
+// intent from raw text; this one is tool use against a fixed schema (D2).
+// No thinking config (§3 D5 — schema-constrained extraction has nothing to
+// reason about). tool_choice is always 'auto', never 'any' — "answer in
+// words" must stay reachable (D2 point 4).
+//
+// priorProposalText carries the live proposal's confirm_text into context for
+// an amendment turn (Correction 4 — this stack has no conversation state;
+// §4.3's "the model sees the prior turn" is approximated by folding the
+// rendered card into the new user turn instead of a message history array).
+async function callHaikuPropose(
+  anthropicClient: Anthropic,
+  systemPrompt: string,
+  message: string,
+  priorProposalText: string | null
+): Promise<{ toolName: string | null; toolInput: Record<string, unknown> | null; text: string | null }> {
+  const userContent = priorProposalText
+    ? `Current pending proposal (not yet confirmed):\n${priorProposalText}\n\nUser's follow-up: ${message}`
+    : message
+
+  const response = await anthropicClient.messages.create({
+    model: 'claude-haiku-4-5',
+    max_tokens: 1500,
+    system: systemPrompt,
+    tools: PROPOSE_TOOLS,
+    // disable_parallel_tool_use: the system prompt's own Rule ("Call exactly
+    // one tool per message") was only a prompt instruction with nothing
+    // structurally enforcing it — live-tested and confirmed the same failure
+    // class as the extraction bug below can happen here too (the model
+    // calling two tools, or the same tool twice, in one turn; code that
+    // reads only the first tool_use block then silently drops whatever the
+    // other one carried). Forcing at most one call removes the ambiguity
+    // rather than post-hoc merging two tool calls with different names.
+    tool_choice: { type: 'auto', disable_parallel_tool_use: true },
+    messages: [{ role: 'user', content: userContent }],
+  } as Anthropic.MessageCreateParamsNonStreaming)
+
+  if (response.stop_reason === 'tool_use') {
+    const toolBlock = response.content.find((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use')
+    if (toolBlock) {
+      return { toolName: toolBlock.name, toolInput: toolBlock.input as Record<string, unknown>, text: null }
+    }
+  }
+  const textBlock = response.content.find((b): b is Anthropic.TextBlock => b.type === 'text')
+  return { toolName: null, toolInput: null, text: textBlock?.text ?? null }
+}
+
+// Merges N extract_delivery_document tool calls into one object. Live-tested
+// 18 Sept 2026: Sonnet 5 called this tool TWICE in a single turn on a clean,
+// unambiguous synthetic tax invoice (stop_reason: 'tool_use',
+// content_block_types: ['tool_use','tool_use']) — apparently splitting
+// header fields (supplier_name, supplier_gstin, challan_no) into one call
+// and the line-item table + invoice_no into the other. Code that reads only
+// the first block (response.content.find(...)) silently drops whichever
+// fields ended up in the block it didn't pick — this is what caused
+// "I don't have a supplier name for this delivery" on a photo where the
+// supplier name was clearly legible and correctly read. `tool_choice:
+// {type:'auto', disable_parallel_tool_use:true}` on both call sites below
+// is the real fix (forces at most one call, so this function's multi-block
+// path should be unreachable in normal operation) — kept as defence in
+// depth in case a future model/API change reintroduces parallel calls
+// despite the flag.
+function mergeExtractionToolBlocks(blocks: Record<string, unknown>[]): Record<string, unknown> | null {
+  if (blocks.length === 0) return null
+  if (blocks.length === 1) return blocks[0]
+  const merged: Record<string, unknown> = {}
+  for (const block of blocks) {
+    for (const [key, value] of Object.entries(block)) {
+      if (key === 'items') continue
+      const existing = merged[key]
+      const existingEmpty = existing === undefined || existing === null || existing === ''
+      const valueEmpty = value === undefined || value === null || value === ''
+      if (existingEmpty && !valueEmpty) merged[key] = value
+    }
+  }
+  // The block with the most items is taken as-is (never concatenated —
+  // concatenating risks duplicating a line two calls both happened to read).
+  let bestItems: unknown[] = []
+  for (const block of blocks) {
+    const items = Array.isArray(block.items) ? block.items : []
+    if (items.length > bestItems.length) bestItems = items
+  }
+  merged.items = bestItems
+  return merged
+}
+
+// §6.4 — Sonnet 5 extraction. Vision transcribes; it does not match, decide,
+// or interpret (§6.1). thinking: adaptive, no budget_tokens (rejected with a
+// 400 on Sonnet 5/Opus 5). No assistant prefill anywhere in this pipeline
+// (also a 400 on both models).
+async function extractDeliveryDocument(
+  anthropicClient: Anthropic,
+  imageBase64: string,
+  mediaType: string
+): Promise<Record<string, unknown> | null> {
+  const response = await anthropicClient.messages.create({
+    model: 'claude-sonnet-5',
+    max_tokens: 2048,
+    thinking: { type: 'adaptive' },
+    system: EXTRACTION_PROMPT,
+    tools: [EXTRACT_DELIVERY_DOCUMENT_TOOL],
+    // See mergeExtractionToolBlocks's comment — forces exactly one call.
+    tool_choice: { type: 'auto', disable_parallel_tool_use: true },
+    messages: [{
+      role: 'user',
+      content: [
+        { type: 'image', source: { type: 'base64', media_type: mediaType, data: imageBase64 } },
+        { type: 'text', text: 'Extract this delivery document.' },
+      ],
+    }],
+  } as Anthropic.MessageCreateParamsNonStreaming)
+
+  const toolBlocks = response.content.filter((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use')
+  return mergeExtractionToolBlocks(toolBlocks.map((b) => b.input as Record<string, unknown>))
+}
+
+// §6.6 escalation — same image, reduced instruction naming only the flagged
+// fields, prior reading shown. Promotes low -> medium only, NEVER to green
+// (R1a) — the caller (resolveGrnPlan via the photo-path banding below) is
+// responsible for keeping an escalated field at amber even on agreement.
+async function escalateWithOpus(
+  anthropicClient: Anthropic,
+  imageBase64: string,
+  mediaType: string,
+  flaggedFields: string[],
+  priorReading: Record<string, unknown>
+): Promise<Record<string, unknown> | null> {
+  const prompt = `The first reading of this document's ${flaggedFields.join(', ')} was low-confidence or failed a
+consistency check. Prior reading: ${JSON.stringify(priorReading)}.
+Look again at exactly these fields and confirm or correct them. Call extract_delivery_document
+with your best reading of the whole document, but focus your attention on: ${flaggedFields.join(', ')}.`
+
+  const response = await anthropicClient.messages.create({
+    model: 'claude-opus-5',
+    max_tokens: 2048,
+    thinking: { type: 'adaptive' },
+    output_config: { effort: 'medium' },
+    system: EXTRACTION_PROMPT,
+    tools: [EXTRACT_DELIVERY_DOCUMENT_TOOL],
+    // See mergeExtractionToolBlocks's comment above extractDeliveryDocument.
+    tool_choice: { type: 'auto', disable_parallel_tool_use: true },
+    messages: [{
+      role: 'user',
+      content: [
+        { type: 'image', source: { type: 'base64', media_type: mediaType, data: imageBase64 } },
+        { type: 'text', text: prompt },
+      ],
+    }],
+  } as Anthropic.MessageCreateParamsNonStreaming)
+
+  const toolBlocks = response.content.filter((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use')
+  return mergeExtractionToolBlocks(toolBlocks.map((b) => b.input as Record<string, unknown>))
+}
+
+// §6.6: escalate when ANY of — quantity/rate/invoice_no confidence < high,
+// legibility partial/poor, handwritten, or a deterministic check demoted a
+// qty/rate (checked after a first resolveGrnPlan() pass over the raw
+// extraction, so this reads the confidence map only, before resolution).
+function fieldsNeedingEscalation(extracted: Record<string, unknown>): string[] {
+  const confidence = (extracted.field_confidence ?? {}) as Record<string, string>
+  const flagged: string[] = []
+  if (confidence.invoice_no === 'low' || confidence.invoice_no === 'medium') flagged.push('invoice_no')
+  // Quantity/rate confidence lives per-line (see the tool schema's per-item
+  // `confidence` field) — any non-high line escalates the whole document
+  // pass, since Opus re-reads the same image regardless of which line
+  // triggered it.
+  const items = Array.isArray(extracted.items) ? extracted.items as Record<string, unknown>[] : []
+  if (items.some((it) => it.confidence === 'low' || it.confidence === 'medium')) flagged.push('quantity', 'rate')
+  if (extracted.legibility === 'partial' || extracted.legibility === 'poor') flagged.push('legibility')
+  if (extracted.handwritten === true) flagged.push('handwritten')
+  return flagged
+}
+
+// Converts a Sonnet/Opus extract_delivery_document tool input into a
+// propose_grn-shaped object, built in code (Correction 3 — the photo path
+// never makes a second Haiku call just to re-author the same tool call it
+// would otherwise produce from text).
+function extractedDocumentToProposeGrnInput(extracted: Record<string, unknown>): Record<string, unknown> {
+  const items = Array.isArray(extracted.items) ? extracted.items as Record<string, unknown>[] : []
+  return {
+    supplier_name: extracted.supplier_name ?? '',
+    invoice_no: extracted.invoice_no ?? '',
+    grn_date: extracted.document_date,
+    challan_no: extracted.challan_no,
+    items: items.map((it) => ({
+      material_name: it.description,
+      item_code: it.item_code,
+      quantity: it.quantity,
+      unit: it.unit,
+      rate: it.rate,
+    })),
+  }
+}
+
+// Meter (§10.1) — never a gate. Lazy month rollover on IST 'YYYY-MM', same
+// pattern as the existing daily counter's lazy reset.
+async function currentIstMonth(): Promise<string> {
+  return todayIST().slice(0, 7)
+}
+
+async function bumpMonthlyAgentWrites(
+  supabaseClient: ReturnType<typeof createClient>,
+  tenantId: string
+): Promise<void> {
+  const month = await currentIstMonth()
+  const { data: settings } = await supabaseClient
+    .from('p2_tenant_settings')
+    .select('agent_writes_this_month, agent_writes_reset_month')
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+  const row = settings as { agent_writes_this_month?: number; agent_writes_reset_month?: string | null } | null
+  const isNewMonth = row?.agent_writes_reset_month !== month
+  await supabaseClient
+    .from('p2_tenant_settings')
+    .update({
+      agent_writes_this_month: isNewMonth ? 1 : (row?.agent_writes_this_month ?? 0) + 1,
+      agent_writes_reset_month: month,
+    })
+    .eq('tenant_id', tenantId)
+}
+
+// D10 plan gate + demo exclusion — fresh fetch, never localStorage/isPro().
+// Applies ONLY to the write path (a fresh GRN proposal, photo or text) — a
+// tenant with agent_write_enabled=false (the default, including for every
+// existing Pro/Founder tenant post-migration) must still be able to ask
+// ordinary read questions through this same endpoint. Gating reads here would
+// be a silent regression of the entire read layer for every tenant until its
+// owner opts in, which is not what D10 asks for.
+function checkWriteGate(settings: Record<string, unknown>): { ok: true } | { ok: false; reason: string } {
+  if (settings.plan === 'lite') return { ok: false, reason: 'The agent write layer is not available on the Lite plan.' }
+  if (!settings.agent_enabled) return { ok: false, reason: 'The agent is not enabled for this account.' }
+  if (!settings.agent_write_enabled) return { ok: false, reason: 'The owner has not turned on agent writes yet — enable it in Settings → Agent.' }
+  return { ok: true }
+}
+
+async function proposeAction(
+  supabaseClient: ReturnType<typeof createClient>,
+  anthropicClient: Anthropic,
+  req: Request,
+  body: Partial<ProposeRequest>,
+  callerUserId: string
+): Promise<Response> {
+  const { tenant_id, message, image, image_media_type } = body
+  if (!tenant_id) return respond({ status: 'error', error: 'tenant_id is required' }, 400)
+  const trimmedMessage = (message ?? '').trim()
+  if (!trimmedMessage && !image) return respond({ status: 'error', error: 'message or image is required' }, 400)
+
+  const { data: settingsRow } = await supabaseClient
+    .from('p2_tenant_settings')
+    .select('plan, agent_write_enabled, agent_enabled, is_job_worker, is_principal, separate_pool_deduction, company_name, gstin')
+    .eq('tenant_id', tenant_id)
+    .maybeSingle()
+  const settings = (settingsRow ?? {}) as Record<string, unknown>
+
+  // Look up this user's current live proposal (the §4.2 typed-confirmation
+  // path and the §4.3 amendment path both need this).
+  const { data: liveProposalRow } = await supabaseClient
+    .from('p2_agent_proposals')
+    .select('id, confirm_text, source, plan, warnings, model_input')
+    .eq('tenant_id', tenant_id)
+    .eq('user_id', callerUserId)
+    .eq('status', 'awaiting_confirmation')
+    .maybeSingle()
+  const liveProposal = liveProposalRow as {
+    id: string; confirm_text: string; source: 'photo' | 'qr'
+    plan: GrnPlan; warnings: string[]; model_input: Record<string, unknown>
+  } | null
+
+  // Owner-selector amendment — a direct dropdown pick, never a Haiku
+  // round-trip. Folding the new owner into free text and hoping Haiku
+  // reconstructs the ENTIRE propose_grn call (supplier, invoice_no, every
+  // item) from just the rendered confirm_text card proved unreliable
+  // live-tested 18 Sept 2026: "Owner: <name>" sometimes produced no tool
+  // call at all, landing on the generic unknown-intent fallback instead of
+  // an updated proposal. This patches the STORED plan's owner fields
+  // directly and re-renders confirm_text with the same renderGrnConfirmText()
+  // the normal path uses, so the two can never disagree on formatting.
+  // Checked before AFFIRM/DECLINE and before the read pipeline — this is
+  // unambiguously a write action against a specific live proposal, never a
+  // read question or a plain yes/no.
+  if (body.owner_amendment !== undefined) {
+    if (!liveProposal) {
+      return respond({ status: 'ok', intent: 'propose_grn', confirm: { status: 'refused', confirm_text: 'No pending GRN to update — photograph the delivery again.' } })
+    }
+
+    // §4.5 rule 5 equivalent — role re-checked, not inherited, same as confirm/cancel.
+    const amendRole = await resolveCallerRole(supabaseClient, tenant_id, callerUserId)
+    if (!GRN_ALLOWED_ROLES.has(amendRole)) {
+      return respond({ status: 'ok', intent: 'propose_grn', confirm: { status: 'refused', confirm_text: 'Only the owner, a supervisor or a storekeeper can record a GRN.' } })
+    }
+    const amendGate = checkWriteGate(settings)
+    if (!amendGate.ok) {
+      return respond({ status: 'ok', intent: 'propose_grn', confirm: { status: 'refused', confirm_text: amendGate.reason } })
+    }
+
+    const amendPrincipals = await resolvePrincipalClients(supabaseClient, tenant_id)
+    const requestedOwnedBy = body.owner_amendment.owned_by
+    let newOwnedBy: string | null = null
+    let newOwnerName: string | null = null
+    if (requestedOwnedBy) {
+      const match = amendPrincipals.find((p) => p.id === requestedOwnedBy)
+      if (!match) {
+        return respond({ status: 'ok', intent: 'propose_grn', confirm: { status: 'refused', confirm_text: 'That principal is no longer available — refresh and try again.' } })
+      }
+      newOwnedBy = match.id
+      newOwnerName = match.name
+    }
+
+    const priorPlan = liveProposal.plan
+    // Keep the existing principal challan info only if it's still for the
+    // SAME principal — switching away from, or to a different, principal
+    // means that challan number/date no longer applies.
+    const samePrincipalAsBefore = !!newOwnedBy && priorPlan.owned_by === newOwnedBy
+    const amendedPlan: GrnPlan = {
+      ...priorPlan,
+      owned_by: newOwnedBy,
+      owner_name: newOwnerName,
+      principal_challan_no: samePrincipalAsBefore ? priorPlan.principal_challan_no : null,
+      principal_challan_date: samePrincipalAsBefore ? priorPlan.principal_challan_date : null,
+    }
+
+    // Switching to a principal this proposal didn't already have challan
+    // info for needs one more answer — same rule resolveGrnPlan applies on
+    // a fresh photo (§5.2). Supersede and ask, exactly like any other
+    // clarification; the frontend already greys out a superseded card via
+    // superseded_proposal_id.
+    if (newOwnedBy && (!amendedPlan.principal_challan_no || !amendedPlan.principal_challan_date)) {
+      await supabaseClient.from('p2_agent_proposals').update({ status: 'superseded', updated_at: new Date().toISOString() }).eq('id', liveProposal.id)
+      const question = `This is a principal delivery from ${newOwnerName} — what is the principal's challan number and date?`
+      void logInteraction(supabaseClient, tenant_id, trimmedMessage, 'propose_grn', { owner_amendment: body.owner_amendment }, null, true, null)
+      return respond({
+        status: 'ok',
+        intent: 'request_clarification',
+        confirm: { status: 'question', confirm_text: question, questions: [{ field: 'principal_challan', question }] },
+        superseded_proposal_id: liveProposal.id,
+      })
+    }
+
+    const amendedWarnings = liveProposal.warnings ?? []
+    const amendedConfirmText = renderGrnConfirmText(amendedPlan, amendedWarnings)
+    await supabaseClient.from('p2_agent_proposals').update({ status: 'superseded', updated_at: new Date().toISOString() }).eq('id', liveProposal.id)
+
+    const amendedProposalId = crypto.randomUUID()
+    const amendedExpiresAt = new Date(Date.now() + 15 * 60000).toISOString()
+    const { error: amendInsertError } = await supabaseClient.from('p2_agent_proposals').insert({
+      id: amendedProposalId,
+      tenant_id,
+      user_id: callerUserId,
+      kind: 'grn',
+      status: 'awaiting_confirmation',
+      model_input: liveProposal.model_input ?? {},
+      plan: amendedPlan,
+      confirm_text: amendedConfirmText,
+      warnings: amendedWarnings,
+      source: liveProposal.source,
+      model_used: 'deterministic',
+      escalated: false,
+      expires_at: amendedExpiresAt,
+    })
+    if (amendInsertError && amendInsertError.code !== '23505') {
+      void logInteraction(supabaseClient, tenant_id, trimmedMessage, 'propose_grn', { owner_amendment: body.owner_amendment }, null, false, amendInsertError.message)
+      return respond({ status: 'error', error: amendInsertError.message }, 500)
+    }
+
+    void logInteraction(supabaseClient, tenant_id, trimmedMessage, 'propose_grn', { owner_amendment: body.owner_amendment }, 'matched', true, null)
+    return respond({
+      status: 'ok',
+      intent: 'propose_grn',
+      proposal_id: amendedProposalId,
+      expires_at: amendedExpiresAt,
+      confirm: { status: 'ready', confirm_text: amendedConfirmText },
+      is_job_worker: !!settings.is_job_worker,
+      principals: amendPrincipals.map((p) => ({ id: p.id, name: p.name })),
+      owned_by: amendedPlan.owned_by,
+      owner_name: amendedPlan.owner_name,
+    })
+  }
+
+  // §4.2 — AFFIRM/DECLINE, evaluated before any model call and before any
+  // write gate (confirm/cancel re-validate their own role at §4.5 rule 5;
+  // the plan-enablement gate belongs at proposal CREATION time only — once a
+  // proposal exists, turning the flag off mid-flight doesn't retroactively
+  // invalidate it, matching §4.5's own re-validation list, which does not
+  // include re-checking agent_write_enabled). Only when exactly one proposal
+  // is live — a match short-circuits straight to confirm/cancel.
+  if (!image && trimmedMessage && liveProposal) {
+    const classification = classifyConfirmation(trimmedMessage)
+    if (classification === 'affirm') {
+      return await confirmProposalAction(supabaseClient, { tenant_id, proposal_id: liveProposal.id }, callerUserId)
+    }
+    if (classification === 'decline') {
+      return await cancelProposalAction(supabaseClient, { tenant_id, proposal_id: liveProposal.id }, callerUserId)
+    }
+  }
+
+  const context = await buildContext(supabaseClient, tenant_id)
+  if ('error' in context) return respond({ status: 'error', error: context.error }, 500)
+  const principals = await resolvePrincipalClients(supabaseClient, tenant_id)
+
+  // Text, no image: try the read pipeline BEFORE any write gate, regardless
+  // of whether a proposal is currently live — a pending GRN must never block
+  // an unrelated read question, and reads have no role/plan restriction
+  // today. Only once this returns null (not a recognised read intent) do the
+  // D11/D10 write gates apply, right before the write-tool-use call. The
+  // daily read quota governs this attempt only (§0 C4); the write layer's
+  // monthly meter is separate and is never checked here.
+  if (!image && trimmedMessage) {
+    const usage = await checkAndIncrementUsage(supabaseClient, tenant_id)
+    if (!usage.allowed) return respond({ status: 'error', error: usage.error }, 429)
+    const readResponse = await tryReadClassification(supabaseClient, anthropicClient, tenant_id, trimmedMessage, context)
+    if (readResponse) return readResponse
+  }
+
+  // D11 role gate — before any WRITE-attempting model call (§18.3 #17).
+  const role = await resolveCallerRole(supabaseClient, tenant_id, callerUserId)
+  if (!GRN_ALLOWED_ROLES.has(role)) {
+    void logInteraction(supabaseClient, tenant_id, trimmedMessage, 'propose_grn', {}, null, false, 'role_denied')
+    return respond({ status: 'ok', intent: 'propose_grn', confirm: { status: 'refused', confirm_text: 'Only the owner, a supervisor or a storekeeper can record a GRN.' } })
+  }
+
+  // D10 plan gate — before any WRITE-attempting model call.
+  const gate = checkWriteGate(settings)
+  if (!gate.ok) {
+    void logInteraction(supabaseClient, tenant_id, trimmedMessage, 'propose_grn', {}, null, false, 'write_gate_denied')
+    return respond({ status: 'ok', intent: 'propose_grn', confirm: { status: 'refused', confirm_text: gate.reason } })
+  }
+
+  let toolName: string | null = null
+  let toolInput: Record<string, unknown> | null = null
+  let plainText: string | null = null
+  let modelUsed = 'claude-haiku-4-5'
+  let escalated = false
+  const imagePaths: string[] = []
+  const proposalId = crypto.randomUUID()
+
+  if (image) {
+    // Photo path (§6) — bypasses Haiku entirely (Correction 3). Upload first
+    // so the path can include the pre-generated proposal id (Correction 5).
+    const mediaType = image_media_type ?? 'image/jpeg'
+    const uploadPath = `${tenant_id}/${proposalId}/1.jpg`
+    const bytes = Uint8Array.from(atob(image), (c) => c.charCodeAt(0))
+    const { error: uploadError } = await supabaseClient.storage
+      .from('agent-uploads')
+      .upload(uploadPath, bytes, { contentType: mediaType })
+    if (!uploadError) imagePaths.push(uploadPath)
+
+    let extracted = await extractDeliveryDocument(anthropicClient, image, mediaType)
+    modelUsed = 'claude-sonnet-5'
+    if (!extracted) {
+      void logInteraction(supabaseClient, tenant_id, trimmedMessage, 'propose_grn', {}, null, false, 'extraction_failed')
+      return respond({ status: 'ok', intent: 'propose_grn', confirm: { status: 'refused', confirm_text: "I can't read this photo. Try again with more light, or use the GRN page." } })
+    }
+
+    const flagged = fieldsNeedingEscalation(extracted)
+    if (flagged.length > 0) {
+      const escalatedReading = await escalateWithOpus(anthropicClient, image, mediaType, flagged, extracted)
+      escalated = true
+      modelUsed = 'claude-opus-5'
+      if (escalatedReading) {
+        // Merge, don't replace: the escalation prompt asks the model to
+        // "focus attention on" specific fields, and a model taking that
+        // literally can return a minimal object that omits everything else
+        // it isn't being asked about (supplier_name included) — a prior bug
+        // report showed exactly this: a clean SKF Bearings India invoice
+        // lost its supplier_name after escalation triggered on an unrelated
+        // field. Prefer escalatedReading's own keys (it's the more careful
+        // second read for whatever it does return), but fall back to the
+        // original extraction for anything escalatedReading left out. items
+        // is handled separately: only trust escalatedReading's array if it's
+        // the same length as the original — a shorter array is far more
+        // likely to be a narrowed subset (dropped lines) than a genuine
+        // re-count, and silently dropping a real line is worse than keeping
+        // a possibly-stale one (which still goes through §6.5's own
+        // deterministic re-validation downstream).
+        const originalItems = Array.isArray(extracted.items) ? extracted.items : []
+        const escalatedItems = Array.isArray(escalatedReading.items) ? escalatedReading.items : []
+        const mergedItems = escalatedItems.length > 0 && escalatedItems.length === originalItems.length
+          ? escalatedItems
+          : originalItems
+        extracted = { ...extracted, ...escalatedReading, items: mergedItems }
+      }
+      // R1a: escalation can promote low -> medium, never -> green. The
+      // banding in resolveGrnPlan() only ever assigns green via an EXACT
+      // material-code/name route with high field confidence, so an escalated
+      // (still non-high) confidence field can never reach green regardless —
+      // structural, not a flag that could be flipped.
+    }
+
+    toolInput = extractedDocumentToProposeGrnInput(extracted)
+    toolName = 'propose_grn'
+  } else {
+    // Text-only turn, not a recognised read intent (checked above) — try the
+    // write-tool-use path. Fresh (non-amendment) GRN descriptions in plain
+    // text are refused below
+    // (§5.2 — photo only for a new GRN); this path exists for amendments to
+    // a live photo-derived proposal, clarification answers, and everything
+    // else Haiku might reasonably say plain text about.
+    const systemPrompt = buildWriteSystemPrompt({
+      todayIST: todayIST(),
+      companyName: (settings.company_name as string) ?? '',
+      isJobWorker: !!settings.is_job_worker,
+      isPrincipal: !!settings.is_principal,
+      separatePool: !!settings.separate_pool_deduction,
+      role,
+      materials: context.materials,
+      suppliers: context.suppliers,
+      principals,
+    })
+    const haikuResult = await callHaikuPropose(anthropicClient, systemPrompt, trimmedMessage, liveProposal?.confirm_text ?? null)
+    toolName = haikuResult.toolName
+    toolInput = haikuResult.toolInput
+    plainText = haikuResult.text
+
+    const looksLikeFreshGrnAttempt = toolName === 'propose_grn' ||
+      (toolName === 'request_clarification' && toolInput?.likely_intent === 'grn')
+    if (looksLikeFreshGrnAttempt && !liveProposal) {
+      // §5.2 — the typed GRN text path is dropped; a fresh (non-amendment)
+      // text description is routed to the form, never resolved — whether
+      // Haiku would have called propose_grn directly or needed to ask a
+      // clarifying question first (likely_intent: 'grn' on
+      // request_clarification exists in the §7.3 schema for exactly this:
+      // live-tested 18 Sept 2026, a message like "50 kg copper wire from X
+      // invoice Y" with an ambiguous material name made Haiku call
+      // request_clarification instead of propose_grn — that's still a text
+      // GRN attempt and must redirect the same way, not fall through to a
+      // resolved clarification question).
+      void logInteraction(supabaseClient, tenant_id, trimmedMessage, 'propose_grn', {}, null, false, 'text_path_dropped')
+      return respond({ status: 'ok', intent: 'propose_grn', confirm: { status: 'refused', confirm_text: 'Photograph the delivery challan and I\'ll read it — typed GRN details go on the GRN page instead.' } })
+    }
+  }
+
+  if (toolName === 'request_clarification' && toolInput) {
+    // §7.3's maxItems: 3 isn't schema-enforceable (see the tool definition's
+    // comment) — enforced here instead.
+    const questions = ((toolInput.questions ?? []) as { field: string; question: string; options?: string[] }[]).slice(0, 3)
+    void logInteraction(supabaseClient, tenant_id, trimmedMessage, 'request_clarification', toolInput, null, true, null)
+    return respond({ status: 'ok', intent: 'request_clarification', confirm: { status: 'question', confirm_text: questions.map((q) => q.question).join(' '), questions } })
+  }
+
+  if (toolName !== 'propose_grn' || !toolInput) {
+    void logInteraction(supabaseClient, tenant_id, trimmedMessage, 'unknown', {}, null, true, null)
+    return respond({ status: 'ok', intent: 'unknown', confirm: { status: 'ready', confirm_text: plainText ?? "I don't have information on that." } })
+  }
+
+  const resolution = await resolveGrnPlan(
+    supabaseClient, tenant_id, toolInput, context, principals,
+    (settings.gstin as string) ?? null,
+    typeof toolInput.grn_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(toolInput.grn_date) ? toolInput.grn_date : null
+  )
+
+  if (resolution.kind === 'refusal') {
+    void logInteraction(supabaseClient, tenant_id, trimmedMessage, 'propose_grn', toolInput, null, false, resolution.text)
+    return respond({ status: 'ok', intent: 'propose_grn', confirm: { status: 'refused', confirm_text: resolution.text } })
+  }
+  if (resolution.kind === 'clarification') {
+    // If this clarification came from amending a live proposal (e.g. the
+    // owner selector switching to a principal, which then needs a challan
+    // number/date the document didn't have), that proposal is now KNOWN
+    // stale — the human just said something that contradicts its stored
+    // plan. Leaving it confirmable would let a tap on the old card silently
+    // write the pre-amendment version (e.g. "own stock") after the human
+    // explicitly said otherwise. Supersede it; the clarification's own
+    // answer becomes a fresh amendment with no live proposal to fold in,
+    // same as any other first-time answer.
+    if (liveProposal) {
+      await supabaseClient.from('p2_agent_proposals').update({ status: 'superseded', updated_at: new Date().toISOString() }).eq('id', liveProposal.id)
+    }
+    void logInteraction(supabaseClient, tenant_id, trimmedMessage, 'propose_grn', toolInput, null, true, null)
+    return respond({ status: 'ok', intent: 'request_clarification', confirm: { status: 'question', confirm_text: resolution.questions.map((q) => q.question).join(' '), questions: resolution.questions }, superseded_proposal_id: liveProposal?.id ?? null })
+  }
+
+  // Store the proposal. supersede any existing live one for this user first —
+  // the unique index (tenant_id, user_id) WHERE status='awaiting_confirmation'
+  // enforces "exactly one live proposal" even under a race; catch a violation
+  // as a benign supersede rather than a hard error.
+  if (liveProposal) {
+    await supabaseClient.from('p2_agent_proposals').update({ status: 'superseded', updated_at: new Date().toISOString() }).eq('id', liveProposal.id)
+  }
+
+  // §8.1: source is 'photo' or 'qr' only ('text' was deliberately dropped —
+  // a typed amendment doesn't change a proposal's origin). A fresh image
+  // turn is 'photo'; a text amendment to a live proposal inherits that
+  // proposal's own source; there is no third case reaching this line (a
+  // fresh, non-amendment text GRN attempt was already refused above).
+  const source: 'photo' | 'qr' = image ? 'photo' : liveProposal?.source ?? 'photo'
+  const expiresAt = new Date(Date.now() + 15 * 60000).toISOString()
+
+  const { error: insertError } = await supabaseClient.from('p2_agent_proposals').insert({
+    id: proposalId,
+    tenant_id,
+    user_id: callerUserId,
+    kind: 'grn',
+    status: 'awaiting_confirmation',
+    model_input: toolInput,
+    plan: resolution.plan,
+    confirm_text: resolution.confirmText,
+    warnings: resolution.warnings,
+    source,
+    image_paths: imagePaths.length ? imagePaths : null,
+    model_used: modelUsed,
+    escalated,
+    expires_at: expiresAt,
+  })
+
+  if (insertError) {
+    // A unique-violation here means a concurrent propose won the race —
+    // benign, not a failure worth surfacing as an error.
+    if (insertError.code !== '23505') {
+      void logInteraction(supabaseClient, tenant_id, trimmedMessage, 'propose_grn', toolInput, null, false, insertError.message)
+      return respond({ status: 'error', error: insertError.message }, 500)
+    }
+  }
+
+  void logInteraction(supabaseClient, tenant_id, trimmedMessage, 'propose_grn', toolInput, 'matched', true, null)
+  return respond({
+    status: 'ok',
+    intent: 'propose_grn',
+    proposal_id: proposalId,
+    expires_at: expiresAt,
+    confirm: { status: 'ready', confirm_text: resolution.confirmText },
+    // Lets the card offer an Own Stock / Principal selector — only when the
+    // tenant actually has that dimension. Never asked for a non-job-worker
+    // tenant (D11/§5.2 step 6: "own stock" is the only concept it has).
+    // owned_by/owner_name are the plan's RESOLVED value (from the document or
+    // defaulted to own stock) so the selector can default to what will
+    // actually be written, not force every job-worker photo through an
+    // extra tap when the document already said whose material it is.
+    is_job_worker: !!settings.is_job_worker,
+    principals: principals.map((p) => ({ id: p.id, name: p.name })),
+    owned_by: resolution.plan.owned_by,
+    owner_name: resolution.plan.owner_name,
+  })
+}
+
+// confirm_proposal — ZERO model calls, by construction (no
+// anthropicClient/anthropic.messages.create anywhere in this function or
+// anything it calls). §3 D2, §18.1 #2.
+async function confirmProposalAction(
+  supabaseClient: ReturnType<typeof createClient>,
+  body: Partial<ConfirmProposalRequest>,
+  callerUserId: string
+): Promise<Response> {
+  const { tenant_id, proposal_id } = body
+  if (!tenant_id || !proposal_id) return respond({ status: 'error', error: 'tenant_id and proposal_id are required' }, 400)
+
+  const { data: proposalRow, error: fetchError } = await supabaseClient
+    .from('p2_agent_proposals')
+    .select('*')
+    .eq('id', proposal_id)
+    .eq('tenant_id', tenant_id)
+    .maybeSingle()
+
+  if (fetchError) return respond({ status: 'error', error: fetchError.message }, 500)
+  if (!proposalRow) return respond({ status: 'error', error: 'Proposal not found.' }, 404)
+
+  type ProposalRow = {
+    id: string; user_id: string; status: string; plan: GrnPlan; expires_at: string
+    confirm_text: string
+  }
+  const proposal = proposalRow as ProposalRow
+
+  // §4.5 rule 2 — same user only. A supervisor cannot confirm an operator's...
+  // wait, only owner/supervisor/storekeeper ever raise a proposal (D11), but
+  // the rule is symmetric regardless of who raised it.
+  if (proposal.user_id !== callerUserId) {
+    return respond({ status: 'ok', confirm: { status: 'refused', confirm_text: 'This was raised by another user — they need to confirm it.' } })
+  }
+
+  // §4.5 rule 3 — status must be awaiting_confirmation.
+  if (proposal.status !== 'awaiting_confirmation') {
+    const messages: Record<string, string> = {
+      executed: 'This GRN has already been recorded.',
+      cancelled: 'This plan was cancelled.',
+      superseded: 'That plan was replaced by a newer one — use the latest card.',
+      expired: 'That plan is more than 15 minutes old and stock may have moved. Say it again and I\'ll recheck.',
+      executing: 'This is already being recorded.',
+      failed: 'That plan could not be recorded — photograph the delivery again.',
+    }
+    return respond({ status: 'ok', confirm: { status: 'refused', confirm_text: messages[proposal.status] ?? 'This plan is no longer active.' } })
+  }
+
+  // §4.5 rule 4 / §3 D9 — expiry checked server-side, not client.
+  if (new Date(proposal.expires_at).getTime() <= Date.now()) {
+    await supabaseClient.from('p2_agent_proposals').update({ status: 'expired', updated_at: new Date().toISOString() }).eq('id', proposal_id)
+    return respond({ status: 'ok', confirm: { status: 'refused', confirm_text: 'That plan is more than 15 minutes old and stock may have moved. Say it again and I\'ll recheck.' } })
+  }
+
+  // §4.5 rule 5 — role still permitted, re-checked (not inherited).
+  const role = await resolveCallerRole(supabaseClient, tenant_id, callerUserId)
+  if (!GRN_ALLOWED_ROLES.has(role)) {
+    return respond({ status: 'ok', confirm: { status: 'refused', confirm_text: 'Only the owner, a supervisor or a storekeeper can record a GRN.' } })
+  }
+
+  // §4.5 rule 7 — idempotency. Conditional UPDATE; zero rows means a
+  // concurrent confirm already won (§18.1 #6 — two simultaneous confirms
+  // produce one write).
+  const { data: claimedRows, error: claimError } = await supabaseClient
+    .from('p2_agent_proposals')
+    .update({ status: 'executing', updated_at: new Date().toISOString() })
+    .eq('id', proposal_id)
+    .eq('status', 'awaiting_confirmation')
+    .select('id')
+
+  if (claimError) return respond({ status: 'error', error: claimError.message }, 500)
+  if (!claimedRows || claimedRows.length === 0) {
+    // Lost the race — re-read and return whatever the winner produced.
+    const { data: after } = await supabaseClient.from('p2_agent_proposals').select('status, result, confirm_text').eq('id', proposal_id).maybeSingle()
+    const afterRow = after as { status: string; result: unknown; confirm_text: string } | null
+    return respond({ status: 'ok', confirm: { status: afterRow?.status === 'executed' ? 'ready' : 'refused', confirm_text: afterRow?.confirm_text ?? 'Already handled.' }, result: afterRow?.result ?? null })
+  }
+
+  // §4.5 rule 6 — re-validate every referenced row is still active. The RPC
+  // re-checks this too (locked, inside the transaction) — this produces a
+  // better message before paying for the RPC call.
+  const plan = proposal.plan
+  const { data: supplierCheck } = await supabaseClient.from('p2_suppliers').select('is_active').eq('id', plan.supplier_id).maybeSingle()
+  if (!(supplierCheck as { is_active?: boolean } | null)?.is_active) {
+    await supabaseClient.from('p2_agent_proposals').update({ status: 'failed', error_reason: 'supplier_inactive', updated_at: new Date().toISOString() }).eq('id', proposal_id)
+    return respond({ status: 'ok', confirm: { status: 'refused', confirm_text: `${plan.supplier_name} looks inactive now — check Settings, or say it again if that's wrong.` } })
+  }
+
+  // Step 8 — call confirm_agent_grn_v3 with the STORED plan. The request
+  // body's proposal_id is the only thing read from the request (§18.1 #3 —
+  // any extra fields sent alongside it are simply never referenced).
+  const itemsPayload = plan.items.map((it) => ({
+    material_id: it.raw_material_id,
+    quantity: it.quantity,
+    unit: it.unit,
+    rate: it.rate,
+    invoice_no: it.invoice_no,
+    purchase_type: it.purchase_type,
+  }))
+
+  const { data: rpcResult, error: rpcError } = await supabaseClient.rpc('confirm_agent_grn_v3', {
+    p_tenant_id: tenant_id,
+    p_supplier_id: plan.supplier_id,
+    p_grn_date: plan.grn_date,
+    p_owned_by: plan.owned_by,
+    p_principal_challan_no: plan.principal_challan_no,
+    p_principal_challan_date: plan.principal_challan_date,
+    p_created_by: callerUserId,
+    p_items: JSON.stringify(itemsPayload),
+  })
+
+  if (rpcError) {
+    // §15 row 12 — a failed write RPC is always a bug, critical, no dedupe.
+    await supabaseClient.from('p2_agent_proposals').update({ status: 'failed', error_reason: rpcError.message, updated_at: new Date().toISOString() }).eq('id', proposal_id)
+    await opsAlert({ source: 'agent', severity: 'critical', title: 'confirm_agent_grn_v3 failed', body: `${rpcError.message}\nproposal_id: ${proposal_id}, tenant_id: ${tenant_id}`, meta: { proposal_id, tenant_id } })
+    void logInteraction(supabaseClient, tenant_id, '', 'confirm_proposal', {}, null, false, rpcError.message)
+    return respond({ status: 'ok', confirm: { status: 'refused', confirm_text: "Couldn't record that — nothing has been changed. Support has been told." } })
+  }
+
+  // Step 7 & 9 — success. Meter increments here (on confirm), per this
+  // session's task brief — a deliberate deviation from nexflow-agent.md
+  // §10.1's "increments on each proposal" text (see the plan file's
+  // Correction 2 for the reasoning: this meters completed writes, not
+  // attempts).
+  await supabaseClient.from('p2_agent_proposals').update({ status: 'executed', result: rpcResult, updated_at: new Date().toISOString() }).eq('id', proposal_id)
+  await bumpMonthlyAgentWrites(supabaseClient, tenant_id)
+  void logInteraction(supabaseClient, tenant_id, '', 'confirm_proposal', {}, 'matched', true, null)
+
+  const resultObj = rpcResult as { grn_no?: string } | null
+  return respond({
+    status: 'ok',
+    confirm: { status: 'ready', confirm_text: `Recorded — ${resultObj?.grn_no ?? 'GRN'} saved.\n\n${proposal.confirm_text}` },
+    result: rpcResult,
+  })
+}
+
+// Every intent Haiku can return is read-only — single source of truth, no
+// second list anywhere (agent-chat.js reads confirm.confirm_text
+// unconditionally, no allow-list needed there).
+const READ_ONLY_INTENTS: HaikuIntent[] = [
+  'check_stock', 'recent_grn', 'consumption_summary', 'supplier_history', 'low_stock_list',
+  'grn_detail', 'pending_dispatches', 'grn_summary', 'top_consumption', 'material_list',
+  'stock_check_product', 'zero_stock_list', 'dispatch_summary', 'supplier_delivery_check',
+  'challan_detail', 'issue_summary', 'product_code_lookup', 'top_received', 'product_list',
+  'supplier_list', 'dispatch_detail', 'issue_detail', 'bom_detail', 'top_supplier',
+  'invoice_total', 'invoice_detail', 'grn_completeness', 'gstr2b_status',
+]
+
+// Shared by the legacy plain-message path (bottom of Deno.serve, untouched
+// callers) and proposeAction()'s text branch — extracted so the two entry
+// points can never diverge on what a read query answers (§18.7 #39: "the
+// write layer must not alter a single read answer"). Returns null when the
+// message doesn't classify as a known read intent, meaning the caller should
+// fall through to the write-tool-use path.
+async function tryReadClassification(
+  supabaseClient: ReturnType<typeof createClient>,
+  anthropicClient: Anthropic,
+  tenantId: string,
+  message: string,
+  context: AgentContext
+): Promise<Response | null> {
+  const haikuResult = await callHaiku(anthropicClient, context, message)
+
+  if (haikuResult.intent === 'unknown') {
+    void logInteraction(supabaseClient, tenantId, message, 'unknown', haikuResult.extracted as Record<string, unknown>, null, false, 'unknown intent')
+    return null
+  }
+
+  if (READ_ONLY_INTENTS.includes(haikuResult.intent)) {
+    const answer = await executeQuery(supabaseClient, tenantId, haikuResult, context)
+    const isError = answer.startsWith("Couldn't") || answer.startsWith('Could not') || answer.startsWith('Please provide')
+    void logInteraction(supabaseClient, tenantId, message, haikuResult.intent, haikuResult.extracted as Record<string, unknown>, null, !isError, isError ? answer : null)
+    return respond({ status: 'ok', intent: haikuResult.intent, confirm: { status: 'ready', confirm_text: answer } })
+  }
+
+  // Unreachable in practice — every HaikuIntent other than 'unknown' is in
+  // READ_ONLY_INTENTS, but TypeScript can't prove that from a runtime
+  // .includes() check.
+  void logInteraction(supabaseClient, tenantId, message, haikuResult.intent, haikuResult.extracted as Record<string, unknown>, null, false, 'intent not in READ_ONLY_INTENTS')
+  return respond({ status: 'error', error: 'Unrecognized intent.' }, 500)
+}
+
+async function cancelProposalAction(
+  supabaseClient: ReturnType<typeof createClient>,
+  body: Partial<CancelProposalRequest>,
+  callerUserId: string
+): Promise<Response> {
+  const { tenant_id, proposal_id } = body
+  if (!tenant_id || !proposal_id) return respond({ status: 'error', error: 'tenant_id and proposal_id are required' }, 400)
+
+  const { data: proposalRow } = await supabaseClient
+    .from('p2_agent_proposals')
+    .select('id, user_id, status')
+    .eq('id', proposal_id)
+    .eq('tenant_id', tenant_id)
+    .maybeSingle()
+  const proposal = proposalRow as { id: string; user_id: string; status: string } | null
+
+  if (!proposal) return respond({ status: 'error', error: 'Proposal not found.' }, 404)
+  if (proposal.user_id !== callerUserId) {
+    return respond({ status: 'ok', confirm: { status: 'refused', confirm_text: 'This was raised by another user.' } })
+  }
+  if (proposal.status !== 'awaiting_confirmation') {
+    return respond({ status: 'ok', confirm: { status: 'refused', confirm_text: 'This plan is no longer active.' } })
+  }
+
+  await supabaseClient.from('p2_agent_proposals').update({ status: 'cancelled', updated_at: new Date().toISOString() }).eq('id', proposal_id)
+  void logInteraction(supabaseClient, tenant_id, '', 'cancel_proposal', {}, null, true, null)
+  return respond({ status: 'ok', confirm: { status: 'cancelled', confirm_text: 'Cancelled — nothing was recorded.' } })
+}
+
 Deno.serve(async (req) => {
   // CORS preflight
   if (req.method === 'OPTIONS') {
@@ -3449,7 +5161,10 @@ Deno.serve(async (req) => {
       Partial<Omit<SuggestHsnRequest, 'action'>> &
       Partial<Omit<SubmitSupportMessageRequest, 'action'>> &
       Partial<Omit<SubmitBugReportRequest, 'action'>> &
-      { action?: 'confirm_receive_grn' | 'confirm_generate_invoice' | 'resend_invoice' | 'confirm_consolidated_invoice' | 'preview_consolidated_invoice' | 'suggest_hsn' | 'submit_support_message' | 'submit_bug_report' } = await req.json()
+      Partial<Omit<ProposeRequest, 'action'>> &
+      Partial<Omit<ConfirmProposalRequest, 'action'>> &
+      Partial<Omit<CancelProposalRequest, 'action'>> &
+      { action?: 'confirm_receive_grn' | 'confirm_generate_invoice' | 'resend_invoice' | 'confirm_consolidated_invoice' | 'preview_consolidated_invoice' | 'suggest_hsn' | 'submit_support_message' | 'submit_bug_report' | 'propose' | 'confirm_proposal' | 'cancel_proposal' } = await req.json()
 
     // Cross-tenant auth guard: every action below (and the plain-message path
     // further down) takes tenant_id from this same body — verify it against
@@ -3485,8 +5200,21 @@ Deno.serve(async (req) => {
       }
     }
 
+    // W2 — agent write layer. callerUserId is always set here (propose/
+    // confirm_proposal/cancel_proposal are not confirm_receive_grn's
+    // exemption, so verifyCallerTenant already ran above).
+    if (body.action === 'propose') {
+      return await proposeAction(supabase, anthropic, req, body as Partial<ProposeRequest>, callerUserId as string)
+    }
+    if (body.action === 'confirm_proposal') {
+      return await confirmProposalAction(supabase, body as Partial<ConfirmProposalRequest>, callerUserId as string)
+    }
+    if (body.action === 'cancel_proposal') {
+      return await cancelProposalAction(supabase, body as Partial<CancelProposalRequest>, callerUserId as string)
+    }
+
     if (body.action === 'confirm_generate_invoice') {
-      return await confirmGenerateInvoice(supabase, body as Partial<ConfirmGenerateInvoiceRequest>)
+      return await confirmGenerateInvoice(supabase, body as Partial<ConfirmGenerateInvoiceRequest>, callerUserId)
     }
 
     if (body.action === 'resend_invoice') {
@@ -3494,7 +5222,7 @@ Deno.serve(async (req) => {
     }
 
     if (body.action === 'confirm_consolidated_invoice') {
-      return await confirmConsolidatedInvoice(supabase, body as Partial<ConfirmConsolidatedInvoiceRequest>)
+      return await confirmConsolidatedInvoice(supabase, body as Partial<ConfirmConsolidatedInvoiceRequest>, callerUserId)
     }
 
     if (body.action === 'preview_consolidated_invoice') {
@@ -3541,64 +5269,9 @@ Deno.serve(async (req) => {
       return respond({ status: 'error', error: context.error }, 500)
     }
 
-    const haikuResult = await callHaiku(anthropic, context, message)
-
-    if (haikuResult.intent === 'unknown') {
-      void logInteraction(supabase, tenant_id, message, 'unknown', haikuResult.extracted as Record<string, unknown>, null, false, 'unknown intent')
-      return respond({ status: 'ok', intent: 'unknown' })
-    }
-
-    // Every intent Haiku can return is read-only — single source of truth,
-    // no second list anywhere (agent-chat.js reads confirm.confirm_text
-    // unconditionally, no allow-list needed there).
-    const READ_ONLY_INTENTS: HaikuIntent[] = [
-      'check_stock',
-      'recent_grn',
-      'consumption_summary',
-      'supplier_history',
-      'low_stock_list',
-      'grn_detail',
-      'pending_dispatches',
-      'grn_summary',
-      'top_consumption',
-      'material_list',
-      'stock_check_product',
-      'zero_stock_list',
-      'dispatch_summary',
-      'supplier_delivery_check',
-      'challan_detail',
-      'issue_summary',
-      'product_code_lookup',
-      'top_received',
-      'product_list',
-      'supplier_list',
-      'dispatch_detail',
-      'issue_detail',
-      'bom_detail',
-      'top_supplier',
-      'invoice_total',
-      'invoice_detail',
-      'grn_completeness',
-      'gstr2b_status',
-    ]
-
-    if (READ_ONLY_INTENTS.includes(haikuResult.intent)) {
-      const answer = await executeQuery(supabase, tenant_id, haikuResult, context)
-      // Treat as failure if answer starts with "Couldn't" or "Could not" — these are error responses
-      const isError = answer.startsWith("Couldn't") || answer.startsWith('Could not') || answer.startsWith('Please provide')
-      void logInteraction(supabase, tenant_id, message, haikuResult.intent, haikuResult.extracted as Record<string, unknown>, null, !isError, isError ? answer : null)
-      return respond({
-        status: 'ok',
-        intent: haikuResult.intent,
-        confirm: { status: 'ready', confirm_text: answer },
-      })
-    }
-
-    // Unreachable in practice — every HaikuIntent other than 'unknown' is in
-    // READ_ONLY_INTENTS (verified above), but TypeScript can't prove that
-    // from a runtime .includes() check, so this keeps every path returning.
-    void logInteraction(supabase, tenant_id, message, haikuResult.intent, haikuResult.extracted as Record<string, unknown>, null, false, 'intent not in READ_ONLY_INTENTS')
-    return respond({ status: 'error', error: 'Unrecognized intent.' }, 500)
+    const readResponse = await tryReadClassification(supabase, anthropic, tenant_id, message, context)
+    if (readResponse) return readResponse
+    return respond({ status: 'ok', intent: 'unknown' })
   } catch (error) {
     return respond(
       { status: 'error', error: error instanceof Error ? error.message : 'Invalid request body' },

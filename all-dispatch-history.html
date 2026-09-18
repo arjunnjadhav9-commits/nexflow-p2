@@ -21,14 +21,9 @@
         .nx-modal-overlay {
             position: fixed; inset: 0; background: rgba(0,0,0,0.65);
             z-index: 500; display: flex; align-items: center; justify-content: center;
-        /* amend-badge */
-        .amend-badge{display:inline-block;font-size:10px;font-weight:700;text-transform:uppercase;background:rgba(251,191,36,0.12);color:#fbbf24;border:1px solid rgba(251,191,36,0.3);border-radius:3px;padding:1px 6px;margin-left:6px;} padding: 20px;
+            padding: 20px;
         }
-        .nx-modal {
-            background: var(--surface); border: 1px solid var(--border2);
-            border-radius: var(--radius-lg); padding: 28px; width: 100%; max-width: 520px;
-            box-shadow: var(--shadow-md);
-        }
+        .amend-badge{display:inline-block;font-size:10px;font-weight:700;text-transform:uppercase;background:rgba(251,191,36,0.12);color:#fbbf24;border:1px solid rgba(251,191,36,0.3);border-radius:3px;padding:1px 6px;margin-left:6px;}
         .nx-modal-title {
             font-family: var(--condensed); font-weight: 800; font-size: 16px;
             color: var(--white); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 20px;
@@ -161,7 +156,8 @@
                     </div>
                     <div id="emptyState" style="display:none;" class="nx-empty-state">
                         <div class="nx-empty-icon">📋</div>
-                        <div data-en="No dispatches found for the selected filters." data-mr="निवडलेल्या फिल्टरसाठी कोणतेही डिस्पॅच आढळले नाहीत.">No dispatches found for the selected filters.</div>
+                        <div class="nx-empty-text" data-en="No dispatches found for the selected filters." data-mr="निवडलेल्या फिल्टरसाठी कोणतेही डिस्पॅच आढळले नाहीत.">No dispatches found for the selected filters.</div>
+                        <a href="dispatch.html" class="nx-btn nx-btn-primary nx-btn-sm" data-en="Create a Dispatch" data-mr="डिस्पॅच तयार करा">Create a Dispatch</a>
                     </div>
                 </div>
 
@@ -212,12 +208,22 @@
                     <tbody id="detailModalBody"></tbody>
                 </table>
             </div>
+            <div id="detailEditQtySection" style="display:none; margin-bottom:16px; background:var(--surface3); border-radius:8px; padding:14px;">
+                <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--mid); margin-bottom:10px;" data-en="Edit Quantities" data-mr="प्रमाण संपादित करा">Edit Quantities</div>
+                <div id="detailEditQtyList" style="display:flex; flex-direction:column; gap:8px; margin-bottom:14px;"></div>
+                <div id="detailEditQtyError" style="display:none; color:#ef4444; font-size:12px; margin-bottom:10px;"></div>
+                <div style="display:flex; gap:10px;">
+                    <button id="detailEditQtySaveBtn" class="nx-btn nx-btn-primary" style="flex:1;" data-en="Save Changes" data-mr="बदल जतन करा">Save Changes</button>
+                    <button id="detailEditQtyCancelBtn" class="nx-btn nx-btn-ghost" style="flex:1;" data-en="Cancel" data-mr="रद्द करा">Cancel</button>
+                </div>
+            </div>
             <div id="detailChallanLinksSection" style="margin-bottom:16px;"></div>
             <div id="detailInvoiceSection" style="margin-bottom:16px;"></div>
             <div style="display:flex; gap:10px; flex-wrap:wrap;">
                 <button id="detailPrintBtn" class="nx-btn nx-btn-green" style="flex:1;" data-en="View Challan" data-mr="चलान पहा">View Challan</button>
                 <button id="detailCsvBtn" class="nx-btn nx-btn-secondary" style="flex:1;" data-en="↓ CSV" data-mr="↓ CSV">↓ CSV</button>
                 <button id="detailAmendBtn" class="nx-btn nx-btn-ghost" style="flex:1;color:#fbbf24;border-color:rgba(251,191,36,0.4);display:none;" data-en="+ Missing Deduction" data-mr="+ न झालेली कपात">+ Missing Deduction</button>
+                <button id="detailEditQtyBtn" class="nx-btn nx-btn-ghost" style="flex:1;color:var(--orange);border-color:rgba(255,92,26,0.4);display:none;" data-en="+ Edit Product Qty" data-mr="+ प्रमाण संपादित करा">+ Edit Product Qty</button>
                 <button id="detailCancelBtn" class="nx-btn nx-btn-ghost" style="flex:1; color:#ef4444; display:none;" data-en="Cancel Challan" data-mr="चलान रद्द करा">Cancel Challan</button>
                 <button id="detailHardDeleteBtn" class="nx-btn nx-btn-danger" style="flex:1; display:none;" data-en="Delete Permanently" data-mr="कायमचे हटवा">Delete Permanently</button>
                 <button id="detailCloseBtn" class="nx-btn nx-btn-ghost" style="flex:1;" data-en="Close" data-mr="बंद करा">Close</button>
@@ -801,7 +807,26 @@
                 hardDeleteBtn.style.display = 'none';
             }
 
+            // Always start collapsed — a previous Detail modal's open edit
+            // section must never carry over to a different order.
+            document.getElementById('detailEditQtySection').style.display = 'none';
+            document.getElementById('detailEditQtyBtn').style.display = 'none';
+
             document.getElementById('detailModal').style.display = 'flex';
+
+            // "+ Edit Product Qty" — product dispatches only, confirmed, not
+            // invoiced, owner/supervisor only. Separate from detailAmendBtn's
+            // own gating above — does not touch it. Async invoice check, so
+            // guarded by the same currentDetailOrderId staleness pattern as
+            // refreshDetailInvoiceSection below.
+            if (order.dispatch_type === 'product' && !isDraft && !isCancelled && ['owner','supervisor'].includes(currentRole)) {
+                const invoiceLinked = await checkOrderInvoiceLinked(orderId);
+                if (currentDetailOrderId === orderId && !invoiceLinked) {
+                    const editQtyBtn = document.getElementById('detailEditQtyBtn');
+                    editQtyBtn.style.display = 'block';
+                    editQtyBtn.onclick = () => openDetailEditQtySection(orderId);
+                }
+            }
 
             // Linked original challans — a return dispatch (any status, since
             // links are historical fact once written on confirm) may settle
@@ -913,6 +938,164 @@
                 invoiceSection.innerHTML = '';
             }
         }
+
+        // True if any invoice — single-mode or consolidated — already references this
+        // dispatch order, excluding cancelled invoices (cancelling an invoice must free
+        // its challans up, same convention as invoices.html's fetchInvoicedOrderIdSet()).
+        // Used only to gate "+ Edit Product Qty" — refreshDetailInvoiceSection above
+        // checks single-mode only, which isn't a complete enough guard for this button.
+        async function checkOrderInvoiceLinked(orderId) {
+            try {
+                const [{ data: single }, { data: consolidated }] = await Promise.all([
+                    window.supabase.from('p2_invoices').select('id')
+                        .eq('tenant_id', tenantId).eq('dispatch_order_id', orderId)
+                        .eq('invoice_mode', 'single').neq('status', 'cancelled').maybeSingle(),
+                    window.supabase.from('p2_invoices').select('id')
+                        .eq('tenant_id', tenantId).contains('dispatch_order_ids', [orderId])
+                        .neq('status', 'cancelled').limit(1)
+                ]);
+                return !!single || !!(consolidated && consolidated.length > 0);
+            } catch (err) {
+                console.error('checkOrderInvoiceLinked:', err);
+                return true; // fail closed — don't offer the edit if we can't confirm it's safe
+            }
+        }
+
+        // ── EDIT PRODUCT QTY ──────────────────────────────────────────
+        // Inline section on the Detail modal — not a separate modal. Only ever opened
+        // for a 'product' dispatch (see the gating in openDetail()).
+        let editQtyOrderId = null;
+        let editQtyItems    = []; // [{id, description, qty_dispatched, unit}] — fresh-fetched, has row `id`
+
+        async function openDetailEditQtySection(orderId) {
+            editQtyOrderId = orderId;
+            const section = document.getElementById('detailEditQtySection');
+            const list    = document.getElementById('detailEditQtyList');
+            const errEl   = document.getElementById('detailEditQtyError');
+            errEl.style.display = 'none';
+            list.innerHTML = `<div style="font-size:12px; color:var(--mid);">${t('Loading...','लोड होत आहे...')}</div>`;
+            section.style.display = 'block';
+
+            try {
+                // Fresh fetch — same reasoning as openInvoiceModal: the preloaded
+                // order.items lacks the row `id` needed to call the RPC per line.
+                const { data: items, error } = await window.supabase
+                    .from('p2_dispatch_items')
+                    .select('id, product_id, qty_dispatched, unit, p2_products(name)')
+                    .eq('dispatch_order_id', orderId)
+                    .eq('tenant_id', tenantId);
+                if (error) throw error;
+
+                if (editQtyOrderId !== orderId) return; // a different order's section was opened meanwhile
+
+                editQtyItems = (items || []).map(it => ({
+                    id: it.id,
+                    description: it.p2_products?.name || t('Unknown Item','अज्ञात वस्तू'),
+                    qty_dispatched: it.qty_dispatched,
+                    unit: it.unit
+                }));
+
+                renderDetailEditQtyList();
+            } catch (err) {
+                console.error('openDetailEditQtySection:', err);
+                list.innerHTML = `<div style="font-size:12px; color:#ef4444;">${t('Could not load items.','वस्तू लोड करता आल्या नाहीत.')}</div>`;
+            }
+        }
+
+        function renderDetailEditQtyList() {
+            const list = document.getElementById('detailEditQtyList');
+            list.innerHTML = editQtyItems.map((item, idx) => `
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+                    <div style="font-size:13px; color:var(--text); flex:1;">${escapeHtml(item.description)}</div>
+                    <input type="number" step="any" min="0" class="nx-input edit-qty-input" data-idx="${idx}"
+                        value="${item.qty_dispatched}" style="width:100px; text-align:right;">
+                    <div style="font-size:12px; color:var(--mid); width:40px;">${escapeHtml(item.unit || '')}</div>
+                </div>`).join('');
+        }
+
+        function closeDetailEditQtySection() {
+            editQtyOrderId = null;
+            editQtyItems = [];
+            document.getElementById('detailEditQtySection').style.display = 'none';
+        }
+
+        document.getElementById('detailEditQtyCancelBtn').addEventListener('click', closeDetailEditQtySection);
+
+        document.getElementById('detailEditQtySaveBtn').addEventListener('click', async () => {
+            if (!editQtyOrderId) return;
+            const errEl = document.getElementById('detailEditQtyError');
+            errEl.style.display = 'none';
+
+            const changes = [];
+            document.querySelectorAll('.edit-qty-input').forEach(input => {
+                const idx = Number(input.dataset.idx);
+                const item = editQtyItems[idx];
+                if (!item) return;
+                const newQty = Number(input.value);
+                if (newQty !== item.qty_dispatched) changes.push({ id: item.id, newQty });
+            });
+
+            if (changes.length === 0) {
+                closeDetailEditQtySection();
+                return;
+            }
+
+            const orderId = editQtyOrderId;
+            const btn = document.getElementById('detailEditQtySaveBtn');
+            btn.disabled = true;
+            btn.textContent = t('Saving...','जतन करत आहे...');
+
+            try {
+                for (const change of changes) {
+                    const { error } = await window.supabase.rpc('edit_product_dispatch_qty', {
+                        p_dispatch_order_id: orderId,
+                        p_tenant_id: tenantId,
+                        p_dispatch_item_id: change.id,
+                        p_new_qty: change.newQty
+                    });
+                    if (error) throw error;
+                }
+
+                // Re-fetch and re-render the modal's items table in place.
+                const { data: items, error: fetchErr } = await window.supabase
+                    .from('p2_dispatch_items')
+                    .select('id, product_id, material_name, material_code, qty_dispatched, unit, p2_products(name)')
+                    .eq('dispatch_order_id', orderId)
+                    .eq('tenant_id', tenantId);
+                if (fetchErr) throw fetchErr;
+
+                const order = allOrders.find(o => o.id === orderId);
+                if (order) {
+                    order.items = (items || []).map(it => ({
+                        name: it.product_id ? (it.p2_products?.name || 'Unknown Product') : (it.material_name || it.material_code || 'Unknown'),
+                        qty: it.qty_dispatched,
+                        unit: it.unit
+                    }));
+                    const tbody = document.getElementById('detailModalBody');
+                    tbody.innerHTML = '';
+                    order.items.forEach(item => {
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `
+                            <td class="nx-td-bold">${escapeHtml(item.name)}</td>
+                            <td style="text-align:right; font-family:monospace;">${item.qty}</td>
+                            <td style="color:var(--mid);">${item.unit}</td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
+                }
+
+                closeDetailEditQtySection();
+                toast(t('Quantities updated.','प्रमाण अद्ययावत केले.'), 'ok');
+            } catch (err) {
+                console.error('edit_product_dispatch_qty:', err);
+                errEl.textContent = err.message;
+                errEl.style.display = 'block';
+                toast(err.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = t('Save Changes','बदल जतन करा');
+            }
+        });
 
         window.cancelChallanRow = async (orderId, challanNumber) => {
             const displayNo = (challanNumber || '').replace(/^CHAL-\d{8}-/, '') || challanNumber;
@@ -1178,10 +1361,10 @@
                         <td class="nx-td-bold">${escapeHtml(item.description)}</td>
                         <td style="text-align:right; font-family:monospace;">${item.qty}</td>
                         <td style="color:var(--mid);">${item.unit}</td>
-                        <td style="text-align:right;">
+                        <td style="text-align:right; display:flex; justify-content:flex-end;">
                             <input type="number" step="0.01" min="0" class="nx-input invoice-rate-input"
                                 data-idx="${idx}" value="${item.rate}"
-                                style="width:100px; text-align:right; height:32px; font-size:13px;">
+                                style="min-width:88px; flex:1; text-align:right; height:32px; font-size:16px;">
                         </td>
                     `;
                     tbody.appendChild(tr);

@@ -19,10 +19,31 @@
 
     <style>
         @media print {
+            @page { size: A4; margin: 10mm; }
             body * { visibility: hidden; }
             #printable-report, #printable-report * { visibility: visible; }
             #printable-report { position: absolute; left: 0; top: 0; width: 100%; }
-            .no-print { display: none !important; }
+            .no-print, .nx-nav, #navbar-container { display: none !important; }
+
+            /* Pattern from invoice.html's @media print: force white/black since
+               nexflow-design.css is dark-themed, print-color-adjust:exact to
+               keep the table header grey (P1 §6.2). */
+            html, body { background: #fff !important; }
+            #printable-report, #printable-report * {
+                color: #000 !important;
+                background: #fff !important;
+                background-color: #fff !important;
+                box-shadow: none !important;
+                border-color: #000 !important;
+            }
+            #printable-report .nx-table thead,
+            #printable-report .nx-table th {
+                background: #e5e7eb !important;
+                background-color: #e5e7eb !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+            #printable-report .nx-card { border: 1px solid #000 !important; }
         }
         .sc-overlay{position:fixed;inset:0;z-index:600;background:var(--bg);display:flex;flex-direction:column;}
         .sc-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border);}
@@ -398,7 +419,11 @@
                 materialSummaryBody.innerHTML = '';
 
                 if (materialSummary.length === 0) {
-                    materialSummaryBody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--mid);" data-en="No transactions found for this period" data-mr="या कालावधीत कोणतीही व्यवहार आढळले नाहीत">No transactions found for this period</td></tr>`;
+                    materialSummaryBody.innerHTML = `<tr><td colspan="6"><div class="nx-empty-state">
+                        <div class="nx-empty-icon">📊</div>
+                        <div class="nx-empty-text" data-en="No transactions found for this period" data-mr="या कालावधीत कोणतीही व्यवहार आढळले नाहीत">No transactions found for this period</div>
+                    </div></td></tr>`;
+                    applyLang(localStorage.getItem('nexflow_lang') || 'en');
                 } else {
                     materialSummary.forEach(mat => {
                         const netColor = mat.netChange >= 0 ? 'var(--green)' : 'var(--red)';
@@ -437,7 +462,11 @@
                 supplierSummaryBody.innerHTML = '';
 
                 if (Object.keys(supplierTotals).length === 0) {
-                    supplierSummaryBody.innerHTML = `<tr><td colspan="2" style="text-align:center;padding:32px;color:var(--mid);" data-en="No GRN transactions found for this period" data-mr="या कालावधीत कोणतेही जीआरएन व्यवहार आढळले नाहीत">No GRN transactions found for this period</td></tr>`;
+                    supplierSummaryBody.innerHTML = `<tr><td colspan="2"><div class="nx-empty-state">
+                        <div class="nx-empty-icon">📊</div>
+                        <div class="nx-empty-text" data-en="No GRN transactions found for this period" data-mr="या कालावधीत कोणतेही जीआरएन व्यवहार आढळले नाहीत">No GRN transactions found for this period</div>
+                    </div></td></tr>`;
+                    applyLang(localStorage.getItem('nexflow_lang') || 'en');
                 } else {
                     Object.entries(supplierTotals).forEach(([name, total]) => {
                         const row = document.createElement('tr');
@@ -452,7 +481,12 @@
             } catch (error) {
                 console.error('Error generating report:', error);
                 if (requestId !== reportRequestId) return; // a newer click has superseded this request
-                materialSummaryBody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--red);">Error generating report: ${error.message}</td></tr>`;
+                const retryHtml = `<div class="nx-empty-state nx-retry-state">
+                    <div class="nx-empty-icon">⚠</div>
+                    <div class="nx-empty-text">${t('Could not load. Try again.', 'लोड करता आले नाही. पुन्हा प्रयत्न करा.')} (${error.message})</div>
+                </div>`;
+                materialSummaryBody.innerHTML = `<tr><td colspan="6">${retryHtml}</td></tr>`;
+                supplierSummaryBody.innerHTML = `<tr><td colspan="2">${retryHtml}</td></tr>`;
             }
         });
 

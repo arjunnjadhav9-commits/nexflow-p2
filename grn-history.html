@@ -25,13 +25,6 @@
             display: flex; align-items: center; justify-content: center;
             padding: 20px;
         }
-        .nx-modal {
-            background: var(--surface);
-            border: 1px solid var(--border2);
-            border-radius: var(--radius-lg);
-            padding: 28px; width: 100%; max-width: 520px;
-            box-shadow: var(--shadow-md);
-        }
         .nx-modal-title {
             font-family: var(--condensed); font-weight: 800; font-size: 16px;
             color: var(--orange); text-transform: uppercase; letter-spacing: 0.5px;
@@ -179,7 +172,7 @@
                                     <th data-en="Supplier" data-mr="पुरवठादार">Supplier</th>
                                     <th id="ownerColHeader" style="display:none;" data-en="Owner" data-mr="मालक">Owner</th>
                                     <th data-en="Materials" data-mr="सामग्री">Materials</th>
-                                    <th data-en="Invoice No" data-mr="बिल क्र">Invoice No</th>
+                                    <th data-en="Invoice No" data-mr="इनव्हॉइस क्रमांक">Invoice No</th>
                                     <th class="dh-no-print" style="text-align:center;" data-en="Actions" data-mr="क्रिया">Actions</th>
                                 </tr>
                             </thead>
@@ -189,7 +182,8 @@
 
                     <div id="emptyState" style="display:none;" class="nx-empty-state">
                         <div class="nx-empty-icon">📋</div>
-                        <div data-en="No GRN records found for the selected filters." data-mr="निवडलेल्या फिल्टरसाठी कोणत्याही GRN नोंदी आढळल्या नाहीत.">No GRN records found for the selected filters.</div>
+                        <div class="nx-empty-text" data-en="No GRN records found for the selected filters." data-mr="निवडलेल्या फिल्टरसाठी कोणत्याही GRN नोंदी आढळल्या नाहीत.">No GRN records found for the selected filters.</div>
+                        <a href="grn.html" class="nx-btn nx-btn-primary nx-btn-sm" data-en="Record a GRN" data-mr="GRN नोंदवा">Record a GRN</a>
                     </div>
                 </div>
 
@@ -279,7 +273,7 @@
                     <input type="number" step="any" id="corr-rate" class="nx-input">
                 </div>
                 <div class="nx-form-group">
-                    <label data-en="Invoice No" data-mr="बिल क्र">Invoice No</label>
+                    <label data-en="Invoice No" data-mr="इनव्हॉइस क्रमांक">Invoice No</label>
                     <input type="text" id="corr-invoice" class="nx-input">
                 </div>
                 <div class="nx-form-group">
@@ -385,7 +379,17 @@
                     filedThrough = settingsData?.gstr2b_filed_through || null;
                 }
 
-                setDefaultDates();
+                // js/navbar.js's global search deep-links here as ?q=GRN-... — the
+                // target GRN could be older than the default 3-month window, so a
+                // deep link widens the date range instead of silently missing it.
+                const deepLinkQuery = new URLSearchParams(window.location.search).get('q');
+                if (deepLinkQuery) {
+                    document.getElementById('filterFrom').value = '2020-01-01';
+                    document.getElementById('filterTo').value   = new Date().toISOString().split('T')[0];
+                    document.getElementById('filterSearch').value = deepLinkQuery;
+                } else {
+                    setDefaultDates();
+                }
                 await loadHistory();
                 setupEventHandlers();
                 setupCorrectionModalHandlers();

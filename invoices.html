@@ -21,9 +21,7 @@
         #errorState { display: none; }
         #invoicesContent { display: none; }
 
-        /* Modal — not in shared stylesheet (css/nexflow-design.css only adds the
-           entrance animation for .nx-modal-overlay, not positioning/backdrop),
-           mirrors dispatch-history.html / all-dispatch-history.html pattern */
+        /* .nx-modal itself lives in css/nexflow-design.css (shared shell + max-height fix) */
         .nx-modal-overlay {
             position: fixed; inset: 0;
             background: rgba(0,0,0,0.65);
@@ -31,17 +29,34 @@
             display: flex; align-items: center; justify-content: center;
             padding: 20px;
         }
-        .nx-modal {
-            background: var(--surface);
-            border: 1px solid var(--border2);
-            border-radius: var(--radius-lg);
-            padding: 28px; width: 100%; max-width: 520px;
-            box-shadow: var(--shadow-md);
-        }
         .nx-modal-title {
             font-family: var(--condensed); font-weight: 800; font-size: 16px;
             color: var(--white); text-transform: uppercase; letter-spacing: 0.5px;
             margin-bottom: 20px;
+        }
+
+        /* Receipts sub-row (P1 §3.4) — .rcpt-table is the default; below 480px it's
+           replaced by stacked key/value .rcpt-cards so a receipt breakdown no longer
+           forces horizontal scroll on the whole invoices table. */
+        .rcpt-cards { display: none; }
+        @media (max-width: 480px) {
+            .rcpt-table { display: none; }
+            .rcpt-cards { display: flex; flex-direction: column; gap: 8px; }
+            .rcpt-card {
+                background: var(--surface2); border: 1px solid var(--border);
+                border-radius: var(--radius); padding: 10px 12px; font-size: 12px;
+            }
+            .rcpt-card > div { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; }
+            .rcpt-card > div + div { border-top: 1px solid var(--border); }
+            .rcpt-k { color: var(--mid); font-weight: 600; }
+        }
+
+        /* Multi-field modal rows (Payment / Record Advance) — at 390px the modal's own
+           content width is ~294px; 3 equal-flex fields crush to ~90px each. min-width
+           forces a wrap instead of a crush (P1 §3.1). */
+        @media (max-width: 480px) {
+            .nx-row-wrap { flex-wrap: wrap; }
+            .nx-row-wrap > .nx-form-group { min-width: 140px; }
         }
 
         /* Filter bar — same pattern as dispatch-history.html's .dh-filters */
@@ -216,7 +231,7 @@
                         <table class="nx-table nx-invoice-table">
                             <thead>
                                 <tr>
-                                    <th class="col-invno" data-en="Invoice No" data-mr="इनव्हॉइस क्र">Invoice No</th>
+                                    <th class="col-invno" data-en="Invoice No" data-mr="इनव्हॉइस क्रमांक">Invoice No</th>
                                     <th class="col-date" data-en="Date" data-mr="तारीख">Date</th>
                                     <th class="col-client" data-en="Client" data-mr="क्लायंट">Client</th>
                                     <th class="col-mode" data-en="Mode" data-mr="मोड">Mode</th>
@@ -232,7 +247,8 @@
 
                     <div id="emptyState" style="display:none;" class="nx-empty-state">
                         <div class="nx-empty-icon">🧾</div>
-                        <div data-en="No invoices match the selected filters." data-mr="निवडलेल्या फिल्टरशी जुळणारे कोणतेही इनव्हॉइस नाहीत.">No invoices match the selected filters.</div>
+                        <div class="nx-empty-text" data-en="No invoices match the selected filters." data-mr="निवडलेल्या फिल्टरशी जुळणारे कोणतेही इनव्हॉइस नाहीत.">No invoices match the selected filters.</div>
+                        <a href="all-dispatch-history.html" class="nx-btn nx-btn-primary nx-btn-sm" data-en="Generate from a Dispatch" data-mr="डिस्पॅचमधून तयार करा">Generate from a Dispatch</a>
                     </div>
                 </div>
 
@@ -366,6 +382,13 @@
                 ⚠ <span data-en="This client has no GSTIN on file. A B2B invoice requires a valid GSTIN. Update the client's GSTIN in Settings before proceeding, or change the tax type to None for unregistered customers." data-mr="या क्लायंटचा GSTIN नोंदवलेला नाही. B2B इनव्हॉइससाठी वैध GSTIN आवश्यक आहे. पुढे जाण्यापूर्वी Settings मध्ये क्लायंटचा GSTIN अपडेट करा, किंवा नोंदणी नसलेल्या ग्राहकांसाठी टॅक्स प्रकार 'None' करा.">This client has no GSTIN on file. A B2B invoice requires a valid GSTIN. Update the client's GSTIN in Settings before proceeding, or change the tax type to None for unregistered customers.</span>
             </div>
 
+            <!-- Item 12 (Known Open Item #6) — shown when preview_consolidated_invoice returns
+                 error: 'overlap'. Text is set dynamically via t() in the preview click handler
+                 (invoice number/dates are interpolated), so no data-en/data-mr here. Stops the
+                 flow before Step 2 opens, so consPreviewConfirm (the actual Confirm button) is
+                 never reached while this is showing. -->
+            <div id="consInvoiceOverlapWarning" style="display:none; font-size:12px; color:var(--yellow); margin-top:-8px; margin-bottom:16px;"></div>
+
             <div style="display:flex; gap:10px;">
                 <button id="consInvoiceConfirm" class="nx-btn nx-btn-green" style="flex:1;" data-en="Preview Line Items &rarr;" data-mr="वस्तू पूर्वावलोकन &rarr;">Preview Line Items &rarr;</button>
                 <button id="consInvoiceCancel" class="nx-btn nx-btn-ghost" style="flex:1;" data-en="Cancel" data-mr="रद्द करा">Cancel</button>
@@ -460,7 +483,7 @@
             <div id="recordPaymentInvoiceLine" style="font-size:13px; color:var(--mid); margin-bottom:8px;"></div>
             <div id="recordPaymentBalanceLine" style="font-size:13px; color:var(--white); margin-bottom:16px; padding:10px 12px; background:rgba(255,255,255,0.03); border-radius:6px; line-height:1.6;"></div>
 
-            <div style="display:flex; gap:12px; margin-bottom:14px;">
+            <div class="nx-row-wrap" style="display:flex; gap:12px; margin-bottom:14px;">
                 <div class="nx-form-group" style="flex:1; margin:0;">
                     <label data-en="Payment Date" data-mr="पेमेंट तारीख">Payment Date</label>
                     <input type="date" id="rpDate" class="nx-input">
@@ -478,7 +501,7 @@
                 </div>
             </div>
 
-            <div style="display:flex; gap:12px; margin-bottom:14px;">
+            <div class="nx-row-wrap" style="display:flex; gap:12px; margin-bottom:14px;">
                 <div class="nx-form-group" style="flex:1; margin:0;">
                     <label data-en="Net Amount (₹)" data-mr="निव्वळ रक्कम (₹)">Net Amount (₹)</label>
                     <input type="number" step="0.01" min="0" id="rpNet" class="nx-input">
@@ -537,7 +560,7 @@
             <div class="nx-modal-title" style="color:var(--orange);" data-en="Record Advance Payment" data-mr="आगाऊ पेमेंट नोंदवा">Record Advance Payment</div>
             <div id="recordAdvanceSupplierLine" style="font-size:13px; color:var(--mid); margin-bottom:16px;"></div>
 
-            <div style="display:flex; gap:12px; margin-bottom:14px;">
+            <div class="nx-row-wrap" style="display:flex; gap:12px; margin-bottom:14px;">
                 <div class="nx-form-group" style="flex:1; margin:0;">
                     <label data-en="Payment Date" data-mr="पेमेंट तारीख">Payment Date</label>
                     <input type="date" id="raDate" class="nx-input">
@@ -678,6 +701,14 @@
         function fmtDate(iso) {
             if (!iso) return '-';
             return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+        }
+
+        // 'YYYY-MM-DD' -> 'DD/MM/YYYY', for the Item 12 overlap warning/toast only — distinct
+        // from fmtDate()'s "15 Sep 2026" style. Independent copy of the same-named helper in
+        // agent-query/index.ts; this page and that Edge Function share no code.
+        function fmtDdMmYyyy(iso) {
+            const [y, m, d] = String(iso).split('-');
+            return `${d}/${m}/${y}`;
         }
 
         async function init() {
@@ -862,10 +893,25 @@
                 </tr>
             `).join('');
 
+            // Below 480px the nested table (min-width:420px, per the shared stylesheet)
+            // widens the parent row and forces horizontal scroll on the whole invoices
+            // table just to read one receipt. .rcpt-table/.rcpt-cards toggle by media
+            // query (P1 §3.4) — no JS breakpoint detection needed.
+            const cards = receipts.map(r => `
+                <div class="rcpt-card">
+                    <div><span class="rcpt-k">${t('Date','तारीख')}</span><span>${fmtDate(r.payment_date)}</span></div>
+                    <div><span class="rcpt-k">${t('Gross','एकूण')}</span><span>${fmtMoney(r.gross_amount)}</span></div>
+                    <div><span class="rcpt-k">${t('TDS','TDS')}</span><span>${fmtMoney(r.tds_amount)}</span></div>
+                    <div><span class="rcpt-k">${t('Net','निव्वळ')}</span><span>${fmtMoney(r.net_amount)}</span></div>
+                    <div><span class="rcpt-k">${t('Mode','मोड')}</span><span>${escInvHtml(paymentModeLabel(r.payment_mode) || r.payment_mode || '-')}</span></div>
+                    <div><span class="rcpt-k">${t('Reference','संदर्भ')}</span><span>${escInvHtml(r.reference_no || '-')}</span></div>
+                </div>
+            `).join('');
+
             return `
                 <tr>
                     <td colspan="8" style="background:rgba(255,255,255,0.02); padding:12px 16px;">
-                        <table class="nx-table" style="font-size:12px;">
+                        <table class="nx-table rcpt-table" style="font-size:12px;">
                             <thead>
                                 <tr>
                                     <th>${t('Date','तारीख')}</th>
@@ -878,6 +924,7 @@
                             </thead>
                             <tbody>${rows}</tbody>
                         </table>
+                        <div class="rcpt-cards">${cards}</div>
                     </td>
                 </tr>
             `;
@@ -1021,7 +1068,7 @@
                 applyFilters();
             } catch (err) {
                 console.error('cancelInvoice:', err);
-                alert(t('Could not cancel the invoice. Please try again.', 'इनव्हॉइस रद्द करता आले नाही. कृपया पुन्हा प्रयत्न करा.'));
+                toast(t('Could not cancel the invoice. Please try again.', 'इनव्हॉइस रद्द करता आले नाही. कृपया पुन्हा प्रयत्न करा.'), 'error');
             }
         };
 
@@ -1108,6 +1155,7 @@
         window.openConsolidatedModal = async () => {
             document.getElementById('consInvoiceError').style.display = 'none';
             document.getElementById('consGstinWarning').style.display = 'none';
+            document.getElementById('consInvoiceOverlapWarning').style.display = 'none';
             gstinWarningAckKey = null;
             document.getElementById('consInvoiceFrom').value = '';
             document.getElementById('consInvoiceTo').value = '';
@@ -1404,6 +1452,7 @@
 
             document.getElementById('consInvoiceConfirm').addEventListener('click', async () => {
                 document.getElementById('consInvoiceError').style.display = 'none';
+                document.getElementById('consInvoiceOverlapWarning').style.display = 'none';
 
                 const clientSelect = document.getElementById('consInvoiceClient');
                 const clientId = clientSelect.value;
@@ -1461,6 +1510,21 @@
                         })
                     });
                     let data = await res.json();
+
+                    // Item 12 (Known Open Item #6) — warn before Step 2 (the preview/Confirm
+                    // screen) ever opens, so Confirm is unreachable while this is showing.
+                    // Changing dates and clicking "Preview Line Items →" again re-runs this
+                    // whole handler, which resets this warning at the top before re-checking.
+                    if (data.error === 'overlap') {
+                        const from = fmtDdMmYyyy(data.conflicting_from), to = fmtDdMmYyyy(data.conflicting_to);
+                        document.getElementById('consInvoiceOverlapWarning').textContent = t(
+                            `⚠ Date range overlaps with [${data.conflicting_invoice}] (${from} – ${to}). Adjust the dates.`,
+                            `⚠ तारखेची श्रेणी [${data.conflicting_invoice}] (${from} – ${to}) शी आच्छादित होते. तारखा बदला.`
+                        );
+                        document.getElementById('consInvoiceOverlapWarning').style.display = 'block';
+                        return;
+                    }
+
                     if (data.status !== 'ok') {
                         // The date range itself can be legitimately empty when the owner is
                         // generating an invoice made up entirely of carryover challans — only
@@ -1612,7 +1676,7 @@
                 ? `${nextSeq}`
                 : `INV-${yyyymm}-${String(nextSeq).padStart(3, '0')}`;
             document.getElementById('consPreviewInvoiceNo').textContent =
-                `${t('Invoice No','इनव्हॉइस क्र.')}: ${predictedInvoiceNo}`;
+                `${t('Invoice No','इनव्हॉइस क्रमांक')}: ${predictedInvoiceNo}`;
 
             document.getElementById('consPreviewError').style.display = 'none';
             renderConsPreviewTable();
@@ -1687,11 +1751,24 @@
                             })
                         });
                         const data = await res.json();
+
+                        // Item 12 (Known Open Item #6) — belt-and-suspenders: the preview step
+                        // should have already caught this, but if it was bypassed (stale
+                        // preview, direct API call), the server still refused the insert. Toast,
+                        // not alert() — nothing to roll back since nothing was written.
+                        if (data.error === 'overlap') {
+                            const from = fmtDdMmYyyy(data.conflicting_from), to = fmtDdMmYyyy(data.conflicting_to);
+                            toast(t(
+                                `⚠ Date range overlaps with [${data.conflicting_invoice}] (${from} – ${to}). Adjust the dates.`,
+                                `⚠ तारखेची श्रेणी [${data.conflicting_invoice}] (${from} – ${to}) शी आच्छादित होते. तारखा बदला.`
+                            ), 'warn');
+                            return;
+                        }
                         if (data.status !== 'ok') throw new Error(data.error || 'Unknown error');
 
                         document.getElementById('consInvoicePreviewModal').style.display = 'none';
                         window.open(data.invoice_url, '_blank');
-                        if (data.already_exists) alert(t('Invoice already exists — opened.','इनव्हॉइस आधीच अस्तित्वात आहे — उघडले.'));
+                        if (data.already_exists) toast(t('Invoice already exists — opened.','इनव्हॉइस आधीच अस्तित्वात आहे — उघडले.'), 'warn');
                         await loadInvoices();
                     } catch (err) {
                         console.error('confirm_consolidated_invoice:', err);
@@ -1738,6 +1815,22 @@
                             })
                         });
                         const data = await res.json();
+
+                        // Item 12 (Known Open Item #6) — belt-and-suspenders, same as the
+                        // single-invoice flow above. Stop the loop like any other batch
+                        // failure: batches already succeeded stay saved and visible.
+                        if (data.error === 'overlap') {
+                            const from = fmtDdMmYyyy(data.conflicting_from), to = fmtDdMmYyyy(data.conflicting_to);
+                            toast(t(
+                                `⚠ Date range overlaps with [${data.conflicting_invoice}] (${from} – ${to}). Adjust the dates.`,
+                                `⚠ तारखेची श्रेणी [${data.conflicting_invoice}] (${from} – ${to}) शी आच्छादित होते. तारखा बदला.`
+                            ), 'warn');
+                            document.getElementById('consInvoicePreviewModal').style.display = 'none';
+                            btn.disabled = false;
+                            btn.textContent = t('Confirm & Generate Invoice','पुष्टी करा आणि इनव्हॉइस तयार करा');
+                            await loadInvoices();
+                            return;
+                        }
                         if (data.status !== 'ok') throw new Error(data.error || 'Unknown error');
                         results.push({ invoice_number: data.invoice_number, invoice_url: data.invoice_url, line_count: batches[b].length, total: data.total });
                     } catch (err) {

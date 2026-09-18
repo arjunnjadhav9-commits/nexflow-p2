@@ -1177,6 +1177,7 @@ Indexes that exist (from `supabase/migrations/`): `p2_dispatch_orders(tenant_id)
 
 - **Consequence:** Not visible at Datta Prasad's current volume. At 264 materials × daily GRNs over a year, `ca-report.html:373`'s unbounded `select('*')` on `p2_stock_transactions` and the `FOR UPDATE` full scan in the dispatch RPCs will become the first hard performance wall — and the RPC one takes a lock while it does it, so it will manifest as dispatches timing out under concurrent use.
 - **Fix:** Add `(tenant_id, transaction_type, transaction_date)` and `(tenant_id, raw_material_id)` on `p2_stock_transactions` and `(tenant_id, invoice_date)` on `p2_invoices` now; do the rest as a batch.
+- **P1 note (Session P1, global search, §5.3):** `js/navbar.js`'s new global search adds an exact-match lookup on `p2_invoices.invoice_number` and `p2_dispatch_orders.challan_number`, both tenant-scoped. Neither table has an index reaching those columns today (`p2_invoices` has no `tenant_id` index at all; `p2_dispatch_orders` has only bare `tenant_id`/`status`). Confirmed still true against the newest migration on record (`20260912_consolidated_invoice_batch_seq.sql`). Not a practical problem at current tenant counts — noted here per P1's own instruction rather than filed as a new finding.
 
 ## 6.4 The challan number length issue
 

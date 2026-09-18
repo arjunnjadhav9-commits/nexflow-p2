@@ -205,6 +205,7 @@
       background: var(--surface); border: 1px solid var(--border2);
       border-radius: var(--radius-lg); padding: 28px;
       width: 100%; max-width: 480px; box-shadow: var(--shadow-md);
+      max-height: 90vh; overflow-y: auto;
     }
     .modal-title {
       font-family: var(--condensed); font-size: 16px; font-weight: 800;
@@ -703,6 +704,19 @@
         </div>
     </div>
 
+    <!-- DUPLICATE ISSUE CONFIRM MODAL — replaces a blocking native confirm() so the
+         message can be styled and read calmly instead of interrupting as a browser dialog -->
+    <div class="modal-overlay" id="dupIssueModal">
+        <div class="modal-box" style="max-width:480px;">
+            <div class="modal-title" style="color:#fbbf24;" data-en="Possible Duplicate Issue" data-mr="संभाव्य दुहेरी इश्यू">Possible Duplicate Issue</div>
+            <div id="dupIssueMessage" class="modal-sub" style="margin-bottom:20px;"></div>
+            <div style="display:flex; gap:10px;">
+                <button id="dupIssueConfirmBtn" class="nx-btn nx-btn-primary" style="flex:1;" data-en="Proceed Anyway" data-mr="तरीही पुढे जा">Proceed Anyway</button>
+                <button id="dupIssueCancelBtn" class="nx-btn nx-btn-ghost" style="flex:1;" data-en="Cancel" data-mr="रद्द करा">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <script>
 /* ═══════════════════════════════════════
    LANGUAGE HELPER  — same pattern as all P2 pages
@@ -711,6 +725,26 @@
 ═══════════════════════════════════════ */
 const t = (en, mr) =>
   localStorage.getItem('nexflow_lang') === 'mr' ? mr : en;
+
+// Awaitable Yes/No modal — replaces the native confirm() for the duplicate-issue
+// gate below, so the page never blocks with an untranslatable browser dialog.
+// Resolves true (Proceed Anyway) or false (Cancel / click outside).
+function showDuplicateIssueConfirm(message) {
+  return new Promise(resolve => {
+    const overlay = document.getElementById('dupIssueModal');
+    document.getElementById('dupIssueMessage').textContent = message;
+    overlay.classList.add('open');
+
+    function close(result) {
+      overlay.classList.remove('open');
+      overlay.onclick = null;
+      resolve(result);
+    }
+    document.getElementById('dupIssueConfirmBtn').onclick = () => close(true);
+    document.getElementById('dupIssueCancelBtn').onclick  = () => close(false);
+    overlay.onclick = e => { if (e.target.id === 'dupIssueModal') close(false); };
+  });
+}
 
 function applyLang() {
   const lang = localStorage.getItem('nexflow_lang') || 'en';
@@ -1579,7 +1613,7 @@ async function submitIssue() {
       `"${p?.name}" × ${batchQty} was already issued on ${issueDate}. If this is a genuine second batch of the same product today, click OK to proceed — stock will be deducted again correctly. If you're not sure, click Cancel and check Recent Issues below first.`,
       `"${p?.name}" × ${batchQty} आधीच ${issueDate} रोजी इश्यू केले आहे. जर आज याच उत्पादनाची खरोखर दुसरी बॅच असेल, तर पुढे जाण्यासाठी OK दाबा — स्टॉक योग्यरित्या पुन्हा वजा होईल. खात्री नसल्यास, आधी खाली Recent Issues तपासण्यासाठी Cancel दाबा.`
     );
-    if (confirm(msg)) {
+    if (await showDuplicateIssueConfirm(msg)) {
       ({ data, error } = await callIssueRpc(true));
     } else {
       confirmBtn.disabled = false;

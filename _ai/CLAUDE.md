@@ -115,7 +115,19 @@ Mobile-first: owners use phones. Must work on mobile browser.
   transaction_date, notes, created_at. Balance = SUM — never stored directly.
   v_p2_wip_balance is the view.
 - p2_dispatch_orders — each dispatch = one challan. Has RPCs: confirm_bom_issue,
-  cancel_challan, add_missing_challan_item, get_next_grn_number.
+  cancel_challan, add_missing_deduction (production-issue.html's "+ Missing Deduction"),
+  get_next_grn_number, edit_product_dispatch_qty (Session 18, Sept 18 2026 — see "Known
+  Open Items" #8. Product-dispatch-only, qty-only edit on a single confirmed line: locks
+  the order, blocks on non-'product' dispatch_type / non-'confirmed' status / a linked
+  invoice (single-mode or consolidated, both excluding status='cancelled'), then adjusts
+  p2_stock_transactions by the BOM-expanded delta (consumption on increase, restoring
+  positive rows on decrease) and updates p2_dispatch_items.qty_dispatched. Does NOT touch
+  p2_wip_transactions — WIP is exclusively a bom_issue/production-issue.html concept
+  (confirm_dispatch_transaction, the RPC that actually confirms 'product' dispatches,
+  never writes WIP either). Replaces the Session-18 add_challan_line/remove_challan_line
+  RPCs, which were dropped in the same session via
+  20260918_drop_challan_line_editing.sql — that approach allowed arbitrary line add/
+  remove; this one is scoped to quantity edits only).
   confirm_bom_issue (v2, Aug 7): server-side stock check aggregates required qty per
   material_id across all BOM lines (GROUP BY) before checking balance, using a FOR UPDATE
   subquery lock; raises INSUFFICIENT_STOCK: {material} — Need {x}, Available {y}.
@@ -296,6 +308,9 @@ Mobile-first: owners use phones. Must work on mobile browser.
   created_at. RLS enabled, no policy, REVOKE FROM anon, authenticated — service-role only,
   same shape as p2_ops_alerts/p2_compliance_watch (a client's own answered question is
   founder-internal material, never readable by that tenant or any other).
+- p2_agent_proposals — RESERVED, not yet created. Table name is decided and reserved for the agent
+  write layer's GRN-photo confirmation flow; schema TBD in that session (full design already
+  written: `nexflow-agent.md` §8). Do not reuse this table name for anything else.
 
 ## RLS Fixes — Sessions 1 and 2 (Sept 3–4 2026)
 
@@ -653,6 +668,15 @@ Haiku's `top_n` field. supplier_history returns every matching GRN, no `.limit()
 - send_challan, send_invoice, send_tally_export — planned Pro-only features, not yet restored.
   Gate behind plan === 'pro' || plan === 'founder' when restoring.
 
+**Write layer scope — finalized 18 Sept 2026.** GRN photo is the only write intent the agent has,
+permanently. A storekeeper photographs a delivery slip; Sonnet 5 extracts supplier/materials/
+quantities/rate/invoice number; a confirmation card is shown; the owner confirms; stock updates.
+Dispatch, invoice generation, payment recording and stock adjustment via chat are permanently
+dropped — the form + tutorial engine remain the interface for those, not the agent. Voice is
+Whisper transcription into the existing read pipeline for natural-language read queries only
+("Kal kiti challan gele?" style) — no write path, no numbers acted on by voice. Full design:
+`_ai/nexflow-agent.md`.
+
 ### Critical agent gotchas
 - Adding a new intent: add it to HaikuIntent, the system prompt, executeQuery(), and
   READ_ONLY_INTENTS — one list, all in agent-query/index.ts. agent-chat.js needs no copy since
@@ -847,6 +871,18 @@ deliberate simplification for that reason.
   the same commit (A2, Sept 2026). Same enforcement shape as `tutorial-engine.md` §10.1's
   same-commit rule for tutorial configs.
 - Badminton questions → answer as a professional coach.
+- **Feedback idiom (P1 §2.2):** a message that must persist while the user acts on it is an
+  inline element (e.g. an in-modal `#…Error` div, or a banner hosting a follow-up action button
+  like Print Challan); everything else is `toast()`. Never use a native `alert()`/`confirm()` for
+  anything translatable or for anything requiring a user decision — a `confirm()` gating a
+  real yes/no branch (e.g. a force-retry) needs a small in-app Yes/No modal instead, since
+  `toast()` has no return value and can't gate a decision.
+- **Translation split (P1 §4.1):** static elements use `data-en`/`data-mr` + the page's
+  `applyLang()` (called once on load and by the navbar's मराठी toggle via `window.applyLang`).
+  Dynamically rendered content (JS-built rows, cards, options) cannot rely on `applyLang()` —
+  it runs once at load — so every render function uses the `t(en, mr)` helper inline, reading
+  `localStorage.getItem('nexflow_lang')` fresh at render time. A page with data-en/data-mr but
+  no `t()` helper will show correct static labels and English-only dynamic content forever.
 
 ## Shipped July 24, 2026
 - export.html (Tally Transactions): 17-column GST layout with HSN/SAC, CGST/SGST/IGST rates and amounts, Invoice Total.
@@ -2753,7 +2789,27 @@ Normalisation must be byte-identical to `normaliseInvoiceNo()` in gstr2b-reconci
 (`str.replace(/[\s\-\/]/g,'').toUpperCase()`), or the guard and the 2B reconciliation will
 disagree about what counts as the same invoice.
 
-Schedule: Phase 3, or a standalone fix before E1 starts.
+**Reconciliation (W2 build session, Sept 18 2026): the DB-backstop index above is
+superseded by Session 12's finding, not the other way around.** Session 12 (two days
+after this item was written) investigated this exact index shape and rejected it —
+*"No DB index — SS Engineering's coil-by-coil workflow (multiple rows of the same
+material under one invoice number, all in one batch, identical created_at) is
+legitimate and indistinguishable from a duplicate at the DB level. UI warning is the
+correct and sufficient guard."* The W2 session ran this item's own count query
+against live data and confirmed Session 12 was right empirically: 6 of the current
+duplicate-look rows across S.S. Engineering and Datta Prasad are exactly this
+coil-by-coil pattern (same `grn_no`, same material, same invoice, multiple rows from
+one batch) — the `raw_material_id`-inclusive unique index above would reject
+`CREATE UNIQUE INDEX CONCURRENTLY` outright today, and would permanently break that
+legitimate workflow going forward even after cleanup. **Do not build this index as
+specified.** The UI-only warning (`grn.html`'s `checkDuplicateInvoice()`, shipped
+Session 12) remains the correct and only guard; the agent write layer's own
+duplicate check (§5.2) is advisory-only for the same reason, not backed by a DB
+constraint.
+
+Schedule: Phase 3, or a standalone fix before E1 starts. **Superseded per the above —
+resolve the "correct shape" open question before scheduling, don't just schedule the
+index as written.**
 
 **2. Challan number length — BLOCKS E2 (AI Filing Package)**
 
@@ -2848,35 +2904,44 @@ codebase per the RLS-fix history above). If that counter is ever reset/edited, t
 silently share one `invoice_number` for a tenant with nothing in the schema to catch it. Fix
 direction (not yet built): `CREATE UNIQUE INDEX ON p2_invoices (tenant_id, invoice_number)`.
 
-**8. Challan line-item editing — Product Roadmap**
+**8. Challan line-item editing — RESOLVED (Session 18, Sept 18 2026)**
 
-Requested by Datta Prasad (Sept 10 2026).
-Owners need to add or remove individual line items on a confirmed dispatch challan without
-deleting and recreating the whole challan.
+Requested by Datta Prasad (Sept 10 2026). Session 18 first shipped a general add/remove-line
+feature (`add_challan_line`/`remove_challan_line` + an "Edit Lines" panel in `challan.html`),
+then reopened this item and dropped that approach the same session
+(`20260918_drop_challan_line_editing.sql`) in favor of a narrower fix: owners/supervisors can
+edit the **quantity** of an existing line on a confirmed **product** dispatch, without add/
+remove or touching any other dispatch type.
 
-Add a line: dispatch an additional product/material, consume stock from ledger, increment the
-challan line count, reflect in invoice.
-Remove a line: insert a stock reversal transaction (append-only ledger — never delete the
-original consumption row), remove the line from the challan display.
+Backend: `edit_product_dispatch_qty(p_dispatch_order_id, p_tenant_id, p_dispatch_item_id,
+p_new_qty)` — one `SECURITY DEFINER` RPC on `p2_dispatch_orders`,
+`supabase/migrations/20260918_edit_product_dispatch_qty.sql`, following the exact
+JWT-tenant-check / `get_my_role()` / `FOR UPDATE` / `RAISE EXCEPTION 'CODE: message'`
+convention established in `20260825_hard_delete_dispatch.sql`.
+- Locks the order, then blocks on: not found (`NOT_FOUND`), `status != 'confirmed'`
+  (`INVALID_STATUS`), `dispatch_type != 'product'` (`WRONG_TYPE`), a linked invoice — single-
+  mode or consolidated, both excluding `status='cancelled'` per `invoices.html`'s
+  `fetchInvoicedOrderIdSet()` convention (`INVOICE_LINKED`), missing item (`ITEM_NOT_FOUND`),
+  `p_new_qty <= 0` (`ZERO_QTY`), or `p_new_qty` unchanged (`NO_CHANGE`).
+- Computes `delta = p_new_qty - current_qty`, expands it through `p2_product_bom` (empty BOM →
+  `MISSING_BOM`), and writes `p2_stock_transactions` rows scoped to the order's own `owned_by`
+  pool: a locked-aggregate stock check (same pattern as `confirm_dispatch_transaction`) followed
+  by negative consumption rows on increase (`INSUFFICIENT_STOCK` if short), or positive
+  restoring rows on decrease (no check needed). Updates
+  `p2_dispatch_items.qty_dispatched` last.
+- Deliberately does **not** touch `p2_wip_transactions` — WIP is exclusively a
+  bom_issue/production-issue.html concept (`confirm_bom_issue`/`close_wip`).
+  `confirm_dispatch_transaction`, the RPC that actually confirms `product` dispatches, never
+  writes WIP either, so there is no WIP debit for this RPC to adjust.
 
-Hard rules:
-- Only allowed on challans with `status='confirmed'` AND no linked invoice (`dispatch_order_ids`
-  not referenced in any `p2_invoices` row). Once invoiced, the challan is locked — editing would
-  mismatch the invoice. Show a clear error if the owner tries to edit a locked challan.
-- Stock check required before adding a line — same fail-closed check as
-  `confirm_dispatch_transaction`. Insufficient stock = hard block.
-- Reversal transaction must reference the original `dispatch_order_id` so the audit trail is
-  complete.
-- Challan number does not change on edit — the document stays the same challan, just with
-  corrected lines.
-
-UI surface: `challan.html` detail view — "Edit Lines" button, visible only when the challan is
-unlocked (no invoice). Opens an inline edit mode with add/remove per line.
-
-Backend: new RPC or new `body.action` handler on `agent-query` — `add_challan_line` /
-`remove_challan_line`. Do not modify `confirm_dispatch_transaction`.
-
-Schedule: post-KPML meeting, own session.
+Frontend: `all-dispatch-history.html`'s detail modal — "+ Edit Product Qty" button (mirrors
+the existing "+ Missing Deduction" button's placement/role gating, but adds its own
+`dispatch_type === 'product'` + invoice-lock checks; does not touch the Missing Deduction
+button's own logic). Visible only for confirmed, non-invoiced `product` dispatches, owner/
+supervisor only. Expands an inline section below the items table (not a separate modal) with
+one qty input per line, pre-filled; Save calls the RPC once per changed line, sequentially,
+stopping on first error; success re-fetches and re-renders the items table in place. Not added
+to `challan.html` or `dispatch.html`.
 
 **9. Staff activity log — created_by columns — Product Roadmap**
 
@@ -2992,12 +3057,28 @@ Location: `20260902_create_supplier_advances.sql:74-81`.
 A new advance against a supplier with existing GRN history reads as massively overdrawn
 immediately — `total_drawn` is an all-time sum, not scoped to GRNs recorded since the advance.
 
-**15. Failed confirm burns a challan number — `rm-dispatch.html` / `production-issue.html`**
+**15. Failed confirm burns a challan number — `rm-dispatch.html`**
 
-`[COMPLIANCE]` `[BUG]`, High. Source: `codebase-audit.md` priority list #11.
-Location: `rm-dispatch.html:1134`; `production-issue.html:1541`, Cancel path at `:1573-1577`.
-`dispatch.html`'s equivalent bug was fixed (draft mode removed, Session 2) but the same pattern
-survives on the other two dispatch pages.
+**STATUS: FULLY RESOLVED (Session 18, Sept 18 2026).** `[COMPLIANCE]` `[BUG]`, High.
+Source: `codebase-audit.md` priority list #11.
+
+Re-verified directly against the live files before fixing (not from this doc's prior text,
+which was stale on one of the two pages cited below):
+- `rm-dispatch.html`: confirmed still broken — `getNextChallanNumber()` was called
+  unconditionally on every `confirmDispatch()` attempt, no caching, so every failed retry
+  burned a fresh number. Fixed by adding `currentDispatchChallanNumber` (same caching
+  pattern as `dispatch.html`), reserved on draw, cleared only on a successful confirm or on
+  resuming a different draft via `loadDraftToForm` — never cleared on a failed attempt, so a
+  retry reuses the same reserved number instead of drawing a new one.
+- `production-issue.html`: **already fixed** before this session — `pendingIssueChallanNumber`
+  (declared line ~810, used in `submitIssue()`) implements the identical caching pattern,
+  cleared only on success or explicit "New Issue" reset. The line numbers this entry
+  previously cited (`:1541`, cancel path `:1573-1577`) no longer correspond to a cancel path
+  at all — the file had already been restructured since this entry was written, and the fix
+  landed without this doc being updated. No code change was needed on this page.
+- `dispatch.html`'s original fix (Session 1, referenced above) is the pattern all three pages
+  now share: `currentDispatchChallanNumber` / `pendingIssueChallanNumber`, drawn once,
+  reused across retries, cleared only on success.
 
 **16. `get_next_challan_number` may produce duplicates under concurrency `[UNVERIFIED]`**
 
@@ -3106,6 +3187,11 @@ populated, `opsAlert` body correctly switched from the fallback text to `Issue: 
 `compliance-scan` was not independently re-tested this session but shares the identical
 `createGithubIssue()` shape and secret, so it should now create real issues too on its next
 CRITICAL/IMPORTANT finding — worth confirming the next time A2 fires.
+
+**26. `dispatch-consumption-print` button not visible on mobile at tutorial step 13 — NOT YET FIXED**
+
+The bubble covers the button despite `data-tutorial-bubble-prefer="above"`. Root cause
+unresolved. T2 must fix before the mobile tutorial is considered verified.
 
 ## What to build next (priority order)
 

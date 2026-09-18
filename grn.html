@@ -90,10 +90,7 @@
             position:fixed;inset:0;background:rgba(0,0,0,0.65);
             z-index:500;display:flex;align-items:center;justify-content:center;padding:20px;
         }
-        .nx-modal{
-            background:var(--surface);border:1px solid var(--border2);
-            border-radius:var(--radius-lg);padding:28px;width:100%;max-width:420px;box-shadow:var(--shadow-md);
-        }
+        .nx-modal{ max-width:420px; }
         .nx-modal-title{
             font-family:var(--condensed);font-weight:800;font-size:16px;
             color:var(--white);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:20px;
@@ -116,8 +113,22 @@
         #errorState{display:none;}
 
         /* GRN-only: left-align instead of center (shared .nx-page centers via
-           margin:0 auto across 20 pages — this override is scoped here only). */
+           margin:0 auto across 20 pages — this override is scoped here only).
+           Desktop-only: at ≤900px a fixed 40px left margin just steals usable
+           width from an already-narrow viewport for no visual benefit. */
         .nx-page-left { margin: 0 auto 0 40px; }
+        @media (max-width: 900px) { .nx-page-left { margin: 0 auto; } }
+
+        /* GRN-only: both .nx-card panels here are grid items of #grnForm.nx-grid-2
+           (single-column at ≤900px). Grid items default to min-width:auto, which
+           resolves to their content's min-content size — the materials table's
+           inline min-width:540px stretches the .nx-card (and the whole page)
+           instead of scrolling inside its own .nx-table-wrap, because the
+           overflow-x:auto that would normally zero this out lives three levels
+           down on .nx-table-wrap, not on the grid item itself. Scoped here
+           (not in shared .nx-card/.nx-grid-2 in nexflow-design.css) since those
+           classes are used on ~20 other pages. */
+        #grnForm.nx-grid-2 > .nx-card { min-width: 0; }
     </style>
 </head>
 <body>
@@ -174,7 +185,7 @@
                          misconfiguration hint (see renderOwnerField()). -->
                     <div class="nx-form-group" id="ownerFieldGroup" style="display:none;">
                         <label data-en="Material Owner" data-mr="मालाचा मालक">Material Owner</label>
-                        <div id="ownerToggleWrap" style="display:flex; gap:16px;"></div>
+                        <div id="ownerToggleWrap" style="display:flex; gap:10px 16px; flex-wrap:wrap;"></div>
                         <select id="ownerSelect" class="nx-input" style="display:none;"></select>
                         <div id="ownerNoPrincipalHint" style="display:none;font-size:11px;color:var(--orange);margin-top:6px;"
                              data-en="No principal configured — go to Settings to add one"
@@ -214,7 +225,7 @@
                                         <th data-en="Qty" data-mr="परिमाण">Qty</th>
                                         <th data-en="Unit" data-mr="एकक">Unit</th>
                                         <th data-en="Rate (Rs)" data-mr="दर (Rs)">Rate (Rs)</th>
-                                        <th data-en="Invoice No" data-mr="चलान क्र">Invoice No</th>
+                                        <th data-en="Invoice No" data-mr="इनव्हॉइस क्रमांक">Invoice No</th>
                                         <th data-en="Purchase Type" data-mr="खरेदी प्रकार">Purchase Type</th>
                                         <th data-en="Action" data-mr="कृती" style="text-align:center;">Del</th>
                                     </tr>
@@ -457,9 +468,9 @@
                 select.innerHTML = '';
                 toggleWrap.style.display = 'flex';
                 toggleWrap.innerHTML =
-                    '<label style="display:flex;align-items:center;gap:6px;cursor:default;font-weight:400;">' +
+                    '<label style="display:flex;align-items:center;gap:6px;cursor:default;font-weight:400;max-width:100%;">' +
                         '<input type="radio" name="ownerToggle" value="" checked disabled>' +
-                        '<span data-en="Own Stock" data-mr="स्वतःचा साठा">Own Stock</span>' +
+                        '<span data-en="Own Stock" data-mr="स्वतःचा साठा" style="min-width:0;">Own Stock</span>' +
                     '</label>';
                 hint.style.display = '';
             } else if (jobWorkPrincipals.length === 1) {
@@ -469,13 +480,13 @@
                 select.innerHTML = '';
                 toggleWrap.style.display = 'flex';
                 toggleWrap.innerHTML =
-                    '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:400;">' +
+                    '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:400;max-width:100%;">' +
                         '<input type="radio" name="ownerToggle" value="" checked>' +
-                        '<span data-en="Own Stock" data-mr="स्वतःचा साठा">Own Stock</span>' +
+                        '<span data-en="Own Stock" data-mr="स्वतःचा साठा" style="min-width:0;">Own Stock</span>' +
                     '</label>' +
-                    '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:400;">' +
+                    '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:400;max-width:100%;">' +
                         '<input type="radio" name="ownerToggle" value="' + p.id + '">' +
-                        '<span>' + escapeHtml(p.name) + "'s Material</span>" +
+                        '<span style="min-width:0;overflow-wrap:break-word;">' + escapeHtml(p.name) + "'s Material</span>" +
                     '</label>';
                 toggleWrap.querySelectorAll('input[name="ownerToggle"]').forEach(input => {
                     input.addEventListener('change', e => onOwnerChange(e.target.value || null));
@@ -593,7 +604,10 @@
 
             function positionDd(){
                 var r = inner.getBoundingClientRect();
-                var w = Math.max(300, r.width);
+                // Never wider than the viewport itself (minus a small margin) — the
+                // 300px floor below is a desktop convenience, not a guarantee, so it
+                // must lose to the viewport cap on any phone narrower than ~316px.
+                var w = Math.min(Math.max(300, r.width), window.innerWidth - 16);
                 var left = Math.min(r.left, window.innerWidth - w - 8);
                 if (left < 8) left = 8;
                 dd.style.top   = (r.bottom + 4) + 'px';
@@ -834,6 +848,11 @@
                     .rpc('get_next_grn_number', { p_tenant_id: tid });
                 if (grnErr) throw grnErr;
 
+                // Item 11 (Staff Activity Log): created_by is the acting user's own
+                // auth.uid(), applied identically to every row in this batch (same
+                // shape as grn_no above).
+                const { data: { user: activityUser } } = await window.supabase.auth.getUser();
+
                 const transactions = validRows.map(row => ({
                     tenant_id: tid, raw_material_id: row.material_id,
                     transaction_type: 'grn', quantity: parseFloat(row.quantity),
@@ -842,6 +861,7 @@
                     transaction_date: grnDate, invoice_no: row.invoice_no || null,
                     purchase_type: row.purchase_type || 'intrastate',
                     grn_no: grnNo,
+                    created_by: activityUser?.id || null,
                     // Fix 1 — principal pool inbound path. owned_by/challan
                     // fields are form-level (one physical delivery = one
                     // owner), applied identically to every row in this batch.
@@ -915,7 +935,7 @@
                 if (!row.quantity || row.quantity === '') { toast(lang==='mr' ? 'ओळ '+(i+1)+': कृपया परिमाण प्रविष्ट करा' : 'Row '+(i+1)+': Please enter quantity', 'error'); hasError=true; break; }
                 const qty = parseFloat(row.quantity);
                 if (isNaN(qty) || qty <= 0) { toast(lang==='mr' ? 'ओळ '+(i+1)+': परिमाण ० पेक्षा जास्त असणे आवश्यक आहे' : 'Row '+(i+1)+': Quantity must be greater than 0', 'error'); hasError=true; break; }
-                if (!row.invoice_no || !row.invoice_no.trim()) { toast(lang==='mr' ? 'GST नोंदींसाठी पुरवठादार चलान क्रमांक आवश्यक आहे.' : 'Supplier invoice number is required for GST records.', 'error'); hasError=true; break; }
+                if (!row.invoice_no || !row.invoice_no.trim()) { toast(lang==='mr' ? 'GST नोंदींसाठी पुरवठादार इनव्हॉइस क्रमांक आवश्यक आहे.' : 'Supplier invoice number is required for GST records.', 'error'); hasError=true; break; }
             }
             if (hasError) { submitButton.disabled = false; return; }
 
@@ -1057,10 +1077,10 @@
         function renderSupplierGroup(name, entries, isUnknown) {
             const countLabel = entries.length + (entries.length === 1 ? ' GRN' : ' GRNs');
             let html = '<div style="margin-bottom:16px;">' +
-                '<div style="display:flex;justify-content:space-between;font-weight:700;font-family:var(--condensed);' +
+                '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px 10px;font-weight:700;font-family:var(--condensed);' +
                 'text-transform:uppercase;letter-spacing:0.3px;color:' + (isUnknown ? 'var(--orange)' : 'var(--white)') + ';' +
                 'border-bottom:1px solid var(--border2);padding-bottom:6px;margin-bottom:6px;">' +
-                '<span>' + escapeHtml(name) + '</span><span style="color:var(--mid);font-weight:500;">' + countLabel + '</span></div>';
+                '<span style="min-width:0;overflow-wrap:break-word;">' + escapeHtml(name) + '</span><span style="color:var(--mid);font-weight:500;flex-shrink:0;">' + countLabel + '</span></div>';
             entries.forEach(e => {
                 const invoiceLabel = e.invoice_no && e.invoice_no.trim()
                     ? escapeHtml(e.invoice_no)

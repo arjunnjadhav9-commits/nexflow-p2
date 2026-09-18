@@ -34,13 +34,7 @@
             display: flex; align-items: center; justify-content: center;
             padding: 20px;
         }
-        .nx-modal {
-            background: var(--surface);
-            border: 1px solid var(--border2);
-            border-radius: var(--radius-lg);
-            padding: 28px; width: 100%; max-width: 480px;
-            box-shadow: var(--shadow-md);
-        }
+        .nx-modal { max-width: 480px; }
         .nx-modal-title {
             font-family: var(--condensed); font-weight: 800; font-size: 16px;
             color: var(--white); text-transform: uppercase; letter-spacing: 0.5px;
@@ -409,6 +403,12 @@
         let materials    = [];   // from v_p2_stock_balance
         let dispatchItems = [];  // { raw_material_id, name, material_code, qty, unit }
         let currentDispatchId = null;
+        // A number drawn for an in-progress confirm attempt that has not yet succeeded.
+        // Kept across a failed confirm_dispatch_transaction call so retrying reuses this
+        // number instead of drawing a fresh one each click and leaving a permanent gap in
+        // the sequence — same pattern as dispatch.html's currentDispatchChallanNumber and
+        // production-issue.html's pendingIssueChallanNumber.
+        let currentDispatchChallanNumber = null;
         let tenantId = null;
         let clientsMap = {};
         let jobWorkPrincipals = []; // principals for the pool dropdown, fetched once per load
@@ -1086,6 +1086,9 @@
             btn.disabled = true; btn.textContent = t('Saving...', 'जतन होत आहे...');
 
             try {
+                // Item 11 (Staff Activity Log): created_by is the acting user's own
+                // auth.uid(), not the tenantId this order's tenant_id field uses.
+                const { data: { user: activityUser } } = await window.supabase.auth.getUser();
                 const orderData = {
                     tenant_id:        tenantId,
                     client_name:      clientName,
@@ -1096,7 +1099,7 @@
                     status:           'draft',
                     dispatch_type:    'raw_material',
                     dispatch_date:    document.getElementById('dispatchDate').value || new Date().toISOString().split('T')[0],
-                    created_by:       tenantId,
+                    created_by:       activityUser?.id || null,
                     movement_purpose: (isJobWorker() || isPrincipal())
                         ? (document.getElementById('movementPurpose').value || 'sale')
                         : 'sale'
@@ -1146,11 +1149,7 @@
                     .insert(itemRows);
                 if (itemsErr) throw itemsErr;
 
-                const successBox = document.getElementById('successMessage');
-                document.getElementById('successText').textContent = t('Draft saved.', 'ड्राफ्ट जतन झाला.');
-                document.getElementById('printChallanBtn').style.display = 'none';
-                successBox.style.display = 'flex';
-                window.scrollTo({ top: 0, behavior: 'smooth' });
+                toast(t('Draft saved.', 'ड्राफ्ट जतन झाला.'));
                 await loadRecentDispatches();
 
             } catch (err) {
@@ -1189,8 +1188,17 @@
             try {
                 const clientName    = document.getElementById('clientName').value.trim();
                 const clientAddress = document.getElementById('clientAddress').value.trim();
-                const challanNumber = await getNextChallanNumber(window.supabase, tenantId, 'raw_material');
+                // Only draw a fresh number if this dispatch doesn't already have one
+                // reserved from a prior failed confirm attempt (insufficient stock,
+                // network failure, etc.) — otherwise every retry burns a new number and
+                // leaves a permanent gap in the sequence. See currentDispatchChallanNumber
+                // declaration.
+                const challanNumber = currentDispatchChallanNumber || await getNextChallanNumber(window.supabase, tenantId, 'raw_material');
+                currentDispatchChallanNumber = challanNumber;
 
+                // Item 11 (Staff Activity Log): created_by is the acting user's own
+                // auth.uid(), not the tenantId this order's tenant_id field uses.
+                const { data: { user: activityUser } } = await window.supabase.auth.getUser();
                 const orderData = {
                     tenant_id:        tenantId,
                     client_name:      clientName,
@@ -1208,7 +1216,7 @@
                     dispatch_type:    'raw_material',
                     challan_number:   String(challanNumber),
                     dispatch_date:    document.getElementById('dispatchDate').value || new Date().toISOString().split('T')[0],
-                    created_by:       tenantId,
+                    created_by:       activityUser?.id || null,
                     confirmed_at:     new Date().toISOString(),
                     movement_purpose: (isJobWorker() || isPrincipal())
                         ? (document.getElementById('movementPurpose').value || 'sale')
@@ -1310,6 +1318,7 @@
 
                 // Reset form
                 currentDispatchId = null;
+                currentDispatchChallanNumber = null; // consumed successfully -- clear the reservation
                 dispatchItems = [];
                 document.getElementById('dispatchForm').reset();
                 updatePoolDefault();
@@ -1342,6 +1351,11 @@
                 if (itemsErr) throw itemsErr;
 
                 currentDispatchId = order.id;
+                // A reserved number belongs to whichever order was mid-confirm when it was
+                // drawn — switching to resume a different draft here must not carry it over
+                // onto this one. Never burns anything: the reservation (if any) is simply
+                // re-drawn fresh next time its original order is confirmed.
+                currentDispatchChallanNumber = null;
                 document.getElementById('clientName').value    = order.client_name;
                 document.getElementById('clientAddress').value = order.client_address || '';
                 document.getElementById('poNumber').value      = order.po_number || '';

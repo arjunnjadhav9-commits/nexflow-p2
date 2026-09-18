@@ -16,6 +16,34 @@
 <script src="js/utils.js"></script>
 <script src="js/navbar.js"></script>
 <style>
+  /* Print — only Table 12, Table 13 and the two 43B(h) reports are meant to
+     print (P1 §6.2); everything else on this page (platform selector, GSTR-1
+     workbook, HSN Audit, link-out cards) is a configuration/action screen with
+     nothing a CA prints. Pattern from invoice.html: hide every sibling not
+     marked, force white/black, print-color-adjust:exact on table headers. */
+  @media print {
+    @page { size: A4; margin: 10mm; }
+    #navbar-container { display: none !important; }
+    .nx-page > *:not(.export-printable) { display: none !important; }
+    html, body { background: #fff !important; }
+    .export-printable, .export-printable * {
+      color: #000 !important;
+      background: #fff !important;
+      background-color: #fff !important;
+      box-shadow: none !important;
+      border-color: #000 !important;
+    }
+    .export-printable .nx-table thead,
+    .export-printable .nx-table th {
+      background: #e5e7eb !important;
+      background-color: #e5e7eb !important;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+    .export-printable { border: 1px solid #000 !important; page-break-inside: avoid; }
+    .export-printable button, .export-printable input, .export-printable .nx-form-group { display: none !important; }
+  }
+
   /* Platform buttons */
   .plat-btn {
     padding: 14px 16px;
@@ -147,6 +175,135 @@
     </div>
   </div>
 
+  <div class="nx-section-head">Monthly Filing</div>
+  <!-- GSTR-1 EXCEL WORKBOOK — separate from the CA Export button above -->
+  <div id="gstr1WorkbookSection" class="nx-card nx-mb-16">
+    <div class="nx-card-header">
+      <div class="nx-card-title">GSTR-1 Excel Workbook</div>
+    </div>
+    <div style="font-size:13px; color:var(--mid); margin-bottom:16px;">
+      A single .xlsx with sheets named exactly as the GST Returns Offline Tool expects (b2b, b2cs, b2cl, hsn, doc) — for direct import, not filing on its own. Validate against the current portal template before uploading.
+    </div>
+
+    <div class="nx-form-group">
+      <label>Month</label>
+      <input type="month" id="gstr1WorkbookMonth" class="nx-input" style="color-scheme:dark;">
+    </div>
+
+    <button id="gstr1WorkbookGenBtn" onclick="downloadGstr1Workbook()" class="nx-btn nx-btn-primary nx-btn-full">⬇ Download GSTR-1 Workbook</button>
+  </div>
+
+  <!-- GSTR-1 TABLE 12 — HSN/SAC SUMMARY -->
+  <div id="table12Section" class="nx-card nx-mb-16 export-printable">
+    <div class="nx-card-header">
+      <div class="nx-card-title">GSTR-1 Table 12 — HSN/SAC Summary</div>
+    </div>
+    <div style="font-size:13px; color:var(--mid); margin-bottom:16px;">
+      HSN/SAC-wise summary of outward supplies (sent invoices only), split B2B / B2C, for the selected month — for Table 12 of your GSTR-1 filing.
+    </div>
+
+    <div class="nx-form-group">
+      <label>Month</label>
+      <input type="month" id="table12Month" class="nx-input" style="color-scheme:dark;">
+    </div>
+
+    <button id="table12GenBtn" onclick="generateTable12()" class="nx-btn nx-btn-secondary nx-mb-16">Generate Summary</button>
+
+    <div id="table12WarnBox" class="nx-alert nx-alert-orange nx-mb-16">
+      <span class="nx-alert-icon">⚠</span>
+      <span id="table12WarnMsg" style="font-size:13px;"></span>
+    </div>
+
+    <div id="table12Results">
+      <div class="nx-td-bold" style="font-size:14px; margin-bottom:8px;">B2B Supplies</div>
+      <div class="nx-table-wrap nx-mb-16">
+        <table class="nx-table">
+          <thead>
+            <tr>
+              <th>HSN/SAC</th>
+              <th>Description</th>
+              <th>UQC</th>
+              <th style="text-align:right;">Quantity</th>
+              <th style="text-align:right;">Rate (%)</th>
+              <th style="text-align:right;">Taxable Value</th>
+              <th style="text-align:right;">Integrated Tax</th>
+              <th style="text-align:right;">Central Tax</th>
+              <th style="text-align:right;">State Tax</th>
+            </tr>
+          </thead>
+          <tbody id="t12B2bBody"></tbody>
+          <tfoot id="t12B2bFoot"></tfoot>
+        </table>
+      </div>
+
+      <div class="nx-td-bold" style="font-size:14px; margin-bottom:8px;">B2C Supplies</div>
+      <div class="nx-table-wrap nx-mb-16">
+        <table class="nx-table">
+          <thead>
+            <tr>
+              <th>HSN/SAC</th>
+              <th>Description</th>
+              <th>UQC</th>
+              <th style="text-align:right;">Quantity</th>
+              <th style="text-align:right;">Rate (%)</th>
+              <th style="text-align:right;">Taxable Value</th>
+              <th style="text-align:right;">Integrated Tax</th>
+              <th style="text-align:right;">Central Tax</th>
+              <th style="text-align:right;">State Tax</th>
+            </tr>
+          </thead>
+          <tbody id="t12B2cBody"></tbody>
+          <tfoot id="t12B2cFoot"></tfoot>
+        </table>
+      </div>
+
+      <button id="table12DownloadBtn" onclick="downloadTable12Excel()" class="nx-btn nx-btn-primary nx-btn-full">⬇ Download Excel</button>
+    </div>
+  </div>
+
+  <!-- GSTR-1 TABLE 13 — CHALLAN REGISTER -->
+  <div id="table13Section" class="nx-card nx-mb-16 export-printable">
+    <div class="nx-card-header">
+      <div class="nx-card-title">GSTR-1 Table 13 — Challan Register</div>
+    </div>
+    <div style="font-size:13px; color:var(--mid); margin-bottom:16px;">
+      Delivery challan serial range, issued and cancelled counts for the selected month — for Table 13 of your GSTR-1 filing.
+    </div>
+
+    <div class="nx-form-group">
+      <label>Month</label>
+      <input type="month" id="table13Month" class="nx-input" style="color-scheme:dark;">
+    </div>
+
+    <button id="table13GenBtn" onclick="generateTable13()" class="nx-btn nx-btn-secondary nx-mb-16">Generate Register</button>
+
+    <div id="table13WarnBox" class="nx-alert nx-alert-orange nx-mb-16">
+      <span class="nx-alert-icon">⚠</span>
+      <span id="table13WarnMsg" style="font-size:13px;"></span>
+    </div>
+
+    <div id="table13Results">
+      <div style="font-size:13px; color:var(--mid); margin-bottom:8px;" id="t13PeriodLabel"></div>
+      <div class="nx-table-wrap nx-mb-16">
+        <table class="nx-table">
+          <thead>
+            <tr>
+              <th>Document Type</th>
+              <th style="text-align:right;">From</th>
+              <th style="text-align:right;">To</th>
+              <th style="text-align:right;">Total Issued</th>
+              <th style="text-align:right;">Cancelled</th>
+              <th style="text-align:right;">Net Issued</th>
+              <th style="text-align:right;">Gaps</th>
+            </tr>
+          </thead>
+          <tbody id="t13Body"></tbody>
+        </table>
+      </div>
+      <button id="table13DownloadBtn" onclick="downloadTable13Excel()" class="nx-btn nx-btn-primary nx-btn-full">⬇ Download Excel</button>
+    </div>
+  </div>
+
   <!-- GSTR-2B RECONCILIATION -->
   <div class="nx-card nx-mb-16" style="display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;">
     <div>
@@ -156,15 +313,8 @@
     <a href="gstr2b-reconcile.html" class="nx-btn nx-btn-secondary">Open Reconciliation →</a>
   </div>
 
-  <!-- ITC-04 WORKING PAPER -->
-  <div id="itc04Card" class="nx-card nx-mb-16" style="display:none; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;">
-    <div>
-      <div class="nx-card-title" style="margin-bottom:4px;">ITC-04 Working Paper</div>
-      <div style="font-size:13px; color:var(--mid);">Job-work challan register — Tables 4/5A/5B/5C, paste-ready for your CA's ITC-04 filing.</div>
-    </div>
-    <a href="itc04-workingpaper.html" class="nx-btn nx-btn-secondary">Open Working Paper →</a>
-  </div>
 
+  <div class="nx-section-head" style="margin-top:8px;">Accounting Handover</div>
   <!-- STEP 1: Platform + Type -->
   <div class="nx-card nx-mb-16">
     <div class="nx-card-header">
@@ -276,119 +426,10 @@
     <div id="logInner"></div>
   </div>
 
-  <!-- GSTR-1 TABLE 13 — CHALLAN REGISTER -->
-  <div id="table13Section" class="nx-card nx-mb-16">
-    <div class="nx-card-header">
-      <div class="nx-card-title">GSTR-1 Table 13 — Challan Register</div>
-    </div>
-    <div style="font-size:13px; color:var(--mid); margin-bottom:16px;">
-      Delivery challan serial range, issued and cancelled counts for the selected month — for Table 13 of your GSTR-1 filing.
-    </div>
 
-    <div class="nx-form-group">
-      <label>Month</label>
-      <input type="month" id="table13Month" class="nx-input" style="color-scheme:dark;">
-    </div>
-
-    <button id="table13GenBtn" onclick="generateTable13()" class="nx-btn nx-btn-secondary nx-mb-16">Generate Register</button>
-
-    <div id="table13WarnBox" class="nx-alert nx-alert-orange nx-mb-16">
-      <span class="nx-alert-icon">⚠</span>
-      <span id="table13WarnMsg" style="font-size:13px;"></span>
-    </div>
-
-    <div id="table13Results">
-      <div style="font-size:13px; color:var(--mid); margin-bottom:8px;" id="t13PeriodLabel"></div>
-      <div class="nx-table-wrap nx-mb-16">
-        <table class="nx-table">
-          <thead>
-            <tr>
-              <th>Document Type</th>
-              <th style="text-align:right;">From</th>
-              <th style="text-align:right;">To</th>
-              <th style="text-align:right;">Total Issued</th>
-              <th style="text-align:right;">Cancelled</th>
-              <th style="text-align:right;">Net Issued</th>
-              <th style="text-align:right;">Gaps</th>
-            </tr>
-          </thead>
-          <tbody id="t13Body"></tbody>
-        </table>
-      </div>
-      <button id="table13DownloadBtn" onclick="downloadTable13Excel()" class="nx-btn nx-btn-primary nx-btn-full">⬇ Download Excel</button>
-    </div>
-  </div>
-
-  <!-- GSTR-1 TABLE 12 — HSN/SAC SUMMARY -->
-  <div id="table12Section" class="nx-card nx-mb-16">
-    <div class="nx-card-header">
-      <div class="nx-card-title">GSTR-1 Table 12 — HSN/SAC Summary</div>
-    </div>
-    <div style="font-size:13px; color:var(--mid); margin-bottom:16px;">
-      HSN/SAC-wise summary of outward supplies (sent invoices only), split B2B / B2C, for the selected month — for Table 12 of your GSTR-1 filing.
-    </div>
-
-    <div class="nx-form-group">
-      <label>Month</label>
-      <input type="month" id="table12Month" class="nx-input" style="color-scheme:dark;">
-    </div>
-
-    <button id="table12GenBtn" onclick="generateTable12()" class="nx-btn nx-btn-secondary nx-mb-16">Generate Summary</button>
-
-    <div id="table12WarnBox" class="nx-alert nx-alert-orange nx-mb-16">
-      <span class="nx-alert-icon">⚠</span>
-      <span id="table12WarnMsg" style="font-size:13px;"></span>
-    </div>
-
-    <div id="table12Results">
-      <div class="nx-td-bold" style="font-size:14px; margin-bottom:8px;">B2B Supplies</div>
-      <div class="nx-table-wrap nx-mb-16">
-        <table class="nx-table">
-          <thead>
-            <tr>
-              <th>HSN/SAC</th>
-              <th>Description</th>
-              <th>UQC</th>
-              <th style="text-align:right;">Quantity</th>
-              <th style="text-align:right;">Rate (%)</th>
-              <th style="text-align:right;">Taxable Value</th>
-              <th style="text-align:right;">Integrated Tax</th>
-              <th style="text-align:right;">Central Tax</th>
-              <th style="text-align:right;">State Tax</th>
-            </tr>
-          </thead>
-          <tbody id="t12B2bBody"></tbody>
-          <tfoot id="t12B2bFoot"></tfoot>
-        </table>
-      </div>
-
-      <div class="nx-td-bold" style="font-size:14px; margin-bottom:8px;">B2C Supplies</div>
-      <div class="nx-table-wrap nx-mb-16">
-        <table class="nx-table">
-          <thead>
-            <tr>
-              <th>HSN/SAC</th>
-              <th>Description</th>
-              <th>UQC</th>
-              <th style="text-align:right;">Quantity</th>
-              <th style="text-align:right;">Rate (%)</th>
-              <th style="text-align:right;">Taxable Value</th>
-              <th style="text-align:right;">Integrated Tax</th>
-              <th style="text-align:right;">Central Tax</th>
-              <th style="text-align:right;">State Tax</th>
-            </tr>
-          </thead>
-          <tbody id="t12B2cBody"></tbody>
-          <tfoot id="t12B2cFoot"></tfoot>
-        </table>
-      </div>
-
-      <button id="table12DownloadBtn" onclick="downloadTable12Excel()" class="nx-btn nx-btn-primary nx-btn-full">⬇ Download Excel</button>
-    </div>
-  </div>
-
+  <div class="nx-section-head" style="margin-top:8px;">Compliance Checks</div>
   <!-- CLIENT PAYMENT STATUS (renamed from "43B(h)" — this measures receivables, not the tenant's own MSME-payables position; see Supplier Payment Compliance — 43B(h) below for that) -->
-  <div id="table43bhSection" class="nx-card nx-mb-16">
+  <div id="table43bhSection" class="nx-card nx-mb-16 export-printable">
     <div class="nx-card-header">
       <div class="nx-card-title">Client Payment Status</div>
     </div>
@@ -444,7 +485,7 @@
   </div>
 
   <!-- SUPPLIER PAYMENT COMPLIANCE — 43B(h) (the actual payables-side report) -->
-  <div id="supplier43bhSection" class="nx-card nx-mb-16">
+  <div id="supplier43bhSection" class="nx-card nx-mb-16 export-printable">
     <div class="nx-card-header">
       <div class="nx-card-title">Supplier Payment Compliance — 43B(h)</div>
     </div>
@@ -459,21 +500,13 @@
     </div>
   </div>
 
-  <!-- GSTR-1 EXCEL WORKBOOK — separate from the CA Export button above -->
-  <div id="gstr1WorkbookSection" class="nx-card nx-mb-16">
-    <div class="nx-card-header">
-      <div class="nx-card-title">GSTR-1 Excel Workbook</div>
+  <!-- ITC-04 WORKING PAPER -->
+  <div id="itc04Card" class="nx-card nx-mb-16" style="display:none; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;">
+    <div>
+      <div class="nx-card-title" style="margin-bottom:4px;">ITC-04 Working Paper</div>
+      <div style="font-size:13px; color:var(--mid);">Job-work challan register — Tables 4/5A/5B/5C, paste-ready for your CA's ITC-04 filing.</div>
     </div>
-    <div style="font-size:13px; color:var(--mid); margin-bottom:16px;">
-      A single .xlsx with sheets named exactly as the GST Returns Offline Tool expects (b2b, b2cs, b2cl, hsn, doc) — for direct import, not filing on its own. Validate against the current portal template before uploading.
-    </div>
-
-    <div class="nx-form-group">
-      <label>Month</label>
-      <input type="month" id="gstr1WorkbookMonth" class="nx-input" style="color-scheme:dark;">
-    </div>
-
-    <button id="gstr1WorkbookGenBtn" onclick="downloadGstr1Workbook()" class="nx-btn nx-btn-primary nx-btn-full">⬇ Download GSTR-1 Workbook</button>
+    <a href="itc04-workingpaper.html" class="nx-btn nx-btn-secondary">Open Working Paper →</a>
   </div>
 
   <!-- HSN AUDIT (E3) — checks EXISTING hsn_sac codes against Haiku, never suggests for blank ones -->

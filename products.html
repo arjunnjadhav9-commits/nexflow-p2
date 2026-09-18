@@ -24,13 +24,7 @@
             display: flex; align-items: center; justify-content: center;
             padding: 20px;
         }
-        .nx-modal {
-            background: var(--surface);
-            border: 1px solid var(--border2);
-            border-radius: var(--radius-lg);
-            padding: 28px; width: 100%; max-width: 460px;
-            box-shadow: var(--shadow-md);
-        }
+        .nx-modal { max-width: 460px; }
         .nx-modal-title {
             font-family: var(--condensed); font-weight: 800; font-size: 16px;
             color: var(--white); text-transform: uppercase; letter-spacing: 0.5px;
@@ -219,7 +213,10 @@
                         </div>
                         <div id="productsEmpty" style="display:none;" class="nx-empty-state">
                             <div class="nx-empty-icon">📦</div>
-                            <div data-en="No products added yet." data-mr="अद्याप कोणतेही उत्पादन जोडलेले नाही.">No products added yet.</div>
+                            <div class="nx-empty-text" data-en="No products yet. Add one, then set its recipe." data-mr="अद्याप कोणतेही उत्पादन नाही. एक जोडा, नंतर त्याची रेसिपी सेट करा.">No products yet. Add one, then set its recipe.</div>
+                            <button type="button" class="nx-btn nx-btn-primary nx-btn-sm"
+                                    onclick="document.getElementById('add-product-form').scrollIntoView({behavior:'smooth'}); document.querySelector('#add-product-form [name=name]')?.focus();"
+                                    data-en="Add a Product" data-mr="उत्पादन जोडा">Add a Product</button>
                         </div>
                         <div id="productsToggleWrap" style="display:none; text-align:center; margin-top:12px;">
                             <button id="productsToggleBtn" type="button" class="nx-btn nx-btn-ghost nx-btn-sm"></button>

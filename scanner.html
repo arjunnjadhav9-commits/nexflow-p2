@@ -625,6 +625,11 @@
                     .rpc('get_next_grn_number', { p_tenant_id: tenantId });
                 if (grnErr) throw grnErr;
 
+                // Item 11 (Staff Activity Log): created_by is the acting user's own
+                // auth.uid(), applied identically to every row in this batch (same
+                // shape as grn_no above).
+                const { data: { user: activityUser } } = await window.supabase.auth.getUser();
+
                 const transactions = pendingItems.map(item => ({
                     tenant_id: tenantId,
                     raw_material_id: item.materialId,
@@ -636,6 +641,7 @@
                     transaction_date: grnDateVal,
                     invoice_no: item.invoiceNo,
                     grn_no: grnNo,
+                    created_by: activityUser?.id || null,
                     // Scanner GRN is own-stock only by design (Fix 1, Sept 4 2026) —
                     // this is a fast, one-handed QR-scan flow and deliberately has no
                     // Material Owner selector. A principal delivery must be entered

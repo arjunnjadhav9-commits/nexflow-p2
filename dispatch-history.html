@@ -17,20 +17,13 @@
     <script src="js/navbar.js"></script>
 
     <style>
-        /* Modal — not in shared stylesheet, mirrors grn.html / dispatch.html / index.html pattern */
+        /* .nx-modal itself lives in css/nexflow-design.css (shared shell + max-height fix) */
         .nx-modal-overlay {
             position: fixed; inset: 0;
             background: rgba(0,0,0,0.65);
             z-index: 500;
             display: flex; align-items: center; justify-content: center;
             padding: 20px;
-        }
-        .nx-modal {
-            background: var(--surface);
-            border: 1px solid var(--border2);
-            border-radius: var(--radius-lg);
-            padding: 28px; width: 100%; max-width: 520px;
-            box-shadow: var(--shadow-md);
         }
         .nx-modal-title {
             font-family: var(--condensed); font-weight: 800; font-size: 16px;

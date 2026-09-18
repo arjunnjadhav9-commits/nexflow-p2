@@ -58,6 +58,14 @@
             border: 2px solid #000;
         }
 
+        /* Screen-only horizontal scroll below ~900px — the challan layout targets A4
+           and must not be squeezed to fit a phone. Print is completely untouched:
+           this is scoped to screen media only (P1 §3.3). */
+        @media screen and (max-width: 900px) {
+            .ch-mobile-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+            .ch-mobile-scroll .ch-outer { min-width: 700px; }
+        }
+
         .ch-section {
             border-bottom: 1px solid #000;
             padding: 16px 20px;
@@ -249,6 +257,7 @@
 
     <!-- CHALLAN DOCUMENT -->
     <div id="challan-content">
+      <div class="ch-mobile-scroll">
       <div class="ch-outer">
 
         <!-- 1. DELIVERY CHALLAN title -->
@@ -347,6 +356,7 @@
         </div>
 
       </div><!-- end ch-outer -->
+      </div><!-- end ch-mobile-scroll -->
 
         <!-- QR Code 2 — cut-out section for delivery box sticker -->
         <div id="qr2-cutout" style="display:none; margin-top:16px; padding:16px 20px; border-top:2px dashed #000; background:#f7f7f7;">

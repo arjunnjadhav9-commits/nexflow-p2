@@ -112,15 +112,7 @@
             display: flex; align-items: center; justify-content: center;
             padding: 20px;
         }
-        .nx-modal-lg {
-            background: var(--surface);
-            border: 1px solid var(--border2);
-            border-radius: var(--radius-lg);
-            width: 100%; max-width: 860px;
-            max-height: 90vh;
-            overflow-y: auto;
-            box-shadow: var(--shadow-md);
-        }
+        /* .nx-modal-lg is now a modifier on .nx-modal (css/nexflow-design.css) — see nx-modal-lg markup below */
         .nx-modal-header {
             display: flex; align-items: center; justify-content: space-between;
             padding: 16px 20px;
@@ -225,6 +217,7 @@
         <button id="tab-adjustment" class="nx-stab owner-only" data-en="Stock Adjustment" data-mr="साठा दुरुस्ती">Stock Adjustment</button>
         <button id="tab-prices"     class="nx-stab owner-only" data-en="💰 Prices" data-mr="💰 किंमती">💰 Prices</button>
         <button id="tab-filing"     class="nx-stab owner-only" data-en="Filing Package" data-mr="फायलिंग पॅकेज">Filing Package</button>
+        <button id="tab-activity"   class="nx-stab owner-only" data-en="Activity" data-mr="कार्यक्रम">Activity</button>
     </div>
 
     <!-- ── COMPANY DETAILS ─────────────────────────────── -->
@@ -1272,12 +1265,61 @@
         </div>
     </div><!-- end content-filing -->
 
+    <!-- ── ACTIVITY LOG ─────────────────────────────────── -->
+    <div id="content-activity" class="tab-panel owner-only">
+        <div class="nx-card">
+            <div class="nx-card-header">
+                <div class="nx-card-title" data-en="Staff Activity Log" data-mr="कर्मचारी कार्यक्रम नोंदी">Staff Activity Log</div>
+            </div>
+            <div class="nx-form-row">
+                <div class="nx-form-group">
+                    <label data-en="Staff Member" data-mr="कर्मचारी सदस्य">Staff Member</label>
+                    <select id="activity-filter-staff" class="nx-input">
+                        <option value="" data-en="All" data-mr="सर्व">All</option>
+                    </select>
+                </div>
+                <div class="nx-form-group">
+                    <label data-en="Action" data-mr="क्रिया">Action</label>
+                    <select id="activity-filter-action" class="nx-input">
+                        <option value="" data-en="All" data-mr="सर्व">All</option>
+                        <option value="dispatch" data-en="Dispatch" data-mr="डिस्पॅच">Dispatch</option>
+                        <option value="grn" data-en="GRN" data-mr="GRN">GRN</option>
+                        <option value="invoice" data-en="Invoice" data-mr="इनव्हॉइस">Invoice</option>
+                    </select>
+                </div>
+                <div class="nx-form-group">
+                    <label data-en="From" data-mr="पासून">From</label>
+                    <input type="date" id="activity-filter-from" class="nx-input">
+                </div>
+                <div class="nx-form-group">
+                    <label data-en="To" data-mr="पर्यंत">To</label>
+                    <input type="date" id="activity-filter-to" class="nx-input">
+                </div>
+            </div>
+            <div class="nx-table-wrap">
+                <table class="nx-table">
+                    <thead>
+                        <tr>
+                            <th data-en="Date/Time" data-mr="दिनांक/वेळ">Date/Time</th>
+                            <th data-en="Staff Member" data-mr="कर्मचारी सदस्य">Staff Member</th>
+                            <th data-en="Role" data-mr="भूमिका">Role</th>
+                            <th data-en="Action" data-mr="क्रिया">Action</th>
+                            <th data-en="Reference" data-mr="संदर्भ">Reference</th>
+                            <th data-en="Detail" data-mr="तपशील">Detail</th>
+                        </tr>
+                    </thead>
+                    <tbody id="activity-log-list"></tbody>
+                </table>
+            </div>
+        </div>
+    </div><!-- end content-activity -->
+
 </div><!-- end nx-page -->
 </div><!-- end nx-main -->
 
 <!-- QR MODAL -->
 <div id="qr-modal" class="nx-modal-overlay" style="display:none;">
-    <div class="nx-modal-lg">
+    <div class="nx-modal nx-modal-lg">
         <div class="nx-modal-header no-print">
             <div class="nx-modal-header-title">QR Labels — Print &amp; Stick on Shelves</div>
             <div style="display:flex; gap:8px;">
@@ -1357,7 +1399,7 @@
     }
 
     // ── TAB SWITCHING ─────────────────────────────────────────────────────────
-    const tabs = ['company','challan','telegram','staff','materials','suppliers','clients','agent','adjustment','prices','filing'];
+    const tabs = ['company','challan','telegram','staff','materials','suppliers','clients','agent','adjustment','prices','filing','activity'];
 
     function switchToTab(activeTab) {
         tabs.forEach(tab => {
@@ -1375,15 +1417,14 @@
     }
 
     // ── STATUS HELPER ─────────────────────────────────────────────────────────
+    // Converged onto toast() (P1 Step 3) — divId is kept in the signature so
+    // none of the ~35 call sites across this file need to change; the
+    // .nx-status-msg divs they used to reference are now unused (display:none
+    // by default, harmless) rather than deleted piecemeal.
     function showStatus(divId, type, messageEn, messageMr) {
-        const statusDiv = document.getElementById(divId);
-        if (!statusDiv) return;
         const lang    = localStorage.getItem('nexflow_lang') || 'en';
         const message = lang === 'mr' ? messageMr : messageEn;
-        statusDiv.className = `nx-status-msg ${type}`;
-        statusDiv.textContent = message;
-        statusDiv.style.display = 'block';
-        setTimeout(() => { statusDiv.style.display = 'none'; }, 5000);
+        toast(message, type);
     }
 
     // ── ROLE VISIBILITY ───────────────────────────────────────────────────────
@@ -2072,6 +2113,15 @@
             }
         } catch (error) {
             console.error('Error loading materials:', error);
+            // Render layer must not show "No materials yet" on a failed fetch —
+            // that would tell the tenant to re-import data they already have (P1 §5.1).
+            const tbody = document.getElementById('materials-list');
+            tbody.innerHTML = `<tr><td colspan="8"><div class="nx-empty-state nx-retry-state">
+                <div class="nx-empty-icon">⚠</div>
+                <div class="nx-empty-text" data-en="Could not load materials. Try again." data-mr="साहित्य लोड करता आले नाही. पुन्हा प्रयत्न करा.">Could not load materials. Try again.</div>
+                <button type="button" class="nx-btn nx-btn-secondary nx-btn-sm" onclick="loadMaterials()" data-en="Retry" data-mr="पुन्हा प्रयत्न करा">Retry</button>
+            </div></td></tr>`;
+            applyLang(localStorage.getItem('nexflow_lang') || 'en');
         }
     }
 
@@ -2080,8 +2130,16 @@
         tbody.innerHTML = '';
 
         if (materialsArr.length === 0) {
-            const emptyMsg = allMaterialsList.length === 0 ? 'No materials added yet.' : 'No materials match your search.';
-            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:var(--mid); padding:20px;">' + emptyMsg + '</td></tr>';
+            if (allMaterialsList.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="8"><div class="nx-empty-state">
+                    <div class="nx-empty-icon">📦</div>
+                    <div class="nx-empty-text" data-en="No materials yet. Import from a file, or add them one at a time." data-mr="अद्याप कोणतेही साहित्य नाही. फाइलमधून इम्पोर्ट करा, किंवा एक-एक करून जोडा.">No materials yet. Import from a file, or add them one at a time.</div>
+                    <a href="onboarding.html" class="nx-btn nx-btn-primary nx-btn-sm" data-en="Import Materials" data-mr="साहित्य इम्पोर्ट करा">Import Materials</a>
+                </div></td></tr>`;
+            } else {
+                tbody.innerHTML = '<tr><td colspan="8"><div class="nx-empty-state"><div class="nx-empty-text" data-en="No materials match your search." data-mr="तुमच्या शोधाशी कोणतेही साहित्य जुळत नाही.">No materials match your search.</div></div></td></tr>';
+            }
+            applyLang(localStorage.getItem('nexflow_lang') || 'en');
             return;
         }
 
@@ -2236,6 +2294,18 @@
                     class="nx-btn nx-btn-danger nx-btn-sm" data-en="Deactivate" data-mr="निष्क्रिय करा">Deactivate</button>
             </td>
         `;
+    }
+
+    // Scrolls to and briefly flashes a supplier/client row — used by
+    // js/navbar.js's global search deep link (?tab=suppliers|clients&highlight_id=).
+    function highlightSettingsRow(prefix, id) {
+        if (!id) return;
+        const row = document.getElementById(prefix + id);
+        if (!row) return;
+        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        row.style.transition = 'background-color 0.3s ease';
+        row.style.backgroundColor = 'rgba(255,92,26,0.18)';
+        setTimeout(() => { row.style.backgroundColor = ''; }, 2200);
     }
 
     async function loadSuppliers() {
@@ -2749,6 +2819,102 @@
             spinner.style.display = 'none';
             loadFilingTab();
         }
+    }
+
+    // ── ACTIVITY LOG (Item 11) ───────────────────────────────────────────────
+    // Cached across loadActivityTab() and the filter handlers so filtering
+    // (staff/action/date range) is applied client-side against one fetch,
+    // per spec — 200 rows is safe at current scale, no need to re-query per
+    // filter change. activityTenantId is cached the same way: this tab is
+    // owner-only (.owner-only class), so the viewer's own auth.uid() IS the
+    // tenant, same reasoning loadStaffList() above already relies on.
+    let allActivityRows = [];
+    let activityTenantId = null;
+
+    async function loadActivityTab() {
+        try {
+            const { data: { user } } = await window.supabase.auth.getUser();
+            if (!user) return;
+            activityTenantId = user.id;
+
+            const { data: roles, error: rolesError } = await window.supabase
+                .from('p2_user_roles').select('user_id, email')
+                .eq('tenant_id', activityTenantId).order('email', { ascending: true });
+            if (rolesError) throw rolesError;
+
+            const lang = localStorage.getItem('nexflow_lang') || 'en';
+            const staffSelect = document.getElementById('activity-filter-staff');
+            const previousValue = staffSelect.value;
+            staffSelect.innerHTML = `<option value="">${lang === 'mr' ? 'सर्व' : 'All'}</option>`
+                + `<option value="${activityTenantId}">${lang === 'mr' ? 'मालक (तुम्ही)' : 'Owner (you)'}</option>`
+                + (roles || []).map(r => `<option value="${r.user_id}">${r.email || r.user_id}</option>`).join('');
+            staffSelect.value = previousValue;
+
+            const { data, error } = await window.supabase
+                .from('v_p2_activity_log')
+                .select('*')
+                .eq('tenant_id', activityTenantId)
+                .order('created_at', { ascending: false })
+                .limit(200);
+            if (error) throw error;
+
+            allActivityRows = data || [];
+            renderActivityLog();
+        } catch (error) {
+            console.error('loadActivityTab failed:', error);
+            toast(error.message || 'Could not load activity log', 'error');
+        }
+    }
+
+    function renderActivityLog() {
+        const lang = localStorage.getItem('nexflow_lang') || 'en';
+        const t = (en, mr) => lang === 'mr' ? mr : en;
+        const tbody = document.getElementById('activity-log-list');
+
+        const staffFilter  = document.getElementById('activity-filter-staff').value;
+        const actionFilter = document.getElementById('activity-filter-action').value;
+        const fromFilter   = document.getElementById('activity-filter-from').value;
+        const toFilter      = document.getElementById('activity-filter-to').value;
+
+        let rows = allActivityRows;
+        if (staffFilter)  rows = rows.filter(r => r.created_by === staffFilter);
+        if (actionFilter) rows = rows.filter(r => r.action_type === actionFilter);
+        if (fromFilter)   rows = rows.filter(r => r.created_at >= fromFilter);
+        if (toFilter)     rows = rows.filter(r => r.created_at <= toFilter + 'T23:59:59');
+
+        if (rows.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="6"><div class="nx-empty-state">
+                <div class="nx-empty-text" data-en="No activity found for the selected filters." data-mr="निवडलेल्या फिल्टरसाठी कोणताही कार्यक्रम आढळला नाही.">${t('No activity found for the selected filters.', 'निवडलेल्या फिल्टरसाठी कोणताही कार्यक्रम आढळला नाही.')}</div>
+            </div></td></tr>`;
+            return;
+        }
+
+        const actionLabels = {
+            dispatch: t('Dispatch', 'डिस्पॅच'),
+            grn: t('GRN', 'GRN'),
+            invoice: t('Invoice', 'इनव्हॉइस')
+        };
+
+        tbody.innerHTML = rows.map(r => {
+            const dateStr = formatDate(r.created_at);
+            const timeStr = new Date(r.created_at).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: false });
+            // p2_user_roles has no row for the owner (invite-staff never inserts
+            // one for them) — a NULL staff_email after the view's LEFT JOIN means
+            // either the owner did this themselves, or a staff member later
+            // removed from p2_user_roles did. created_by === activityTenantId is
+            // exactly the owner case, since tenant_id = auth.uid() for owners.
+            const isOwnerRow = r.created_by === activityTenantId;
+            const staffLabel = r.staff_email || (isOwnerRow ? t('Owner', 'मालक') : t('Unknown', 'अज्ञात'));
+            const roleLabel  = r.staff_role ? getRoleLabel(r.staff_role) : (isOwnerRow ? getRoleLabel('owner') : '—');
+            return `<tr>
+                <td>${dateStr} ${timeStr}</td>
+                <td>${staffLabel}</td>
+                <td>${roleLabel}</td>
+                <td>${actionLabels[r.action_type] || r.action_type}</td>
+                <td>${r.reference || '—'}</td>
+                <td>${r.detail || '—'}</td>
+            </tr>`;
+        }).join('');
     }
 
     // ── STAFF ─────────────────────────────────────────────────────────────────
@@ -3808,6 +3974,10 @@
         document.getElementById('tab-adjustment').addEventListener('click', () => { switchToTab('adjustment'); loadAdjustmentMaterials(); loadRecentAdjustments(); });
         document.getElementById('tab-prices').addEventListener('click',     () => { switchToTab('prices');     loadPricesTab(); });
         document.getElementById('tab-filing').addEventListener('click',     () => { switchToTab('filing');     loadFilingTab(); });
+        document.getElementById('tab-activity').addEventListener('click',   () => { switchToTab('activity');   loadActivityTab(); });
+        ['activity-filter-staff', 'activity-filter-action', 'activity-filter-from', 'activity-filter-to'].forEach(id => {
+            document.getElementById(id).addEventListener('change', renderActivityLog);
+        });
         document.getElementById('product-price-search').addEventListener('input', (e) => filterProductPrices(e.target.value));
         document.getElementById('agent-ca-email-save').addEventListener('click', saveCaEmail);
         document.getElementById('filing-save-btn').addEventListener('click', saveFilingSettings);
@@ -3824,14 +3994,21 @@
         });
 
         // export.html's HSN Audit "Fix →" link deep-links here as
-        // settings.html?tab=materials — only 'materials' is ever sent by any
-        // caller today, so that's the only value handled. Anything else/
-        // missing falls through to the existing default.
-        const requestedTab = new URLSearchParams(window.location.search).get('tab');
+        // settings.html?tab=materials. js/navbar.js's global search also deep-links
+        // here as ?tab=suppliers|clients&highlight_id=<row id> — see highlightSettingsRow().
+        const requestedParams = new URLSearchParams(window.location.search);
+        const requestedTab = requestedParams.get('tab');
+        const highlightId  = requestedParams.get('highlight_id');
         if (requestedTab === 'materials') {
             switchToTab('materials');
             loadMaterials();
             if (isPro()) document.getElementById('btn-print-qr').style.display = '';
+        } else if (requestedTab === 'suppliers') {
+            switchToTab('suppliers');
+            loadSuppliers().then(() => highlightSettingsRow('supplier-row-', highlightId));
+        } else if (requestedTab === 'clients') {
+            switchToTab('clients');
+            loadClients().then(() => highlightSettingsRow('client-row-', highlightId));
         } else {
             switchToTab('company');
         }

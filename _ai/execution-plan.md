@@ -20,11 +20,12 @@ facts; where the two disagree on *order*, this file wins.
 ## 1. What Nexflow Is Becoming
 
 Nexflow is the operating system for a MIDC factory. Not an inventory tracker with AI bolted on —
-a system where the factory owner describes what happened, or photographs the paper that says what
-happened, and the software resolves it against their real materials, BOMs, clients and stock,
-shows them exactly what it will do, and writes it on one confirmation. Four layers sit on one
-Edge Function: a **read layer** that answers questions about the factory (live), a **write layer**
-that executes transactions from a sentence (designed), **Factory OS** that adds production orders,
+a system where the factory owner photographs the paper that says what happened, and the software
+resolves it against their real materials, BOMs, clients and stock, shows them exactly what it will
+do, and writes it on one confirmation. Four layers sit on one Edge Function: a **read layer** that
+answers questions about the factory, by typing (live) or by voice (designed, read-only), a
+**write layer** that executes one transaction — a GRN, from a photograph — the only thing the
+agent writes, permanently (designed), **Factory OS** that adds production orders,
 workers, progress and quality — the transactions the factory actually runs on and that no
 inventory product has (designed), and an **Intelligence layer** that aggregates the tenant's own
 rows in Postgres and answers business questions the owner currently guesses at (designed).
@@ -114,8 +115,8 @@ Everything in §4 from item 1 onward. Concretely, and in order of how much it ma
 
 - **A0 and A6** — the founder ops channel and the filing-package queue. **Three weeks late is
   fatal; see below.**
-- **The agent write layer** (`nexflow-agent.md`) — 6 sessions. The moat that changes what the
-  product is.
+- **The agent write layer** (`nexflow-agent.md`) — 2 sessions + a supervised pilot. The moat that
+  changes what the product is.
 - **Factory OS** (`factory-os.md`) — 6 sessions. The transaction the factory runs on.
 - **The Intelligence layer** (`nexflow-intelligence.md`) — 6 sessions.
 - **The Bridge Agent** (`bridge-agent.md`) — Sessions 18–19. Blocked on incorporation for
@@ -307,17 +308,22 @@ Sessions 1–17. See §2 "What is built". **Sessions 12–17: ✅ Done.**
 | **5** | **A2 — Compliance monitoring** | CBIC scan, `compliance-constants.json`, Haiku + Opus gate, ops alerts | The B2CL threshold was wrong in production for 22 months and was caught by a CA conversation, not by any process. ₹90/month, flat, forever | 1.5 | ✅ Done |
 | **6** | **A3 — Daily operations digest** | Haiku digest to the founder channel | It is the **delivery surface** for A6 and A8. Building the reporters without the report leaves their output in a table nobody reads | 1 | ✅ Done |
 | **7** | **A4 Phase 1 — Support relay** | Escalation + bug capture, KB starts accreting | Every month delayed is a month of answered questions not captured | 1.5 | ✅ Done |
-| **8** | **T1 — Tutorial engine + dispatch (English)** | `js/tutorial-engine.js`, `tutorials/dispatch.tutorial.js`, `p2_tutorial_progress`, 12 `data-tutorial-target` attributes on `dispatch.html`, Settings selector | Data quality is a filing outcome. Also a **free audit of the dispatch flow** — it forces someone to walk every field and name it, which is exactly the inventory the write layer's resolver needs | 1 | ❌ |
-| **9** | **P1 — Product polish** | Shared `.nx-modal` rule (six copies deleted), five feedback idioms → one, mobile at 390px, Marathi on the money pages, empty states, global search, CA features menu, print stylesheets | **A user physically cannot submit a 6-item Generate Invoice modal today.** One CSS rule closes it across six modals | 1.6 | ❌ |
-| **10** | **Challan line editing** | `add_challan_line` / `remove_challan_line`, inline edit on `challan.html` detail, reversal rows never deletes | Requested by Datta Prasad. Today the only path is delete-and-recreate, which breaks the challan number | 1 | ❌ |
+| **8** | **T1 — Tutorial engine + dispatch (English)** | `js/tutorial-engine.js`, `tutorials/dispatch.tutorial.js`, `p2_tutorial_progress`, 12 `data-tutorial-target` attributes on `dispatch.html`, Settings selector | Data quality is a filing outcome. Also a **free audit of the dispatch flow** — it forces someone to walk every field and name it, which is exactly the inventory the write layer's resolver needs | 1 | ✅ Done  |
+| **9** | **P1 — Product polish** | Shared `.nx-modal` rule (six copies deleted), five feedback idioms → one, mobile at 390px, Marathi on the money pages, empty states, global search, CA features menu, print stylesheets | **A user physically cannot submit a 6-item Generate Invoice modal today.** One CSS rule closes it across six modals | 1.6 | ✅ Done |
+| **10** | **Challan line editing** | `add_challan_line` / `remove_challan_line`, inline edit on `challan.html` detail, reversal rows never deletes | Requested by Datta Prasad. Today the only path is delete-and-recreate, which breaks the challan number | 1 | ✅ Done |
 | **11** | **Staff activity log** | Fix `p2_dispatch_orders.created_by` write path (`auth.uid()`, not `tenantId`), `v_p2_activity_log`, Activity tab in `settings.html` | Requested by the PVT LTD owner. Owners need to know who confirmed what | 1 | ❌ |
 | **12** | **Consolidated invoice double-billing fix** | Overlap check on `dispatch_order_ids` against every other non-cancelled consolidated invoice for that client | Two overlapping date ranges each sweep the same dispatch today. Fully double-billed, no error, no warning | 0.5 | ❌ |
-| **13** | **W1 — Write layer: foundation + dispatch** | `p2_agent_proposals` + RLS + partial unique index, `propose`/`confirm_proposal`/`cancel_proposal`, system prompt, `propose_dispatch` + `request_clarification`, resolution, BOM expansion, stock pre-check, closed-list confirmation matcher, confirmation card | **One sentence creates one real challan.** This alone is the strongest ninety seconds in the product and a complete demo | 1 | ❌ |
-| **14** | **W2 — Production issue + stock adjustment + gating** | `propose_production_issue` → `confirm_bom_issue` v4, `confirm_agent_stock_adjustment` with threshold bands, role gate (D11), plan gate (D10), the monthly write meter, Settings → Agent tab | Closes the second and third transaction types and puts the meter in before any client can run up an invoice | 1 | ❌ |
-| **15** | **W3 — GRN, text path** | `confirm_agent_grn_v3`, duplicate-invoice advisory, `purchase_type` from GSTIN state codes, rate/GST sanity checks, principal-pool selection, **QR interception** | GRN is the highest-volume transaction and the QR interception fixes ownership correctness for the whole KPML vendor wave | 1 | ❌ |
-| **16** | **W4 — GRN, photo path** | Client-side image prep, Sonnet 5 extraction with the strict schema, four-route candidate matching, green/amber/ask banding, Opus 5 escalation, two-round clarification cap, `agent-uploads` bucket with 90-day retention | *"Photograph the paper"* is the sentence that makes the tutorial engine's P0 modules stop being the first thing a new user meets | 1 | ❌ |
-| **17** | **W5 — Marathi, mobile, invoice** | Marathi confirmation cards and refusals through the read-aloud gate, affirmation list trimmed, `propose_invoice` with the zero-rate hard block, mobile card layout, camera capture, one-handed confirm | A storekeeper on a ₹8,000 phone is the actual user. English on a desktop is a demo | 1 | ❌ |
-| **18** | **W6 — Supervised pilot** | Test tenant, then **one** live tenant, **one** user, `agent_write_enabled=true`. Every proposal reviewed against what the user meant. Acceptance tests in full. Error-floor instrumentation live | **30 days of calendar time, not build time.** This is where master-data problems surface and where the four instrumentation numbers get measured | 30 cal | ❌ |
+| **13** | **W2 — Write layer: GRN photo path** | `p2_agent_proposals` + RLS + partial unique index, `propose`/`confirm_proposal`/`cancel_proposal`, system prompt with `propose_grn` + `request_clarification` only, GRN resolution (`confirm_agent_grn_v3`, duplicate-invoice advisory, `purchase_type` from GSTIN state codes, rate/GST sanity checks, principal-pool selection), **QR interception**, role gate (D11), plan gate (D10), the monthly write meter, Settings → Agent tab, client-side image prep, Sonnet 5 extraction with the strict schema, four-route candidate matching, green/amber/ask banding, Opus 5 escalation, two-round clarification cap, `agent-uploads` bucket with 90-day retention, closed-list confirmation matcher, confirmation card | **Photograph the delivery challan. Confirm once. Stock updates.** This is the only thing the agent writes — the sole surviving write intent, absorbing the foundational infrastructure a separate session used to build, and it is a complete demo on its own | ~2 (carried forward additively from the two absorbed sessions below — re-estimate when scoping the actual build) | ❌ |
+| **14** | **W5 — Marathi, mobile, voice (read-only)** | Marathi confirmation cards and refusals through the read-aloud gate (GRN + QR only), affirmation list trimmed, mobile card layout, camera capture, one-handed confirm, plus voice: Whisper transcription → the existing 28-intent read pipeline, natural-language read queries only ("Kal kiti challan gele?" style) — no write path, no numbers acted on by voice | A storekeeper on a ₹8,000 phone is the actual user, and can now ask a question by voice instead of typing it. English/typed-only on a desktop is a demo | 1 | ❌ |
+| **15** | **W6 — Supervised pilot** | Test tenant, then **one** live tenant, **one** user, `agent_write_enabled=true`, for the **one** surviving write path (GRN photo). Every proposal reviewed against what the user meant. Acceptance tests in full (the GRN/QR subset). Error-floor instrumentation live | **30 days of calendar time, not build time.** This is where master-data problems surface and where the four instrumentation numbers get measured | 30 cal | ❌ |
+
+**Dropped from the write layer (final, permanent):**
+- **W1 — DROPPED.** GRN text path removed; photo path makes it redundant.
+- **W3 — DROPPED.** Dispatch via chat (and a lighter dispatch pre-fill/URL-params variant, also discussed) dropped — form + tutorial engine remain the interface.
+- **W4 — DROPPED.** Payment recording and stock adjustment via agent dropped permanently; role/plan gating and the meter move into W2 since it is now the only write session.
+
+Items 16, 17 and 18 are retired along with the above — not reused, not renumbered into. Item 19
+(A1) onward keep their existing numbers unchanged.
 
 | # | Load order (fresh chat) | Prerequisites | Gate before it ships |
 |---|---|---|---|
@@ -330,12 +336,9 @@ Sessions 1–17. See §2 "What is built". **Sessions 12–17: ✅ Done.**
 | 10 | `_ai/CLAUDE.md` → Known Open Items #8 · `all-dispatch-history.html` · `challan.html` · `dispatch.html` | None | Locked once invoiced. Stock check fail-closed. Reversal rows reference the original `dispatch_order_id`. Challan number never changes |
 | 11 | `_ai/CLAUDE.md` → Known Open Items #9 · `_ai/md-audit-report.md` C4 · `dispatch.html` · `rm-dispatch.html` · `settings.html` | None | **`created_by` already exists on `p2_dispatch_orders` and holds `tenant_id`.** Fix the write path; do not `ADD COLUMN`. Join target is `p2_user_roles`, **not `p2_staff`** (no such table) |
 | 12 | `_ai/CLAUDE.md` → Known Open Items #6 · `supabase/functions/agent-query/index.ts` | None | Two consolidated invoices with overlapping ranges must refuse the second, naming the overlap. Preview warns before confirm |
-| 13 | `_ai/CLAUDE.md` · `_ai/nexflow-agent.md` §§3, 4, 7, 8, 13 · `supabase/functions/agent-query/index.ts` · `js/agent-chat.js` | FIX-1, T1 | **No write executes without an explicit human confirmation of a specific, server-computed plan.** The confirm turn makes no model call. A proposal expires in 15 minutes |
-| 14 | `_ai/nexflow-agent.md` §5.3, §5.5, §10.1, D10, D11 | W1 | Operator cannot reach a write their role forbids. Lite never sees the write layer. The meter never returns 429 on a write |
-| 15 | `_ai/nexflow-agent.md` §5.2, §5.6 · `grn.html` | W1, W2, **FIX-1's GRN index** | A duplicate supplier invoice warns with the prior GRN number and date, with an explicit override |
-| 16 | `_ai/nexflow-agent.md` §6 (full) | W3 | **Gated on a 50-challan bench passing before any live tenant** (`nexflow-agent.md` §17 Q2). Illegible field → clarification, never a guess |
-| 17 | `_ai/nexflow-agent.md` §5.4, §4.2 · `_ai/tutorial-engine.md` §8.5 | W1–W4, T2 preferred | The read-aloud gate: a real storekeeper, a real phone, the real page. Zero-rate invoice is a hard block |
-| 18 | `_ai/nexflow-agent.md` §14, §17, §18 | W1–W5 | Acceptance tests in full. Four instrumentation numbers computed: supersession rate, clarification rate, cancel rate, confirmed-with-unresolved-warning. **A cancel rate near zero is the alarming one.** Pilot tenant: Datta Prasad |
+| 13 | `_ai/CLAUDE.md` · `_ai/nexflow-agent.md` §§3, 4, 5.2, 5.6, 6, 7, 8, 10.1, 13, D10, D11 · `supabase/functions/agent-query/index.ts` · `js/agent-chat.js` · `grn.html` | FIX-1, T1, **FIX-1's GRN index** | **No write executes without an explicit human confirmation of a specific, server-computed plan.** The confirm turn makes no model call. A proposal expires in 15 minutes. Operator cannot reach a write their role forbids; Lite never sees the write layer; the meter never returns 429 on a write. A duplicate supplier invoice warns with the prior GRN number and date, with an explicit override. **Gated on a 50-challan bench passing before any live tenant** (`nexflow-agent.md` §17 Q2) — illegible field → clarification, never a guess. `p2_agent_proposals` is built **in this session** — there is no prior foundation session anymore |
+| 14 | `_ai/nexflow-agent.md` §4.2, §17 Q1 · `_ai/tutorial-engine.md` §8.5 | W2 | The read-aloud gate: a real storekeeper, a real phone, the real page, for the GRN/QR confirmation cards |
+| 15 | `_ai/nexflow-agent.md` §14, §17, §18 | W2 | Acceptance tests in full (the GRN/QR subset). Four instrumentation numbers computed: supersession rate, clarification rate, cancel rate, confirmed-with-unresolved-warning. **A cancel rate near zero is the alarming one.** Pilot tenant: Datta Prasad |
 
 ---
 
@@ -359,7 +362,7 @@ Sessions 1–17. See §2 "What is built". **Sessions 12–17: ✅ Done.**
 | 22 | `_ai/nexflow-intelligence.md` §6.1, §6.2, §7 · `export.html` (for `challanSeriesKey()` + `computeTable13Buckets()`) | I1 | The gap detector is the **extracted** one — a second implementation would disagree with the GSTR-1 workbook on a document register. Disclaimer block verbatim and unremovable |
 | 23 | `_ai/nexflow-mcp.md` §§3, 4.1, 4.1a, 5, 12 · `_ai/nexflow-intelligence.md` §3.1 | **I1** (the `nx_*` aggregators), FIX-1's `invoice_total` fix | **No model anywhere in the MCP path.** Tool names and response shapes are public the moment M4 lands and cannot be renamed after |
 | 24 | `_ai/nexflow-mcp.md` §3.3, §9 | M1 | The MCP never holds a service-role key and never talks to Postgres. It holds a refresh token, never a password |
-| 25 | `_ai/nexflow-mcp.md` §4.2–4.6 · `_ai/nexflow-agent.md` §13 | **W1–W5 + one clean pilot (item 18)** | A write tool returns a proposal and the sentence **"Nothing has been recorded."** `confirm_proposal` is not reachable as a tool and cannot become one by accident |
+| 25 | `_ai/nexflow-mcp.md` §4.2–4.6 · `_ai/nexflow-agent.md` §13 | **W2 + W5 + one clean pilot (item 15)** | A write tool returns a proposal and the sentence **"Nothing has been recorded."** `confirm_proposal` is not reachable as a tool and cannot become one by accident. **Note:** M5's "four `propose_*` forwards" content predates this session's scope narrowing to one write intent (GRN) — reconcile in `nexflow-mcp.md` when M5 is actually scoped |
 
 ---
 
@@ -411,7 +414,7 @@ Sessions 1–17. See §2 "What is built". **Sessions 12–17: ✅ Done.**
 
 | # | Load order (fresh chat) | Prerequisites | Gate before it ships |
 |---|---|---|---|
-| 33 | `_ai/CLAUDE.md` · `_ai/factory-os.md` (full — read §0's six corrections first) · `_ai/nexflow-agent.md` §3, §4 | **W1–W2 + the write layer running 30 days on one live tenant** (item 18), A6's `p2_job_queue`, A0 | **Read the live `p2_notifications_type_check` and `p2_ops_alerts_source_check` definitions before writing the widening.** See §10 item 3 |
+| 33 | `_ai/CLAUDE.md` · `_ai/factory-os.md` (full — read §0's six corrections first) · `_ai/nexflow-agent.md` §3, §4 | **W2 + the write layer running 30 days on one live tenant** (item 15), A6's `p2_job_queue`, A0 | **Read the live `p2_notifications_type_check` and `p2_ops_alerts_source_check` definitions before writing the widening.** See §10 item 3 |
 | 34 | `_ai/factory-os.md` §4, §5, §11.4 | P1A-1 | Double-tap is idempotent via `client_event_id`. Offline queue drains without duplicating |
 | 35 | `_ai/factory-os.md` §3.4, §3.5, F3 | P1A-2 | **The consumption invariant is the acceptance test.** Issue 30, dispatch 28, dispatch 2 — stock moves exactly once, at issue |
 | 36 | `_ai/factory-os.md` §6 | P1A-3 | Gate defaults off. A quality record never blocks a dispatch unless the owner turned the gate on |
@@ -543,7 +546,7 @@ unused code path.
 - **A8 (full) placement differs between sources.** `CLAUDE.md` puts it post-incorporation (item
   16); `automation-strategy.md` §7 Wave 2 puts it Dec 2026–Feb 2027. This file follows
   `CLAUDE.md`. Pull it forward if a client reports an outage before you do.
-- **Factory OS could start earlier than Phase 5.** Its hard gates are W1–W2 plus 30 days of write
+- **Factory OS could start earlier than Phase 5.** Its hard gate is W2 plus 30 days of write
   layer on a live tenant, `p2_job_queue`, and A0 — all satisfied at the end of Phase 3. It is
   placed after the Bridge Agent because `CLAUDE.md` sequences it there. **If a Tier-3 prospect
   appears, P1A-1–P1A-2 (the MVP) is two sessions and the placement is a convention, not a law** —
@@ -728,7 +731,7 @@ Concrete reasons to add clients now rather than later:
 | **Today** | *"GST automation for your factory — challans, invoices, CA export, from one place."* | Pro to any MIDC factory. This is the sale that is live right now and it needs no new code |
 | **After Tutorial Engine (T1–T3)** | *"No training needed. Your storekeeper opens it in Marathi and records a correct GRN on the first try."* | Removes the largest objection and the largest founder-hour cost. Onboarding stops requiring a site visit |
 | **After Onboarding Engine (A1)** | *"Send me your files in whatever shape they are in. Twenty vendors onboarded in a day."* | The KPML vendor wave becomes possible. 3–6 founder-hours per client → ~30 minutes |
-| **After the Agent pilot (W6)** | *"Stop paying for a data entry person."* — **and prove it** | **The first time in this product's history that sentence is honest.** ₹12.80/transaction human vs ₹0.77 compute, with 30 days of one live tenant's data behind it. Unlocks the ₹75,000 add-on |
+| **After the Agent pilot (W6)** | *"Stop paying for a data entry person."* — **and prove it** | **The first time in this product's history that sentence is honest.** ₹12.80/transaction human vs ₹0.77 compute, with 30 days of one live tenant's data behind it. Unlocks the ₹75,000 add-on. **These per-transaction and pricing figures predate the scope narrowing to GRN-only and need recomputing** — see `nexflow-agent.md` §9/§10 |
 | **After Production Lite (P1A-1–P1A-6)** | *"Your factory runs itself — you approve four things per order and the rest is taps."* | The buyer changes from the person who records things to the person who **runs** the factory. Used every hour instead of at month end. Unlocks the ₹1,25,000–1,45,000 add-on and the ₹3,80,000 Tier-3 price |
 | **After Intelligence (I1–I6)** | *"Your factory runs smarter."* Ask a question about your own business, get an answer in ten seconds | Unlocks ₹60,000/year **at renewal**. Also the strongest reason a Year-2 client pays more, and the weakest cold pitch — the demo needs months of data |
 | **After the Bridge Agent (Sessions 18–19)** | *"Your Tally fills itself."* | **Switching becomes impossible.** Leaving is no longer a software decision, it is a bookkeeping migration their CA has to sign off. Also the second CA channel, from ~Aug 2027 |
@@ -775,7 +778,8 @@ monthly AI filing package their CA opens on the 5th.
 per-vendor payment position, and — after Session 22 — the ability to dispatch material and have
 the vendor's GRN appear correctly attributed.
 
-**Four paid add-ons on top:** the Agent (describe or photograph a transaction, confirm once),
+**Four paid add-ons on top:** the Agent (photograph a delivery challan, confirm once — plus voice
+for read queries),
 **P1 Part 1** — Factory OS (production orders, workers, taps, quality, a 7pm report) — **P1 Part 2**
 (attendance, leave, payroll with every statutory deduction, machines and maintenance, scrap and
 yield variance, visitors and gate passes, the asset register, energy, and safety records with the
@@ -794,12 +798,9 @@ field.**
 
 Ninety seconds, on a phone, on their own data after one onboarding:
 
-> Type *"30 KS4 motors to KPML today"*. The card names the four raw materials that will come out
-> of stock, with current balances. Tap Confirm. Open the stock dashboard — the four balances have
-> moved. Open the challan — it is a real Rule 55 challan with a real number.
->
 > Photograph a supplier's delivery challan. The GRN comes back filled in, with the material names
-> matched to their master and the invoice number read off the paper. Confirm.
+> matched to their master and the invoice number read off the paper. Confirm. Open the stock
+> dashboard — the balances have moved.
 >
 > Switch to Tally. Open the Day Book. The voucher is there, with the right ledgers, the right GST
 > split.
@@ -982,7 +983,7 @@ needs `'bridge'`, `nexflow-agent.md` needs `'agent'`, `factory-os.md` needs `'fa
 widening.** The cheapest fix is to include all four values in A0's original CHECK — it costs
 nothing now and removes the collision entirely.
 
-### 4. GRN duplicate DB index — **before the Bridge Agent (item 30), and before W3 (item 15)**
+### 4. GRN duplicate DB index — **before the Bridge Agent (item 30), and before W2 (item 13)**
 
 No uniqueness check of any kind exists on `(tenant_id, supplier_id, normalised invoice_no)`. A
 duplicated supplier invoice today double-counts stock and double-claims ITC. Worse:
@@ -1058,12 +1059,12 @@ Use the `t(en, mr)` helper inline in every render function, reading
 | Item | Blocks | What |
 |---|---|---|
 | No DB uniqueness on `invoice_number` | Any session touching invoice numbering | `p2_invoices` has unique indexes on `dispatch_order_id` and `invoice_token` only. If `invoice_sequence` is ever hand-edited backward, two invoices silently share a number. Fix: `CREATE UNIQUE INDEX ON p2_invoices (tenant_id, invoice_number)` |
-| Blank invoice rate persists as ₹0 | W5 (item 17), any invoice work | Not blocked client-side or server-side; silently lands on a legally-formatted tax invoice. Needs validation at the modal submit **and** in `confirmGenerateInvoice`/`confirmConsolidatedInvoice` |
+| Blank invoice rate persists as ₹0 | Any manual invoice work (`all-dispatch-history.html` / `invoices.html`) — no longer an agent-write-layer concern since invoice generation via agent is dropped | Not blocked client-side or server-side; silently lands on a legally-formatted tax invoice. Needs validation at the modal submit **and** in `confirmGenerateInvoice`/`confirmConsolidatedInvoice` |
 | `v_p2_supplier_advance_balance.total_drawn` sums every GRN ever | Session 24 (item 49) | Not scoped to GRNs since the advance, so a new advance against a supplier with history reads as massively overdrawn immediately. Fixed **inside** Session 24 |
 | Failed confirm burns a challan number | Item 10 (challan line editing) | `dispatch.html`'s version was fixed in Session 2; `rm-dispatch.html:1134` and `production-issue.html:1541` still have it |
-| `get_next_challan_number` concurrency `[UNVERIFIED]` | Any high-volume session (W1, W3, P1A-3) | Needs a `pg_proc` inspection in the SQL Editor to confirm the live function is a row-locked counter, not a plain `MAX+1` read |
+| `get_next_challan_number` concurrency `[UNVERIFIED]` | Any high-volume session (P1A-3) — the agent no longer calls this counter since dispatch via agent is dropped | Needs a `pg_proc` inspection in the SQL Editor to confirm the live function is a row-locked counter, not a plain `MAX+1` read |
 | `rm-dispatch.html` unchecked `.delete()` | Item 9 (P1 polish) sits next to it | `:1057-1060`, `:1173-1176`. A failed delete followed by a successful insert duplicates every line item on the challan. **Correctness work — do not half-fix it inside P1** |
-| No server-side role check on invoice write handlers | W1 (item 13) | Operator can generate tax invoices; the gate is plan-only. `verifyCallerTenant` checks tenant, not role. Four lines. Scheduled in **FIX-1** |
+| No server-side role check on invoice write handlers | W2 (item 13) — for GRN's own role gate; the invoice-handler fix itself is already done via FIX-1, independent of the agent, since invoice generation via agent is dropped | Operator can generate tax invoices; the gate is plan-only. `verifyCallerTenant` checks tenant, not role. Four lines. Scheduled in **FIX-1** |
 | `check-low-stock` is an unauthenticated all-tenant fan-out | A3 (item 6) | `verify_jwt = false` with no auth inside. Fix: a shared-secret header on cron jobids 2, 3, 8, 9 (~1 hour) |
 | `get-user-email` returns any user's email to any caller | Any session touching it | Cross-tenant email disclosure. `get-user-email/index.ts:33-36` |
 | Filing package plan gating is undecided | A6 (item 2) | `enterprise-strategy.md` §3.2 says "Enterprise only"; `filing_package_enabled` defaults `true` for everyone. **They disagree while the cron runs.** `[RECOMMENDED]` keep it on for everyone at ~₹28/tenant/month — but ratify it before the October run, because it changes the cost table |

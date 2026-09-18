@@ -241,6 +241,44 @@
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
       }
       .nf-search-result-chip:hover { border-color: var(--orange); color: var(--orange); background: var(--surface3); }
+      #nf-agent-camera {
+        background: var(--surface2); border: 1px solid var(--border2); color: var(--light);
+        width: 36px; height: 36px; border-radius: 50%; cursor: pointer;
+        display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+        transition: border-color 0.15s, color 0.15s;
+      }
+      #nf-agent-camera:hover { border-color: var(--orange); color: var(--orange); }
+      #nf-agent-camera:disabled { opacity: 0.4; cursor: not-allowed; }
+      .nf-grn-card {
+        align-self: flex-start; max-width: 92%; background: var(--surface2);
+        border: 1px solid var(--orange); border-radius: var(--radius); overflow: hidden;
+        flex-shrink: 0;
+      }
+      .nf-grn-card-body {
+        padding: 10px 14px; font-size: 13.5px; line-height: 1.5; white-space: pre-wrap;
+        color: var(--text); font-family: var(--font);
+      }
+      .nf-grn-card-owner {
+        padding: 8px 14px; border-top: 1px solid var(--border);
+        display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--mid);
+      }
+      .nf-grn-card-owner select {
+        flex: 1; background: var(--surface); border: 1px solid var(--border2); color: var(--text);
+        border-radius: var(--radius-sm); padding: 6px 8px; font-size: 13px; font-family: var(--font);
+      }
+      .nf-grn-card-owner select:disabled { opacity: 0.5; }
+      .nf-grn-card-actions { display: flex; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--border); }
+      .nf-grn-btn {
+        flex: 1; border: none; border-radius: var(--radius-sm); padding: 8px 10px;
+        font-size: 13px; font-weight: 600; cursor: pointer; font-family: var(--font);
+      }
+      .nf-grn-btn-confirm { background: var(--orange); color: var(--white); }
+      .nf-grn-btn-cancel { background: var(--surface3, var(--surface)); color: var(--light); border: 1px solid var(--border2); }
+      .nf-grn-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+      .nf-grn-card.nf-grn-superseded { opacity: 0.45; }
+      .nf-grn-card.nf-grn-superseded .nf-grn-card-actions,
+      .nf-grn-card.nf-grn-superseded .nf-grn-card-owner { display: none; }
+      .nf-grn-card-status { padding: 6px 14px 10px; font-size: 12px; color: var(--mid); }
     `;
     document.head.appendChild(style);
 
@@ -265,6 +303,10 @@
       </div>
       <div id="nf-agent-messages"></div>
       <div id="nf-agent-inputbar">
+        <input type="file" id="nf-agent-photo-input" accept="image/*" capture="environment" style="display:none;" />
+        <button id="nf-agent-camera" type="button" title="${t('Photograph a delivery challan', 'चलानाचा फोटो घ्या')}">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        </button>
         <textarea id="nf-agent-input" placeholder="${t('Type a message...', 'संदेश टाइप करा...')}"></textarea>
         <button id="nf-agent-send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
       </div>
@@ -281,6 +323,8 @@
       sendBtn.disabled = true;
       sendBtn.style.opacity = '0.4';
       sendBtn.style.cursor = 'not-allowed';
+      const cameraBtnDemo = panel.querySelector('#nf-agent-camera');
+      cameraBtnDemo.disabled = true;
     }
 
     let hasShownWelcome = false;
@@ -450,12 +494,235 @@
       if (el) el.remove();
     }
 
-    async function sendMessage() {
-      const message = inputEl.value.trim();
-      if (!message) return;
-      inputEl.value = '';
-      addMessage(message, 'nf-msg-user');
+    // ---------- W2: image capture (§6.9) ----------
+    // Downscale to <=1568px long edge, honour EXIF rotation via
+    // createImageBitmap's imageOrientation option (no manual EXIF parsing
+    // needed), re-encode JPEG q0.85. Returns { base64, mediaType } or null on
+    // a >5MB-post-compression result (matches the server's own backstop —
+    // see the Storage bucket's file_size_limit).
+    const MAX_LONG_EDGE = 1568;
+    const JPEG_QUALITY = 0.85;
+    const MAX_BYTES = 5 * 1024 * 1024;
 
+    async function preprocessImage(file) {
+      const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+      const longEdge = Math.max(bitmap.width, bitmap.height);
+      const scale = longEdge > MAX_LONG_EDGE ? MAX_LONG_EDGE / longEdge : 1;
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(bitmap.width * scale);
+      canvas.height = Math.round(bitmap.height * scale);
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      bitmap.close?.();
+
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', JPEG_QUALITY));
+      if (!blob) return null;
+      if (blob.size > MAX_BYTES) return { tooLarge: true };
+
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+      return { base64, mediaType: 'image/jpeg' };
+    }
+
+    const cameraBtn = panel.querySelector('#nf-agent-camera');
+    const photoInput = panel.querySelector('#nf-agent-photo-input');
+    cameraBtn.addEventListener('click', () => photoInput.click());
+    photoInput.addEventListener('change', async () => {
+      const file = photoInput.files?.[0];
+      photoInput.value = '';
+      if (!file) return;
+      cameraBtn.disabled = true;
+      const typingEl = addTyping();
+      try {
+        const processed = await preprocessImage(file);
+        removeTyping();
+        if (!processed) {
+          addMessage(t("Could not read that photo. Try again.", 'तो फोटो वाचता आला नाही. पुन्हा प्रयत्न करा.'), 'nf-msg-error');
+          return;
+        }
+        if (processed.tooLarge) {
+          addMessage(t('That photo is too large even after compression — try a clearer, closer shot.', 'तो फोटो कॉम्प्रेशन नंतरही खूप मोठा आहे — जवळून, स्पष्ट फोटो घ्या.'), 'nf-msg-error');
+          return;
+        }
+        addMessage(t('📷 Photo sent', '📷 फोटो पाठवला'), 'nf-msg-user');
+        await sendToAgent('', processed);
+      } catch (err) {
+        removeTyping();
+        addMessage(t('Something went wrong reading that photo.', 'तो फोटो वाचताना काहीतरी चूक झाली.'), 'nf-msg-error');
+      } finally {
+        cameraBtn.disabled = false;
+      }
+    });
+
+    // ---------- W2: confirmation card ----------
+    // Tracks the single open (non-superseded, non-terminal) card so a new
+    // proposal_id can grey out the previous one in place (§4.3) and so a
+    // typed "yes"/"no" resolving server-side has a card to flip.
+    let openCard = null;
+
+    function supersedeOpenCard() {
+      if (openCard && openCard.el.isConnected) {
+        openCard.el.classList.add('nf-grn-superseded');
+        const status = openCard.el.querySelector('.nf-grn-card-status');
+        if (status) status.textContent = t('Replaced by a newer plan.', 'नवीन प्लॅनने बदलले.');
+      }
+      openCard = null;
+    }
+
+    // Greys out a specific card by proposal id, regardless of whether it's
+    // still the tracked openCard — used when the server supersedes a
+    // proposal as a side effect of a clarification (see sendToAgent's
+    // superseded_proposal_id handling) rather than by issuing a fresh one.
+    function supersedeCardById(proposalId) {
+      const el = messagesEl.querySelector(`.nf-grn-card[data-proposal-id="${proposalId}"]`);
+      if (!el || el.classList.contains('nf-grn-superseded')) return;
+      el.classList.add('nf-grn-superseded');
+      let status = el.querySelector('.nf-grn-card-status');
+      if (!status) {
+        status = document.createElement('div');
+        status.className = 'nf-grn-card-status';
+        el.appendChild(status);
+      }
+      status.textContent = t('This needs more information — see below.', 'यासाठी अधिक माहिती हवी आहे — खाली पहा.');
+      if (openCard && openCard.el === el) openCard = null;
+    }
+
+    function finalizeCard(card, text) {
+      card.actionsEl.remove();
+      const status = document.createElement('div');
+      status.className = 'nf-grn-card-status';
+      status.textContent = text;
+      card.el.appendChild(status);
+      if (openCard && openCard.el === card.el) openCard = null;
+    }
+
+    function addConfirmCard(proposalId, confirmText, expiresAt, tenantId, ownerInfo) {
+      supersedeOpenCard();
+
+      const card = document.createElement('div');
+      card.className = 'nf-grn-card nf-msg-enter';
+      card.dataset.proposalId = proposalId;
+
+      const body = document.createElement('div');
+      body.className = 'nf-grn-card-body';
+      body.textContent = confirmText;
+      card.appendChild(body);
+
+      // Own Stock / Principal pool selector — only for job-worker tenants
+      // (D11/§5.2 step 6: a non-job-worker tenant has no ownership concept
+      // at all). Defaults to whatever the server actually resolved (from the
+      // document, or "Own Stock" if the document didn't say) so a correctly-
+      // read document never forces an extra tap — but a job-worker's
+      // storekeeper always gets the chance to see and correct it, since
+      // silently defaulting an actually-principal-owned delivery to "Own
+      // Stock" claims ITC that does not exist (§0 C3).
+      let ownerSelect = null;
+      if (ownerInfo && ownerInfo.isJobWorker && ownerInfo.principals && ownerInfo.principals.length > 0) {
+        const ownerRow = document.createElement('div');
+        ownerRow.className = 'nf-grn-card-owner';
+        const label = document.createElement('span');
+        label.textContent = t('Owner:', 'मालक:');
+        ownerSelect = document.createElement('select');
+        const ownOption = document.createElement('option');
+        ownOption.value = '';
+        ownOption.textContent = t('Own Stock', 'स्वतःचा स्टॉक');
+        ownerSelect.appendChild(ownOption);
+        ownerInfo.principals.forEach((p) => {
+          const opt = document.createElement('option');
+          opt.value = p.id;
+          opt.textContent = p.name;
+          ownerSelect.appendChild(opt);
+        });
+        ownerSelect.value = ownerInfo.ownedBy || '';
+        ownerRow.appendChild(label);
+        ownerRow.appendChild(ownerSelect);
+        card.appendChild(ownerRow);
+
+        ownerSelect.addEventListener('change', async () => {
+          const selectedId = ownerSelect.value;
+          const selectedPrincipal = ownerInfo.principals.find((p) => p.id === selectedId);
+          ownerSelect.disabled = true;
+          confirmBtn.disabled = true;
+          cancelBtn.disabled = true;
+          // Structured amendment (D7 — amendment is a new proposal, never a
+          // patch): the exact new owner is already known from the dropdown,
+          // so this goes straight to the server's deterministic
+          // owner_amendment handling in proposeAction instead of a free-text
+          // message hoping Haiku reconstructs the whole propose_grn call —
+          // that round-trip proved unreliable (a plain "Owner: X" message
+          // sometimes hit the generic unknown-intent fallback instead of
+          // updating the proposal). The resulting new proposal supersedes
+          // this card automatically via supersedeOpenCard() — never a direct
+          // edit of this proposal's stored plan, and confirm_proposal still
+          // trusts nothing but proposal_id (§18.1 #3 is unaffected).
+          const ownerMessage = selectedPrincipal
+            ? `Owner: ${selectedPrincipal.name}`
+            : t('This is our own stock, not a principal\'s material.', 'हा आमचा स्वतःचा स्टॉक आहे, प्रिन्सिपलचा माल नाही.');
+          await sendToAgent(ownerMessage, null, { owner_amendment: { owned_by: selectedId || null } });
+        });
+      }
+
+      const actions = document.createElement('div');
+      actions.className = 'nf-grn-card-actions';
+      const confirmBtn = document.createElement('button');
+      confirmBtn.className = 'nf-grn-btn nf-grn-btn-confirm';
+      confirmBtn.textContent = t('Confirm GRN', 'GRN कन्फर्म करा');
+      const cancelBtn = document.createElement('button');
+      cancelBtn.className = 'nf-grn-btn nf-grn-btn-cancel';
+      cancelBtn.textContent = t('Cancel', 'रद्द करा');
+      actions.appendChild(confirmBtn);
+      actions.appendChild(cancelBtn);
+      card.appendChild(actions);
+
+      messagesEl.appendChild(card);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+
+      const cardHandle = { el: card, actionsEl: actions };
+      openCard = cardHandle;
+
+      // Client-side expiry flip — cosmetic only; the server re-checks
+      // expires_at at confirm time regardless (§3 D9), this just avoids a
+      // round trip to discover a stale card.
+      const msUntilExpiry = new Date(expiresAt).getTime() - Date.now();
+      if (msUntilExpiry > 0) {
+        setTimeout(() => {
+          if (openCard === cardHandle) {
+            finalizeCard(cardHandle, t('This plan expired — photograph again.', 'हा प्लॅन कालबाह्य झाला — पुन्हा फोटो घ्या.'));
+          }
+        }, msUntilExpiry);
+      }
+
+      async function postProposalAction(action) {
+        confirmBtn.disabled = true;
+        cancelBtn.disabled = true;
+        try {
+          const res = await fetch(EDGE_FUNCTION_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: await getAuthHeader() },
+            body: JSON.stringify({ action, tenant_id: tenantId, proposal_id: proposalId }),
+          });
+          const data = await res.json().catch(() => ({}));
+          const text = data?.confirm?.confirm_text || t('Something went wrong.', 'काहीतरी चूक झाली.');
+          finalizeCard(cardHandle, text);
+        } catch (err) {
+          confirmBtn.disabled = false;
+          cancelBtn.disabled = false;
+          addMessage(t('Something went wrong — check your connection and try again.', 'काहीतरी चूक झाली — कनेक्शन तपासा आणि पुन्हा प्रयत्न करा.'), 'nf-msg-error');
+        }
+      }
+
+      confirmBtn.addEventListener('click', () => postProposalAction('confirm_proposal'));
+      cancelBtn.addEventListener('click', () => postProposalAction('cancel_proposal'));
+    }
+
+    // Single request path for both typed messages and photos — always hits
+    // 'propose' (§4.2's AFFIRM/DECLINE logic and the read/write split are both
+    // server-side; the client only branches on the shape of what comes back).
+    async function sendToAgent(message, image, extra) {
       const tenantId = await getTenantId();
       if (!tenantId) {
         addMessage(t('Could not verify your account. Please log in again.', 'खाते तपासता आले नाही. पुन्हा लॉगिन करा.'), 'nf-msg-error');
@@ -464,10 +731,14 @@
 
       const typingEl = addTyping();
       try {
+        const body = { action: 'propose', tenant_id: tenantId, message };
+        if (image) { body.image = image.base64; body.image_media_type = image.mediaType; }
+        if (extra) Object.assign(body, extra);
+
         const res = await fetch(EDGE_FUNCTION_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': await getAuthHeader() },
-          body: JSON.stringify({ tenant_id: tenantId, message }),
+          body: JSON.stringify(body),
         });
         removeTyping();
 
@@ -494,13 +765,38 @@
           return;
         }
 
-        // Every intent is read-only — the backend always returns
-        // { status: 'ready', confirm_text }, so there's nothing left to branch on.
-        addMessage(confirm.confirm_text, 'nf-msg-bot');
+        // A proposal_id means this turn produced a GRN plan awaiting
+        // confirmation — render the card. Anything else (a read answer, a
+        // clarification question, a refusal, or a server-side "yes"/"no"
+        // resolving straight to confirm/cancel) is plain text, same as
+        // before the write layer existed.
+        if (data.proposal_id) {
+          addConfirmCard(data.proposal_id, confirm.confirm_text, data.expires_at, tenantId, {
+            isJobWorker: !!data.is_job_worker,
+            principals: data.principals || [],
+            ownedBy: data.owned_by || null,
+            ownerName: data.owner_name || null,
+          });
+        } else {
+          // A clarification triggered by amending a live proposal (e.g. the
+          // owner selector) marks that proposal superseded server-side —
+          // reflect it here so a stale, no-longer-accurate card can't still
+          // be tapped as if it were the current plan.
+          if (data.superseded_proposal_id) supersedeCardById(data.superseded_proposal_id);
+          addMessage(confirm.confirm_text, confirm.status === 'refused' ? 'nf-msg-error' : 'nf-msg-bot');
+        }
       } catch (err) {
         removeTyping();
         addMessage(t('Something went wrong — check your connection and try again.', 'काहीतरी चूक झाली — कनेक्शन तपासा आणि पुन्हा प्रयत्न करा.'), 'nf-msg-error');
       }
+    }
+
+    async function sendMessage() {
+      const message = inputEl.value.trim();
+      if (!message) return;
+      inputEl.value = '';
+      addMessage(message, 'nf-msg-user');
+      await sendToAgent(message, null);
     }
 
     panel.querySelector('#nf-agent-send').addEventListener('click', sendMessage);

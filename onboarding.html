@@ -148,7 +148,10 @@
         }
         .ob-drop-icon { font-size: 28px; margin-bottom: 8px; }
 
-        .ob-preview-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 14px; }
+        /* Each table already sits in an inline overflow-x:auto wrapper div — it just
+           had nothing to scroll. min-width forces horizontal scroll instead of column
+           crush at 390px (P1 §3.2). */
+        .ob-preview-table { width: 100%; min-width: 560px; border-collapse: collapse; font-size: 12px; margin-top: 14px; }
         .ob-preview-table th {
             text-align: left; padding: 7px 10px;
             background: var(--bg); color: var(--mid);

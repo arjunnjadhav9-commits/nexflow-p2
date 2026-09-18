@@ -1,9 +1,10 @@
 ---
 name: nexflow-agent
-description: The Nexflow Agent write layer — how a factory supervisor operates Nexflow by describing what happened instead of filling forms. Confirmation protocol, tool-use architecture, per-transaction flows (dispatch, GRN, production issue, invoice, stock adjustment, QR GRN), the photo/OCR pipeline, the full system prompt, cost and quota model, pricing, what stays manual, competitive moat, build sequence, the irreducible error floor. Read in full before writing any agent write code.
+description: The Nexflow Agent write layer — how a storekeeper photographs a delivery slip instead of filling the GRN form. Confirmation protocol, tool-use architecture, the GRN photo/OCR pipeline and QR interception (the two paths into the one surviving write intent), voice as a read-query interface, cost and quota model, pricing, what stays manual, competitive moat, build sequence, the irreducible error floor. Read in full before writing any agent write code.
 sources: [founder-brief-sept-2026, codebase-verification-sept-13-2026, anthropic-api-pricing-2026, CLAUDE.md, enterprise-strategy.md, automation-strategy.md, business-strategy.md, bridge-agent.md, tutorial-engine.md]
-last_updated: 13 September 2026
-status: design complete — not yet built. Living document: update in place as it is built.
+last_updated: 18 September 2026
+status: design complete — not yet built. Scope finalized to GRN photo as the sole write intent
+  (see the banner below). Living document: update in place as it is built.
 ---
 
 # Nexflow — The Agent Write Layer
@@ -20,6 +21,17 @@ status: design complete — not yet built. Living document: update in place as i
 >
 > Every design decision in this document must serve that promise. **If a feature requires
 > significant manual intervention, it is not finished.**
+
+> **SCOPE FINALIZED 18 September 2026.** Of the six write flows this document originally designed,
+> **one survives: GRN photo.** Dispatch, invoice generation, production issue (BOM consumption) and
+> stock adjustment via agent are dropped, permanently — the form + tutorial engine remain the
+> interface for those. The GRN "text path" (typing out delivery details) is also dropped; the photo
+> path replaces it entirely. QR interception (§5.6) survives alongside the photo path, since it is
+> the same write intent reached a second way. Voice is added, but only as a read-query interface —
+> Whisper transcription into the existing 28-intent read pipeline, never a write path. Sections
+> below that still describe the other five flows in detail are kept as dated design history and
+> marked DROPPED at the point they'd otherwise be built; do not build from them. §11 and §16 are the
+> authoritative statement of what is out of scope and why.
 
 **Load order for any session building this. Read in this order, in full:**
 
@@ -154,7 +166,9 @@ Edge Function to call. **A new RPC is required. §5.2 specifies `confirm_agent_g
 defects the agent must not inherit: `tenant_id: user.id` (correct only because that page is
 owner-only) and `transaction_date: new Date().toISOString().split('T')[0]` — the UTC date bug
 again. `reports.html`'s Physical Stock Count (Session 7) does it correctly with `todayIST()`.
-**A new RPC is required. §5.5 specifies `confirm_agent_stock_adjustment`.**
+**A new RPC would have been required — §5.5 specified `confirm_agent_stock_adjustment` — but stock
+adjustment via agent is dropped permanently (scope finalized 18 Sept 2026, see the banner above and
+§11 item 2). This correction is kept as dated history; do not build `confirm_agent_stock_adjustment`.**
 
 ### `[CORRECTION]` C4 — The daily agent quota cannot meter a write agent
 
@@ -201,34 +215,36 @@ RPCs that already exist.
 
 ### 1.1 What it is
 
-A supervisor or storekeeper describes what happened, or photographs the paper that says what
-happened. Nexflow resolves it against the tenant's real materials, products, clients, BOM and
-stock; computes what the transaction will do; shows that plan once; and on one confirmation
-executes the same RPCs the forms already call.
+A storekeeper photographs the delivery slip that says what arrived. Nexflow resolves it against the
+tenant's real materials and suppliers; computes what the transaction will do; shows that plan once;
+and on one confirmation executes the same RPC the GRN form already calls. This is the only thing
+the agent writes — see the scope banner above.
 
 ```
-  "Making 30 motors today for KPML dispatch"
+  [ photo of a supplier's delivery challan ]
         │
         ▼
   ┌──────────────────────────────────────────────────────────────┐
-  │ agent-query  { action: 'propose' }                           │
+  │ agent-query  { action: 'propose', image }                    │
   │                                                              │
   │  1. buildContext()          names + codes only, no IDs       │  ← existing
-  │  2. Claude → tool_use       propose_production_issue(...)    │  ← model: intent only
+  │  2. Claude → tool_use       propose_grn(...)                 │  ← model: intent only
   │     stop_reason = 'tool_use'   → NEVER executed              │
   │  3. resolve()               names → real UUIDs, code-side    │  ← code
-  │  4. plan()                  BOM expand, stock check, totals  │  ← code
+  │  4. plan()                  duplicate check, stock owner,    │  ← code
+  │                             rate/GST sanity, totals          │
   │  5. p2_agent_proposals      status = 'awaiting_confirmation' │
   └──────────────────────────────┬───────────────────────────────┘
                                  ▼
-        "30 × KS4 will consume 30 stator stacks KS4, 60 bearings
-         6205, 30 capacitors 4uF, 7.5 kg copper wire. Stock is
-         sufficient. Confirm?"            [ Confirm ] [ Change ]
+        "GRN from Bharat Electricals, invoice BE-4521, 12 Sept:
+         50 kg Copper Wire 0.90mm @ ₹742, 100 nos Bearing 6205 ZZ
+         @ ₹118. Intrastate. Confirm?"     [ Confirm ] [ Change ]
                                  │
                                  ▼  { action: 'confirm_proposal', proposal_id }
   ┌──────────────────────────────────────────────────────────────┐
   │ NO MODEL CALL. Re-validate from the stored plan.             │
-  │ confirm_bom_issue(...)  → row-locked stock check → write     │  ← existing RPC
+  │ confirm_agent_grn_v3(...)  → locked supplier/material check  │  ← new RPC, §5.2
+  │                            → write                           │
   └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -261,12 +277,16 @@ every other one — and this feature is the shortest path to one.
 
 ### 1.3 What it costs
 
+> **These figures predate the 18 Sept 2026 scope narrowing to GRN-only and need recomputing before
+> being quoted to a client — see the staleness flags on §9 and §10.** Kept below as the starting
+> point for that recompute, not as current numbers.
+
 | | |
 |---|---|
 | Compute, blended per agent transaction | **₹0.77** (§9) |
 | Compute, busy Enterprise client, 1,300 transactions/month | **≈ ₹1,000/month** |
 | The data-entry operator it replaces, per transaction | **≈ ₹12.80** (₹20,000/month ÷ ~1,560) |
-| Build to a usable dispatch + GRN agent | **6 sessions** (§13) |
+| Build to a usable GRN-photo write layer | **2 sessions + a supervised pilot** (§13) |
 | Effect on gross margin at 100 clients, unpriced | **89.7% → ~86%** — the first AI cost in this product that is *not* a rounding error (§9.4) |
 | Recommended price | **₹75,000/year add-on** on top of Pro, fair-use 900 transactions/month (§10) |
 
@@ -298,17 +318,17 @@ The competitor set — Tally, Busy, Zoho, SAP — is uniformly form-based. The u
 fills fields, clicks save. Manual intervention is required for every transaction and human error is
 accepted as inevitable. Nexflow's target is to move the human from **operator** to **approver**.
 
-The difference is measurable rather than rhetorical. On `dispatch.html` today, a KPML job worker
-sending 30 motors touches, in order: client name, client address, PO number, dispatch date,
-movement purpose, deduct-from pool, product search, quantity, Add Product, Confirm Dispatch,
-confirm-modal Confirm, Print Challan. **Twelve interactions, six of which are typed values that can
-be wrong** `[VERIFIED — tutorial-engine.md §7.2's step outline, built against the live DOM]`.
+The difference is measurable rather than rhetorical. `grn.html` already needs eleven fields taught
+to a new storekeeper — supplier, invoice number, date, purchase type, then per material: name,
+quantity, unit and rate, Add Material repeated per line, Confirm GRN, Print (§1.2) — most of them
+typed values that can be wrong.
 
-The agent path is: one sentence, read the plan, one tap. **Two interactions, zero typed values that
-reach the database unvalidated.**
+The agent path is: one photograph, read the plan, one tap. **Two interactions, zero typed values
+that reach the database unvalidated** — the photograph transcribes what is already printed on the
+paper; nothing is typed into a screen.
 
-That ratio — twelve to two — is the product. Everything in §3 through §8 exists to make the "read
-the plan" step trustworthy enough that the ten removed interactions are not missed.
+That ratio is the product. Everything in §3 through §8 exists to make the "read the plan" step
+trustworthy enough that the removed interactions are not missed.
 
 ### 2.2 What "finished" means
 
@@ -320,9 +340,9 @@ not finished.* Applied to this document, a flow is finished when all four hold:
 2. **The uncommon case degrades to a shorter conversation, not to the form.** A missing supplier
    invoice number is one question about one field — never *"please enter this on the GRN page."*
 3. **Everything the transaction touches downstream is populated correctly**, including the fields
-   nobody looks at until filing week: `invoice_no`, `purchase_type`, `hsn_sac`, `uqc`,
-   `movement_purpose`, `owned_by`, `principal_challan_date`. A dispatch that is convenient to
-   create and wrong in Table 13 is not finished.
+   nobody looks at until filing week: `invoice_no`, `purchase_type`, `hsn_sac`, `uqc`, `owned_by`,
+   `principal_challan_date`. A GRN that is convenient to create and wrong in the GSTR-2B
+   reconciliation or the ITC-04 working paper is not finished.
 4. **The user is never asked to do something the agent could have done.** If the agent knows the
    BOM, it does not ask which materials to issue.
 
@@ -334,13 +354,13 @@ until a CA looks at it a month later. §18's acceptance tests exist to make it v
 It is **not** a natural-language front end to the forms. That distinction has real design
 consequences and it is worth stating before §3.
 
-A front end would take "30 motors for KPML" and pre-fill `dispatch.html`, leaving the human to
-review twelve fields they now have to check rather than type — which is *more* work, not less, and
+A front end would take a photographed delivery challan and pre-fill `grn.html`, leaving the human to
+review eleven fields they now have to check rather than type — which is *more* work, not less, and
 is the shape of every "AI assistant" the incumbents have shipped.
 
 The agent instead produces a **plan**: a server-computed statement of exactly what will change in
 the ledger, expressed in the user's terms (materials and quantities), with the fields that have no
-operational meaning to a storekeeper (UUIDs, `dispatch_type`, `doc_category`) resolved silently and
+operational meaning to a storekeeper (UUIDs, `purchase_type`, `owned_by`) resolved silently and
 correctly. The human approves an **outcome**, not an input.
 
 ---
@@ -369,7 +389,7 @@ with no shared state.
 
 Claude's tool-use protocol already contains exactly the primitive this product needs, and almost
 nobody uses it this way: **a `tool_use` block is a proposal, and executing it is entirely the
-caller's choice.** The model says *"call `propose_dispatch` with these arguments"*; nothing happens
+caller's choice.** The model says *"call `propose_grn` with these arguments"*; nothing happens
 until code decides it should.
 
 So the write layer is a **single-turn, non-looping tool call**:
@@ -379,7 +399,7 @@ const response = await anthropic.messages.create({
   model: 'claude-haiku-4-5',
   max_tokens: 1024,
   system: WRITE_SYSTEM_PROMPT,          // §7
-  tools: PROPOSE_TOOLS,                 // §7.3 — six propose_* tools, strict: true
+  tools: PROPOSE_TOOLS,                 // §7.3 — propose_grn + request_clarification, strict: true
   tool_choice: { type: 'auto' },        // never 'any' — 'answer in words' must stay reachable
   messages: conversation,
 })
@@ -501,14 +521,11 @@ An Edge Function doing `select balance` then `insert` reintroduces both bugs, an
 them on the path that will carry the most volume in the product. Where an RPC does not exist, §5
 specifies building one rather than working around its absence.
 
-**The dispatch flow is the one partial exception and it must be understood, not copied.**
-`confirm_dispatch_transaction` does not create the order row — callers insert
-`p2_dispatch_orders` (status `draft`) and `p2_dispatch_items` first, then call the RPC, which
-performs the stock check, writes consumption rows, and flips status to `confirmed`
-`[VERIFIED — dispatch.html:1206-1300]`. That ordering is deliberate and correct: *"a failure
-anywhere between here and that RPC call leaves the order correctly visible as an incomplete draft
-instead of an orphaned 'confirmed' challan with no stock ever deducted."* The agent path reproduces
-exactly this sequence inside the confirm handler. §5.1.
+**Historical note, kept for the general RPC-locking argument above:** `confirm_dispatch_transaction`
+used a two-step draft-order-then-RPC pattern that the original dispatch write flow (§5.1, now
+dropped) would have reproduced. That pattern doesn't apply to the surviving GRN flow — GRN's own
+RPC, `confirm_agent_grn_v3` (§5.2, §0 C3), is a single atomic transaction with no intermediate draft
+row, which is simpler and needs no equivalent ordering discipline.
 
 ### D7 — Amendment is a new proposal, never a patch. `[DECIDED]`
 
@@ -534,12 +551,17 @@ never raise it* — applied to the single most consequential judgement in the pr
 
 ### D9 — Proposals expire in 15 minutes. `[DECIDED]`
 
-Stock moves. A proposal computed against a stock balance from forty minutes ago is a statement
-about a factory that no longer exists, and confirming it produces either a spurious
-`INSUFFICIENT_STOCK` (annoying) or a write whose displayed plan was wrong (dangerous).
+Things move. A GRN proposal's rate-sanity comparison is taken against `p2_material_prices` at
+propose time, its duplicate-invoice check against whatever other GRNs existed at that moment, and a
+supplier or material can be deactivated in the store while the card sits unconfirmed — a proposal
+computed against any of these from forty minutes ago is a statement about a factory that no longer
+exists, and confirming it stale produces a write whose displayed plan was wrong (dangerous).
+(Historical note: the original wording here was about stock sufficiency, which applied to the
+dropped dispatch/production-issue flows; GRN's own staleness risks are listed above and the 15-minute
+window is unchanged.)
 
 Fifteen minutes is long enough for a supervisor to walk to the store and check, short enough that
-the displayed balances are still true. On expiry the proposal goes `status='expired'` and the
+the displayed figures are still true. On expiry the proposal goes `status='expired'` and the
 confirm path returns a re-propose prompt, never a write.
 
 The expiry is checked **server-side at confirm**, not by a client timer — the same reasoning that
@@ -570,24 +592,24 @@ tax invoices — the gate is plan-only. `verifyCallerTenant` checks tenant but n
 
 | Transaction | Allowed roles | Mirrors |
 |---|---|---|
-| Dispatch (product / raw material) | owner, supervisor, operator | `dispatch.html` page access |
-| Production issue (BOM) | owner, supervisor, operator | `production-issue.html` |
-| GRN | owner, supervisor, storekeeper | `grn.html` |
-| Invoice generation | owner, supervisor, accountant | Session 6 P1 fix — operator blocked |
-| Stock adjustment | owner, supervisor | `reports.html` Physical Stock Count |
+| GRN (photo or QR) | owner, supervisor, storekeeper | `grn.html` |
+| Dispatch (product / raw material) | N/A — dropped, see §11 item 9 | — |
+| Production issue (BOM) | N/A — dropped, see §11 item 11 | — |
+| Invoice generation | N/A — dropped, see §11 item 10 | — |
+| Stock adjustment | N/A — dropped, see §11 item 2 | — |
 
 Resolved via `get_my_role` — never a direct `p2_user_roles` read, which causes infinite recursion
 under RLS `[VERIFIED — documented in js/auth.js]`.
 
-**Build this gate in the same session as the first write flow.** Adding the write layer on top of
-the open #18 hole would widen an operator's reach from "can generate an invoice" to "can generate an
-invoice by asking for one", and it is four lines.
+**Build this gate in the same session as the first write flow.** GRN's own D11 role gate
+(owner/supervisor/storekeeper) must ship with session 1, not be deferred — a write layer with no
+server-side role check is the same class of hole Known Open Items #18 already named for the
+invoice form (now fixed there independently, via FIX-1), and it is four lines.
 
 ### D12 — Every proposal and every confirmation is logged. `[DECIDED]`
 
 `p2_agent_logs` already exists and is written at every exit point, fire-and-forget, swallowing all
-errors `[VERIFIED]`. The write layer adds `intent` values `propose_dispatch`, `propose_grn`,
-`propose_production_issue`, `propose_invoice`, `propose_stock_adjustment`, `confirm_proposal`,
+errors `[VERIFIED]`. The write layer adds `intent` values `propose_grn`, `confirm_proposal`,
 `cancel_proposal`.
 
 The durable record is `p2_agent_proposals` (§8), which keeps the rendered confirmation text
@@ -669,35 +691,38 @@ Six rules, each closing a specific way this goes wrong:
    is often a filler. **If the gate does not clear it, remove it** — a missing affirmation costs a
    second tap; a wrong one writes a dispatch. `[UNVERIFIED — §17 Q1]`
 
-**Voice is `[NEVER]` for v1.** `tutorial-engine.md` §8.6 and `automation-strategy.md` §5 both reject
+**Voice as a write-command input is `[NEVER]`, permanently.** `tutorial-engine.md` §8.6 rejects
 Marathi speech input for the same reason and it applies with more force here: a silently wrong
 transcription of a *quantity* arrives looking like clean structured data, passes every deterministic
-check, and lands in the ledger. Revisit only against §17 Q8's measured gate.
+check, and lands in the ledger. **Resolved, not merely deferred (scope finalized 18 Sept 2026, §17
+Q8):** voice is supported, but only as an interface onto the existing **read** pipeline — Whisper
+transcription of a natural-language question ("Kal kiti challan gele?"), never fed into a write
+proposal or a confirmation. A mishear on the read side produces a wrong *answer*, which the user
+notices and re-asks; a mishear here would produce a wrong *write*, which is the asymmetry that keeps
+this prohibition permanent for write commands specifically, independent of any future transcription
+accuracy improvement.
 
 ### 4.3 Amendment before confirmation
 
 ```
-User:  Making 30 motors today for KPML dispatch
-Agent: 30 × KS4 Motor → KPML. This will consume:
-       • Stator Stack KS4         30 nos     (have 210)
-       • Bearing 6205 ZZ          60 nos     (have 480)
-       • Capacitor 4uF            30 nos     (have 95)
-       • Copper Wire 0.90mm     7.5 kg       (have 62.4 kg)
-       Stock is sufficient. Challan number is issued when you confirm.
-       [ Confirm ]  [ Cancel ]
+User:  [photo of a Bharat Electricals delivery challan]
+Agent: GRN from Bharat Electricals, invoice BE-4521, 12 Sept 2026:
+       • Copper Wire 0.90/1.20MM   50 kg    @ ₹742.00 = ₹37,100
+       • Bearing 6205 ZZ          100 nos   @ ₹118.00 = ₹11,800
+       Intrastate (CGST+SGST) · Own stock
+       GRN number is issued when you confirm.
+       [ Confirm GRN ]  [ Cancel ]
 
-User:  actually make it 35
-Agent: Updated — 35 × KS4 Motor → KPML:
-       • Stator Stack KS4         35 nos     (have 210)
-       • Bearing 6205 ZZ          70 nos     (have 480)
-       • Capacitor 4uF            35 nos     (have 95)
-       • Copper Wire 0.90mm     8.75 kg      (have 62.4 kg)
-       Stock is sufficient.
-       [ Confirm ]  [ Cancel ]
+User:  actually it's 60 kg of the copper wire, not 50
+Agent: Updated — GRN from Bharat Electricals, invoice BE-4521, 12 Sept 2026:
+       • Copper Wire 0.90/1.20MM   60 kg    @ ₹742.00 = ₹44,520
+       • Bearing 6205 ZZ          100 nos   @ ₹118.00 = ₹11,800
+       Intrastate (CGST+SGST) · Own stock
+       [ Confirm GRN ]  [ Cancel ]
 ```
 
 Mechanically: the amendment is an ordinary `propose` turn carrying the conversation. The model
-emits a **complete** `propose_production_issue` call with `batch_qty: 35` (D7). The previous
+emits a **complete** `propose_grn` call with the corrected `quantity` (D7). The previous
 proposal is marked `superseded`; the new one becomes the single live proposal.
 
 **The previous proposal's `proposal_id` stops being confirmable the instant it is superseded.**
@@ -706,46 +731,31 @@ still has a `[ Confirm ]` button. Tapping it returns *"That plan was replaced by
 the latest card."* and writes nothing. The client should also grey out superseded cards, but the
 server is what enforces it.
 
-### 4.4 Insufficient stock, and the other reasons a proposal cannot be made
+### 4.4 Non-proposal outcomes — why GRN doesn't need an insufficient-stock refusal, and what it does need
 
-**Insufficient stock stops the flow.** No proposal is created, no `proposal_id` is issued, nothing
-is confirmable — the user is told precisely what is short:
+**GRN never refuses for insufficient stock — a delivery only ever adds to a balance.** The
+dispatch and production-issue flows that originally needed this section's insufficient-stock logic
+(the "largest feasible quantity" computation below is preserved as historical design reasoning,
+since a future write intent that consumes stock would need the same shape) are dropped; GRN's own
+refusal conditions are different in kind and listed in the table below.
 
-```
-Agent: Not enough stock for 35 × KS4 Motor.
-       • Capacitor 4uF — need 35, have 29. Short 6.
-       Everything else is sufficient. You can make 29 with what's in stock.
-       Want me to prepare 29 instead?
-```
+*(Historical reasoning, kept for any future stock-consuming write intent: a refusal should name the
+shortfall per material with the number, compute and offer the largest feasible quantity —
+`floor(min over materials of available / qty_per_unit)` — and still end in a question, never an
+action, so the confirm count per write never exceeds one.)*
 
-Three deliberate properties:
-
-- **The shortfall is named per material, with the number.** Not "insufficient stock."
-- **The largest feasible quantity is computed and offered.** `floor(min over materials of
-  available / qty_per_unit)` — one line of code, and it turns a dead end into the next
-  confirmation. This is the difference between an agent and an error message.
-- **It is still a question, not an action.** Answering "yes" produces a proposal for 29, which
-  then needs its own confirmation. The confirm count per write never exceeds one and never drops
-  below one.
-
-The RPC's own check remains authoritative regardless. `confirm_bom_issue` raises
-`INSUFFICIENT_STOCK: {material} {pool} — Need {x}, Available {y}` from inside its locked
-transaction `[VERIFIED]`; the pre-check exists to give a better message earlier, never to replace
-it. If the pre-check passes and the RPC still raises — stock moved in between — the error surfaces
-as a clean re-propose prompt, not a stack trace.
-
-Other non-proposal outcomes, all of which end the turn with text and no `proposal_id`:
+Non-proposal outcomes that do apply to GRN today, all of which end the turn with text and no
+`proposal_id`:
 
 | Situation | Response |
 |---|---|
-| Product/material/client not found | *"I don't have a product called 'KS5 motor'. Did you mean KS4 Motor (KS4-4P) or KS40 Pump?"* — from `findProductMatches()`, never invented |
+| Material not found | *"I don't have a material called 'Coper Wire 0.9mm'. Did you mean Copper Wire 0.90/1.20MM?"* — from `matchMaterialName()`, never invented |
 | Multiple matches, genuinely ambiguous | The list, as a question. `request_clarification` |
-| Client not in masters | *"KPML Auto isn't in your client list. Add them in Settings first — I can't create clients."* §11 |
-| Product has no BOM | *"KS4 Motor has no recipe saved, so I can't work out what to issue. Add its BOM in Products."* Never issue nothing and report success |
-| Product has a partial BOM | Proposal proceeds, with an explicit line: *"Only 3 materials are on this product's recipe. Anything not on it won't be deducted."* §5.3 |
+| Supplier not in masters | *"I don't have a supplier called Bharat Electricals. Add them in Settings → Suppliers with their GSTIN first — I can't create suppliers."* §11 item 3 |
+| `invoice_no` missing or unreadable | `request_clarification` for that one field — never a default, never a proposal without it. §5.2 |
 | Quantity absent or unparseable | `request_clarification` — never default to 1 |
-| Role not permitted | *"Only the owner or a supervisor can adjust stock."* D11 |
-| Transaction is on the manual list | §11's routing sentence, naming the page |
+| Role not permitted | *"Only the owner, a supervisor or a storekeeper can record a GRN."* D11 |
+| Transaction is on the manual list (dispatch, invoice, production issue, stock adjustment) | §11's routing sentence, naming the page |
 
 ### 4.5 Re-validation at confirm
 
@@ -759,10 +769,10 @@ The confirm path does **not** trust the stored plan. In order:
    `cancelled`, not `expired`.
 4. **Not expired.** `created_at + 15 minutes`, server clock. D9.
 5. **Role still permitted.** Re-checked, not inherited from the propose turn.
-6. **Every referenced row still exists and is still active.** Material `is_active`, product exists,
-   client exists, supplier `is_active`. The RPCs re-check this too (`confirm_agent_grn_multi` locks
-   the supplier `FOR UPDATE` and rejects an inactive one `[VERIFIED]`); doing it here produces a
-   better message.
+6. **Every referenced row still exists and is still active.** Material `is_active`, supplier
+   `is_active`, and — for a principal delivery — the principal client still exists. The RPC
+   re-checks this too (`confirm_agent_grn_multi` locks the supplier `FOR UPDATE` and rejects an
+   inactive one `[VERIFIED]`); doing it here produces a better message.
 7. **Idempotency.** `status` flips to `executing` under a conditional update (`WHERE status =
    'awaiting_confirmation'`) before the RPC is called. A second confirm sees zero rows updated and
    returns the first one's result rather than writing twice. **This is the double-submit guard, and
@@ -770,7 +780,8 @@ The confirm path does **not** trust the stored plan. In order:
    to `grn.html`, `dispatch.html`, `rm-dispatch.html`, `products.html` and `accept-invite.html`
    after they shipped `[VERIFIED]`. A network retry on a phone with poor signal is the normal case,
    not the edge case.
-8. **Then the RPC**, which performs its own locked sufficiency check inside the transaction.
+8. **Then the RPC**, which performs its own locked supplier/material re-check inside the
+   transaction.
 
 Only after all eight does anything get written.
 
@@ -778,8 +789,11 @@ Only after all eight does anything get written.
 
 ## 5. Transaction Coverage
 
-Six flows. For each: input, what the agent does, the exact write path, and the edge cases that
-have a defined answer rather than a hope.
+**Scope finalized 18 Sept 2026 — one surviving write intent, reached two ways.** This section
+originally designed six flows. Five are dropped permanently (§5.1, §5.3, §5.4, §5.5 below are kept
+as dated design history, each marked DROPPED at the point it would otherwise be built). **§5.2 (GRN)
+and §5.6 (QR interception) are the only two that ship** — both write the same GRN transaction, one
+triggered by a photograph, the other by a QR scan.
 
 Every flow shares one skeleton, and the differences are worth reading against it:
 
@@ -787,100 +801,32 @@ Every flow shares one skeleton, and the differences are worth reading against it
 resolve names → validate deterministically → compute the plan → store → confirm → RPC
 ```
 
-### 5.1 Dispatch
+### 5.1 Dispatch — `[DROPPED, permanently]`
 
-**Input.** *"Making 30 motors today for KPML dispatch"* · *"Send 12 KS40 pumps to Shree Ganesh,
-PO 4471"* · a photograph of a packing list (§6 — same pipeline as GRN, different extraction schema).
-
-**Tool.** `propose_dispatch(client_name, items[{product_name, quantity, po_number?}], dispatch_date?,
-movement_purpose?, vehicle_number?)`
-
-**Resolution and planning, all code-side:**
-
-1. `matchClientName()` against `p2_clients`. No match → §4.4's routing sentence. The agent does not
-   create clients (§11).
-2. `findProductMatches()` per item. Zero or ambiguous → `request_clarification`.
-3. **Derive `movement_purpose`.** If the tenant is neither a job worker nor a principal, it is
-   `'sale'`, always, and never mentioned — `dispatch.html` does exactly this `[VERIFIED]`. If the
-   tenant *is* a job worker, the model may have extracted a purpose from the sentence; otherwise it
-   is asked. **This field is never silently defaulted for a job worker.** It decides whether an
-   invoice can legally be raised against the challan, and a wrong value is a GSTR-1 filing error
-   (Session 6 P0).
-4. **Derive `owned_by`.** Only when `isJobWorker() && separate_pool_deduction`. Defaults from the
-   purpose's `ownershipChanges` flag in `js/movement-purpose.js`, overridable by the user — the
-   same derivation `dispatch.html` performs `[VERIFIED]`.
-5. **Expand the BOM** per product: `p2_product_bom` → `{raw_material_id, qty_per_unit}` → multiply
-   by quantity → **aggregate per `material_id` across all products**. The aggregation is not
-   optional: it is the exact bug `confirm_bom_issue` v2 was released to fix, where the same material
-   in two lines passed independently and failed combined `[VERIFIED]`.
-6. **Stock pre-check** against `v_p2_stock_balance` (own pool) or `v_p2_stock_balance_by_owner`
-   (principal pool). Insufficient → §4.4.
-7. **Predict the challan number. Never draw it.** §0 C2. Read `challan_sequence` and
-   `challan_mode`; render *"next in series is about 1244"*. The real number comes from
-   `getNextChallanNumber()` inside the confirm path.
-
-**Confirmation card:**
-
-```
-Dispatch to Kirloskar Pneumatic Co Ltd — 12 Sept 2026
-  30 × KS4 Motor (KS4-4P)            PO 4471
-
-Stock this will consume:
-  • Stator Stack KS4          30 nos      have 210
-  • Bearing 6205 ZZ           60 nos      have 480
-  • Capacitor 4uF             30 nos      have 95
-  • Copper Wire 0.90/1.20MM  7.5 kg       have 62.4 kg
-
-  Purpose: Sale · Deducting from: Own stock
-  Challan number is issued when you confirm (next in series ≈ 1244).
-
-  [ Confirm dispatch ]   [ Cancel ]
-```
-
-**Execute (confirm path), reproducing `dispatch.html`'s ordering exactly (D6):**
-
-```
-1. challanNumber = getNextChallanNumber(tenant, 'product')     ← first write-ish act
-2. INSERT p2_dispatch_orders  status='draft', challan_number, movement_purpose,
-                              dispatch_date, client_name, client_address, po_number
-3. INSERT p2_dispatch_items   one row per product line
-4. RPC confirm_dispatch_transaction(
-       p_dispatch_order_id, p_tenant_id, p_consumption_json, p_challan_number, p_owned_by)
-     → locked per-material sufficiency check
-     → negative consumption rows
-     → status='confirmed'
-5. RETURN NOTHING TO THE CLIENT UNTIL 4 SUCCEEDS
-```
-
-Then, and only then: `insertChallanLinks()` for return purposes, `upsertClient()`,
-`sendNotification('challan_dispatched', …)` — **before** any state reset, the ordering trap
-Step 4 had to fix once already `[VERIFIED]`, and `checkAndNotifyLowStock()`.
-
-Two details the agent path must not simplify away. The order is written as `draft` and only the RPC
-flips it to `confirmed` — so a failure between steps 2 and 4 leaves a visible incomplete draft, not
-a confirmed challan with no stock deducted. And `challan_number` is drawn **once** and reused
-across retries within the same proposal (stored on the proposal row), so a failed confirm does not
-burn a second number — Known Open Items #15, fixed here by construction rather than inherited.
-
-**Edge cases:**
-
-| Case | Behaviour |
-|---|---|
-| Multiple products, one dispatch | Supported. One challan, N `p2_dispatch_items` rows, aggregated consumption. |
-| Two products sharing a material | Aggregated before the check (step 5). Non-negotiable. |
-| Product not in system | Refuse with near-matches. Never create. §11. |
-| Client not in system | Refuse and route to Settings. §11. |
-| Insufficient stock | §4.4 — no proposal, name the shortfall, offer the feasible quantity. |
-| Job-work return dispatch | Supported, but the challan-link step is **not** attempted by the agent — it needs a human to pick the original challan, and for KPML vendors the honest answer is usually "not linked" because KPML is not a Nexflow tenant `[VERIFIED — Session 8 limitation]`. The agent says so and routes to `dispatch.html`. |
-| `dispatch_type = 'raw_material'` | Same flow, `rm-dispatch`'s pool derivation, no BOM expansion — the material *is* the line item. |
-| Draft dispatches | Not created. `dispatch.html` removed draft mode entirely in Session 2 `[VERIFIED]`; the agent does not resurrect it. |
+Dispatch via chat is replaced by the existing form + tutorial engine; a lighter "dispatch pre-fill
+via URL params" variant was also discussed and dropped. See the scope banner at the top of this
+document and §11 item 9 for what the agent does instead when a user asks it to dispatch something.
+The detailed design that used to live here (tool schema, BOM aggregation, the confirm-path
+ordering reproducing `dispatch.html`'s draft-then-RPC sequence, edge cases) is not reproduced —
+it was never built and should not be built from this document.
 
 ### 5.2 GRN
 
-The highest-value flow and the one with the most missing infrastructure (§0 C3).
+The highest-value flow, the one with the most missing infrastructure (§0 C3), and — since dispatch,
+production issue, invoice generation and stock adjustment are all dropped — **the only thing the
+agent writes.**
 
-**Input.** A photograph of a supplier delivery challan or invoice (§6), or text: *"Received 50 kg
-copper wire from Bharat Electricals, invoice BE-4521, ₹742 a kg."*
+**This is a different flow from the already-built QR/scanner auto-fill.** `scanner.html` +
+`receive.html` already give **network users** (KPML vendors receiving from a principal already on
+Nexflow) an auto-filled GRN from a QR scan — that flow is live today and needs no agent involvement
+beyond the one-question ownership interception in §5.6. **This §5.2 photo flow is for standalone
+tenants receiving from external suppliers who are not on Nexflow at all** — there is no QR code to
+scan, only a paper delivery challan. Neither flow replaces the other.
+
+**Input.** A photograph of a supplier delivery challan or invoice (§6) — **photo only.** The typed
+"GRN text path" (describing a delivery in a sentence) is dropped; the photo path replaces it
+entirely, so a user who types out GRN details in text gets routed to `grn.html` rather than having
+the agent attempt to parse it.
 
 **Tool.** `propose_grn(supplier_name, invoice_no, grn_date?, purchase_type?, material_owner?,
 principal_challan_no?, principal_challan_date?, items[{material_name, quantity, unit, rate?}])`
@@ -985,155 +931,36 @@ every legitimate multi-material GRN and breaks entry for all three live tenants 
 | One invoice split across two deliveries | Two GRNs sharing an `invoice_no`. The duplicate warning fires; the user acknowledges. Correct and intended. |
 | Principal delivery | Owner selector is asked; `principal_challan_no`/`date` become mandatory. |
 
-### 5.3 Production issue (BOM consumption)
+### 5.3 Production issue (BOM consumption) — `[DROPPED, permanently]`
 
-**Input.** *"Issue 5 stators and copper wire for today's production of KS4 motors"* · *"Making 30
-KS4 today"*.
+Production issue via agent is dropped along with dispatch — both are form + tutorial-engine
+territory now. See the scope banner and §11 item 11 for what the agent does instead. The detailed
+design that used to live here (`propose_production_issue`'s deliberate omission of a materials
+list, the `confirm_bom_issue` v4 parameter discipline, WIP-row edge cases) is not reproduced — it
+was never built and should not be built from this document.
 
-**Tool.** `propose_production_issue(product_name, batch_qty, issue_date?, material_owner?, notes?)`
+### 5.4 Invoice generation — `[DROPPED, permanently]`
 
-Note what the tool schema does **not** contain: a materials list. The user's mention of "stators
-and copper wire" is conversational colour; the BOM is authoritative. Letting the model pass a
-materials list would let it drop a line the recipe contains, and a silently under-issued production
-run leaves stock that never moves — an error that surfaces months later at a physical count.
+Invoice generation via agent is dropped; the write path stays on its form, which is already the
+most audited code in the product. See the scope banner and §11 item 10 for what the agent does
+instead. The detailed design that used to live here (`propose_invoice`, the consolidated-invoice
+confirmation card, the zero-rate hard block) is not reproduced — it was never built and should not
+be built from this document.
 
-**Planning.** Read `p2_product_bom` → multiply by `batch_qty` → aggregate per material → check
-against the correct pool. `confirm_bom_issue` v2's server-side aggregation is authoritative; the
-pre-check mirrors it.
+### 5.5 Stock adjustment — `[DROPPED, permanently]`
 
-**Execute:** `confirm_bom_issue(p_tenant_id, p_challan_number, p_product_name, p_batch_qty,
-p_issue_date, p_notes, p_consumption_json, p_manual_json, p_force, p_owned_by, p_product_id)` — 11
-parameters, v4 `[VERIFIED — 20260825_wip_state.sql]`.
-
-Three parameters the agent path must get right:
-
-- **`p_force` is always `false`.** It exists to override the sufficiency check. An agent that can
-  set it is an agent that can write a negative stock balance on a "yes". `[NEVER]`
-- **`p_product_id` is always passed.** Non-null is what writes the WIP row; omitting it silently
-  skips WIP tracking for agent-created issues, which would make `v_p2_wip_balance` disagree with
-  the form path for no reason.
-- **`p_challan_number` is drawn once at confirm** and reused across retries — Known Open Items #15
-  again, and `production-issue.html` is one of the two pages where it is still open.
-
-**Edge cases:**
-
-| Case | Behaviour |
-|---|---|
-| Partial BOM | Proceeds, with an explicit card line: *"Only 3 materials are on this recipe. Anything else used won't be deducted."* Honest, visible, not blocking. |
-| No BOM at all | Refused. *"KS4 Motor has no recipe saved."* Never issue nothing and report success. |
-| Several products in one run | **Refused for v1.** One `propose_production_issue` per product; `confirm_bom_issue` takes one `p_product_id` and one `p_challan_number`, so "two products, one issue" would be two challans pretending to be one. The agent says *"I'll do these as two issues — confirm each."* Honest beats clever. |
-| Same material in two BOM lines | Aggregated. v2's fix. |
-| Multi-pool consumption | Not supported anywhere in the product — Type E, *"build when first client requests it"* `[VERIFIED]`. The agent inherits the limitation and states it. |
-| WIP close | Not an agent transaction in v1. `close_wip` is a separate judgement about a finished batch. §11. |
-
-### 5.4 Invoice generation
-
-**Input.** *"Generate invoice for September KPML dispatches"*
-
-**Tool.** `propose_invoice(client_name, date_from, date_to, mode?)`
-
-This flow is deliberately the thinnest in the document, because the invoice write path is the most
-audited code in the product and the agent's job is to **call it, not to reimplement it**.
-
-**Planning** is a straight call to the existing `preview_consolidated_invoice` handler, which
-already: sweeps uninvoiced confirmed dispatches for the client and window; filters to
-`SALE_INVOICEABLE_PURPOSES` (`sale`, `direct_supply_from_jobworker`) so job-work challans are
-silently excluded — F3, fixed Session 6, verified deployed Session 11; applies `invoice_lines_per_page`
-auto-split; predicts the invoice number honouring `invoice_number_format`; and returns totals
-`[VERIFIED]`.
-
-**Confirmation card:**
-
-```
-Consolidated invoice — Kirloskar Pneumatic Co Ltd
-  1–30 September 2026 · 103 challan lines
-
-  Max 28 lines per invoice → 4 invoices
-  Numbers will start at 79 (79, 80, 81, 82)
-  Taxable ₹8,42,150.00 · GST ₹1,51,587.00 · Total ₹9,93,737.00
-
-  ⚠ 3 job-work return challans in this period were excluded — they cannot
-    be invoiced as sales.
-
-  [ Generate 4 invoices ]   [ Cancel ]
-```
-
-**Execute:** `confirmConsolidatedInvoice` once per split batch, in sequence, with its
-`consolidated_batch_seq`. Stop on first failure and report which invoices were created — partial
-success must be reported as partial, never as failure (the created invoices are real) and never as
-success.
-
-**The exclusion line is mandatory, not decorative.** F3's filter is silent by design — job-work
-dispatches are never fetched. Silence is right for the form, where a human picked the date range
-deliberately. It is wrong for an agent, where the user said "September KPML dispatches" and means
-all of them. **Tell them what was left out and why.**
-
-**Edge cases:**
-
-| Case | Behaviour |
-|---|---|
-| Zero invoiceable dispatches | *"No uninvoiced sale dispatches to KPML in September. 3 job-work returns exist but can't be invoiced."* No proposal. |
-| Period already invoiced | The existing duplicate check runs; the agent names the existing invoice numbers and asks. **Preview's duplicate check must use the array form, not `.maybeSingle()`** — that was a live bug fixed 12 Sept 2026 for exactly this case, because auto-split legitimately leaves several rows on one `(tenant, client, from, to)` tuple `[VERIFIED]`. |
-| Mixed GST types in the window | `gst_type` is per-invoice. If dispatches in the window imply both, split by type and say so. |
-| Rates are wrong or zero | **Hard block for Datta Prasad specifically.** Their 97 `p2_product_prices` rows are KPML SAP *purchase* rates, not job-work charges, and `CLAUDE.md` forbids using them for invoicing `[VERIFIED]`. Known Open Items #13 — a blank rate silently persists as ₹0 on a legally-formatted tax invoice, unvalidated on both sides. **The agent refuses to propose an invoice containing a zero or missing rate**, names the lines, and routes to the modal. This is one of the few places the agent is stricter than the form, deliberately. |
-| Single-dispatch invoice | Supported via `confirm_generate_invoice`, same shape. |
-| Lite tenant | Unreachable — no agent. Lite generates invoices from `all-dispatch-history.html`. |
-
-### 5.5 Stock adjustment
-
-**Input.** *"Physical count shows 47 copper wire spools, system shows 52, adjust it"* ·
-*"Write off 3 damaged bearings 6205"*
-
-**Tool.** `propose_stock_adjustment(material_name, counted_quantity?, delta?, reason, pool?)`
-
-Exactly one of `counted_quantity` or `delta` is required — the schema enforces it and the two are
-never combined. Users say both kinds of thing ("count shows 47" vs "write off 3") and conflating
-them writes the wrong sign.
-
-**Planning.** Read the live balance from the correct pool view. Compute
-`delta = counted − system`, or take `delta` directly. **The agent never accepts the user's stated
-system quantity** — "system shows 52" is read back from `v_p2_stock_balance`, and if it disagrees
-the card says so, because a user misreading the screen is the likeliest reason the numbers differ
-at all.
-
-**Threshold gate `[RECOMMENDED]`:**
-
-| Discrepancy | Behaviour |
-|---|---|
-| ≤ 5% of balance **and** ≤ ₹5,000 at latest price | Normal proposal, one confirmation |
-| > 5% or > ₹5,000 | Proposal carries an amber banner with the valued impact, and the confirm button reads **"Confirm write-off of ₹18,400"** — the number in the button |
-| > 25% or > ₹50,000 | **No proposal.** Routed to `reports.html`'s Physical Stock Count, which posts a full counted session with a variance report and a verification checkbox |
-| Reason missing or trivial ("adjust", "fix") | `request_clarification`. `reason` becomes `notes` and is the only audit trail this row will ever have |
-
-The top band is the important one. A 40% shrinkage on one material is not a data-entry
-correction — it is either a theft, a BOM error, or a count that should be done properly across the
-store. Physical Stock Count already exists, is owner/supervisor gated, autosaves, produces an
-ExcelJS variance report and posts signed adjustments with `todayIST()` `[VERIFIED — Session 7]`. The
-agent's correct move is to open it, not to replace it with one sentence.
-
-**New RPC required — `confirm_agent_stock_adjustment`.** `[DECIDED]` §0 C3. It must:
-
-- write `transaction_type='adjustment'`, signed `quantity`, `transaction_date = p_date` (IST from
-  the caller — **never** `CURRENT_DATE`, never `toISOString()`);
-- set `notes = 'Agent adjustment — ' || p_reason`, so these rows are greppable and distinguishable
-  from `'Opening Stock'` and `'Physical Stock Count — YYYY-MM-DD'`;
-- write `owned_by` for the correct pool;
-- stamp `rate` from the latest `p2_material_prices.price_per_unit`, null if none — matching what
-  Physical Stock Count does, so valuation stays consistent;
-- re-read the balance under lock and reject if it moved materially since the proposal, rather than
-  applying a delta computed against a stale number.
-
-**Edge cases:**
-
-| Case | Behaviour |
-|---|---|
-| Wrong material identified | Ordinary match flow. The card shows name **and** code **and** current balance — three chances to notice. |
-| Delta is zero | *"System already shows 47. Nothing to adjust."* No proposal. |
-| Adjustment would go negative | Proposal still allowed — the ledger permits it and a negative balance is real information — but the card says so explicitly: *"This will take the balance to −3."* |
-| Principal pool | Supported, pool named explicitly on the card. |
-| Opening stock | `[NEVER]` via agent. Opening stock is `type='adjustment'` with `notes='Opening Stock'` and belongs to onboarding. |
+Stock adjustment via agent is dropped **entirely** — not just above a threshold, as an earlier draft
+of this document proposed. Physical Stock Count (`reports.html`) and the manual Settings path remain
+the only ways to adjust stock. See the scope banner and §11 item 2 (rewritten to match) for what the
+agent does instead. The detailed design that used to live here (`propose_stock_adjustment`, the
+threshold-banding table, `confirm_agent_stock_adjustment`) is not reproduced — it was never built
+and should not be built from this document.
 
 ### 5.6 GRN from a QR code (the KPML network path)
+
+**The second, and only other, path into the one write intent the agent has (§5.2).** Where §5.2 is
+for a standalone tenant receiving from an external supplier with a paper challan, this flow is for
+network users — a KPML vendor receiving from a principal already on Nexflow.
 
 When both parties are on Nexflow, the sender's challan carries a QR code encoding
 `receive.html?token=<dispatch_token>`. `receive-dispatch` returns the full challan, and
@@ -1196,12 +1023,13 @@ This is `automation-strategy.md` §4.1's split applied to pixels, and it is stat
 words for the same reason: *"Haiku transcribes to a grid. It does not interpret the grid."* A
 photographed challan becomes a structured set of **strings and numbers exactly as printed**. Every
 subsequent decision — which material is this, does this supplier exist, is this rate plausible, is
-this invoice a duplicate — runs through the identical code path an uploaded spreadsheet or a typed
-sentence would.
+this invoice a duplicate — runs through the identical `propose_grn` resolution and validation code
+(§5.2, §6.5) regardless of which input transport produced it.
 
 One pipeline, many transports. The consequence is that adding a new input channel later (a
 WhatsApp photo per `automation-strategy.md` §5, an emailed PDF) costs almost nothing, and that a
-vision bug can never produce a class of error the text path is not already defended against.
+vision bug can never produce a class of error §6.5's deterministic validation isn't already
+positioned to catch.
 
 ### 6.2 Flow
 
@@ -1230,7 +1058,7 @@ vision bug can never produce a class of error the text path is not already defen
   5. MERGE + BAND               green / amber / ask-the-user
         │
         ▼
-  6. propose_grn(...)           the SAME tool the text path emits
+  6. propose_grn(...)           the same tool call §5.2's resolution and planning consumes
         │
         ▼
   7. §5.2 resolution, planning, confirmation card, one confirm
@@ -1311,6 +1139,43 @@ The last two lines matter more than the rest. The failure mode that hurts is not
 an 8. **The prompt is deliberately biased toward under-confidence**, and §6.5 ensures over-
 confidence cannot promote a field anyway.
 
+**`[CORRECTION]` — added 18 Sept 2026, found in production (W2 bug report), not caught by
+build-time testing.** Two distinct real failures, both live-tested and fixed:
+
+1. **Parallel tool use.** Sonnet 5 called `extract_delivery_document` twice in a single
+   turn (`stop_reason: 'tool_use'`, two `tool_use` content blocks) on a clean, unambiguous
+   test invoice — apparently splitting header fields into one call and the line-item table
+   into the other. Code that reads only the first tool-use block (the obvious
+   implementation) silently drops whatever fields ended up in the block it didn't pick.
+   Fix: `tool_choice: {type:'auto', disable_parallel_tool_use:true}` on every call site in
+   this pipeline that assumes exactly one tool call — extraction, escalation, and the text
+   propose call (§7's own system prompt says "Call exactly one tool per message," which was
+   never structurally enforced against the model calling both `propose_grn` and
+   `request_clarification`, or the same tool twice, in one turn). Kept a defensive merge
+   (union scalar fields, take the item array with the most entries) in case a future
+   model/API change reintroduces parallel calls despite the flag.
+2. **The deeper bug, found by isolating vision from tool-calling.** Fixing (1) did not fix
+   the reported symptom — with exactly one tool call forced, `supplier_name` was *still*
+   missing, even though a plain-text, non-tool question against the identical image
+   ("what company name appears at the top of this document?") got the correct answer
+   immediately. This ruled out an OCR/vision failure and isolated it to tool-calling
+   behaviour specifically: under `strict:true` with only 3 of the schema's 10 top-level
+   properties required, and with `thinking_tokens: 0` on every observed run despite
+   `thinking: {type:'adaptive'}`, the model was satisfying the minimal valid completion
+   rather than attending to every field — sometimes dropping the header, sometimes dropping
+   the item table, inconsistently between runs of the identical image. Fix: the extraction
+   prompt above now opens with an explicit checklist ("look for these four things
+   specifically... a response missing one of them is very likely an incomplete read, not a
+   genuinely blank document") naming supplier_name, invoice/challan number, date, and at
+   least one item line — and `supplier_name`'s own schema property gained a description
+   pointing at the letterhead. Verified fixed across 3 consecutive runs of the same image
+   after the prompt change (0/3 before it, on the exact same image, same code otherwise).
+   **This is worth carrying into §17 Q2's real-challan bench**: field-level omission under
+   `strict:true` with an under-specified prompt is now a known failure mode for this
+   pipeline, not a hypothetical one, and the bench should check for it explicitly (does a
+   field the model can clearly read in isolation still make it into the tool call?), not
+   only for misread values.
+
 Tool schema (`strict: true`, `additionalProperties: false`):
 
 ```json
@@ -1357,6 +1222,20 @@ Tool schema (`strict: true`, `additionalProperties: false`):
   }
 }
 ```
+
+**`[CORRECTION]` — added 18 Sept 2026 (W2 build session).** The `field_confidence`
+shape above is documentation shorthand, not a literal schema — sent as-is it is
+rejected live: `"Empty schema ({}) that accepts any JSON value is not supported.
+Please specify a concrete type."` A JSON Schema object cannot express a truly
+dynamic key set under strict validation. Ship it instead as an object enumerating
+the real top-level fields that can carry a confidence read (`supplier_name`,
+`supplier_gstin`, `invoice_no`, `challan_no`, `document_date`, `vehicle_number`),
+each `{"enum": ["high","medium","low"]}`. This also exposes a real gap the
+shorthand papered over: quantity/rate confidence is inherently per **line**, not
+per document, since a challan has one invoice_no but N items. Add a `confidence`
+enum directly on each item in the `items` array (one field covering both quantity
+and rate for that line — a line worth escalating is escalated as a whole) instead
+of trying to key a document-level map by line number.
 
 ### 6.5 Matching extracted items to `p2_raw_materials`
 
@@ -1518,23 +1397,39 @@ handwritten challans go through the form and printed ones go through the camera,
 | Multi-page / multi-photo | Up to 5 images per proposal, sent in one message as several `image` blocks. One document, one extraction call, one GRN. |
 | Size cap | 5MB post-compression per image, rejected client-side with a clear message. |
 
+**`[CORRECTION]` — native resolution ceiling, added 18 Sept 2026 (W2 build session).**
+Verified against the live Anthropic vision API docs: Sonnet 5 and Opus 5 are
+"Claude 4.7 and later" models, which fall in the **high-resolution tier** — 2576px
+long edge / 4784 visual tokens — not the 1568px/1568-token standard tier this
+document's §9.2 cost table and the ≤1568px downscale above assume. Downscaling to
+1568px is still a reasonable cost/latency choice, but it means the pipeline is not
+using these models' native resolution ceiling, which could matter for a
+creased/handwritten challan's legibility. §17 Q2's bench should measure this
+explicitly rather than assume it's cost-neutral.
+
 ---
 
 ## 7. The Agent System Prompt
 
 Write mode. Compact by design — the tool schemas carry the structure that the read layer's prompt
-has to spell out in prose, which is why this is roughly a quarter the size of the read prompt while
-covering six write transactions.
+has to spell out in prose. **Scope finalized 18 Sept 2026:** this prompt now covers exactly one
+write transaction (GRN) plus `request_clarification`, smaller still than the "six transactions,
+quarter the size" figure this section originally described.
 
 ### 7.1 Budget
+
+> **Figures below predate the 18 Sept 2026 scope narrowing and need remeasuring** — the tool count
+> and tenant-context shape both changed (Products and Clients dropped from context in §7.2, since
+> only Materials and Suppliers are used by GRN and QR interception). Kept as the pre-narrowing
+> baseline, not a current number.
 
 | Segment | Tokens | Cacheable |
 |---|---|---|
 | Static instructions (§7.2) | ~900 | yes |
-| Tool definitions (§7.3, six tools) | ~950 | yes |
-| Tenant context — materials, products, clients, suppliers | ~3,900 at Datta Prasad's 264 materials | yes, until a master changes |
+| Tool definitions (§7.3, was six tools, now two) | ~950 (pre-narrowing) | yes |
+| Tenant context — materials, products, clients, suppliers | ~3,900 at Datta Prasad's 264 materials (pre-narrowing; Products/Clients now dropped) | yes, until a master changes |
 | Tenant flags, today's IST date, role, conversation | ~250 | no |
-| **Total input** | **~6,000** | |
+| **Total input** | **~6,000 (pre-narrowing)** | |
 
 Ordering is `tools` → `system` → `messages`, and cache is a prefix match, so the layout is: tool
 definitions and static instructions first, tenant context next, **volatile values last**. Today's
@@ -1559,11 +1454,7 @@ updated" or "saved" about something that has not been confirmed yet.
 ## How to respond
 
 Call exactly one tool per message:
-  propose_dispatch            goods leaving the factory to a client
   propose_grn                 material arriving from a supplier
-  propose_production_issue    raw material consumed to make a product
-  propose_invoice             billing a client for dispatches already made
-  propose_stock_adjustment    correcting a stock figure, or a write-off
   request_clarification       you are missing something, or it could mean two things
 
 If none of these fits — the user asked a question, or wants something you cannot do —
@@ -1585,8 +1476,9 @@ do not call a tool. Answer in plain text.
    described something that happened earlier. Do not carry a rate over from a previous
    message unless the user said to.
 
-4. ONE TRANSACTION PER PROPOSAL. "30 motors to KPML and 10 pumps to Shree Ganesh" is two
-   dispatches to two clients. Propose the first and say you will do the second next.
+4. ONE TRANSACTION PER PROPOSAL. "Bharat Electricals sent copper wire and Kirloskar sent
+   bearings" is two GRNs from two suppliers. Propose the first and say you will do the
+   second next.
 
 5. AMENDMENTS ARE COMPLETE. If the user changes something about a proposal you just
    made, call the same tool again with EVERY argument filled in, not only what changed.
@@ -1598,16 +1490,18 @@ do not call a tool. Answer in plain text.
 7. NEVER CONFIRM ON THE USER'S BEHALF. You have no tool that executes anything. If the
    user seems to be agreeing to something, propose it again rather than assuming.
 
-8. THINGS YOU DO NOT DO. You do not cancel invoices, delete anything, create or edit
-   master data, change settings, file GST returns, email anyone, or touch any month that
-   has already been filed. If asked, say so in one sentence and name the page that does
-   it.
+8. THINGS YOU DO NOT DO. You do not record a dispatch, generate an invoice, issue
+   material for production, or adjust stock — those stay on their own pages. You do not
+   cancel invoices, delete anything, create or edit master data, change settings, file
+   GST returns, email anyone, or touch any month that has already been filed. If asked,
+   say so in one sentence and name the page that does it.
 
 ## Language
 
 Reply in the language the user wrote in. Most users write Marathi, Hinglish, or a mix of
-Marathi and English — "30 motor banvtoy KPML sathi" and "KPML la 30 motor pathvaychet"
-both mean the same dispatch. Understand them all.
+Marathi and English — "Bharat Electricals kadun 50 kg copper wire ala" and "50 kg copper
+wire receive zala Bharat Electricals kadun" both mean the same delivery. Understand them
+all.
 
 Keep these in Latin script even in Marathi: GST, GSTIN, HSN, SAC, ITC, CGST, SGST, IGST,
 GRN, ITC-04, all document numbers, all material and product codes, and all digits. A
@@ -1636,12 +1530,12 @@ Separate pool deduction: {SEPARATE_POOL}
 The person talking to you has the role: {ROLE}
 ```
 
-Then, last, the tenant context:
+Then, last, the tenant context. **Products and Clients are dropped from this block** — they were
+only ever needed for dispatch and invoice generation, both out of scope now; GRN and QR
+interception use only Materials, Suppliers and the principal list:
 
 ```
 Materials (name — code):        {MATERIALS}
-Products (name — code):         {PRODUCTS}
-Clients:                        {CLIENTS}
 Suppliers:                      {SUPPLIERS}
 Job work principals:            {PRINCIPALS}
 ```
@@ -1665,48 +1559,62 @@ Five notes on choices in the above that are not obvious:
 
 ### 7.3 Tool definitions
 
-Six tools, all `strict: true`, all `additionalProperties: false`. Abbreviated — `propose_dispatch`
-and `request_clarification` in full, the rest by signature.
+**Two tools, both `strict: true`, both `additionalProperties: false`.** `propose_dispatch`,
+`propose_production_issue`, `propose_invoice` and `propose_stock_adjustment` used to be defined
+here — they are dropped along with the flows they served (§5.1, §5.3, §5.4, §5.5). Both surviving
+tools shown in full:
 
 ```json
 {
-  "name": "propose_dispatch",
-  "description": "Goods physically leaving the factory to a client. Use for finished products or raw material going out. Do NOT use for material consumed in production (that is propose_production_issue) or for billing (that is propose_invoice).",
+  "name": "propose_grn",
+  "description": "Material arriving from a supplier, from a photograph of a delivery challan or invoice, or a QR-scanned delivery. Use for goods received into stock. Do NOT use for goods leaving the factory, material consumed in production, billing a client, or correcting a stock count — none of those are things you do; say so and name the page instead.",
   "strict": true,
   "input_schema": {
     "type": "object",
     "additionalProperties": false,
-    "required": ["client_name", "items"],
+    "required": ["supplier_name", "invoice_no", "items"],
     "properties": {
-      "client_name": {
+      "supplier_name": {
         "type": "string",
-        "description": "Exactly as the user said it. Do not expand abbreviations — 'KPML' stays 'KPML'."
+        "description": "Exactly as read or said. Do not expand abbreviations."
+      },
+      "invoice_no": {
+        "type": "string",
+        "description": "Mandatory — the GSTR-2B matching key. Never omit or default; ask if unreadable."
       },
       "items": {
         "type": "array", "minItems": 1,
         "items": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["product_name", "quantity"],
+          "required": ["material_name", "quantity", "unit"],
           "properties": {
-            "product_name": { "type": "string", "description": "Name or code, as said." },
-            "quantity":     { "type": "number", "description": "Omit the whole item rather than guessing." },
-            "po_number":    { "type": "string" }
+            "material_name": { "type": "string", "description": "Name or code, as said or read." },
+            "item_code":     { "type": "string" },
+            "quantity":      { "type": "number", "description": "Omit the whole item rather than guessing." },
+            "unit":          { "type": "string" },
+            "rate":          { "type": "number", "description": "Omit if not stated or not legible." }
           }
         }
       },
-      "dispatch_date": {
+      "grn_date": {
         "type": "string",
-        "description": "YYYY-MM-DD. Only if the user said a date. Omit for today."
+        "description": "YYYY-MM-DD. Only if stated or printed. Omit for today."
       },
-      "movement_purpose": {
-        "enum": ["sale","job_work_issue","job_work_return","unused_material_return",
-                 "scrap_return","rework_dispatch","rework_return","capital_goods_issue",
-                 "inter_jobworker_transfer","direct_supply_from_jobworker"],
-        "description": "Only if the user made it clear. Never guess — this decides whether the challan can legally be invoiced."
+      "challan_no": {
+        "type": "string",
+        "description": "The supplier's own delivery-challan number, if separate from invoice_no."
       },
-      "dispatch_type":  { "enum": ["product","raw_material"] },
-      "vehicle_number": { "type": "string" }
+      "purchase_type": {
+        "enum": ["intrastate", "interstate"],
+        "description": "Only if derivable from a known GSTIN state code. Never guess — ask if either GSTIN is missing."
+      },
+      "material_owner": {
+        "type": "string",
+        "description": "The principal's name, if this delivery is job-work material for a known principal. Omit for own stock."
+      },
+      "principal_challan_no":   { "type": "string" },
+      "principal_challan_date": { "type": "string" }
     }
   }
 }
@@ -1715,7 +1623,7 @@ and `request_clarification` in full, the rest by signature.
 ```json
 {
   "name": "request_clarification",
-  "description": "You are missing something you must not guess, or the message could mean two different transactions. Ask about everything you need in ONE call.",
+  "description": "You are missing something you must not guess, or the message could mean two different things. Ask about everything you need in ONE call.",
   "strict": true,
   "input_schema": {
     "type": "object",
@@ -1723,7 +1631,7 @@ and `request_clarification` in full, the rest by signature.
     "required": ["questions"],
     "properties": {
       "likely_intent": {
-        "enum": ["dispatch","grn","production_issue","invoice","stock_adjustment","unknown"]
+        "enum": ["grn", "unknown"]
       },
       "questions": {
         "type": "array", "minItems": 1, "maxItems": 3,
@@ -1744,22 +1652,16 @@ and `request_clarification` in full, the rest by signature.
 }
 ```
 
-```
-propose_grn(supplier_name, invoice_no, items[{material_name, quantity, unit, rate?, item_code?}],
-            grn_date?, challan_no?, purchase_type?, material_owner?,
-            principal_challan_no?, principal_challan_date?)
-
-propose_production_issue(product_name, batch_qty, issue_date?, material_owner?, notes?)
-            — no materials array, deliberately: the BOM is authoritative (§5.3)
-
-propose_invoice(client_name, date_from, date_to, mode?)
-
-propose_stock_adjustment(material_name, reason, counted_quantity? | delta?, pool?)
-            — exactly one of counted_quantity / delta
-```
-
 `maxItems: 3` on `questions` is a real constraint, not tidiness. A model allowed to ask six
 questions will, and six questions is a form.
+
+**`[CORRECTION]` — added 18 Sept 2026 (W2 build session).** `maxItems` is not a supported
+JSON Schema keyword on a tool's `input_schema` array property — live-tested against the
+Messages API and rejected with `"tools.N.custom: For 'array' type, property 'maxItems' is
+not supported"`. `minItems` is accepted; `maxItems` is not. The constraint above is real and
+still holds, but it cannot be schema-enforced — omit `maxItems` from the actual schema and
+enforce "at most 3" code-side (truncate `questions` to its first 3 entries after the tool
+call returns), same net effect, verified working.
 
 ### 7.4 Keeping it compact at 264 materials
 
@@ -1780,8 +1682,9 @@ that is ~3,900 tokens. Three things keep it bounded as tenants grow:
 
 ## 8. Schema
 
-One new table. Two new RPCs (§5.2, §5.5). Two new columns on `p2_tenant_settings`. No changes to
-any existing table's shape.
+One new table. One new RPC (§5.2 — `confirm_agent_grn_v3`; §5.5's `confirm_agent_stock_adjustment`
+is dropped along with stock adjustment). Two new columns on `p2_tenant_settings`. No changes to any
+existing table's shape.
 
 ### 8.1 `p2_agent_proposals`
 
@@ -1796,8 +1699,10 @@ CREATE TABLE p2_agent_proposals (
   id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id         uuid NOT NULL,
   user_id           uuid NOT NULL REFERENCES auth.users(id),
-  kind              text NOT NULL CHECK (kind IN
-                      ('dispatch','grn','production_issue','invoice','stock_adjustment')),
+  kind              text NOT NULL CHECK (kind IN ('grn')),
+                      -- deliberately single-valued: GRN is the only surviving write intent
+                      -- (scope finalized 18 Sept 2026). Widen this CHECK if a future write
+                      -- intent is ever added; do not remove the column.
   status            text NOT NULL DEFAULT 'awaiting_confirmation' CHECK (status IN
                       ('awaiting_confirmation','executing','executed','cancelled',
                        'superseded','expired','failed')),
@@ -1812,7 +1717,11 @@ CREATE TABLE p2_agent_proposals (
   challan_number    text,             -- drawn once at first confirm, reused on retry
                                       -- (Known Open Items #15, fixed by construction)
   supersedes        uuid REFERENCES p2_agent_proposals(id),
-  source            text NOT NULL DEFAULT 'text' CHECK (source IN ('text','photo','qr')),
+  source            text NOT NULL DEFAULT 'photo' CHECK (source IN ('photo','qr')),
+                      -- 'text' dropped — GRN can no longer be initiated by a typed message,
+                      -- only by a photo (§5.2) or a QR scan (§5.6). A later clarification
+                      -- answer within an already-open proposal is still typed text, but that
+                      -- doesn't change the proposal's origin.
   image_paths       text[],           -- agent-uploads storage paths, 90-day retention
   model_used        text,             -- 'claude-haiku-4-5' | 'claude-sonnet-5' | ...
   input_tokens      integer,
@@ -1892,17 +1801,19 @@ against live tenants.
 1. p2_agent_proposals + RLS + indexes          test tenant first
 2. p2_tenant_settings columns                  all tenants; default false is safe
 3. confirm_agent_grn_v3                        new function, no overload risk
-4. confirm_agent_stock_adjustment              new function
-5. GRN duplicate-invoice partial unique index  CONCURRENTLY; run the count query first
-6. agent-uploads Storage bucket (private)
+4. GRN duplicate-invoice partial unique index  CONCURRENTLY; run the count query first
+5. agent-uploads Storage bucket (private)
 ```
+
+(Step 4 was numbered 5 and `confirm_agent_stock_adjustment` was step 4 before stock adjustment was
+dropped from scope.)
 
 Applied via the **Supabase SQL Editor**, never `supabase db push` — the standing instruction, and
 it exists because push replays old migrations. Test tenant (`fe2b94fb-…`) first; run
 `node _ai/regression/snapshot.js` and diff against the most recent prior snapshot — **not**
 `baseline-pre-2H.json` `[VERIFIED]`.
 
-Step 5 needs its exposure sized before it runs, because an existing duplicate makes the index
+Step 4 needs its exposure sized before it runs, because an existing duplicate makes the index
 creation fail:
 
 ```sql
@@ -1920,6 +1831,14 @@ before creating the index** — do not resolve them unilaterally, and do not ski
 ---
 
 ## 9. Cost Model
+
+> **STALE — pending recompute (flagged 18 Sept 2026, not yet done).** Every figure in this section
+> was built on the old 6-flow transaction mix (§9.4: ~40% dispatch/production-issue, ~25% GRN, ~20%
+> read queries, ~10% clarification/amendment, ~5% invoice/adjustment). With only GRN and QR
+> interception surviving, that mix — and therefore the per-client and per-book cost tables, the
+> margin-impact figures, and the ₹0.77/transaction headline — no longer reflects the product being
+> built. Recomputing this is new arithmetic outside this documentation pass; do it before quoting
+> any of these numbers to a client. Kept below as the pre-narrowing baseline.
 
 All figures at **₹90/USD**, the convention `enterprise-strategy.md` §3.2 and
 `automation-strategy.md` §8 both use. Model pricing per §0 C1 — **not the brief's figures**.
@@ -2073,6 +1992,14 @@ Nexflow bugs** `[VERIFIED]` — is that cost, measured, on a real client.
 
 ## 10. Quota and Pricing
 
+> **STALE — pending recompute (flagged 18 Sept 2026, not yet done).** §10.2's ₹75,000/year price
+> and 900-transaction/month fair-use ceiling were sized against the old 6-flow volume assumption
+> (§9's transaction mix). With only GRN and QR interception surviving, real monthly transaction
+> volume per client is materially lower, and the price/ceiling/margin-sensitivity figures below need
+> resizing before either is quoted to a client. §10.1's meter mechanism (never blocked, metered
+> monthly) is unaffected by the recompute and stays as designed. Kept below as the pre-narrowing
+> baseline.
+
 ### 10.1 The meter
 
 `[DECIDED]` **Writes are metered monthly and never blocked.** §0 C4.
@@ -2188,14 +2115,17 @@ note in the current period, which Nexflow cannot issue until Session 20.
 needs a credit note. If not, the owner can cancel it on the Invoices page."* Names the invoice,
 names the constraint, names the page.
 
-### 2. Stock write-offs above the threshold `[DECIDED — §5.5]`
+### 2. Stock adjustment — all of it, not just above a threshold `[NEVER, permanently — scope finalized 18 Sept 2026]`
 
-**Why.** A 40% discrepancy on one material is a theft, a BOM error, or a count that should be done
-across the store — none of which is a one-sentence correction.
+**Why.** This item originally proposed a threshold (below it, one confirmation; above it, a 40%
+discrepancy is a theft, a BOM error, or a count that should be done across the store — none of
+which is a one-sentence correction). That threshold design is superseded: stock adjustment via
+agent is dropped **entirely**, at every discrepancy size, not only above a threshold. §5.5 (the
+detailed threshold-banding design) is kept as dated history and marked DROPPED.
 
 **Agent instead:** opens `reports.html`'s Physical Stock Count, pre-filtered to that material's
-pool. The screen already exists, is role-gated, autosaves, produces a variance report and posts
-signed adjustments with the correct IST date `[VERIFIED — Session 7]`.
+pool, for any size of discrepancy. The screen already exists, is role-gated, autosaves, produces a
+variance report and posts signed adjustments with the correct IST date `[VERIFIED — Session 7]`.
 
 ### 3. Creating masters — materials, products, clients, suppliers, BOM `[NEVER]`
 
@@ -2263,6 +2193,39 @@ raises `WIP_EXCEEDS_BALANCE` `[VERIFIED]`. It is low-frequency, it is on a scree
 already looking at, and it has no clear natural-language trigger.
 
 **Agent instead:** routes to the WIP panel. Revisit if a client asks by name.
+
+### 9. Dispatch `[NEVER via agent, permanently — scope finalized 18 Sept 2026]`
+
+**Why.** The form + tutorial engine already deliver the target UX — one-sentence-and-a-tap was the
+original ambition for dispatch too (§5.1), but the twelve-interaction form is already being
+addressed by the tutorial engine's guided walkthrough, and dispatch carries downstream stakes
+(`movement_purpose`, invoiceability, the challan sequence) that a chat interface adds risk to
+without a corresponding reduction in interactions once the tutorial makes the form fast. A lighter
+"dispatch pre-fill via URL params" variant was also considered and dropped — if it comes up again
+it needs a fresh decision, not a resurrection of this one.
+
+**Agent instead:** *"I don't record dispatches — that's on the Dispatch page."* Names the page,
+stops.
+
+### 10. Invoice generation `[NEVER via agent, permanently — scope finalized 18 Sept 2026]`
+
+**Why.** The invoice write path is the most audited code in the product (Session 6's P0 role fix,
+the zero-rate hard block, F3's job-work exclusion filter), and it stays on its form rather than
+gaining a second entry point through the agent. §5.4 (the detailed consolidated-invoice design) is
+kept as dated history and marked DROPPED.
+
+**Agent instead:** *"I don't generate invoices — do that from the dispatch history or the Invoices
+page."* Names the page, stops.
+
+### 11. Production issue / BOM consumption `[NEVER via agent, permanently — scope finalized 18 Sept 2026]`
+
+**Why.** Dropped along with dispatch, for the same reason — the form (`production-issue.html`) plus
+the tutorial engine already address the interaction cost, and the BOM-consumption correctness bar
+(aggregate-per-material, WIP tracking, `p_force` never true) stays enforced by one write path
+instead of two. §5.3 (the detailed BOM-issue design) is kept as dated history and marked DROPPED.
+
+**Agent instead:** *"I don't issue material for production — that's on the Production Issue page."*
+Names the page, stops.
 
 ---
 
@@ -2425,11 +2388,13 @@ by waiting six weeks.
 Session A1.** Specifically, after item 6 (Session T1, tutorial engine + dispatch) and before item
 11 (A1, onboarding ingestion). Three reasons:
 
-- **T1 first, because the tutorial engine's `data-tutorial-target` pass is a free audit of the
-  dispatch and GRN flows** — it forces someone to walk every field on both pages and name it, which
-  is exactly the inventory the agent's resolver needs. It also already found one real bug doing
-  this (`grn.html`'s Invoice No header carrying `data-mr="चलान क्र"`, which reads as *challan
-  number* — on the field GSTR-2B keys off) `[VERIFIED]`.
+- **T2, not T1, is the audit that actually matters now.** This section originally credited T1 with
+  auditing "the dispatch and GRN flows" — but T1 only ever built the dispatch tutorial; GRN's
+  tutorial is T2's job. With dispatch dropped, the placement argument shifts to T2: its
+  `data-tutorial-target` pass over `grn.html` is the free audit of the one flow the agent's resolver
+  now needs, and it already found one real bug doing this (`grn.html`'s Invoice No header carrying
+  `data-mr="चलान क्र"`, which reads as *challan number* — on the field GSTR-2B keys off)
+  `[VERIFIED]`.
 - **Before A1, because A1's onboarding ingestion and this share the `request_clarification` and
   confidence-banding patterns**, and A1 is 3–4 sessions. Building the smaller consumer first
   produces a better shape for the larger one.
@@ -2444,7 +2409,7 @@ Three, and the first two block a live deployment rather than the build.
 | # | Prerequisite | Why | Blocks |
 |---|---|---|---|
 | P1 | **GRN duplicate-invoice DB backstop** (Known Open Items #1) | The agent multiplies GRN entry rate, and a duplicate produces one voucher at double the amount — invisible in a day book. §5.2. | Live GRN deployment |
-| P2 | **Server-side role check on write handlers** (Known Open Items #18) | Adding writes on top of the open hole widens "operator can generate an invoice" to "operator can generate an invoice by asking". Four lines. D11. | Any live deployment |
+| P2 | **Server-side role check on write handlers** (Known Open Items #18) | Was listed here because the original design also added agent-driven *invoice* writes, doubling that specific exposure. Invoice generation via agent is dropped (§11 item 10), so this no longer directly blocks *this* document's build — FIX-1 fixes the underlying form bug independently either way. D11's own GRN role gate is the thing that actually needs to ship with this build. | No longer a direct blocker for the agent build |
 | P3 | **A0 — founder ops channel** (`automation-strategy.md` §3.1) | §15's founder-facing alerts are dead code without it, and an agent whose failures are invisible to the founder is worse than no agent. Also needs `'agent'` added to `p2_ops_alerts.source`'s CHECK — same one-line widening `bridge-agent.md` §10.4 requires for `'bridge'`. | §15's alerting only |
 
 P1 and P2 are together well under a session and should be done as a standalone fix before the build
@@ -2452,22 +2417,16 @@ starts, not inside it.
 
 ### 13.3 The sessions
 
-**Six sessions to a usable dispatch + GRN agent.** That is the brief's question and it is the
-honest answer — with the important caveat that **session 6 is thirty days of calendar time**, not
-thirty days of build.
+**Two sessions plus a supervised pilot to a usable GRN-photo write layer** (scope finalized 18 Sept
+2026 — this replaces the original "six sessions to a usable dispatch + GRN agent"). Session 3 is
+thirty days of calendar time, not thirty days of build. Session numbers match execution-plan.md's
+W2/W5/W6 (W1/W3/W4 dropped — see the scope banner).
 
-| # | Session | Output |
+| # | Session (= execution-plan.md) | Output |
 |---|---|---|
-| **1** | **Foundation + dispatch, text only, English** | Migration (`p2_agent_proposals`, RLS, the partial unique index, the two settings columns). `propose` / `confirm_proposal` / `cancel_proposal` on `agent-query`. The §7 system prompt and `propose_dispatch` + `request_clarification` tool definitions. Resolution, BOM expansion, stock pre-check, the §4.2 confirmation protocol including the closed-list matcher. `js/agent-chat.js` confirmation card. **End-to-end: one sentence creates one real challan on the test tenant.** |
-| **2** | **Production issue + stock adjustment + role and plan gating** | `propose_production_issue` through `confirm_bom_issue` v4 (all 11 params, `p_force` always false, `p_product_id` always passed). New `confirm_agent_stock_adjustment` RPC with the §5.5 threshold bands. D11's role gate, D10's plan gate, §10.1's meter. Settings → Agent tab with the write toggle and the live usage figure. |
-| **3** | **GRN, text path** | New `confirm_agent_grn_v3` RPC (§5.2 — the one carrying `invoice_no`, `rate`, `purchase_type`, `owned_by`, `principal_challan_*`, IST date). Duplicate-invoice advisory, `purchase_type` derivation from GSTIN state codes, rate and GST-rate sanity checks, principal-pool selection. **Plus the §5.6 QR interception** — one question, and it fixes the KPML vendor wave's ownership correctness. |
-| **4** | **GRN, photo path** | Client-side image prep. Sonnet 5 extraction with the §6.4 strict schema. §6.5's four-route candidate generation and the green/amber/ask banding. Opus 5 escalation. §6.7's clarification loop with its two-round cap and form handover. `agent-uploads` private bucket with 90-day retention. **Gated on §17 Q2's 50-challan bench passing before any live tenant.** |
-| **5** | **Marathi, mobile, invoice** | Marathi confirmation cards and refusal text through `tutorial-engine.md` §8.5's read-aloud gate — a real storekeeper, a real phone, the real page. The §4.2 affirmation list reviewed and trimmed. `propose_invoice` over the existing `preview_consolidated_invoice` / `confirmConsolidatedInvoice` handlers, including the zero-rate hard block. Mobile card layout, camera capture, one-handed confirm. |
-| **6** | **Supervised pilot — 30 days, one tenant, one user** | Test tenant first, then **one** live tenant with `agent_write_enabled = true` for **one** user. Every proposal reviewed against what the user meant. §18's acceptance tests run in full. §14's error-floor instrumentation live. The §17 Q2 and Q3 measurements taken and written back into this document. |
-
-**Parallelisable:** sessions 3 and 4 can run alongside 2 if two people existed — they do not. The
-genuinely independent piece is the `confirm_agent_grn_v3` RPC, which can be written and tested in
-SQL before session 3 starts.
+| **1** (= W2) | **Foundation + GRN photo + QR interception** | Migration (`p2_agent_proposals`, RLS, the partial unique index, the two settings columns). `propose` / `confirm_proposal` / `cancel_proposal` on `agent-query`. The §7 system prompt and `propose_grn` + `request_clarification` tool definitions. §5.2's GRN resolution (`confirm_agent_grn_v3` — carrying `invoice_no`, `rate`, `purchase_type`, `owned_by`, `principal_challan_*`, IST date), duplicate-invoice advisory, `purchase_type` derivation, rate/GST sanity checks, principal-pool selection. The §5.6 QR interception. The full §6 photo pipeline — client-side image prep, Sonnet 5 extraction with the §6.4 strict schema, §6.5's four-route candidate generation and green/amber/ask banding, Opus 5 escalation, §6.7's clarification loop, `agent-uploads` private bucket with 90-day retention. D11's role gate, D10's plan gate, §10.1's meter, Settings → Agent tab. The §4.2 confirmation protocol including the closed-list matcher. `js/agent-chat.js` confirmation card. **Gated on §17 Q2's 50-challan bench passing before any live tenant.** **End-to-end: a photographed delivery challan creates one real GRN on the test tenant.** |
+| **2** (= W5) | **Marathi, mobile, voice (read-only)** | Marathi confirmation cards and refusal text through `tutorial-engine.md` §8.5's read-aloud gate — a real storekeeper, a real phone, the real page, for GRN/QR only. The §4.2 affirmation list reviewed and trimmed. Mobile card layout, camera capture, one-handed confirm. Plus voice: Whisper transcription into the existing read pipeline for natural-language read queries only — no write path. |
+| **3** (= W6) | **Supervised pilot — 30 days, one tenant, one user** | Test tenant first, then **one** live tenant with `agent_write_enabled = true` for **one** user, for the one surviving write path. Every proposal reviewed against what the user meant. §18's acceptance tests run in full (the GRN/QR subset). §14's error-floor instrumentation live. The §17 Q2 and Q3 measurements taken and written back into this document. |
 
 **Not parallelisable, and the ordering is not negotiable:** session 1 before everything. The
 confirmation protocol and the proposal store are what every later flow addresses, and getting them
@@ -2475,17 +2434,17 @@ wrong after a live tenant has confirmed real transactions is not correctable by 
 
 ### 13.4 The minimum demo
 
-For the KPML meeting and every Segment 3 conversation, **session 1 alone is a complete demo**:
+For the KPML meeting and every Segment 3 conversation, **session 1 alone is a complete demo** — and
+now that dispatch via chat is dropped, it is *the* demo, not one of several:
 
-> Open Nexflow on a phone. Type *"30 KS4 motors to KPML today"*. The card names the four raw
-> materials that will come out of stock, with current balances. Tap Confirm. Open the stock
-> dashboard — the four balances have moved. Open the challan — it is a real Rule 55 challan with a
-> real number.
+> Photograph a supplier's delivery challan. The GRN comes back filled in, with the material names
+> matched to their master and the invoice number read off the paper. Confirm. Open the stock
+> dashboard — the balances have moved.
 >
 > Ninety seconds. Say nothing while it happens.
 
-That demo needs no photo pipeline, no Marathi, no invoice flow, and no live client. **It is the
-strongest ninety seconds in the product** and it is available after one session.
+That demo needs no Marathi and no live client. **It is the strongest ninety seconds in the product**
+and it is available after one session.
 
 ---
 
@@ -2576,12 +2535,17 @@ The genuinely **new** risk this feature adds, and the brief is right to ask abou
 *Mitigation before it happens:* §6.8's gate — do not ship the handwritten path until measured
 numeric accuracy clears 98%.
 
-**5. The user described a transaction that did not happen.**
+**5. The photographed document describes a delivery that didn't fully happen.**
 
-*"Made 30 motors today"* when 28 were made. The agent has no independent view of the factory floor.
+A supplier's invoice or challan can be raised before goods are handed over, or part of a delivery
+can be rejected at the gate after the paperwork is already in hand — the photo is evidence of what
+was invoiced, not necessarily of everything that physically arrived. This overlaps with case 1
+above; the direction differs (case 1 is a wrong number on a real delivery, this is a proposal built
+from paperwork for a delivery that partly or wholly never reached the store). The agent has no
+independent view of the loading dock.
 
-*Catch:* WIP balance divergence (`v_p2_wip_balance`), and Physical Stock Count. Same as the form
-path, no better and no worse.
+*Catch:* the same as case 1 — Physical Stock Count, and GSTR-2B reconciliation if the supplier's own
+filed figures diverge from what was recorded.
 
 ### 14.3 What catches physical inventory errors — the honest inventory
 
@@ -2636,23 +2600,23 @@ Severity vocabulary is A0's: `critical` bypasses quiet hours, `important` and `m
 | # | Failure | System does | User sees | Founder sees |
 |---|---|---|---|---|
 | 1 | Model returns `end_turn` instead of a tool call | Plain text reply, no proposal | The text | Nothing — normal |
-| 2 | Model calls a tool with a name that matches nothing | Resolution fails → near-matches | *"I don't have a product called X. Did you mean…"* | Nothing — normal |
-| 3 | Anthropic API down or 5xx | No proposal, nothing written | *"I can't reach my brain right now — use the Dispatch page, or try again in a minute."* Names the page. | `important`, deduped 1h |
+| 2 | Model calls a tool with a name that matches nothing | Resolution fails → near-matches | *"I don't have a material called X. Did you mean…"* | Nothing — normal |
+| 3 | Anthropic API down or 5xx | No proposal, nothing written | *"I can't reach my brain right now — use the GRN page, or try again in a minute."* Names the page. | `important`, deduped 1h |
 | 4 | API 429 (Anthropic rate limit) | Retry once with backoff, then as #3 | Same as #3 | `important` if sustained >15 min |
 | 5 | Cold start — first message fails | Retry once automatically before showing anything | Nothing, on retry success | Nothing. Known Deno behaviour, second attempt always works `[VERIFIED]` |
-| 6 | Stock moved between propose and confirm | RPC raises `INSUFFICIENT_STOCK` | *"Stock changed while you were deciding — Capacitor 4uF is now 29, need 35. Shall I redo it for 29?"* | Nothing — the gate working |
+| 6 | Supplier or material was deactivated between propose and confirm | §4.5's re-validation refuses; RPC never called | *"Bharat Electricals looks inactive now — check Settings, or say it again if that's wrong."* | Nothing — the gate working |
 | 7 | Proposal expired (>15 min) | No write | *"That plan is more than 15 minutes old and stock may have moved. Say it again and I'll recheck."* | Nothing |
 | 8 | Double-tap on Confirm | Conditional status update; second sees 0 rows | The first result, once | Nothing |
 | 9 | Two `propose` calls race | Partial unique index rejects the second → supersede | One card | Nothing |
 | 10 | Confirm on a superseded proposal | Refused | *"That plan was replaced by a newer one — use the latest card."* | Nothing |
 | 11 | User confirms someone else's proposal | Refused on `user_id` mismatch | *"This was raised by Ramesh — he needs to confirm it."* | `monitor` |
 | 12 | RPC raises an unexpected error | `status='failed'`, `error_reason` verbatim, **nothing written** | *"Couldn't record that — nothing has been changed. Support has been told."* | **`critical`**, no dedupe — a failed write RPC is always a Nexflow bug |
-| 13 | Challan number drawn, order insert fails | Number stored on the proposal, reused on retry | Retry works, no gap | `important` if it fails twice |
-| 14 | Order + items written, `confirm_dispatch_transaction` fails | Order stays `draft`, visible, no stock deducted | *"Saved as an incomplete dispatch — nothing came out of stock. Retry?"* | `important` |
+| 13 | N/A — dispatch dropped. GRN's `grn_no` is drawn *inside* `confirm_agent_grn_v3`'s single atomic transaction (§0 C3), so unlike dispatch's separate draw-then-insert steps, a failure rolls back the number draw too — there is no gap to reuse a number against, and this collapses into row 12 | — | — | — |
+| 14 | N/A — dispatch dropped. `confirm_agent_grn_v3` is a single atomic RPC (§0 C3, §5.2); a mid-transaction failure is already covered by row 12 (nothing written) | — | — | — |
 | 15 | Vision extraction returns nothing usable | No proposal | *"I can't read this photo. Try again with more light, or use the GRN page."* | `monitor`, batched weekly |
 | 16 | Vision extracts confidently and wrongly | **Not detectable at entry** | Nothing | Nothing. §14.2 case 4 — caught downstream |
 | 17 | Image upload to Storage fails | Extraction proceeds from the in-memory image; `image_paths` empty | Nothing | `monitor` — the audit trail is incomplete |
-| 18 | Agent proposes a transaction the role cannot perform | Refused **before** the model call | *"Only the owner or a supervisor can adjust stock."* | Nothing |
+| 18 | Agent proposes a transaction the role cannot perform | Refused **before** the model call | *"Only the owner, a supervisor or a storekeeper can record a GRN."* | Nothing |
 | 19 | Agent write enabled on a Lite tenant | Structurally impossible (D10) | — | `critical` if ever observed — it means a gate was removed |
 | 20 | Typed "yes" with two live proposals | Cannot happen (unique index); falls through to the model | A normal reply | Nothing |
 | 21 | Marathi affirmation misread as a decline | Proposal cancelled, nothing written | The user re-asks | Nothing — the safe direction. §17 Q1 |
@@ -2689,7 +2653,10 @@ Permanent. Not a backlog, not gated on a client asking.
    sufficiency check.
 9. **Opening stock via the agent.** That is onboarding, and it is a bulk operation with no
    per-transaction judgement.
-10. **Voice input**, until §17 Q8's measured gate. §4.2.
+10. **Voice input for any write command.** §4.2. **Resolved 18 Sept 2026 (§17 Q8), narrowed, not
+    removed:** voice is supported for read queries — Whisper transcription into the existing read
+    pipeline — but a write proposal or confirmation must never be driven by a voice transcription,
+    permanently, independent of any future transcription-accuracy measurement.
 11. **Acting on another tenant's data.** `verifyCallerTenant` on every action, the same
    cross-tenant guard the Aug 17 P0 scan installed.
 12. **Storing a Supabase key, a service-role key, or any credential in the browser** beyond the
@@ -2699,6 +2666,15 @@ Permanent. Not a backlog, not gated on a client asking.
     kind of not-quite-write is a second thing to get wrong.
 15. **Autonomous or scheduled agent writes.** No cron creates a proposal. Every proposal originates
     in a human message, and every write in a human confirmation.
+16. **Dispatch via agent.** §11 item 9 — permanent, scope finalized 18 Sept 2026. Form + tutorial
+    engine remain the interface.
+17. **Invoice generation via agent.** §11 item 10 — permanent, scope finalized 18 Sept 2026. The
+    write path stays on its form.
+18. **Production issue / BOM consumption via agent.** §11 item 11 — permanent, scope finalized
+    18 Sept 2026. Dropped along with dispatch.
+19. **Stock adjustment via agent, at any discrepancy size.** §11 item 2 — permanent, scope
+    finalized 18 Sept 2026. Physical Stock Count and the manual Settings path remain the only ways
+    to adjust stock.
 
 ---
 
@@ -2706,7 +2682,7 @@ Permanent. Not a backlog, not gated on a client asking.
 
 Each needs a decision or a measurement **before** the session named.
 
-### Blocking session 4 (photo path)
+### Blocking session 1 (foundation + GRN photo + QR interception)
 
 **Q1. The Marathi affirmation and decline lists.** `[UNVERIFIED]`
 §4.2's lists are written from general Marathi, not from MIDC factory usage. `हा` is the specific
@@ -2715,7 +2691,7 @@ getting it wrong.
 **Resolve:** `tutorial-engine.md` §8.5's read-aloud gate — one real storekeeper, one real phone, the
 real widget. Ask them to accept and to decline in their own words, twenty times, and record what
 they actually type. **Anything not observed comes out of the list.**
-**Decide before:** session 5. Until then, buttons only for Marathi users.
+**Decide before:** session 2 (Marathi/mobile/voice). Until then, buttons only for Marathi users.
 
 **Q2. Vision accuracy on real MIDC challans, and the escalation rate.** `[UNVERIFIED]`
 The whole photo path, its cost model (§9.2) and its ship/no-ship gate depend on this, and no number
@@ -2723,10 +2699,14 @@ exists.
 **Resolve:** collect **50 real challans** across SS Engineering, Datta Prasad and Shivprasad — at
 least 20 handwritten, at least 10 carbon-copy. Hand-key ground truth. Run Haiku 4.5, Sonnet 5 and
 Opus 5 over all 50. Score **per field**, with **quantity and rate scored separately and reported
-separately**. Record the escalation trigger rate.
+separately**. Record the escalation trigger rate. **Also run a subset (the handwritten/carbon-copy
+set at minimum) at the models' native 2576px high-resolution-tier long edge, not just the ≤1568px
+downscale §6.9 specifies, and compare quantity/rate accuracy between the two** — see §6.9's
+resolution-ceiling correction; if 2576px measurably improves handwritten accuracy, the cost/latency
+tradeoff in §9.2 needs to be re-struck before this ships.
 **Ship gate:** handwritten numeric accuracy **> 98%** with escalation. Below that, ship the printed
 path only and route handwritten to the form (§6.8).
-**Decide before:** session 4 starts. **This is the single most important measurement in the
+**Decide before:** session 1 starts. **This is the single most important measurement in the
 document** — three design decisions and one cost line all rest on it.
 
 ### Blocking the cost model
@@ -2746,8 +2726,9 @@ non-deterministic key ordering, or a varying tool set.
 `[RECOMMENDED, not decided]`
 §10.2's arithmetic clears 90% at typical volume and 89.0% in the all-busy case with overage. The
 ceiling of 900/month is a guess at where the tail starts.
-**Resolve:** after session 6's pilot, plot actual monthly transaction counts. Set the ceiling at
-roughly the 85th percentile so most clients never see it.
+**Resolve:** after session 3's pilot, plot actual monthly transaction counts. Set the ceiling at
+roughly the 85th percentile so most clients never see it. **Note:** this also needs the §9/§10
+recompute for GRN-only volume before it's meaningful — see the staleness flags on those sections.
 **Decide before:** the first agent client signs.
 
 **Q5. Does the agent add-on apply to the three live clients, and at what price?**
@@ -2759,7 +2740,7 @@ headroom on two of three clients.
 have the most data, the most volume, the most documented data-quality problems, and the most to
 gain. Price it at renewal. **The lock covers the plan, not a new add-on** — but pin that wording in
 the PVT LTD re-papering pass, not in an email.
-**Decide before:** session 6's pilot tenant is chosen.
+**Decide before:** session 3's pilot tenant is chosen.
 
 ### Design, resolvable in-session
 
@@ -2771,26 +2752,25 @@ transactions that are most urgent, and no client has asked. `p2_agent_proposals`
 `user_id`, so adding it later is a gate, not a redesign.
 **Decide before:** the second Enterprise agent client.
 
-**Q7. Should the agent proactively propose?**
-It could notice that 103 KPML dispatches are uninvoiced (Datta Prasad's actual August position) and
-offer an invoice unprompted.
-**Recommendation:** **notify, never propose.** A notification that says *"103 dispatches to KPML are
-uninvoiced"* with a deep link is useful and safe. A proposal nobody asked for, sitting in a chat
-window with a Confirm button, is an accident waiting for a thumb. §16 item 15.
-**Decide before:** any work on proactive agent behaviour.
+**Q7. Should the agent proactively propose?** `[MOOT — 18 Sept 2026]`
+The example this question was built on — noticing 103 uninvoiced KPML dispatches and offering an
+invoice unprompted — no longer applies: `propose_invoice` doesn't exist (§11 item 10). The
+underlying recommendation (**notify, never propose** — §16 item 15) still stands as a general
+principle for any future write intent, but there is nothing left in this document's scope for it
+to gate.
 
-**Q8. Voice notes — what accuracy bar, measured how?** `[UNVERIFIED]`
-§4.2 defers them. `automation-strategy.md` §10 Q10 asks the same question for onboarding and
-reaches the same answer.
-**Recommendation:** twenty real Marathi voice notes recorded on a factory floor with machine noise,
-scored specifically on **numeric** accuracy. Below 98% on numbers, do not ship. A misheard material
-name is caught at the confirmation card; a misheard quantity may not be.
-**Decide before:** any voice work is scheduled.
+**Q8. Voice notes — what accuracy bar, measured how?** `[RESOLVED — 18 Sept 2026]`
+§4.2 used to defer this. Resolved by the scope decision, not by a measurement: voice is read-only
+now (Whisper transcription into the existing read pipeline), so a mishear produces a wrong
+*answer* — the user notices and re-asks — never a wrong write. The accuracy bar this question was
+asking for (98% on numbers, matching `automation-strategy.md` §10 Q10's separate gate for
+onboarding voice notes, a different feature) is therefore moot for this document; no accuracy
+measurement gates shipping voice as a read-query interface.
 
 **Q9. What happens to a proposal when the user closes the chat?**
 It sits `awaiting_confirmation` until it expires. On the next chat open, should the card reappear?
-**Recommendation:** yes, once, with its age shown — *"You were about to dispatch 30 KS4 to KPML,
-4 minutes ago."* Expired proposals are never resurrected.
+**Recommendation:** yes, once, with its age shown — *"You were about to record a GRN from Bharat
+Electricals, 4 minutes ago."* Expired proposals are never resurrected.
 **Decide before:** session 1's client work.
 
 ---
@@ -2817,30 +2797,40 @@ before any release that touches the confirmation protocol, a resolver, or a tool
 
 ### 18.2 Correctness of what gets written
 
-8. An agent dispatch and a form dispatch of the same goods produce **byte-identical**
-   `p2_dispatch_orders` and `p2_dispatch_items` rows apart from `id`, `created_at` and
-   `challan_number`. **This is the headline test** — it is what proves the agent is not a second,
-   divergent write path.
+8. An agent GRN and a form GRN of the same delivery produce **byte-identical**
+   `p2_stock_transactions` rows apart from `id`, `created_at` and `grn_no`. **This is the headline
+   test** — it is what proves the agent is not a second, divergent write path. (Originally written
+   against dispatch; repurposed to GRN, the only surviving write intent, 18 Sept 2026.)
 9. An agent GRN writes `invoice_no`, `rate`, `purchase_type`, `grn_no`, `owned_by` and — for a
    principal delivery — `principal_challan_no` and `principal_challan_date`, on every row. §0 C3.
+   Column-level detail supplementing test 8.
 10. `transaction_date` on every agent-written row is the **IST** date. Run one at 01:00 IST and
     assert it is today's IST date, not yesterday's UTC date.
-11. A BOM issue writes the WIP row (`p_product_id` passed). Assert `v_p2_wip_balance` moves.
-12. A dispatch with the same material in two products' BOMs deducts the **aggregate**, once.
-13. A job worker's dispatch writes the correct `movement_purpose` and `owned_by`; a non-job-worker's
-    writes `'sale'` and `NULL` without ever asking.
-14. An agent invoice excludes job-work-purpose dispatches and **says so on the card**.
+11. N/A — production issue / BOM consumption via agent is dropped (§11 item 11). No agent write
+    touches `v_p2_wip_balance`.
+12. N/A — dispatch via agent is dropped (§11 item 9). No agent write touches BOM aggregation for
+    a dispatch.
+13. A GRN for a job worker's principal delivery writes the correct `owned_by`,
+    `principal_challan_no` and `principal_challan_date`; a GRN for own stock writes `owned_by NULL`
+    without ever asking when the tenant isn't a job worker. (Originally written against dispatch's
+    `movement_purpose`/`owned_by` derivation; repurposed to GRN's equivalent derivation, §5.2 step
+    6, 18 Sept 2026.)
+14. N/A — invoice generation via agent is dropped (§11 item 10). No agent write excludes
+    job-work-purpose dispatches from an invoice, because no agent write generates an invoice.
 
 ### 18.3 Refusals and gates
 
 15. Insufficient stock produces **no proposal**, names the short material with both numbers, and
     offers the largest feasible quantity.
 16. An unknown material, product, client or supplier produces no proposal and never creates one.
-17. An operator asking for a stock adjustment is refused **before** the model call — assert zero
-    API calls.
-18. An operator asking to generate an invoice is refused server-side. Known Open Items #18.
+17. An operator asking to record a GRN is refused **before** the model call — D11 excludes
+    `operator` from GRN's allowed roles (owner, supervisor, storekeeper). Assert zero API calls.
+    (Originally written against stock adjustment; repurposed to GRN's own role gate, 18 Sept 2026.)
+18. N/A — invoice generation via agent is dropped (§11 item 10). Known Open Items #18 is fixed on
+    the form independently, via FIX-1, with no agent involvement.
 19. A Lite tenant's FAB is absent; a direct POST with `action: 'propose'` is refused.
-20. A zero or missing rate blocks an invoice proposal and names the lines. Known Open Items #13.
+20. N/A — invoice generation via agent is dropped (§11 item 10). No agent write can produce a
+    zero-rate invoice, because no agent write generates an invoice.
 21. A request to cancel an invoice, delete a challan, add a supplier, change a setting or file a
     return is refused in one sentence naming the page that does it.
 
@@ -2862,7 +2852,7 @@ before any release that touches the confirmation protocol, a resolver, or a tool
 
 29. `"yes"`, `"ho"`, `"होय"` confirm. `"no"`, `"nahi"`, `"नाही"` cancel.
 30. `"no, make it 35"` does **not** cancel — it re-proposes.
-31. `"yesterday's dispatch"` does **not** confirm.
+31. `"yesterday's delivery"` does **not** confirm.
 32. An affirmation with zero live proposals is an ordinary message.
 33. Every typed affirmation and decline makes **zero** API calls before acting.
 
@@ -2888,7 +2878,8 @@ before any release that touches the confirmation protocol, a resolver, or a tool
 
 ---
 
-*Last updated: 13 September 2026. Design complete; no code written.*
+*Last updated: 18 September 2026 — scope finalized to GRN photo as the sole write intent (see the
+banner at the top of this document). Design complete; no code written.*
 *This is a living document. As it is built, move `[RECOMMENDED]` to `[DECIDED]`, close open
 questions, and replace every `[UNVERIFIED]` with a measured number — same convention as
 `enterprise-strategy.md`, `automation-strategy.md` and `bridge-agent.md`. §17 Q2's vision bench and
