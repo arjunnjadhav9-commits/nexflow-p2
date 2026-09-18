@@ -2803,13 +2803,39 @@ one batch) — the `raw_material_id`-inclusive unique index above would reject
 `CREATE UNIQUE INDEX CONCURRENTLY` outright today, and would permanently break that
 legitimate workflow going forward even after cleanup. **Do not build this index as
 specified.** The UI-only warning (`grn.html`'s `checkDuplicateInvoice()`, shipped
-Session 12) remains the correct and only guard; the agent write layer's own
-duplicate check (§5.2) is advisory-only for the same reason, not backed by a DB
-constraint.
+Session 12) remains the correct guard for tenants with no DB backstop yet; the agent
+write layer's own duplicate check (§5.2) stays advisory-only at propose time for the
+same reason — see the resolution below for what now actually blocks at confirm/insert
+time.
 
 Schedule: Phase 3, or a standalone fix before E1 starts. **Superseded per the above —
 resolve the "correct shape" open question before scheduling, don't just schedule the
 index as written.**
+
+**RESOLVED (W2 build session, Sept 18 2026, later the same day):** `allow_duplicate_grn_invoice`
+boolean added to `p2_tenant_settings` (default `false`; migration
+`20260918_grn_dupe_invoice_flag.sql`) — a per-tenant opt-in flag, not a schema-wide fix. The DB
+backstop is a `BEFORE INSERT` trigger on `p2_stock_transactions` (`trg_grn_dupe_invoice_check`),
+not a partial unique index as originally specified: Postgres forbids a subquery referencing
+another table inside an index predicate (`WHERE tenant_id NOT IN (SELECT ... FROM
+p2_tenant_settings ...)` fails with "cannot use subquery in index predicate"), which the original
+index shape depended on. The trigger has no such restriction, re-checks the flag live on every
+insert (a future tenant opt-in is just a flag flip, no migration), and covers every path that
+writes GRN rows today — `confirm_agent_grn_v3`, `grn.html`'s direct browser insert, and
+`scanner.html`'s `confirmGRN()` — none of which had any duplicate protection before this.
+`allow_duplicate_grn_invoice = true` excludes a tenant from `trg_grn_dupe_invoice_check` and from
+the propose-time advisory warning in `agent-query/index.ts` (`checkDuplicateInvoiceForAgent`,
+§5.2 step 4). Live checkpoint (584 GRN rows) reconfirmed S.S. Engineering's 5 duplicate-look
+groups as genuine coil-by-coil — every group shares one `grn_no` with quantities that differ
+meaningfully row to row (real coil-to-coil weight variation on copper wire/cable). Datta Prasad
+Enterprises' 1 duplicate-look group (`3SRA-KS160-4P-11E3`, two identical `qty=2` rows on a
+discrete motor part, not a coil commodity, no quantity variation) read as a likely accidental
+duplicate row instead of the same pattern — owner decision: **S.S. Engineering is the only tenant
+flagged `true`**; Datta Prasad's row stays blocked/unflagged, left for its owner to review and
+correct. Also surfaced, not yet acted on: one of S.S. Engineering's five groups was two unrelated
+GRNs that both used the literal text `"adjustment"` as `invoice_no` (no real supplier invoice) —
+normalises to the same string, so any tenant using a placeholder instead of leaving `invoice_no`
+blank will get false-positive blocks from this trigger regardless of the flag.
 
 **2. Challan number length — BLOCKS E2 (AI Filing Package)**
 

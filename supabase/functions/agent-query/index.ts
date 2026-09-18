@@ -4023,12 +4023,16 @@ function derivePurchaseType(tenantGstin: string | null, supplierGstin: string | 
 }
 
 // §5.2 step 4 — advisory duplicate-invoice check, reusing normaliseInvoiceNo
-// byte-identically with grn.html/gstr2b-reconcile.html. Deliberately NOT
-// backed by a DB constraint (see the W2 build session's Known Open Items #1
-// reconciliation note in CLAUDE.md — the raw_material_id-inclusive unique
-// index would break S.S. Engineering's legitimate coil-by-coil GRN entry,
-// confirmed against live production data). Fails open on a query error —
-// advisory only, never blocks.
+// byte-identically with grn.html/gstr2b-reconcile.html. This is a same-transaction
+// preview only, kept alongside the real DB-level backstop (trg_grn_dupe_invoice_check,
+// a BEFORE INSERT trigger on p2_stock_transactions, migration
+// 20260918_grn_dupe_invoice_flag.sql) so the confirmation card can warn before the
+// RPC is ever called, rather than the tenant only finding out at confirm time. Skipped
+// entirely by the caller when allowDuplicateGrnInvoice is true (see CLAUDE.md Known
+// Open Items #1 — S.S. Engineering's coil-by-coil GRN entry would otherwise see a
+// false-positive warning on every normal batch). Fails open on a query error —
+// advisory only, never blocks even for a non-flagged tenant; the trigger is what
+// actually blocks.
 async function checkDuplicateInvoiceForAgent(
   supabaseClient: ReturnType<typeof createClient>,
   tenantId: string,
@@ -4070,7 +4074,8 @@ async function resolveGrnPlan(
   context: AgentContext,
   principals: { id: string; name: string }[],
   tenantGstin: string | null,
-  grnDateOverride: string | null   // photo path: extracted document_date once confirmed; null = today
+  grnDateOverride: string | null,   // photo path: extracted document_date once confirmed; null = today
+  allowDuplicateGrnInvoice: boolean   // tenant opt-out of the duplicate-invoice guard (coil-by-coil workflow)
 ): Promise<GrnResolutionResult> {
   const questions: { field: string; question: string; options?: string[] }[] = []
   const warnings: string[] = []
@@ -4253,7 +4258,7 @@ async function resolveGrnPlan(
     })
   }
 
-  if (invoiceNo && planItems.length > 0) {
+  if (invoiceNo && planItems.length > 0 && !allowDuplicateGrnInvoice) {
     duplicateWarning = await checkDuplicateInvoiceForAgent(supabaseClient, tenantId, supplier.id, invoiceNo)
     if (duplicateWarning) {
       warnings.push(`Invoice ${invoiceNo} was already received under ${duplicateWarning.grn_no} on ${duplicateWarning.transaction_date}.`)
@@ -4563,7 +4568,7 @@ async function proposeAction(
 
   const { data: settingsRow } = await supabaseClient
     .from('p2_tenant_settings')
-    .select('plan, agent_write_enabled, agent_enabled, is_job_worker, is_principal, separate_pool_deduction, company_name, gstin')
+    .select('plan, agent_write_enabled, agent_enabled, is_job_worker, is_principal, separate_pool_deduction, company_name, gstin, allow_duplicate_grn_invoice')
     .eq('tenant_id', tenant_id)
     .maybeSingle()
   const settings = (settingsRow ?? {}) as Record<string, unknown>
@@ -4852,7 +4857,8 @@ async function proposeAction(
   const resolution = await resolveGrnPlan(
     supabaseClient, tenant_id, toolInput, context, principals,
     (settings.gstin as string) ?? null,
-    typeof toolInput.grn_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(toolInput.grn_date) ? toolInput.grn_date : null
+    typeof toolInput.grn_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(toolInput.grn_date) ? toolInput.grn_date : null,
+    !!settings.allow_duplicate_grn_invoice
   )
 
   if (resolution.kind === 'refusal') {
