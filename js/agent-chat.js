@@ -630,8 +630,10 @@
       micBtn.addEventListener('click', () => {
         if (isRecording) { recognition.stop(); return; }
         recognition = new SpeechRecognitionCtor();
-        // Factory-floor Hinglish, not 'en-US' — English performs worst here.
-        recognition.lang = localStorage.getItem('nexflow_lang') === 'mr' ? 'mr-IN' : 'hi-IN';
+        // Indian English, not 'en-US' — handles mixed English/Hindi/Marathi
+        // factory-floor speech better, and keeps material/GRN/supplier names
+        // in Latin script the way they're actually typed elsewhere.
+        recognition.lang = localStorage.getItem('nexflow_lang') === 'mr' ? 'mr-IN' : 'en-IN';
         recognition.interimResults = false;
         recognition.maxAlternatives = 1;
 
