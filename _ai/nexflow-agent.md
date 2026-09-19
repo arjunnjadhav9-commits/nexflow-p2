@@ -2,9 +2,11 @@
 name: nexflow-agent
 description: The Nexflow Agent write layer — how a storekeeper photographs a delivery slip instead of filling the GRN form. Confirmation protocol, tool-use architecture, the GRN photo/OCR pipeline and QR interception (the two paths into the one surviving write intent), voice as a read-query interface, cost and quota model, pricing, what stays manual, competitive moat, build sequence, the irreducible error floor. Read in full before writing any agent write code.
 sources: [founder-brief-sept-2026, codebase-verification-sept-13-2026, anthropic-api-pricing-2026, CLAUDE.md, enterprise-strategy.md, automation-strategy.md, business-strategy.md, bridge-agent.md, tutorial-engine.md]
-last_updated: 18 September 2026
-status: design complete — not yet built. Scope finalized to GRN photo as the sole write intent
-  (see the banner below). Living document: update in place as it is built.
+last_updated: 19 September 2026
+status: W5 (Marathi confirmation text, mobile card layout, voice read-only) built — see §13.
+  GRN photo write layer previously built (W2). Supervised pilot (W6) not yet started. Scope
+  finalized to GRN photo as the sole write intent (see the banner below). Living document:
+  update in place as it is built.
 ---
 
 # Nexflow — The Agent Write Layer
@@ -2425,7 +2427,7 @@ W2/W5/W6 (W1/W3/W4 dropped — see the scope banner).
 | # | Session (= execution-plan.md) | Output |
 |---|---|---|
 | **1** (= W2) | **Foundation + GRN photo + QR interception** | Migration (`p2_agent_proposals`, RLS, the partial unique index, the two settings columns). `propose` / `confirm_proposal` / `cancel_proposal` on `agent-query`. The §7 system prompt and `propose_grn` + `request_clarification` tool definitions. §5.2's GRN resolution (`confirm_agent_grn_v3` — carrying `invoice_no`, `rate`, `purchase_type`, `owned_by`, `principal_challan_*`, IST date), duplicate-invoice advisory, `purchase_type` derivation, rate/GST sanity checks, principal-pool selection. The §5.6 QR interception. The full §6 photo pipeline — client-side image prep, Sonnet 5 extraction with the §6.4 strict schema, §6.5's four-route candidate generation and green/amber/ask banding, Opus 5 escalation, §6.7's clarification loop, `agent-uploads` private bucket with 90-day retention. D11's role gate, D10's plan gate, §10.1's meter, Settings → Agent tab. The §4.2 confirmation protocol including the closed-list matcher. `js/agent-chat.js` confirmation card. **Gated on §17 Q2's 50-challan bench passing before any live tenant.** **End-to-end: a photographed delivery challan creates one real GRN on the test tenant.** |
-| **2** (= W5) | **Marathi, mobile, voice (read-only)** | Marathi confirmation cards and refusal text through `tutorial-engine.md` §8.5's read-aloud gate — a real storekeeper, a real phone, the real page, for GRN/QR only. The §4.2 affirmation list reviewed and trimmed. Mobile card layout, camera capture, one-handed confirm. Plus voice: Whisper transcription into the existing read pipeline for natural-language read queries only — no write path. |
+| **2** (= W5) | **Marathi, mobile, voice (read-only)** `[BUILT — 19 Sept 2026, partial]` | Marathi confirmation cards and refusal text through `tutorial-engine.md` §8.5's read-aloud gate — a real storekeeper, a real phone, the real page, for GRN/QR only. The §4.2 affirmation list reviewed and trimmed. Mobile card layout, camera capture, one-handed confirm. Plus voice: Whisper transcription into the existing read pipeline for natural-language read queries only — no write path. **Built:** client sends `lang` (from `localStorage.getItem('nexflow_lang')`, same pattern as A4's Support Relay — no server-side language column) on propose/confirm/cancel; `agent-query/index.ts` renders `confirm_text` and every refusal/status string in both languages (`renderGrnConfirmText`, `resolveGrnPlan`, `checkWriteGate`, `proposeAction`/`confirmProposalAction`/`cancelProposalAction`). Mobile: owner dropdown, Confirm/Cancel buttons full-width and stacked, 44px Confirm tap target, defensive warning-text wrapping, all under a new `@media (max-width: 480px)` block in `js/agent-chat.js` — desktop layout untouched. Voice: mic button (MediaRecorder, pulsing recording indicator) + new `transcribe` action (Whisper API, plan-gated on `plan !== 'lite'` only) — transcribed text lands in the input box for the user to review and send themselves, never auto-sent, so there is no code path from voice into `confirm_proposal`/`cancel_proposal`. **Not built:** the §4.2 affirmation/decline list review itself — `GRN_AFFIRM`/`GRN_DECLINE` are untouched and still `// UNREVIEWED`, still gated on §17 Q1's real-storekeeper read-aloud test. Buttons-only for Marathi users continues to apply. |
 | **3** (= W6) | **Supervised pilot — 30 days, one tenant, one user** | Test tenant first, then **one** live tenant with `agent_write_enabled = true` for **one** user, for the one surviving write path. Every proposal reviewed against what the user meant. §18's acceptance tests run in full (the GRN/QR subset). §14's error-floor instrumentation live. The §17 Q2 and Q3 measurements taken and written back into this document. |
 
 **Not parallelisable, and the ordering is not negotiable:** session 1 before everything. The
@@ -2692,6 +2694,11 @@ getting it wrong.
 real widget. Ask them to accept and to decline in their own words, twenty times, and record what
 they actually type. **Anything not observed comes out of the list.**
 **Decide before:** session 2 (Marathi/mobile/voice). Until then, buttons only for Marathi users.
+**Update, W5 build (19 Sept 2026):** session 2 shipped — Marathi confirmation cards, mobile
+layout and voice (read-only) are built — without resolving this gate. `GRN_AFFIRM`/`GRN_DECLINE`
+are unchanged and still `// UNREVIEWED`. Buttons-only for Marathi users continues to apply going
+forward, not just "until session 2": typed or spoken Marathi yes/no is still never matched to
+confirm/cancel until the read-aloud gate clears.
 
 **Q2. Vision accuracy on real MIDC challans, and the escalation rate.** `[UNVERIFIED]`
 The whole photo path, its cost model (§9.2) and its ship/no-ship gate depend on this, and no number

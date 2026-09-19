@@ -249,6 +249,25 @@
       }
       #nf-agent-camera:hover { border-color: var(--orange); color: var(--orange); }
       #nf-agent-camera:disabled { opacity: 0.4; cursor: not-allowed; }
+      #nf-agent-mic {
+        background: var(--surface2); border: 1px solid var(--border2); color: var(--light);
+        width: 36px; height: 36px; border-radius: 50%; cursor: pointer;
+        display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+        transition: border-color 0.15s, color 0.15s; position: relative;
+      }
+      #nf-agent-mic:hover { border-color: var(--orange); color: var(--orange); }
+      #nf-agent-mic:disabled { opacity: 0.4; cursor: not-allowed; }
+      #nf-agent-mic.nf-mic-recording { border-color: #e5484d; color: #e5484d; }
+      #nf-agent-mic.nf-mic-recording::after {
+        content: ''; position: absolute; top: -2px; right: -2px; width: 10px; height: 10px;
+        border-radius: 50%; background: #e5484d;
+        animation: nf-mic-pulse 1.4s infinite;
+      }
+      @keyframes nf-mic-pulse {
+        0% { box-shadow: 0 0 0 0 rgba(229,72,77,0.6); }
+        70% { box-shadow: 0 0 0 6px rgba(229,72,77,0); }
+        100% { box-shadow: 0 0 0 0 rgba(229,72,77,0); }
+      }
       .nf-grn-card {
         align-self: flex-start; max-width: 92%; background: var(--surface2);
         border: 1px solid var(--orange); border-radius: var(--radius); overflow: hidden;
@@ -293,6 +312,15 @@
       .nf-grn-card.nf-grn-superseded .nf-grn-card-owner,
       .nf-grn-card.nf-grn-superseded .nf-grn-card-challan { display: none; }
       .nf-grn-card-status { padding: 6px 14px 10px; font-size: 12px; color: var(--mid); }
+      @media (max-width: 480px) {
+        #nf-agent-panel { overflow-x: hidden; }
+        .nf-grn-card-owner { flex-direction: column; align-items: stretch; gap: 4px; }
+        .nf-grn-card-owner select { width: 100%; box-sizing: border-box; }
+        .nf-grn-card-actions { flex-direction: column; }
+        .nf-grn-btn { width: 100%; box-sizing: border-box; }
+        .nf-grn-btn-confirm { min-height: 44px; }
+        .nf-grn-card-body { overflow-wrap: anywhere; word-break: break-word; }
+      }
     `;
     document.head.appendChild(style);
 
@@ -321,6 +349,9 @@
         <button id="nf-agent-camera" type="button" title="${t('Photograph a delivery challan', 'चलानाचा फोटो घ्या')}">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
         </button>
+        <button id="nf-agent-mic" type="button" title="${t('Ask by voice', 'आवाजाने विचारा')}">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+        </button>
         <textarea id="nf-agent-input" placeholder="${t('Type a message...', 'संदेश टाइप करा...')}"></textarea>
         <button id="nf-agent-send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
       </div>
@@ -339,6 +370,8 @@
       sendBtn.style.cursor = 'not-allowed';
       const cameraBtnDemo = panel.querySelector('#nf-agent-camera');
       cameraBtnDemo.disabled = true;
+      const micBtnDemo = panel.querySelector('#nf-agent-mic');
+      micBtnDemo.disabled = true;
     }
 
     let hasShownWelcome = false;
@@ -550,6 +583,7 @@
       photoInput.value = '';
       if (!file) return;
       cameraBtn.disabled = true;
+      updateMicState();
       const typingEl = addTyping();
       try {
         const processed = await preprocessImage(file);
@@ -569,6 +603,77 @@
         addMessage(t('Something went wrong reading that photo.', 'तो फोटो वाचताना काहीतरी चूक झाली.'), 'nf-msg-error');
       } finally {
         cameraBtn.disabled = false;
+        updateMicState();
+      }
+    });
+
+    // ---------- W5: voice input (read-only) ----------
+    // Whisper transcription into the read pipeline only. Never auto-sent —
+    // success only fills the input box so the user reviews before tapping
+    // Send, same as typing. This structurally keeps voice out of
+    // confirm_proposal/cancel_proposal (nexflow-agent.md §4.2/§16 item 10):
+    // there is no code path from a transcription result straight to a
+    // proposal action, only into inputEl.value.
+    const micBtn = panel.querySelector('#nf-agent-mic');
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let isRecording = false;
+
+    function updateMicState() {
+      micBtn.disabled = isDemo || Boolean(openCard) || cameraBtn.disabled || isRecording;
+    }
+
+    micBtn.addEventListener('click', async () => {
+      if (isRecording) { mediaRecorder.stop(); return; }
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const mimeType = (window.MediaRecorder && MediaRecorder.isTypeSupported('audio/webm')) ? 'audio/webm' : 'audio/mp4';
+        mediaRecorder = new MediaRecorder(stream, { mimeType });
+        audioChunks = [];
+        mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.push(e.data); };
+        mediaRecorder.onstop = async () => {
+          stream.getTracks().forEach((tr) => tr.stop());
+          isRecording = false;
+          micBtn.classList.remove('nf-mic-recording');
+          micBtn.disabled = true;
+          const typingEl = addTyping();
+          try {
+            const blob = new Blob(audioChunks, { type: mimeType });
+            const base64 = await new Promise((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(reader.result.split(',')[1]);
+              reader.onerror = reject;
+              reader.readAsDataURL(blob);
+            });
+            const tid = await getTenantId();
+            const res = await fetch(EDGE_FUNCTION_URL, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': await getAuthHeader() },
+              body: JSON.stringify({
+                action: 'transcribe', tenant_id: tid, audio_base64: base64, audio_mime_type: mimeType,
+                lang: localStorage.getItem('nexflow_lang') === 'mr' ? 'mr' : 'en',
+              }),
+            });
+            removeTyping();
+            const data = await res.json().catch(() => ({}));
+            if (data.status === 'error' || !data.text) {
+              addMessage(data.error || t('Could not transcribe that. Try again or type your question.', 'ते ऐकता आले नाही. पुन्हा प्रयत्न करा किंवा टाइप करा.'), 'nf-msg-error');
+              return;
+            }
+            inputEl.value = data.text;
+            inputEl.focus();
+          } catch (err) {
+            removeTyping();
+            addMessage(t('Something went wrong — check your connection and try again.', 'काहीतरी चूक झाली — कनेक्शन तपासा आणि पुन्हा प्रयत्न करा.'), 'nf-msg-error');
+          } finally {
+            updateMicState();
+          }
+        };
+        mediaRecorder.start();
+        isRecording = true;
+        micBtn.classList.add('nf-mic-recording');
+      } catch (err) {
+        addMessage(t('Microphone access denied or unavailable.', 'मायक्रोफोन उपलब्ध नाही किंवा परवानगी नाकारली.'), 'nf-msg-error');
       }
     });
 
@@ -585,6 +690,7 @@
         if (status) status.textContent = t('Replaced by a newer plan.', 'नवीन प्लॅनने बदलले.');
       }
       openCard = null;
+      updateMicState();
     }
 
     // Greys out a specific card by proposal id, regardless of whether it's
@@ -602,7 +708,7 @@
         el.appendChild(status);
       }
       status.textContent = t('This needs more information — see below.', 'यासाठी अधिक माहिती हवी आहे — खाली पहा.');
-      if (openCard && openCard.el === el) openCard = null;
+      if (openCard && openCard.el === el) { openCard = null; updateMicState(); }
     }
 
     function finalizeCard(card, text) {
@@ -611,7 +717,7 @@
       status.className = 'nf-grn-card-status';
       status.textContent = text;
       card.el.appendChild(status);
-      if (openCard && openCard.el === card.el) openCard = null;
+      if (openCard && openCard.el === card.el) { openCard = null; updateMicState(); }
     }
 
     function addConfirmCard(proposalId, confirmText, expiresAt, tenantId, ownerInfo) {
@@ -751,6 +857,7 @@
 
       const cardHandle = { el: card, actionsEl: actions };
       openCard = cardHandle;
+      updateMicState();
 
       // Client-side expiry flip — cosmetic only; the server re-checks
       // expires_at at confirm time regardless (§3 D9), this just avoids a
@@ -768,7 +875,10 @@
         confirmBtn.disabled = true;
         cancelBtn.disabled = true;
         try {
-          const payload = { action, tenant_id: tenantId, proposal_id: proposalId };
+          const payload = {
+            action, tenant_id: tenantId, proposal_id: proposalId,
+            lang: localStorage.getItem('nexflow_lang') === 'mr' ? 'mr' : 'en',
+          };
           // Exception to "confirm reads from the stored plan only" (§18.1
           // #3) — these two are genuinely unknown server-side at propose
           // time when the photo doesn't show them, so confirm_proposal
@@ -808,7 +918,10 @@
 
       const typingEl = addTyping();
       try {
-        const body = { action: 'propose', tenant_id: tenantId, message };
+        const body = {
+          action: 'propose', tenant_id: tenantId, message,
+          lang: localStorage.getItem('nexflow_lang') === 'mr' ? 'mr' : 'en',
+        };
         if (image) { body.image = image.base64; body.image_media_type = image.mediaType; }
         if (extra) Object.assign(body, extra);
 

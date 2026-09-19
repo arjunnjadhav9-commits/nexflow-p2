@@ -3536,6 +3536,10 @@ interface ProposeRequest {
   // the handling in proposeAction for why the free-text version of this
   // was unreliable). owned_by: null means "Own Stock".
   owner_amendment?: { owned_by: string | null }
+  // W5 — client-sourced from localStorage.getItem('nexflow_lang'), same
+  // pattern as SubmitSupportMessageRequest.lang. No server-side language
+  // column exists or is needed (CLAUDE.md Known Open Items #24).
+  lang?: 'en' | 'mr'
 }
 
 interface ConfirmProposalRequest {
@@ -3549,12 +3553,27 @@ interface ConfirmProposalRequest {
   // confirmProposalAction.
   principal_challan_no?: string
   principal_challan_date?: string
+  lang?: 'en' | 'mr'
 }
 
 interface CancelProposalRequest {
   action: 'cancel_proposal'
   tenant_id: string
   proposal_id: string
+  lang?: 'en' | 'mr'
+}
+
+// W5 — voice input, read-only (nexflow-agent.md §4.2/§16 item 10/§17 Q8).
+// Client records with MediaRecorder and sends the whole clip as base64; this
+// action only transcribes it and returns text — the client puts that text in
+// the input box for the user to review and send themselves. There is no path
+// from here into confirm_proposal/cancel_proposal.
+interface TranscribeRequest {
+  action: 'transcribe'
+  tenant_id: string
+  audio_base64: string
+  audio_mime_type: string
+  lang?: 'en' | 'mr'
 }
 
 type GrnBand = 'green' | 'amber'
@@ -4075,7 +4094,8 @@ async function resolveGrnPlan(
   principals: { id: string; name: string }[],
   tenantGstin: string | null,
   grnDateOverride: string | null,   // photo path: extracted document_date once confirmed; null = today
-  allowDuplicateGrnInvoice: boolean   // tenant opt-out of the duplicate-invoice guard (coil-by-coil workflow)
+  allowDuplicateGrnInvoice: boolean,   // tenant opt-out of the duplicate-invoice guard (coil-by-coil workflow)
+  lang: 'en' | 'mr'   // W5 — selects which string is returned at each site below; never affects matching/banding logic
 ): Promise<GrnResolutionResult> {
   const questions: { field: string; question: string; options?: string[] }[] = []
   const warnings: string[] = []
@@ -4090,7 +4110,7 @@ async function resolveGrnPlan(
     // a matching failure below — the two look identical from confirm_text
     // alone. Query p2_agent_logs WHERE intent='propose_grn_diag' to inspect.
     void logInteraction(supabaseClient, tenantId, '', 'propose_grn_diag', { stage: 'resolve_supplier', result: 'empty_name' }, null, true, null)
-    return { kind: 'refusal', text: "I don't have a supplier name for this delivery." }
+    return { kind: 'refusal', text: lang === 'mr' ? 'या डिलिव्हरीसाठी पुरवठादाराचे नाव नाही.' : "I don't have a supplier name for this delivery." }
   }
   const supplierMatches = findMatches(supplierName, context.suppliers)
   if (supplierMatches.length === 0) {
@@ -4106,19 +4126,28 @@ async function resolveGrnPlan(
     }, null, true, null)
     return {
       kind: 'refusal',
-      text: `I don't have a supplier called ${supplierName}. Add them in Settings → Suppliers with their GSTIN, then I can record this GRN.`,
+      text: lang === 'mr'
+        ? `${supplierName} नावाचा पुरवठादार सापडला नाही. Settings → Suppliers मध्ये त्यांचे GSTIN टाकून जोडा, मग मी हे GRN नोंदवू शकेन.`
+        : `I don't have a supplier called ${supplierName}. Add them in Settings → Suppliers with their GSTIN, then I can record this GRN.`,
     }
   }
   if (supplierMatches.length > 1) {
-    return { kind: 'refusal', text: `"${supplierName}" is ambiguous — did you mean ${supplierMatches.map((s) => s.name).join(', ')}?` }
+    const list = supplierMatches.map((s) => s.name).join(', ')
+    return {
+      kind: 'refusal',
+      text: lang === 'mr' ? `"${supplierName}" नेमके कोणते आहे — तुम्हाला ${list} म्हणायचे आहे का?` : `"${supplierName}" is ambiguous — did you mean ${list}?`,
+    }
   }
   const supplier = supplierMatches[0]
 
   if (!invoiceNo) {
-    questions.push({ field: 'invoice_no', question: 'What is the supplier invoice number?' })
+    questions.push({
+      field: 'invoice_no',
+      question: lang === 'mr' ? 'पुरवठादाराचा चलान/इनव्हॉइस क्रमांक काय आहे?' : 'What is the supplier invoice number?',
+    })
   }
   if (items.length === 0) {
-    return { kind: 'refusal', text: "I don't have any materials for this delivery." }
+    return { kind: 'refusal', text: lang === 'mr' ? 'या डिलिव्हरीसाठी कोणताही माल नाही.' : "I don't have any materials for this delivery." }
   }
 
   // Supplier GSTIN, tenant GSTIN, latest prices, last-20-GRN medians — fetched
@@ -4134,7 +4163,12 @@ async function resolveGrnPlan(
     : toolInput.purchase_type === 'intrastate' ? 'intrastate' as const
     : derivePurchaseType(tenantGstin, supplierGstin)
   if (!purchaseType) {
-    questions.push({ field: 'purchase_type', question: `I can't tell if ${supplier.name} is intrastate or interstate — is their GSTIN missing in Settings?` })
+    questions.push({
+      field: 'purchase_type',
+      question: lang === 'mr'
+        ? `${supplier.name} राज्यांतर्गत की आंतरराज्य आहे हे कळत नाही — त्यांचे GSTIN Settings मध्ये नाही का?`
+        : `I can't tell if ${supplier.name} is intrastate or interstate — is their GSTIN missing in Settings?`,
+    })
     purchaseType = 'intrastate'   // placeholder only if there are no other blocking questions; see gating below
   }
 
@@ -4146,7 +4180,11 @@ async function resolveGrnPlan(
   if (materialOwnerName) {
     const ownerMatch = matchClientName(materialOwnerName, principals)
     if ('error' in ownerMatch) {
-      questions.push({ field: 'material_owner', question: `Which principal is "${materialOwnerName}"? Options: ${principals.map((p) => p.name).join(', ') || 'none configured'}` })
+      const optionsList = principals.map((p) => p.name).join(', ') || (lang === 'mr' ? 'कोणतेही कॉन्फिगर केलेले नाहीत' : 'none configured')
+      questions.push({
+        field: 'material_owner',
+        question: lang === 'mr' ? `"${materialOwnerName}" कोणता प्रिन्सिपल आहे? पर्याय: ${optionsList}` : `Which principal is "${materialOwnerName}"? Options: ${optionsList}`,
+      })
     } else {
       ownedBy = ownerMatch.client.id
       ownerName = ownerMatch.client.name
@@ -4173,11 +4211,17 @@ async function resolveGrnPlan(
     const rate = typeof rawItem.rate === 'number' ? rawItem.rate : null
 
     if (!materialName.trim()) {
-      questions.push({ field: 'material_name', question: 'One line is missing a material name — which material is it?' })
+      questions.push({
+        field: 'material_name',
+        question: lang === 'mr' ? 'एका ओळीत मालाचे नाव नाही — कोणता माल आहे?' : 'One line is missing a material name — which material is it?',
+      })
       continue
     }
     if (!Number.isFinite(quantity) || quantity <= 0) {
-      questions.push({ field: 'quantity', question: `How much ${materialName} arrived?` })
+      questions.push({
+        field: 'quantity',
+        question: lang === 'mr' ? `${materialName} किती आले?` : `How much ${materialName} arrived?`,
+      })
       continue
     }
 
@@ -4185,11 +4229,17 @@ async function resolveGrnPlan(
     if (candidates.length === 0) {
       return {
         kind: 'refusal',
-        text: `I don't have a material called "${materialName}". Add it in Settings → Raw Materials first, or check the spelling.`,
+        text: lang === 'mr'
+          ? `"${materialName}" नावाचा माल सापडला नाही. आधी Settings → Raw Materials मध्ये तो जोडा, किंवा स्पेलिंग तपासा.`
+          : `I don't have a material called "${materialName}". Add it in Settings → Raw Materials first, or check the spelling.`,
       }
     }
     if (candidates.length > 1) {
-      questions.push({ field: 'material_name', question: `"${materialName}" is ambiguous — did you mean ${candidates.map((c) => c.name).join(', ')}?` })
+      const list = candidates.map((c) => c.name).join(', ')
+      questions.push({
+        field: 'material_name',
+        question: lang === 'mr' ? `"${materialName}" नेमके कोणते आहे — तुम्हाला ${list} म्हणायचे आहे का?` : `"${materialName}" is ambiguous — did you mean ${list}?`,
+      })
       continue
     }
     const material = candidates[0]
@@ -4270,7 +4320,10 @@ async function resolveGrnPlan(
   // per-line missing name/quantity/ambiguity) stops a proposal from being
   // built at all — never a proposal with a guessed value in it.
   if (questions.length > 0 || planItems.length === 0) {
-    return { kind: 'clarification', questions: questions.length > 0 ? questions : [{ field: 'items', question: 'Which materials arrived?' }] }
+    return {
+      kind: 'clarification',
+      questions: questions.length > 0 ? questions : [{ field: 'items', question: lang === 'mr' ? 'कोणता माल आला?' : 'Which materials arrived?' }],
+    }
   }
 
   for (const item of planItems) if (item.band_reasons.length) warnings.push(`${item.material_name}: ${item.band_reasons.join('; ')}`)
@@ -4289,21 +4342,44 @@ async function resolveGrnPlan(
     duplicate_warning: duplicateWarning,
   }
 
-  const confirmText = renderGrnConfirmText(plan, warnings)
+  const confirmText = renderGrnConfirmText(plan, warnings, lang)
   return { kind: 'plan', plan, confirmText, warnings }
 }
 
-function renderGrnConfirmText(plan: GrnPlan, warnings: string[]): string {
+// W5 — presentation-only Marathi mapping for band_reasons/warnings strings.
+// These are pre-composed English sentences with interpolated diagnostics
+// (resolveGrnPlan's bandReasons.push(...) sites); translating them word for
+// word would mean touching resolution-adjacent code, which is out of scope
+// this session. Recognise the category by substring instead and emit the
+// short Marathi label; anything unrecognised falls back to the original
+// English string unchanged rather than disappearing.
+function translateGrnWarning(warning: string): string {
+  if (warning.includes('fuzzy material match')) return 'अंदाजे मिळालेला माल'
+  if (warning.includes('unit mismatch')) return 'युनिट जुळत नाही'
+  if (warning.includes('more than 20×') || warning.includes('recent median')) return 'प्रमाण असामान्यपणे जास्त'
+  if (warning.includes('is far from the last recorded rate')) return 'दर अपेक्षित सीमेबाहेर'
+  if (warning.includes('does not match the printed amount')) return 'रक्कम जुळत नाही'
+  if (warning.includes('was already received under')) return 'डुप्लिकेट चलान असण्याची शक्यता'
+  return warning
+}
+
+function renderGrnConfirmText(plan: GrnPlan, warnings: string[], lang: 'en' | 'mr' = 'en'): string {
   const lines: string[] = []
-  lines.push(`GRN from ${plan.supplier_name}, invoice ${plan.items[0]?.invoice_no ?? '—'}, ${plan.grn_date}:`)
+  lines.push(
+    lang === 'mr'
+      ? `${plan.supplier_name} कडून GRN, चलान/इनव्हॉइस ${plan.items[0]?.invoice_no ?? '—'}, ${plan.grn_date}:`
+      : `GRN from ${plan.supplier_name}, invoice ${plan.items[0]?.invoice_no ?? '—'}, ${plan.grn_date}:`
+  )
   for (const item of plan.items) {
     const amount = item.rate !== null ? ` = ₹${(item.quantity * item.rate).toFixed(2)}` : ''
     const rateText = item.rate !== null ? ` @ ₹${item.rate.toFixed(2)}${amount}` : ''
     const marker = item.band === 'amber' ? ' ⚠' : ''
     lines.push(`• ${item.material_name}${item.material_code ? ` [${item.material_code}]` : ''}   ${item.quantity} ${item.unit}${rateText}${marker}`)
   }
-  const purchaseLabel = plan.items[0]?.purchase_type === 'interstate' ? 'Interstate (IGST)' : 'Intrastate (CGST+SGST)'
-  const ownerLabel = plan.owner_name ? plan.owner_name : 'Own stock'
+  const purchaseLabel = lang === 'mr'
+    ? (plan.items[0]?.purchase_type === 'interstate' ? 'आंतरराज्य (IGST)' : 'राज्यांतर्गत (CGST+SGST)')
+    : (plan.items[0]?.purchase_type === 'interstate' ? 'Interstate (IGST)' : 'Intrastate (CGST+SGST)')
+  const ownerLabel = plan.owner_name ? plan.owner_name : (lang === 'mr' ? 'स्वतःचा माल' : 'Own stock')
   lines.push(`${purchaseLabel} · ${ownerLabel}`)
   // Shown so the person confirming can actually see what's in the plan
   // before approving it — free text, never validated against any Nexflow
@@ -4312,10 +4388,14 @@ function renderGrnConfirmText(plan: GrnPlan, warnings: string[]): string {
   // confirm_proposal patches these onto the plan before executing (the one
   // deliberate exception to "confirm reads from the stored plan only").
   if (plan.owned_by && plan.principal_challan_no && plan.principal_challan_date) {
-    lines.push(`Principal challan ${plan.principal_challan_no}, ${plan.principal_challan_date}`)
+    lines.push(
+      lang === 'mr'
+        ? `प्रिन्सिपल चलान ${plan.principal_challan_no}, ${plan.principal_challan_date}`
+        : `Principal challan ${plan.principal_challan_no}, ${plan.principal_challan_date}`
+    )
   }
-  if (warnings.length) lines.push('', ...warnings.map((w) => `⚠ ${w}`))
-  lines.push('', 'GRN number is issued when you confirm.')
+  if (warnings.length) lines.push('', ...warnings.map((w) => `⚠ ${lang === 'mr' ? translateGrnWarning(w) : w}`))
+  lines.push('', lang === 'mr' ? 'GRN क्रमांक तुम्ही मंजूर केल्यावर दिला जाईल.' : 'GRN number is issued when you confirm.')
   return lines.join('\n')
 }
 
@@ -4547,10 +4627,16 @@ async function bumpMonthlyAgentWrites(
 // ordinary read questions through this same endpoint. Gating reads here would
 // be a silent regression of the entire read layer for every tenant until its
 // owner opts in, which is not what D10 asks for.
-function checkWriteGate(settings: Record<string, unknown>): { ok: true } | { ok: false; reason: string } {
-  if (settings.plan === 'lite') return { ok: false, reason: 'The agent write layer is not available on the Lite plan.' }
-  if (!settings.agent_enabled) return { ok: false, reason: 'The agent is not enabled for this account.' }
-  if (!settings.agent_write_enabled) return { ok: false, reason: 'The owner has not turned on agent writes yet — enable it in Settings → Agent.' }
+function checkWriteGate(settings: Record<string, unknown>, lang: 'en' | 'mr' = 'en'): { ok: true } | { ok: false; reason: string } {
+  if (settings.plan === 'lite') {
+    return { ok: false, reason: lang === 'mr' ? 'एजंट राइट सुविधा Lite प्लॅनवर उपलब्ध नाही.' : 'The agent write layer is not available on the Lite plan.' }
+  }
+  if (!settings.agent_enabled) {
+    return { ok: false, reason: lang === 'mr' ? 'या खात्यासाठी एजंट सुरू केलेला नाही.' : 'The agent is not enabled for this account.' }
+  }
+  if (!settings.agent_write_enabled) {
+    return { ok: false, reason: lang === 'mr' ? 'मालकाने अजून एजंट राइट सुरू केलेले नाही — Settings → Agent मध्ये सुरू करा.' : 'The owner has not turned on agent writes yet — enable it in Settings → Agent.' }
+  }
   return { ok: true }
 }
 
@@ -4562,9 +4648,10 @@ async function proposeAction(
   callerUserId: string
 ): Promise<Response> {
   const { tenant_id, message, image, image_media_type } = body
-  if (!tenant_id) return respond({ status: 'error', error: 'tenant_id is required' }, 400)
+  const lang: 'en' | 'mr' = body.lang === 'mr' ? 'mr' : 'en'
+  if (!tenant_id) return respond({ status: 'error', error: lang === 'mr' ? 'tenant_id आवश्यक आहे.' : 'tenant_id is required' }, 400)
   const trimmedMessage = (message ?? '').trim()
-  if (!trimmedMessage && !image) return respond({ status: 'error', error: 'message or image is required' }, 400)
+  if (!trimmedMessage && !image) return respond({ status: 'error', error: lang === 'mr' ? 'संदेश किंवा फोटो आवश्यक आहे.' : 'message or image is required' }, 400)
 
   const { data: settingsRow } = await supabaseClient
     .from('p2_tenant_settings')
@@ -4601,15 +4688,15 @@ async function proposeAction(
   // read question or a plain yes/no.
   if (body.owner_amendment !== undefined) {
     if (!liveProposal) {
-      return respond({ status: 'ok', intent: 'propose_grn', confirm: { status: 'refused', confirm_text: 'No pending GRN to update — photograph the delivery again.' } })
+      return respond({ status: 'ok', intent: 'propose_grn', confirm: { status: 'refused', confirm_text: lang === 'mr' ? 'अपडेट करण्यासाठी कोणतेही पेंडिंग GRN नाही — डिलिव्हरीचा फोटो पुन्हा घ्या.' : 'No pending GRN to update — photograph the delivery again.' } })
     }
 
     // §4.5 rule 5 equivalent — role re-checked, not inherited, same as confirm/cancel.
     const amendRole = await resolveCallerRole(supabaseClient, tenant_id, callerUserId)
     if (!GRN_ALLOWED_ROLES.has(amendRole)) {
-      return respond({ status: 'ok', intent: 'propose_grn', confirm: { status: 'refused', confirm_text: 'Only the owner, a supervisor or a storekeeper can record a GRN.' } })
+      return respond({ status: 'ok', intent: 'propose_grn', confirm: { status: 'refused', confirm_text: lang === 'mr' ? 'फक्त मालक, सुपरवायझर किंवा स्टोअरकीपर GRN नोंदवू शकतात.' : 'Only the owner, a supervisor or a storekeeper can record a GRN.' } })
     }
-    const amendGate = checkWriteGate(settings)
+    const amendGate = checkWriteGate(settings, lang)
     if (!amendGate.ok) {
       return respond({ status: 'ok', intent: 'propose_grn', confirm: { status: 'refused', confirm_text: amendGate.reason } })
     }
@@ -4621,7 +4708,7 @@ async function proposeAction(
     if (requestedOwnedBy) {
       const match = amendPrincipals.find((p) => p.id === requestedOwnedBy)
       if (!match) {
-        return respond({ status: 'ok', intent: 'propose_grn', confirm: { status: 'refused', confirm_text: 'That principal is no longer available — refresh and try again.' } })
+        return respond({ status: 'ok', intent: 'propose_grn', confirm: { status: 'refused', confirm_text: lang === 'mr' ? 'तो प्रिन्सिपल आता उपलब्ध नाही — रिफ्रेश करून पुन्हा प्रयत्न करा.' : 'That principal is no longer available — refresh and try again.' } })
       }
       newOwnedBy = match.id
       newOwnerName = match.name
@@ -4647,7 +4734,7 @@ async function proposeAction(
     // switching away from one), the confirmation card's inline Principal
     // Challan No./Date inputs (js/agent-chat.js's addConfirmCard) collect
     // them at confirm time instead. No chat clarification turn at all.
-    const amendedConfirmText = renderGrnConfirmText(amendedPlan, amendedWarnings)
+    const amendedConfirmText = renderGrnConfirmText(amendedPlan, amendedWarnings, lang)
     await supabaseClient.from('p2_agent_proposals').update({ status: 'superseded', updated_at: new Date().toISOString() }).eq('id', liveProposal.id)
 
     const amendedProposalId = crypto.randomUUID()
@@ -4698,10 +4785,10 @@ async function proposeAction(
   if (!image && trimmedMessage && liveProposal) {
     const classification = classifyConfirmation(trimmedMessage)
     if (classification === 'affirm') {
-      return await confirmProposalAction(supabaseClient, { tenant_id, proposal_id: liveProposal.id }, callerUserId)
+      return await confirmProposalAction(supabaseClient, { tenant_id, proposal_id: liveProposal.id, lang }, callerUserId)
     }
     if (classification === 'decline') {
-      return await cancelProposalAction(supabaseClient, { tenant_id, proposal_id: liveProposal.id }, callerUserId)
+      return await cancelProposalAction(supabaseClient, { tenant_id, proposal_id: liveProposal.id, lang }, callerUserId)
     }
   }
 
@@ -4727,11 +4814,11 @@ async function proposeAction(
   const role = await resolveCallerRole(supabaseClient, tenant_id, callerUserId)
   if (!GRN_ALLOWED_ROLES.has(role)) {
     void logInteraction(supabaseClient, tenant_id, trimmedMessage, 'propose_grn', {}, null, false, 'role_denied')
-    return respond({ status: 'ok', intent: 'propose_grn', confirm: { status: 'refused', confirm_text: 'Only the owner, a supervisor or a storekeeper can record a GRN.' } })
+    return respond({ status: 'ok', intent: 'propose_grn', confirm: { status: 'refused', confirm_text: lang === 'mr' ? 'फक्त मालक, सुपरवायझर किंवा स्टोअरकीपर GRN नोंदवू शकतात.' : 'Only the owner, a supervisor or a storekeeper can record a GRN.' } })
   }
 
   // D10 plan gate — before any WRITE-attempting model call.
-  const gate = checkWriteGate(settings)
+  const gate = checkWriteGate(settings, lang)
   if (!gate.ok) {
     void logInteraction(supabaseClient, tenant_id, trimmedMessage, 'propose_grn', {}, null, false, 'write_gate_denied')
     return respond({ status: 'ok', intent: 'propose_grn', confirm: { status: 'refused', confirm_text: gate.reason } })
@@ -4760,7 +4847,7 @@ async function proposeAction(
     modelUsed = 'claude-sonnet-5'
     if (!extracted) {
       void logInteraction(supabaseClient, tenant_id, trimmedMessage, 'propose_grn', {}, null, false, 'extraction_failed')
-      return respond({ status: 'ok', intent: 'propose_grn', confirm: { status: 'refused', confirm_text: "I can't read this photo. Try again with more light, or use the GRN page." } })
+      return respond({ status: 'ok', intent: 'propose_grn', confirm: { status: 'refused', confirm_text: lang === 'mr' ? 'हा फोटो वाचता आला नाही. जास्त उजेडात पुन्हा प्रयत्न करा, किंवा GRN पेज वापरा.' : "I can't read this photo. Try again with more light, or use the GRN page." } })
     }
 
     const flagged = fieldsNeedingEscalation(extracted)
@@ -4837,7 +4924,7 @@ async function proposeAction(
       // GRN attempt and must redirect the same way, not fall through to a
       // resolved clarification question).
       void logInteraction(supabaseClient, tenant_id, trimmedMessage, 'propose_grn', {}, null, false, 'text_path_dropped')
-      return respond({ status: 'ok', intent: 'propose_grn', confirm: { status: 'refused', confirm_text: 'Photograph the delivery challan and I\'ll read it — typed GRN details go on the GRN page instead.' } })
+      return respond({ status: 'ok', intent: 'propose_grn', confirm: { status: 'refused', confirm_text: lang === 'mr' ? 'डिलिव्हरी चलानाचा फोटो घ्या, मी तो वाचेन — टाइप केलेले GRN तपशील GRN पेजवर टाका.' : 'Photograph the delivery challan and I\'ll read it — typed GRN details go on the GRN page instead.' } })
     }
   }
 
@@ -4851,14 +4938,15 @@ async function proposeAction(
 
   if (toolName !== 'propose_grn' || !toolInput) {
     void logInteraction(supabaseClient, tenant_id, trimmedMessage, 'unknown', {}, null, true, null)
-    return respond({ status: 'ok', intent: 'unknown', confirm: { status: 'ready', confirm_text: plainText ?? "I don't have information on that." } })
+    return respond({ status: 'ok', intent: 'unknown', confirm: { status: 'ready', confirm_text: plainText ?? (lang === 'mr' ? 'त्याबद्दल माहिती नाही.' : "I don't have information on that.") } })
   }
 
   const resolution = await resolveGrnPlan(
     supabaseClient, tenant_id, toolInput, context, principals,
     (settings.gstin as string) ?? null,
     typeof toolInput.grn_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(toolInput.grn_date) ? toolInput.grn_date : null,
-    !!settings.allow_duplicate_grn_invoice
+    !!settings.allow_duplicate_grn_invoice,
+    lang
   )
 
   if (resolution.kind === 'refusal') {
@@ -4959,7 +5047,8 @@ async function confirmProposalAction(
   callerUserId: string
 ): Promise<Response> {
   const { tenant_id, proposal_id } = body
-  if (!tenant_id || !proposal_id) return respond({ status: 'error', error: 'tenant_id and proposal_id are required' }, 400)
+  const lang: 'en' | 'mr' = body.lang === 'mr' ? 'mr' : 'en'
+  if (!tenant_id || !proposal_id) return respond({ status: 'error', error: lang === 'mr' ? 'tenant_id आणि proposal_id आवश्यक आहेत.' : 'tenant_id and proposal_id are required' }, 400)
 
   const { data: proposalRow, error: fetchError } = await supabaseClient
     .from('p2_agent_proposals')
@@ -4969,7 +5058,7 @@ async function confirmProposalAction(
     .maybeSingle()
 
   if (fetchError) return respond({ status: 'error', error: fetchError.message }, 500)
-  if (!proposalRow) return respond({ status: 'error', error: 'Proposal not found.' }, 404)
+  if (!proposalRow) return respond({ status: 'error', error: lang === 'mr' ? 'प्रपोजल सापडले नाही.' : 'Proposal not found.' }, 404)
 
   type ProposalRow = {
     id: string; user_id: string; status: string; plan: GrnPlan; expires_at: string
@@ -4981,12 +5070,19 @@ async function confirmProposalAction(
   // wait, only owner/supervisor/storekeeper ever raise a proposal (D11), but
   // the rule is symmetric regardless of who raised it.
   if (proposal.user_id !== callerUserId) {
-    return respond({ status: 'ok', confirm: { status: 'refused', confirm_text: 'This was raised by another user — they need to confirm it.' } })
+    return respond({ status: 'ok', confirm: { status: 'refused', confirm_text: lang === 'mr' ? 'हे दुसऱ्या युजरने सुरू केले आहे — त्यांनीच कन्फर्म करावे लागेल.' : 'This was raised by another user — they need to confirm it.' } })
   }
 
   // §4.5 rule 3 — status must be awaiting_confirmation.
   if (proposal.status !== 'awaiting_confirmation') {
-    const messages: Record<string, string> = {
+    const messages: Record<string, string> = lang === 'mr' ? {
+      executed: 'हे GRN आधीच नोंदवले गेले आहे.',
+      cancelled: 'हा प्लॅन रद्द केला आहे.',
+      superseded: 'तो प्लॅन नवीन प्लॅनने बदलला आहे — नवीनतम कार्ड वापरा.',
+      expired: 'तो प्लॅन 15 मिनिटांपेक्षा जुना आहे आणि स्टॉक बदलला असू शकतो. पुन्हा सांगा, मी पुन्हा तपासेन.',
+      executing: 'हे आधीच नोंदवले जात आहे.',
+      failed: 'तो प्लॅन नोंदवता आला नाही — डिलिव्हरीचा फोटो पुन्हा घ्या.',
+    } : {
       executed: 'This GRN has already been recorded.',
       cancelled: 'This plan was cancelled.',
       superseded: 'That plan was replaced by a newer one — use the latest card.',
@@ -4994,19 +5090,19 @@ async function confirmProposalAction(
       executing: 'This is already being recorded.',
       failed: 'That plan could not be recorded — photograph the delivery again.',
     }
-    return respond({ status: 'ok', confirm: { status: 'refused', confirm_text: messages[proposal.status] ?? 'This plan is no longer active.' } })
+    return respond({ status: 'ok', confirm: { status: 'refused', confirm_text: messages[proposal.status] ?? (lang === 'mr' ? 'हा प्लॅन आता सक्रिय नाही.' : 'This plan is no longer active.') } })
   }
 
   // §4.5 rule 4 / §3 D9 — expiry checked server-side, not client.
   if (new Date(proposal.expires_at).getTime() <= Date.now()) {
     await supabaseClient.from('p2_agent_proposals').update({ status: 'expired', updated_at: new Date().toISOString() }).eq('id', proposal_id)
-    return respond({ status: 'ok', confirm: { status: 'refused', confirm_text: 'That plan is more than 15 minutes old and stock may have moved. Say it again and I\'ll recheck.' } })
+    return respond({ status: 'ok', confirm: { status: 'refused', confirm_text: lang === 'mr' ? 'तो प्लॅन 15 मिनिटांपेक्षा जुना आहे आणि स्टॉक बदलला असू शकतो. पुन्हा सांगा, मी पुन्हा तपासेन.' : 'That plan is more than 15 minutes old and stock may have moved. Say it again and I\'ll recheck.' } })
   }
 
   // §4.5 rule 5 — role still permitted, re-checked (not inherited).
   const role = await resolveCallerRole(supabaseClient, tenant_id, callerUserId)
   if (!GRN_ALLOWED_ROLES.has(role)) {
-    return respond({ status: 'ok', confirm: { status: 'refused', confirm_text: 'Only the owner, a supervisor or a storekeeper can record a GRN.' } })
+    return respond({ status: 'ok', confirm: { status: 'refused', confirm_text: lang === 'mr' ? 'फक्त मालक, सुपरवायझर किंवा स्टोअरकीपर GRN नोंदवू शकतात.' : 'Only the owner, a supervisor or a storekeeper can record a GRN.' } })
   }
 
   // The ONE exception to "confirm reads from the stored plan only" (§18.1
@@ -5023,11 +5119,11 @@ async function confirmProposalAction(
     const suppliedNo = typeof body.principal_challan_no === 'string' ? body.principal_challan_no.trim() : ''
     const suppliedDate = typeof body.principal_challan_date === 'string' ? body.principal_challan_date.trim() : ''
     if (!suppliedNo || !suppliedDate) {
-      return respond({ status: 'ok', confirm: { status: 'refused', confirm_text: "This is a principal delivery — the challan number and date are required before this can be recorded." } })
+      return respond({ status: 'ok', confirm: { status: 'refused', confirm_text: lang === 'mr' ? 'ही प्रिन्सिपल डिलिव्हरी आहे — नोंदवण्याआधी चलान क्रमांक आणि तारीख आवश्यक आहे.' : "This is a principal delivery — the challan number and date are required before this can be recorded." } })
     }
     plan = { ...plan, principal_challan_no: suppliedNo, principal_challan_date: suppliedDate }
   }
-  const finalConfirmText = renderGrnConfirmText(plan, proposal.warnings ?? [])
+  const finalConfirmText = renderGrnConfirmText(plan, proposal.warnings ?? [], lang)
 
   // §4.5 rule 7 — idempotency. Conditional UPDATE; zero rows means a
   // concurrent confirm already won (§18.1 #6 — two simultaneous confirms
@@ -5047,7 +5143,7 @@ async function confirmProposalAction(
     // Lost the race — re-read and return whatever the winner produced.
     const { data: after } = await supabaseClient.from('p2_agent_proposals').select('status, result, confirm_text').eq('id', proposal_id).maybeSingle()
     const afterRow = after as { status: string; result: unknown; confirm_text: string } | null
-    return respond({ status: 'ok', confirm: { status: afterRow?.status === 'executed' ? 'ready' : 'refused', confirm_text: afterRow?.confirm_text ?? 'Already handled.' }, result: afterRow?.result ?? null })
+    return respond({ status: 'ok', confirm: { status: afterRow?.status === 'executed' ? 'ready' : 'refused', confirm_text: afterRow?.confirm_text ?? (lang === 'mr' ? 'आधीच हाताळले गेले आहे.' : 'Already handled.') }, result: afterRow?.result ?? null })
   }
 
   // §4.5 rule 6 — re-validate every referenced row is still active. The RPC
@@ -5056,7 +5152,15 @@ async function confirmProposalAction(
   const { data: supplierCheck } = await supabaseClient.from('p2_suppliers').select('is_active').eq('id', plan.supplier_id).maybeSingle()
   if (!(supplierCheck as { is_active?: boolean } | null)?.is_active) {
     await supabaseClient.from('p2_agent_proposals').update({ status: 'failed', error_reason: 'supplier_inactive', updated_at: new Date().toISOString() }).eq('id', proposal_id)
-    return respond({ status: 'ok', confirm: { status: 'refused', confirm_text: `${plan.supplier_name} looks inactive now — check Settings, or say it again if that's wrong.` } })
+    return respond({
+      status: 'ok',
+      confirm: {
+        status: 'refused',
+        confirm_text: lang === 'mr'
+          ? `${plan.supplier_name} आता निष्क्रिय दिसत आहे — Settings तपासा, किंवा हे चुकीचे असल्यास पुन्हा सांगा.`
+          : `${plan.supplier_name} looks inactive now — check Settings, or say it again if that's wrong.`,
+      },
+    })
   }
 
   // Step 8 — call confirm_agent_grn_v3 with the STORED (now possibly
@@ -5089,7 +5193,7 @@ async function confirmProposalAction(
     await supabaseClient.from('p2_agent_proposals').update({ status: 'failed', error_reason: rpcError.message, updated_at: new Date().toISOString() }).eq('id', proposal_id)
     await opsAlert({ source: 'agent', severity: 'critical', title: 'confirm_agent_grn_v3 failed', body: `${rpcError.message}\nproposal_id: ${proposal_id}, tenant_id: ${tenant_id}`, meta: { proposal_id, tenant_id } })
     void logInteraction(supabaseClient, tenant_id, '', 'confirm_proposal', {}, null, false, rpcError.message)
-    return respond({ status: 'ok', confirm: { status: 'refused', confirm_text: "Couldn't record that — nothing has been changed. Support has been told." } })
+    return respond({ status: 'ok', confirm: { status: 'refused', confirm_text: lang === 'mr' ? 'ते नोंदवता आले नाही — काहीही बदलले नाही. Support ला कळवले आहे.' : "Couldn't record that — nothing has been changed. Support has been told." } })
   }
 
   // Step 7 & 9 — success. Meter increments here (on confirm), per this
@@ -5104,7 +5208,12 @@ async function confirmProposalAction(
   const resultObj = rpcResult as { grn_no?: string } | null
   return respond({
     status: 'ok',
-    confirm: { status: 'ready', confirm_text: `Recorded — ${resultObj?.grn_no ?? 'GRN'} saved.\n\n${finalConfirmText}` },
+    confirm: {
+      status: 'ready',
+      confirm_text: lang === 'mr'
+        ? `नोंदवले — ${resultObj?.grn_no ?? 'GRN'} सेव्ह झाले.\n\n${finalConfirmText}`
+        : `Recorded — ${resultObj?.grn_no ?? 'GRN'} saved.\n\n${finalConfirmText}`,
+    },
     result: rpcResult,
   })
 }
@@ -5161,7 +5270,8 @@ async function cancelProposalAction(
   callerUserId: string
 ): Promise<Response> {
   const { tenant_id, proposal_id } = body
-  if (!tenant_id || !proposal_id) return respond({ status: 'error', error: 'tenant_id and proposal_id are required' }, 400)
+  const lang: 'en' | 'mr' = body.lang === 'mr' ? 'mr' : 'en'
+  if (!tenant_id || !proposal_id) return respond({ status: 'error', error: lang === 'mr' ? 'tenant_id आणि proposal_id आवश्यक आहेत.' : 'tenant_id and proposal_id are required' }, 400)
 
   const { data: proposalRow } = await supabaseClient
     .from('p2_agent_proposals')
@@ -5171,17 +5281,90 @@ async function cancelProposalAction(
     .maybeSingle()
   const proposal = proposalRow as { id: string; user_id: string; status: string } | null
 
-  if (!proposal) return respond({ status: 'error', error: 'Proposal not found.' }, 404)
+  if (!proposal) return respond({ status: 'error', error: lang === 'mr' ? 'प्रपोजल सापडले नाही.' : 'Proposal not found.' }, 404)
   if (proposal.user_id !== callerUserId) {
-    return respond({ status: 'ok', confirm: { status: 'refused', confirm_text: 'This was raised by another user.' } })
+    return respond({ status: 'ok', confirm: { status: 'refused', confirm_text: lang === 'mr' ? 'हे दुसऱ्या युजरने सुरू केले आहे.' : 'This was raised by another user.' } })
   }
   if (proposal.status !== 'awaiting_confirmation') {
-    return respond({ status: 'ok', confirm: { status: 'refused', confirm_text: 'This plan is no longer active.' } })
+    return respond({ status: 'ok', confirm: { status: 'refused', confirm_text: lang === 'mr' ? 'हा प्लॅन आता सक्रिय नाही.' : 'This plan is no longer active.' } })
   }
 
   await supabaseClient.from('p2_agent_proposals').update({ status: 'cancelled', updated_at: new Date().toISOString() }).eq('id', proposal_id)
   void logInteraction(supabaseClient, tenant_id, '', 'cancel_proposal', {}, null, true, null)
-  return respond({ status: 'ok', confirm: { status: 'cancelled', confirm_text: 'Cancelled — nothing was recorded.' } })
+  return respond({ status: 'ok', confirm: { status: 'cancelled', confirm_text: lang === 'mr' ? 'रद्द केले — काहीही नोंदवले गेले नाही.' : 'Cancelled — nothing was recorded.' } })
+}
+
+// W5 — voice input, read-only. Transcribes a recorded clip via OpenAI
+// Whisper and returns text only; never touches a proposal. Plan gate checks
+// only settings.plan === 'lite' (not checkWriteGate's agent_write_enabled —
+// that flag gates the WRITE layer specifically and won't be true for any
+// tenant until the W6 pilot, which would make voice permanently refused for
+// everyone if reused here). verifyCallerTenant already ran in the dispatcher
+// above (transcribe is not the confirm_receive_grn exemption).
+async function transcribeAction(
+  supabaseClient: ReturnType<typeof createClient>,
+  body: Partial<TranscribeRequest>
+): Promise<Response> {
+  const { tenant_id, audio_base64, audio_mime_type } = body
+  const lang: 'en' | 'mr' = body.lang === 'mr' ? 'mr' : 'en'
+  if (!tenant_id || !audio_base64 || !audio_mime_type) {
+    return respond({
+      status: 'error',
+      error: lang === 'mr' ? 'tenant_id, audio_base64 आणि audio_mime_type आवश्यक आहेत.' : 'tenant_id, audio_base64 and audio_mime_type are required',
+    }, 400)
+  }
+
+  const { data: settingsRow } = await supabaseClient
+    .from('p2_tenant_settings')
+    .select('plan')
+    .eq('tenant_id', tenant_id)
+    .maybeSingle()
+  const settings = (settingsRow ?? {}) as Record<string, unknown>
+  if (settings.plan === 'lite') {
+    return respond({
+      status: 'error',
+      error: lang === 'mr' ? 'एजंट राइट सुविधा Lite प्लॅनवर उपलब्ध नाही.' : 'The agent write layer is not available on the Lite plan.',
+    })
+  }
+
+  const apiKey = Deno.env.get('OPENAI_API_KEY')
+  if (!apiKey) {
+    return respond({ status: 'error', error: 'Voice transcription is not configured — type your question instead' })
+  }
+
+  try {
+    const bytes = Uint8Array.from(atob(audio_base64), (c) => c.charCodeAt(0))
+    const blob = new Blob([bytes], { type: audio_mime_type })
+    const formData = new FormData()
+    formData.append('file', blob, audio_mime_type.includes('webm') ? 'audio.webm' : 'audio.mp4')
+    formData.append('model', 'whisper-1')
+
+    const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}` },
+      body: formData,
+    })
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '')
+      console.error(`[transcribeAction] OpenAI API ${res.status}:`, errText)
+      void logInteraction(supabaseClient, tenant_id, '', 'transcribe', {}, null, false, `OpenAI API ${res.status}`)
+      return respond({
+        status: 'error',
+        error: lang === 'mr' ? 'आवाज ओळखता आला नाही — पुन्हा प्रयत्न करा किंवा टाइप करा.' : 'Voice transcription failed — try again or type your question.',
+      })
+    }
+
+    const json = await res.json()
+    void logInteraction(supabaseClient, tenant_id, '', 'transcribe', {}, null, true, null)
+    return respond({ status: 'ok', text: json.text ?? '' })
+  } catch (err) {
+    void logInteraction(supabaseClient, tenant_id, '', 'transcribe', {}, null, false, err instanceof Error ? err.message : String(err))
+    return respond({
+      status: 'error',
+      error: lang === 'mr' ? 'काहीतरी चूक झाली — कनेक्शन तपासा आणि पुन्हा प्रयत्न करा.' : 'Something went wrong — check your connection and try again.',
+    })
+  }
 }
 
 Deno.serve(async (req) => {
@@ -5210,7 +5393,8 @@ Deno.serve(async (req) => {
       Partial<Omit<ProposeRequest, 'action'>> &
       Partial<Omit<ConfirmProposalRequest, 'action'>> &
       Partial<Omit<CancelProposalRequest, 'action'>> &
-      { action?: 'confirm_receive_grn' | 'confirm_generate_invoice' | 'resend_invoice' | 'confirm_consolidated_invoice' | 'preview_consolidated_invoice' | 'suggest_hsn' | 'submit_support_message' | 'submit_bug_report' | 'propose' | 'confirm_proposal' | 'cancel_proposal' } = await req.json()
+      Partial<Omit<TranscribeRequest, 'action'>> &
+      { action?: 'confirm_receive_grn' | 'confirm_generate_invoice' | 'resend_invoice' | 'confirm_consolidated_invoice' | 'preview_consolidated_invoice' | 'suggest_hsn' | 'submit_support_message' | 'submit_bug_report' | 'propose' | 'confirm_proposal' | 'cancel_proposal' | 'transcribe' } = await req.json()
 
     // Cross-tenant auth guard: every action below (and the plain-message path
     // further down) takes tenant_id from this same body — verify it against
@@ -5257,6 +5441,9 @@ Deno.serve(async (req) => {
     }
     if (body.action === 'cancel_proposal') {
       return await cancelProposalAction(supabase, body as Partial<CancelProposalRequest>, callerUserId as string)
+    }
+    if (body.action === 'transcribe') {
+      return await transcribeAction(supabase, body as Partial<TranscribeRequest>)
     }
 
     if (body.action === 'confirm_generate_invoice') {
