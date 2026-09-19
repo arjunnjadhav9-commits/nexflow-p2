@@ -3563,19 +3563,6 @@ interface CancelProposalRequest {
   lang?: 'en' | 'mr'
 }
 
-// W5 — voice input, read-only (nexflow-agent.md §4.2/§16 item 10/§17 Q8).
-// Client records with MediaRecorder and sends the whole clip as base64; this
-// action only transcribes it and returns text — the client puts that text in
-// the input box for the user to review and send themselves. There is no path
-// from here into confirm_proposal/cancel_proposal.
-interface TranscribeRequest {
-  action: 'transcribe'
-  tenant_id: string
-  audio_base64: string
-  audio_mime_type: string
-  lang?: 'en' | 'mr'
-}
-
 type GrnBand = 'green' | 'amber'
 
 interface GrnPlanItem {
@@ -5294,79 +5281,6 @@ async function cancelProposalAction(
   return respond({ status: 'ok', confirm: { status: 'cancelled', confirm_text: lang === 'mr' ? 'रद्द केले — काहीही नोंदवले गेले नाही.' : 'Cancelled — nothing was recorded.' } })
 }
 
-// W5 — voice input, read-only. Transcribes a recorded clip via OpenAI
-// Whisper and returns text only; never touches a proposal. Plan gate checks
-// only settings.plan === 'lite' (not checkWriteGate's agent_write_enabled —
-// that flag gates the WRITE layer specifically and won't be true for any
-// tenant until the W6 pilot, which would make voice permanently refused for
-// everyone if reused here). verifyCallerTenant already ran in the dispatcher
-// above (transcribe is not the confirm_receive_grn exemption).
-async function transcribeAction(
-  supabaseClient: ReturnType<typeof createClient>,
-  body: Partial<TranscribeRequest>
-): Promise<Response> {
-  const { tenant_id, audio_base64, audio_mime_type } = body
-  const lang: 'en' | 'mr' = body.lang === 'mr' ? 'mr' : 'en'
-  if (!tenant_id || !audio_base64 || !audio_mime_type) {
-    return respond({
-      status: 'error',
-      error: lang === 'mr' ? 'tenant_id, audio_base64 आणि audio_mime_type आवश्यक आहेत.' : 'tenant_id, audio_base64 and audio_mime_type are required',
-    }, 400)
-  }
-
-  const { data: settingsRow } = await supabaseClient
-    .from('p2_tenant_settings')
-    .select('plan')
-    .eq('tenant_id', tenant_id)
-    .maybeSingle()
-  const settings = (settingsRow ?? {}) as Record<string, unknown>
-  if (settings.plan === 'lite') {
-    return respond({
-      status: 'error',
-      error: lang === 'mr' ? 'एजंट राइट सुविधा Lite प्लॅनवर उपलब्ध नाही.' : 'The agent write layer is not available on the Lite plan.',
-    })
-  }
-
-  const apiKey = Deno.env.get('OPENAI_API_KEY')
-  if (!apiKey) {
-    return respond({ status: 'error', error: 'Voice transcription is not configured — type your question instead' })
-  }
-
-  try {
-    const bytes = Uint8Array.from(atob(audio_base64), (c) => c.charCodeAt(0))
-    const blob = new Blob([bytes], { type: audio_mime_type })
-    const formData = new FormData()
-    formData.append('file', blob, audio_mime_type.includes('webm') ? 'audio.webm' : 'audio.mp4')
-    formData.append('model', 'whisper-1')
-
-    const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}` },
-      body: formData,
-    })
-
-    if (!res.ok) {
-      const errText = await res.text().catch(() => '')
-      console.error(`[transcribeAction] OpenAI API ${res.status}:`, errText)
-      void logInteraction(supabaseClient, tenant_id, '', 'transcribe', {}, null, false, `OpenAI API ${res.status}`)
-      return respond({
-        status: 'error',
-        error: lang === 'mr' ? 'आवाज ओळखता आला नाही — पुन्हा प्रयत्न करा किंवा टाइप करा.' : 'Voice transcription failed — try again or type your question.',
-      })
-    }
-
-    const json = await res.json()
-    void logInteraction(supabaseClient, tenant_id, '', 'transcribe', {}, null, true, null)
-    return respond({ status: 'ok', text: json.text ?? '' })
-  } catch (err) {
-    void logInteraction(supabaseClient, tenant_id, '', 'transcribe', {}, null, false, err instanceof Error ? err.message : String(err))
-    return respond({
-      status: 'error',
-      error: lang === 'mr' ? 'काहीतरी चूक झाली — कनेक्शन तपासा आणि पुन्हा प्रयत्न करा.' : 'Something went wrong — check your connection and try again.',
-    })
-  }
-}
-
 Deno.serve(async (req) => {
   // CORS preflight
   if (req.method === 'OPTIONS') {
@@ -5393,8 +5307,7 @@ Deno.serve(async (req) => {
       Partial<Omit<ProposeRequest, 'action'>> &
       Partial<Omit<ConfirmProposalRequest, 'action'>> &
       Partial<Omit<CancelProposalRequest, 'action'>> &
-      Partial<Omit<TranscribeRequest, 'action'>> &
-      { action?: 'confirm_receive_grn' | 'confirm_generate_invoice' | 'resend_invoice' | 'confirm_consolidated_invoice' | 'preview_consolidated_invoice' | 'suggest_hsn' | 'submit_support_message' | 'submit_bug_report' | 'propose' | 'confirm_proposal' | 'cancel_proposal' | 'transcribe' } = await req.json()
+      { action?: 'confirm_receive_grn' | 'confirm_generate_invoice' | 'resend_invoice' | 'confirm_consolidated_invoice' | 'preview_consolidated_invoice' | 'suggest_hsn' | 'submit_support_message' | 'submit_bug_report' | 'propose' | 'confirm_proposal' | 'cancel_proposal' } = await req.json()
 
     // Cross-tenant auth guard: every action below (and the plain-message path
     // further down) takes tenant_id from this same body — verify it against
@@ -5441,9 +5354,6 @@ Deno.serve(async (req) => {
     }
     if (body.action === 'cancel_proposal') {
       return await cancelProposalAction(supabase, body as Partial<CancelProposalRequest>, callerUserId as string)
-    }
-    if (body.action === 'transcribe') {
-      return await transcribeAction(supabase, body as Partial<TranscribeRequest>)
     }
 
     if (body.action === 'confirm_generate_invoice') {

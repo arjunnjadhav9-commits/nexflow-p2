@@ -608,74 +608,55 @@
     });
 
     // ---------- W5: voice input (read-only) ----------
-    // Whisper transcription into the read pipeline only. Never auto-sent —
-    // success only fills the input box so the user reviews before tapping
+    // Browser-native Web Speech API — no server round trip. Never auto-sent —
+    // a result only fills the input box so the user reviews before tapping
     // Send, same as typing. This structurally keeps voice out of
     // confirm_proposal/cancel_proposal (nexflow-agent.md §4.2/§16 item 10):
     // there is no code path from a transcription result straight to a
     // proposal action, only into inputEl.value.
+    const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
     const micBtn = panel.querySelector('#nf-agent-mic');
-    let mediaRecorder = null;
-    let audioChunks = [];
+    let recognition = null;
     let isRecording = false;
 
     function updateMicState() {
       micBtn.disabled = isDemo || Boolean(openCard) || cameraBtn.disabled || isRecording;
     }
 
-    micBtn.addEventListener('click', async () => {
-      if (isRecording) { mediaRecorder.stop(); return; }
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const mimeType = (window.MediaRecorder && MediaRecorder.isTypeSupported('audio/webm')) ? 'audio/webm' : 'audio/mp4';
-        mediaRecorder = new MediaRecorder(stream, { mimeType });
-        audioChunks = [];
-        mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.push(e.data); };
-        mediaRecorder.onstop = async () => {
-          stream.getTracks().forEach((tr) => tr.stop());
+    if (!SpeechRecognitionCtor) {
+      // Not Chrome/a Blink browser — no point showing a button that can't work.
+      micBtn.style.display = 'none';
+    } else {
+      micBtn.addEventListener('click', () => {
+        if (isRecording) { recognition.stop(); return; }
+        recognition = new SpeechRecognitionCtor();
+        // Factory-floor Hinglish, not 'en-US' — English performs worst here.
+        recognition.lang = localStorage.getItem('nexflow_lang') === 'mr' ? 'mr-IN' : 'hi-IN';
+        recognition.interimResults = false;
+        recognition.maxAlternatives = 1;
+
+        recognition.onresult = (e) => {
+          inputEl.value = e.results[0][0].transcript;
+          inputEl.focus();
+        };
+        recognition.onerror = () => {
+          addMessage(t('Could not transcribe that. Try again or type your question.', 'ते ऐकता आले नाही. पुन्हा प्रयत्न करा किंवा टाइप करा.'), 'nf-msg-error');
+        };
+        recognition.onend = () => {
           isRecording = false;
           micBtn.classList.remove('nf-mic-recording');
-          micBtn.disabled = true;
-          const typingEl = addTyping();
-          try {
-            const blob = new Blob(audioChunks, { type: mimeType });
-            const base64 = await new Promise((resolve, reject) => {
-              const reader = new FileReader();
-              reader.onload = () => resolve(reader.result.split(',')[1]);
-              reader.onerror = reject;
-              reader.readAsDataURL(blob);
-            });
-            const tid = await getTenantId();
-            const res = await fetch(EDGE_FUNCTION_URL, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'Authorization': await getAuthHeader() },
-              body: JSON.stringify({
-                action: 'transcribe', tenant_id: tid, audio_base64: base64, audio_mime_type: mimeType,
-                lang: localStorage.getItem('nexflow_lang') === 'mr' ? 'mr' : 'en',
-              }),
-            });
-            removeTyping();
-            const data = await res.json().catch(() => ({}));
-            if (data.status === 'error' || !data.text) {
-              addMessage(data.error || t('Could not transcribe that. Try again or type your question.', 'ते ऐकता आले नाही. पुन्हा प्रयत्न करा किंवा टाइप करा.'), 'nf-msg-error');
-              return;
-            }
-            inputEl.value = data.text;
-            inputEl.focus();
-          } catch (err) {
-            removeTyping();
-            addMessage(t('Something went wrong — check your connection and try again.', 'काहीतरी चूक झाली — कनेक्शन तपासा आणि पुन्हा प्रयत्न करा.'), 'nf-msg-error');
-          } finally {
-            updateMicState();
-          }
+          updateMicState();
         };
-        mediaRecorder.start();
-        isRecording = true;
-        micBtn.classList.add('nf-mic-recording');
-      } catch (err) {
-        addMessage(t('Microphone access denied or unavailable.', 'मायक्रोफोन उपलब्ध नाही किंवा परवानगी नाकारली.'), 'nf-msg-error');
-      }
-    });
+
+        try {
+          recognition.start();
+          isRecording = true;
+          micBtn.classList.add('nf-mic-recording');
+        } catch (err) {
+          addMessage(t('Microphone access denied or unavailable.', 'मायक्रोफोन उपलब्ध नाही किंवा परवानगी नाकारली.'), 'nf-msg-error');
+        }
+      });
+    }
 
     // ---------- W2: confirmation card ----------
     // Tracks the single open (non-superseded, non-terminal) card so a new
